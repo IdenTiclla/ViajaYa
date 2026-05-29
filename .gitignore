@@ -1,0 +1,26 @@
+# Claude Code local settings (contienen secretos, no compartir)
+.claude/settings.local.json
+
+# ---- Python / backend ----
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# ---- Node / Expo / mobile ----
+node_modules/
+.expo/
+dist/
+web-build/
+*.log
+
+# ---- Entorno / secretos ----
+.env
+.env.*
+!.env.example

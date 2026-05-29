@@ -1,0 +1,30 @@
+"""Puertos del dominio: interfaces que la infraestructura debe implementar.
+
+Los casos de uso dependen de estas abstracciones, no de SQLAlchemy
+(inversión de dependencias).
+"""
+
+from __future__ import annotations
+
+import uuid
+from abc import ABC, abstractmethod
+
+from app.domain.entities import AuthProvider, User
+
+
+class UserRepository(ABC):
+    @abstractmethod
+    async def get_by_id(self, user_id: uuid.UUID) -> User | None:
+        """Devuelve el usuario con ese id, o ``None`` si no existe."""
+
+    @abstractmethod
+    async def get_by_email(self, email: str) -> User | None:
+        """Devuelve el usuario con ese correo, o ``None`` si no existe."""
+
+    @abstractmethod
+    async def get_by_provider(self, provider: AuthProvider, provider_id: str) -> User | None:
+        """Devuelve el usuario vinculado a una identidad externa, o ``None``."""
+
+    @abstractmethod
+    async def add(self, user: User) -> User:
+        """Persiste un usuario nuevo y lo devuelve (con ``created_at`` poblado)."""

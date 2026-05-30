@@ -1,14 +1,14 @@
 /**
  * Pantalla "¿A dónde vamos?" — primer paso tras fijar el origen.
  *
- * Muestra los destinos recientes (o un estado vacío si no hay) y un acceso
- * directo para seleccionar el destino en el mapa. La barra de búsqueda filtra
- * los recientes localmente; la búsqueda por geocoding queda para una entrega
- * posterior (ver plan).
+ * La barra de búsqueda autocompleta lugares con Google Places (sesgados hacia
+ * el origen) en cuanto se escriben ≥ 3 caracteres. Sin término buscable se
+ * muestran los destinos recientes; también hay un acceso directo para elegir el
+ * destino en el mapa.
  */
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import {
   ActivityIndicator,
   ScrollView,
@@ -22,27 +22,36 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
+import { usePlaceSearch } from '@/features/booking/application/usePlaceSearch';
 import { useRecentDestinations } from '@/features/booking/application/useRecentDestinations';
-import type { Place } from '@/features/booking/domain/types';
+import type { Place, PlaceSuggestion } from '@/features/booking/domain/types';
 
 export function DestinationSearchScreen() {
   const router = useRouter();
+  const origin = useBookingStore((s) => s.origin);
   const setDestination = useBookingStore((s) => s.setDestination);
   const { places, isLoading } = useRecentDestinations();
   const [query, setQuery] = useState('');
+  // placeId que se está resolviendo (coordenadas) tras tocar una sugerencia.
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
 
-  const results = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return places;
-    return places.filter(
-      (p) => p.name.toLowerCase().includes(q) || p.address.toLowerCase().includes(q),
-    );
-  }, [query, places]);
+  const { suggestions, isLoading: isSearching, isActive, resolve } = usePlaceSearch(
+    query,
+    origin?.coordinates,
+  );
 
-  const selectPlace = (place: Place) => {
+  const goToConfigure = (place: Place) => {
     setDestination(place);
     // `navigate` vuelve a la pantalla de configurar si ya está en la pila.
     router.navigate('/booking/configure');
+  };
+
+  const selectSuggestion = async (suggestion: PlaceSuggestion) => {
+    if (resolvingId) return;
+    setResolvingId(suggestion.placeId);
+    const place = await resolve(suggestion);
+    setResolvingId(null);
+    if (place) goToConfigure(place);
   };
 
   return (
@@ -66,6 +75,14 @@ export function DestinationSearchScreen() {
             autoFocus
             returnKeyType="search"
           />
+          {query.length > 0 && (
+            <TouchableOpacity
+              onPress={() => setQuery('')}
+              accessibilityRole="button"
+              accessibilityLabel="Borrar búsqueda">
+              <Ionicons name="close-circle" size={20} color={colors.placeholder} />
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
@@ -78,21 +95,111 @@ export function DestinationSearchScreen() {
         <Text style={styles.mapButtonText}>Seleccionar en el mapa</Text>
       </TouchableOpacity>
 
+      {isActive ? (
+        <SearchResults
+          suggestions={suggestions}
+          isLoading={isSearching}
+          resolvingId={resolvingId}
+          onSelect={selectSuggestion}
+        />
+      ) : (
+        <RecentDestinations places={places} isLoading={isLoading} onSelect={goToConfigure} />
+      )}
+    </SafeAreaView>
+  );
+}
+
+function SearchResults({
+  suggestions,
+  isLoading,
+  resolvingId,
+  onSelect,
+}: {
+  suggestions: PlaceSuggestion[];
+  isLoading: boolean;
+  resolvingId: string | null;
+  onSelect: (suggestion: PlaceSuggestion) => void;
+}) {
+  if (suggestions.length === 0) {
+    return (
+      <View style={styles.empty}>
+        {isLoading ? (
+          <ActivityIndicator size="large" color={colors.primary} />
+        ) : (
+          <>
+            <Ionicons name="search-outline" size={64} color={colors.border} />
+            <Text style={styles.emptyTitle}>Sin resultados</Text>
+            <Text style={styles.emptySubtitle}>
+              Prueba con otro nombre o selecciona el destino en el mapa.
+            </Text>
+          </>
+        )}
+      </View>
+    );
+  }
+
+  return (
+    <ScrollView contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled">
+      {suggestions.map((suggestion) => {
+        const isResolving = resolvingId === suggestion.placeId;
+        return (
+          <TouchableOpacity
+            key={suggestion.placeId}
+            style={styles.item}
+            onPress={() => onSelect(suggestion)}
+            disabled={Boolean(resolvingId)}
+            accessibilityRole="button"
+            accessibilityLabel={`Ir a ${suggestion.name}`}>
+            <View style={styles.itemIcon}>
+              {isResolving ? (
+                <ActivityIndicator size="small" color={colors.textSecondary} />
+              ) : (
+                <Ionicons name="location-outline" size={20} color={colors.textSecondary} />
+              )}
+            </View>
+            <View style={styles.itemText}>
+              <Text style={styles.itemName}>{suggestion.name}</Text>
+              {suggestion.address.length > 0 && (
+                <Text style={styles.itemAddress}>{suggestion.address}</Text>
+              )}
+            </View>
+          </TouchableOpacity>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
+function RecentDestinations({
+  places,
+  isLoading,
+  onSelect,
+}: {
+  places: Place[];
+  isLoading: boolean;
+  onSelect: (place: Place) => void;
+}) {
+  return (
+    <>
       <Text style={styles.sectionTitle}>Destinos recientes</Text>
 
       {isLoading ? (
         <View style={styles.empty}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
-      ) : results.length === 0 ? (
-        <EmptyState filtering={query.trim().length > 0} />
+      ) : places.length === 0 ? (
+        <View style={styles.empty}>
+          <Ionicons name="location-outline" size={64} color={colors.border} />
+          <Text style={styles.emptyTitle}>Aún no tienes destinos recientes</Text>
+          <Text style={styles.emptySubtitle}>Busca un lugar o selecciónalo en el mapa.</Text>
+        </View>
       ) : (
         <ScrollView contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled">
-          {results.map((place) => (
+          {places.map((place) => (
             <TouchableOpacity
               key={`${place.coordinates.latitude},${place.coordinates.longitude}`}
               style={styles.item}
-              onPress={() => selectPlace(place)}
+              onPress={() => onSelect(place)}
               accessibilityRole="button"
               accessibilityLabel={`Ir a ${place.name}`}>
               <View style={styles.itemIcon}>
@@ -106,23 +213,7 @@ export function DestinationSearchScreen() {
           ))}
         </ScrollView>
       )}
-    </SafeAreaView>
-  );
-}
-
-function EmptyState({ filtering }: { filtering: boolean }) {
-  return (
-    <View style={styles.empty}>
-      <Ionicons name="location-outline" size={64} color={colors.border} />
-      <Text style={styles.emptyTitle}>
-        {filtering ? 'Sin coincidencias' : 'Aún no tienes destinos recientes'}
-      </Text>
-      <Text style={styles.emptySubtitle}>
-        {filtering
-          ? 'Prueba con otro nombre o selecciónalo en el mapa.'
-          : 'Busca un lugar o selecciónalo en el mapa.'}
-      </Text>
-    </View>
+    </>
   );
 }
 

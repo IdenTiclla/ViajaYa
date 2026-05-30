@@ -16,5 +16,19 @@ export type Place = {
   address: string;
 };
 
+/**
+ * Predicción de la búsqueda de lugares (autocompletado). Aún no tiene
+ * coordenadas: estas se resuelven al seleccionarla (place details), para no
+ * gastar una petición de detalle por cada sugerencia listada.
+ */
+export type PlaceSuggestion = {
+  /** Identificador de Google Places, usado para resolver las coordenadas. */
+  placeId: string;
+  /** Texto principal (p. ej. "Plaza Murillo"). */
+  name: string;
+  /** Texto secundario (ciudad, región…). */
+  address: string;
+};
+
 /** Tipo de servicio solicitado. */
 export type ServiceType = 'taxi' | 'moto';

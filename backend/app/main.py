@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.errors import register_exception_handlers
-from app.api.v1.routers import auth, rides
+from app.api.v1.routers import auth, rides, saved_places
 from app.infrastructure.config import get_settings
 
 
@@ -25,6 +25,7 @@ def create_app() -> FastAPI:
     register_exception_handlers(app)
     app.include_router(auth.router, prefix="/api/v1")
     app.include_router(rides.router, prefix="/api/v1")
+    app.include_router(saved_places.router, prefix="/api/v1")
 
     @app.get("/health", tags=["health"])
     async def health() -> dict[str, str]:

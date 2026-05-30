@@ -13,6 +13,7 @@ from app.domain.exceptions import (
     InvalidFareError,
     InvalidLocationError,
     InvalidTokenError,
+    SavedPlaceNotFoundError,
     UnsupportedProviderError,
     WeakPasswordError,
 )
@@ -26,6 +27,7 @@ _STATUS_MAP: dict[type[DomainError], int] = {
     WeakPasswordError: 422,
     InvalidLocationError: 422,
     InvalidFareError: 422,
+    SavedPlaceNotFoundError: status.HTTP_404_NOT_FOUND,
     UnsupportedProviderError: status.HTTP_400_BAD_REQUEST,
 }
 

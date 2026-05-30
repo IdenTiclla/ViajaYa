@@ -30,6 +30,21 @@ export type PlaceSuggestion = {
   address: string;
 };
 
+/** Categoría de un lugar guardado; determina el ícono mostrado. */
+export type SavedPlaceCategory = 'home' | 'work' | 'gym' | 'other';
+
+/**
+ * Lugar favorito del pasajero, persistido en el backend para que sincronice
+ * entre dispositivos. `place` es el punto (coordenadas + etiquetas) y `label`
+ * el nombre que pone el usuario.
+ */
+export type SavedPlace = {
+  id: string;
+  label: string;
+  category: SavedPlaceCategory;
+  place: Place;
+};
+
 /** Tipo de servicio solicitado. */
 export type ServiceType = 'taxi' | 'moto';
 

@@ -24,10 +24,19 @@ import { locationService } from '@/features/home/data/locationService';
 
 export function PickOnMapScreen() {
   const router = useRouter();
-  const { target } = useLocalSearchParams<{ target?: string }>();
+  const { target, saveAs, category, id, label } = useLocalSearchParams<{
+    target?: string;
+    saveAs?: string;
+    category?: string;
+    id?: string;
+    label?: string;
+  }>();
+  // Modo "guardar lugar": el confirmar lleva al formulario de lugar guardado en
+  // vez de a configurar el viaje. Conserva categoría/id/label para reenviarlos.
+  const isSaveAs = saveAs === '1';
   const isOrigin = target === 'origin';
-  const noun = isOrigin ? 'origen' : 'destino';
-  const pinColor = isOrigin ? colors.primary : colors.danger;
+  const noun = isSaveAs ? 'lugar' : isOrigin ? 'origen' : 'destino';
+  const pinColor = isSaveAs || isOrigin ? colors.primary : colors.danger;
 
   const origin = useBookingStore((s) => s.origin);
   const destination = useBookingStore((s) => s.destination);
@@ -37,9 +46,9 @@ export function PickOnMapScreen() {
   const mapRef = useRef<MapView>(null);
 
   // Centra el mapa en el punto que se edita si ya existe; si no, en el origen o
-  // en la ubicación actual.
+  // en la ubicación actual. Al guardar un lugar, parte del origen/ubicación.
   const initialRegion = useMemo<Region | undefined>(() => {
-    const existing = isOrigin ? origin : destination;
+    const existing = isSaveAs ? undefined : isOrigin ? origin : destination;
     const center = existing?.coordinates ?? origin?.coordinates ?? coordinates;
     if (!center) return undefined;
     return {
@@ -48,10 +57,13 @@ export function PickOnMapScreen() {
       latitudeDelta: 0.01,
       longitudeDelta: 0.01,
     };
-  }, [isOrigin, origin, destination, coordinates]);
+  }, [isSaveAs, isOrigin, origin, destination, coordinates]);
 
   const [place, setPlace] = useState<Place | null>(null);
-  const handleRegionChange = useRegionPlace(setPlace, isOrigin ? 'Origen' : 'Destino');
+  const handleRegionChange = useRegionPlace(
+    setPlace,
+    isSaveAs ? 'Lugar' : isOrigin ? 'Origen' : 'Destino',
+  );
 
   // Siembra la dirección del centro inicial. Solo dispara trabajo asíncrono
   // (el setState ocurre en el `.then`, no de forma síncrona dentro del efecto).
@@ -69,6 +81,23 @@ export function PickOnMapScreen() {
 
   const confirm = () => {
     if (!place) return;
+    if (isSaveAs) {
+      // Reemplaza el mapa por el formulario para nombrar/categorizar el lugar,
+      // reenviando id/label/category (edición) y el punto elegido.
+      router.replace({
+        pathname: '/booking/edit-place',
+        params: {
+          ...(id ? { id } : {}),
+          ...(label ? { label } : {}),
+          ...(category ? { category } : {}),
+          lat: String(place.coordinates.latitude),
+          lng: String(place.coordinates.longitude),
+          name: place.name,
+          address: place.address,
+        },
+      });
+      return;
+    }
     (isOrigin ? setOrigin : setDestination)(place);
     // `navigate` reutiliza la pantalla de configurar si ya está en la pila
     // (caso edición), o la abre si venimos del flujo de búsqueda.
@@ -124,7 +153,9 @@ export function PickOnMapScreen() {
 
       <SafeAreaView style={styles.bottom} edges={['bottom']}>
         <View style={styles.card}>
-          <Text style={styles.cardLabel}>{isOrigin ? 'PUNTO DE PARTIDA' : 'DESTINO'}</Text>
+          <Text style={styles.cardLabel}>
+            {isSaveAs ? 'NUEVO LUGAR' : isOrigin ? 'PUNTO DE PARTIDA' : 'DESTINO'}
+          </Text>
           <Text style={styles.cardValue} numberOfLines={1}>
             {place?.name ?? 'Mueve el mapa'}
           </Text>
@@ -137,8 +168,10 @@ export function PickOnMapScreen() {
           disabled={!place}
           onPress={confirm}
           accessibilityRole="button"
-          accessibilityLabel="Confirmar ubicación">
-          <Text style={styles.confirmText}>Confirmar ubicación</Text>
+          accessibilityLabel={isSaveAs ? 'Usar esta ubicación' : 'Confirmar ubicación'}>
+          <Text style={styles.confirmText}>
+            {isSaveAs ? 'Usar esta ubicación' : 'Confirmar ubicación'}
+          </Text>
           <Ionicons name="arrow-forward" size={20} color={colors.textOnPrimary} />
         </TouchableOpacity>
       </SafeAreaView>

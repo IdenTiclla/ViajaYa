@@ -9,7 +9,7 @@ from __future__ import annotations
 import uuid
 from abc import ABC, abstractmethod
 
-from app.domain.entities import AuthProvider, Location, RideRequest, User
+from app.domain.entities import AuthProvider, Location, RideRequest, SavedPlace, User
 
 
 class UserRepository(ABC):
@@ -44,3 +44,25 @@ class RideRequestRepository(ABC):
         self, rider_id: uuid.UUID, limit: int = 10
     ) -> list[Location]:
         """Destinos recientes y únicos del pasajero, del más nuevo al más viejo."""
+
+
+class SavedPlaceRepository(ABC):
+    @abstractmethod
+    async def list_by_user(self, user_id: uuid.UUID) -> list[SavedPlace]:
+        """Lugares guardados del usuario, del más reciente al más antiguo."""
+
+    @abstractmethod
+    async def get_by_id(self, place_id: uuid.UUID) -> SavedPlace | None:
+        """Devuelve el lugar con ese id, o ``None`` si no existe."""
+
+    @abstractmethod
+    async def add(self, place: SavedPlace) -> SavedPlace:
+        """Persiste un lugar nuevo y lo devuelve (con timestamps poblados)."""
+
+    @abstractmethod
+    async def update(self, place: SavedPlace) -> SavedPlace:
+        """Actualiza un lugar existente y lo devuelve."""
+
+    @abstractmethod
+    async def delete(self, place: SavedPlace) -> None:
+        """Elimina el lugar."""

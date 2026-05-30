@@ -39,3 +39,7 @@ class InvalidLocationError(DomainError):
 
 class InvalidFareError(DomainError):
     """El monto ofertado para el viaje no es válido (debe ser mayor que cero)."""
+
+
+class SavedPlaceNotFoundError(DomainError):
+    """El lugar guardado no existe o no pertenece al usuario actual."""

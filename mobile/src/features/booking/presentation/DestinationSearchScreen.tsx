@@ -3,8 +3,8 @@
  *
  * La barra de búsqueda autocompleta lugares con Google Places (sesgados hacia
  * el origen) en cuanto se escriben ≥ 3 caracteres. Sin término buscable se
- * muestran los destinos recientes; también hay un acceso directo para elegir el
- * destino en el mapa.
+ * muestran los atajos a lugares guardados (Casa/Trabajo + favoritos), el acceso
+ * para fijar la ubicación en el mapa y los destinos recientes.
  */
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -24,13 +24,21 @@ import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
 import { usePlaceSearch } from '@/features/booking/application/usePlaceSearch';
 import { useRecentDestinations } from '@/features/booking/application/useRecentDestinations';
-import type { Place, PlaceSuggestion } from '@/features/booking/domain/types';
+import { findByCategory, useSavedPlaces } from '@/features/booking/application/useSavedPlaces';
+import type {
+  Place,
+  PlaceSuggestion,
+  SavedPlace,
+  SavedPlaceCategory,
+} from '@/features/booking/domain/types';
+import { CATEGORY_META } from '@/features/booking/presentation/savedPlaceCategory';
 
 export function DestinationSearchScreen() {
   const router = useRouter();
   const origin = useBookingStore((s) => s.origin);
   const setDestination = useBookingStore((s) => s.setDestination);
   const { places, isLoading } = useRecentDestinations();
+  const { places: saved } = useSavedPlaces();
   const [query, setQuery] = useState('');
   // placeId que se está resolviendo (coordenadas) tras tocar una sugerencia.
   const [resolvingId, setResolvingId] = useState<string | null>(null);
@@ -52,6 +60,17 @@ export function DestinationSearchScreen() {
     const place = await resolve(suggestion);
     setResolvingId(null);
     if (place) goToConfigure(place);
+  };
+
+  // Atajo Casa/Trabajo: si ya está guardado, lo usa como destino; si no, abre
+  // el flujo para fijarlo (mapa → nombrar/guardar) con la categoría puesta.
+  const onShortcut = (category: SavedPlaceCategory) => {
+    const existing = findByCategory(saved, category);
+    if (existing) {
+      goToConfigure(existing.place);
+    } else {
+      router.push({ pathname: '/booking/pick-on-map', params: { saveAs: '1', category } });
+    }
   };
 
   return (
@@ -86,15 +105,6 @@ export function DestinationSearchScreen() {
         </View>
       </View>
 
-      <TouchableOpacity
-        style={styles.mapButton}
-        onPress={() => router.push('/booking/pick-on-map')}
-        accessibilityRole="button"
-        accessibilityLabel="Seleccionar en el mapa">
-        <Ionicons name="map" size={20} color={colors.textOnPrimary} />
-        <Text style={styles.mapButtonText}>Seleccionar en el mapa</Text>
-      </TouchableOpacity>
-
       {isActive ? (
         <SearchResults
           suggestions={suggestions}
@@ -103,9 +113,89 @@ export function DestinationSearchScreen() {
           onSelect={selectSuggestion}
         />
       ) : (
-        <RecentDestinations places={places} isLoading={isLoading} onSelect={goToConfigure} />
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}>
+          <TouchableOpacity
+            style={styles.wideCard}
+            onPress={() => router.push('/booking/pick-on-map')}
+            accessibilityRole="button"
+            accessibilityLabel="Seleccionar en el mapa, fija la ubicación manualmente">
+            <View style={[styles.cardIcon, styles.mapIcon]}>
+              <Ionicons name="map" size={20} color={colors.textOnPrimary} />
+            </View>
+            <View style={styles.itemText}>
+              <Text style={styles.cardTitle}>Seleccionar en el mapa</Text>
+              <Text style={styles.cardSubtitle}>Fija la ubicación manualmente</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.placeholder} />
+          </TouchableOpacity>
+
+          <View style={styles.bento}>
+            <ShortcutCard
+              category="home"
+              place={findByCategory(saved, 'home')}
+              onPress={() => onShortcut('home')}
+            />
+            <ShortcutCard
+              category="work"
+              place={findByCategory(saved, 'work')}
+              onPress={() => onShortcut('work')}
+            />
+          </View>
+
+          <TouchableOpacity
+            style={styles.wideCard}
+            onPress={() => router.push('/booking/saved-places')}
+            accessibilityRole="button"
+            accessibilityLabel="Ver lugares guardados">
+            <View style={[styles.cardIcon, styles.savedIcon]}>
+              <Ionicons name="bookmark" size={20} color={colors.primary} />
+            </View>
+            <View style={styles.itemText}>
+              <Text style={styles.cardTitle}>Lugares guardados</Text>
+              <Text style={styles.cardSubtitle}>
+                {saved.length > 0
+                  ? `${saved.length} ${saved.length === 1 ? 'lugar guardado' : 'lugares guardados'}`
+                  : 'Guarda tus destinos frecuentes'}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.placeholder} />
+          </TouchableOpacity>
+
+          <RecentDestinations places={places} isLoading={isLoading} onSelect={goToConfigure} />
+        </ScrollView>
       )}
     </SafeAreaView>
+  );
+}
+
+function ShortcutCard({
+  category,
+  place,
+  onPress,
+}: {
+  category: Extract<SavedPlaceCategory, 'home' | 'work'>;
+  place: SavedPlace | undefined;
+  onPress: () => void;
+}) {
+  const meta = CATEGORY_META[category];
+  const tint = category === 'work' ? colors.accent : colors.primary;
+  return (
+    <TouchableOpacity
+      style={styles.bentoCard}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={place ? `Ir a ${place.label}` : `Fijar ${meta.label.toLowerCase()}`}>
+      <View style={[styles.cardIcon, { backgroundColor: `${tint}22` }]}>
+        <Ionicons name={meta.icon} size={20} color={tint} />
+      </View>
+      <Text style={styles.cardTitle}>{place?.label ?? meta.label}</Text>
+      <Text style={styles.cardSubtitle} numberOfLines={1}>
+        {place?.place.address ?? `Fijar ${meta.label.toLowerCase()}`}
+      </Text>
+    </TouchableOpacity>
   );
 }
 
@@ -184,17 +274,17 @@ function RecentDestinations({
       <Text style={styles.sectionTitle}>Destinos recientes</Text>
 
       {isLoading ? (
-        <View style={styles.empty}>
+        <View style={styles.emptyInline}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
       ) : places.length === 0 ? (
-        <View style={styles.empty}>
-          <Ionicons name="location-outline" size={64} color={colors.border} />
+        <View style={styles.emptyInline}>
+          <Ionicons name="location-outline" size={48} color={colors.border} />
           <Text style={styles.emptyTitle}>Aún no tienes destinos recientes</Text>
           <Text style={styles.emptySubtitle}>Busca un lugar o selecciónalo en el mapa.</Text>
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled">
+        <View style={styles.recentList}>
           {places.map((place) => (
             <TouchableOpacity
               key={`${place.coordinates.latitude},${place.coordinates.longitude}`}
@@ -211,7 +301,7 @@ function RecentDestinations({
               </View>
             </TouchableOpacity>
           ))}
-        </ScrollView>
+        </View>
       )}
     </>
   );
@@ -244,18 +334,41 @@ const styles = StyleSheet.create({
   },
   searchInput: { flex: 1, fontSize: fontSize.md, color: colors.text, padding: 0 },
 
-  mapButton: {
+  scroll: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.xl },
+
+  bento: { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.md },
+  bentoCard: {
+    flex: 1,
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: spacing.xs,
+  },
+
+  wideCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    height: 52,
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.sm,
-    borderRadius: radius.md,
-    backgroundColor: colors.primary,
+    gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.md,
   },
-  mapButtonText: { color: colors.textOnPrimary, fontSize: fontSize.md, fontWeight: fontWeight.semibold },
+  cardIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  savedIcon: { backgroundColor: `${colors.primary}22` },
+  mapIcon: { backgroundColor: colors.primary },
+  cardTitle: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.text },
+  cardSubtitle: { fontSize: fontSize.sm, color: colors.textSecondary },
 
   sectionTitle: {
     fontSize: fontSize.xs,
@@ -263,11 +376,11 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     letterSpacing: 0.5,
     textTransform: 'uppercase',
-    paddingHorizontal: spacing.lg,
-    marginTop: spacing.lg,
+    marginTop: spacing.sm,
     marginBottom: spacing.sm,
   },
 
+  recentList: { gap: spacing.md },
   list: { paddingHorizontal: spacing.lg, gap: spacing.md, paddingBottom: spacing.xl },
   item: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   itemIcon: {
@@ -287,6 +400,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: spacing.xl,
+    gap: spacing.sm,
+  },
+  emptyInline: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xl,
     gap: spacing.sm,
   },
   emptyTitle: {

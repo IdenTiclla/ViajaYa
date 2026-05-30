@@ -10,9 +10,13 @@ from app.application.interfaces import (
     SocialIdentityVerifier,
     TokenService,
 )
-from app.domain.entities import AuthProvider, Location, RideRequest, User
+from app.domain.entities import AuthProvider, Location, RideRequest, SavedPlace, User
 from app.domain.exceptions import InvalidTokenError
-from app.domain.repositories import RideRequestRepository, UserRepository
+from app.domain.repositories import (
+    RideRequestRepository,
+    SavedPlaceRepository,
+    UserRepository,
+)
 
 
 class InMemoryUserRepository(UserRepository):
@@ -67,6 +71,31 @@ class InMemoryRideRequestRepository(RideRequestRepository):
             if len(out) >= limit:
                 break
         return out
+
+
+class InMemorySavedPlaceRepository(SavedPlaceRepository):
+    def __init__(self) -> None:
+        self.places: list[SavedPlace] = []
+
+    async def list_by_user(self, user_id: uuid.UUID) -> list[SavedPlace]:
+        return [p for p in reversed(self.places) if p.user_id == user_id]
+
+    async def get_by_id(self, place_id: uuid.UUID) -> SavedPlace | None:
+        return next((p for p in self.places if p.id == place_id), None)
+
+    async def add(self, place: SavedPlace) -> SavedPlace:
+        self.places.append(place)
+        return place
+
+    async def update(self, place: SavedPlace) -> SavedPlace:
+        for i, existing in enumerate(self.places):
+            if existing.id == place.id:
+                self.places[i] = place
+                return place
+        raise ValueError("saved place not found")
+
+    async def delete(self, place: SavedPlace) -> None:
+        self.places = [p for p in self.places if p.id != place.id]
 
 
 class FakePasswordHasher(PasswordHasher):

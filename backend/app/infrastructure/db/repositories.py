@@ -7,9 +7,13 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domain.entities import AuthProvider, Location, RideRequest, User
-from app.domain.repositories import RideRequestRepository, UserRepository
-from app.infrastructure.db.models import RideRequestModel, UserModel
+from app.domain.entities import AuthProvider, Location, RideRequest, SavedPlace, User
+from app.domain.repositories import (
+    RideRequestRepository,
+    SavedPlaceRepository,
+    UserRepository,
+)
+from app.infrastructure.db.models import RideRequestModel, SavedPlaceModel, UserModel
 
 
 def _to_entity(row: UserModel) -> User:
@@ -149,3 +153,73 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
             if len(destinations) >= limit:
                 break
         return destinations
+
+
+def _saved_place_to_entity(row: SavedPlaceModel) -> SavedPlace:
+    return SavedPlace(
+        id=row.id,
+        user_id=row.user_id,
+        label=row.label,
+        category=row.category,
+        location=Location(
+            latitude=row.latitude,
+            longitude=row.longitude,
+            name=row.name,
+            address=row.address,
+        ),
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
+class SqlAlchemySavedPlaceRepository(SavedPlaceRepository):
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def list_by_user(self, user_id: uuid.UUID) -> list[SavedPlace]:
+        result = await self._session.execute(
+            select(SavedPlaceModel)
+            .where(SavedPlaceModel.user_id == user_id)
+            .order_by(SavedPlaceModel.created_at.desc())
+        )
+        return [_saved_place_to_entity(row) for row in result.scalars().all()]
+
+    async def get_by_id(self, place_id: uuid.UUID) -> SavedPlace | None:
+        row = await self._session.get(SavedPlaceModel, place_id)
+        return _saved_place_to_entity(row) if row else None
+
+    async def add(self, place: SavedPlace) -> SavedPlace:
+        row = SavedPlaceModel(
+            id=place.id,
+            user_id=place.user_id,
+            label=place.label,
+            category=place.category,
+            latitude=place.location.latitude,
+            longitude=place.location.longitude,
+            name=place.location.name,
+            address=place.location.address,
+        )
+        self._session.add(row)
+        await self._session.commit()
+        await self._session.refresh(row)
+        return _saved_place_to_entity(row)
+
+    async def update(self, place: SavedPlace) -> SavedPlace:
+        row = await self._session.get(SavedPlaceModel, place.id)
+        if row is None:  # pragma: no cover - el caso de uso valida antes
+            raise ValueError("saved place not found")
+        row.label = place.label
+        row.category = place.category
+        row.latitude = place.location.latitude
+        row.longitude = place.location.longitude
+        row.name = place.location.name
+        row.address = place.location.address
+        await self._session.commit()
+        await self._session.refresh(row)
+        return _saved_place_to_entity(row)
+
+    async def delete(self, place: SavedPlace) -> None:
+        row = await self._session.get(SavedPlaceModel, place.id)
+        if row is not None:
+            await self._session.delete(row)
+            await self._session.commit()

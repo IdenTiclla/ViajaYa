@@ -79,6 +79,32 @@ class Location:
     address: str
 
 
+class SavedPlaceCategory(enum.StrEnum):
+    """Categoría de un lugar guardado; define el ícono en la app."""
+
+    HOME = "home"
+    WORK = "work"
+    GYM = "gym"
+    OTHER = "other"
+
+
+@dataclass
+class SavedPlace:
+    """Lugar favorito del pasajero, persistido para sincronizar entre dispositivos.
+
+    Reutiliza ``Location`` para el punto (coordenadas + etiquetas) y añade el
+    nombre que pone el usuario (``label``) y su ``category`` (casa, trabajo…).
+    """
+
+    user_id: uuid.UUID
+    label: str
+    category: SavedPlaceCategory
+    location: Location
+    id: uuid.UUID = field(default_factory=uuid.uuid4)
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
 @dataclass
 class RideRequest:
     """Solicitud de viaje creada por un pasajero.

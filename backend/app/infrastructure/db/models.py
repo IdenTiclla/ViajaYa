@@ -9,7 +9,13 @@ from decimal import Decimal
 from sqlalchemy import DateTime, Enum, Float, ForeignKey, Numeric, String, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.domain.entities import AuthProvider, PaymentMethod, RideStatus, ServiceType
+from app.domain.entities import (
+    AuthProvider,
+    PaymentMethod,
+    RideStatus,
+    SavedPlaceCategory,
+    ServiceType,
+)
 from app.infrastructure.db.base import Base
 
 
@@ -70,4 +76,32 @@ class RideRequestModel(Base):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class SavedPlaceModel(Base):
+    __tablename__ = "saved_places"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    label: Mapped[str] = mapped_column(String(255), nullable=False)
+    category: Mapped[SavedPlaceCategory] = mapped_column(
+        Enum(SavedPlaceCategory, name="saved_place_category", native_enum=False, length=20),
+        nullable=False,
+    )
+
+    latitude: Mapped[float] = mapped_column(Float, nullable=False)
+    longitude: Mapped[float] = mapped_column(Float, nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    address: Mapped[str] = mapped_column(String(512), nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )

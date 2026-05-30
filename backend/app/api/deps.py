@@ -17,15 +17,24 @@ from app.application.interfaces import SocialIdentityVerifier, TokenService
 from app.application.use_cases.authenticate_user import AuthenticateUser
 from app.application.use_cases.authenticate_with_oauth import AuthenticateWithOAuth
 from app.application.use_cases.create_ride_request import CreateRideRequest
+from app.application.use_cases.create_saved_place import CreateSavedPlace
+from app.application.use_cases.delete_saved_place import DeleteSavedPlace
 from app.application.use_cases.list_recent_destinations import ListRecentDestinations
+from app.application.use_cases.list_saved_places import ListSavedPlaces
 from app.application.use_cases.refresh_token import RefreshToken
 from app.application.use_cases.register_user import RegisterUser
+from app.application.use_cases.update_saved_place import UpdateSavedPlace
 from app.domain.entities import AuthProvider, User
 from app.domain.exceptions import InvalidTokenError
-from app.domain.repositories import RideRequestRepository, UserRepository
+from app.domain.repositories import (
+    RideRequestRepository,
+    SavedPlaceRepository,
+    UserRepository,
+)
 from app.infrastructure.config import Settings, get_settings
 from app.infrastructure.db.repositories import (
     SqlAlchemyRideRequestRepository,
+    SqlAlchemySavedPlaceRepository,
     SqlAlchemyUserRepository,
 )
 from app.infrastructure.db.session import get_session
@@ -50,6 +59,13 @@ def get_ride_request_repository(session: SessionDep) -> RideRequestRepository:
 
 
 RideRequestRepositoryDep = Annotated[RideRequestRepository, Depends(get_ride_request_repository)]
+
+
+def get_saved_place_repository(session: SessionDep) -> SavedPlaceRepository:
+    return SqlAlchemySavedPlaceRepository(session)
+
+
+SavedPlaceRepositoryDep = Annotated[SavedPlaceRepository, Depends(get_saved_place_repository)]
 
 
 @lru_cache
@@ -104,6 +120,22 @@ def get_create_ride_request(rides: RideRequestRepositoryDep) -> CreateRideReques
 
 def get_list_recent_destinations(rides: RideRequestRepositoryDep) -> ListRecentDestinations:
     return ListRecentDestinations(rides)
+
+
+def get_list_saved_places(places: SavedPlaceRepositoryDep) -> ListSavedPlaces:
+    return ListSavedPlaces(places)
+
+
+def get_create_saved_place(places: SavedPlaceRepositoryDep) -> CreateSavedPlace:
+    return CreateSavedPlace(places)
+
+
+def get_update_saved_place(places: SavedPlaceRepositoryDep) -> UpdateSavedPlace:
+    return UpdateSavedPlace(places)
+
+
+def get_delete_saved_place(places: SavedPlaceRepositoryDep) -> DeleteSavedPlace:
+    return DeleteSavedPlace(places)
 
 
 # --- Usuario actual ---

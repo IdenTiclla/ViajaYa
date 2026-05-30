@@ -32,3 +32,6 @@ export type PlaceSuggestion = {
 
 /** Tipo de servicio solicitado. */
 export type ServiceType = 'taxi' | 'moto';
+
+/** Forma de pago elegida para el viaje. Por ahora: QR o efectivo. */
+export type PaymentMethod = 'qr' | 'cash';

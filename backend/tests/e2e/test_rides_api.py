@@ -44,8 +44,20 @@ async def test_create_ride_success(client):
     body = resp.json()
     assert body["status"] == "searching"
     assert body["service_type"] == "taxi"
+    assert body["payment_method"] == "cash"
     assert body["destination"]["name"] == "Trabajo"
     assert "id" in body
+
+
+async def test_create_ride_with_qr_payment(client):
+    headers = await _auth_header(client)
+    resp = await client.post(
+        RIDES, json=_ride_payload(service_type="moto", payment_method="qr"), headers=headers
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["service_type"] == "moto"
+    assert body["payment_method"] == "qr"
 
 
 async def test_create_ride_rejects_bad_fare(client):

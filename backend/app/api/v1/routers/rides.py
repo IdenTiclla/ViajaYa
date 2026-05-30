@@ -45,6 +45,7 @@ async def create_ride(
             destination=_to_location_input(body.destination),
             service_type=body.service_type,
             fare=body.fare,
+            payment_method=body.payment_method,
         ),
     )
     return RideRequestResponse.from_entity(ride)

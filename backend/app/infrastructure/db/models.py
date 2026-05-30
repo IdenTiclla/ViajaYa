@@ -9,7 +9,7 @@ from decimal import Decimal
 from sqlalchemy import DateTime, Enum, Float, ForeignKey, Numeric, String, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.domain.entities import AuthProvider, RideStatus, ServiceType
+from app.domain.entities import AuthProvider, PaymentMethod, RideStatus, ServiceType
 from app.infrastructure.db.base import Base
 
 
@@ -58,6 +58,11 @@ class RideRequestModel(Base):
         Enum(ServiceType, name="service_type", native_enum=False, length=20), nullable=False
     )
     fare: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    payment_method: Mapped[PaymentMethod] = mapped_column(
+        Enum(PaymentMethod, name="payment_method", native_enum=False, length=20),
+        default=PaymentMethod.CASH,
+        nullable=False,
+    )
     status: Mapped[RideStatus] = mapped_column(
         Enum(RideStatus, name="ride_status", native_enum=False, length=20),
         default=RideStatus.SEARCHING,

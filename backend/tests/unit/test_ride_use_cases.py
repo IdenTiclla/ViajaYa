@@ -10,7 +10,7 @@ import pytest
 from app.application.dto import CreateRideRequestInput, LocationInput
 from app.application.use_cases.create_ride_request import CreateRideRequest
 from app.application.use_cases.list_recent_destinations import ListRecentDestinations
-from app.domain.entities import RideStatus, ServiceType
+from app.domain.entities import PaymentMethod, RideStatus, ServiceType
 from app.domain.exceptions import InvalidFareError, InvalidLocationError
 from tests.fakes import InMemoryRideRequestRepository
 
@@ -35,9 +35,20 @@ async def test_create_ride_request_persists_searching():
     assert ride.rider_id == rider_id
     assert ride.status is RideStatus.SEARCHING
     assert ride.service_type is ServiceType.TAXI
+    assert ride.payment_method is PaymentMethod.CASH
     assert ride.fare == Decimal("25.00")
     assert ride.destination.name == "Trabajo"
     assert len(repo.rides) == 1
+
+
+async def test_create_ride_request_keeps_chosen_payment_method():
+    repo = InMemoryRideRequestRepository()
+
+    ride = await CreateRideRequest(repo).execute(
+        uuid.uuid4(), _input(payment_method=PaymentMethod.QR)
+    )
+
+    assert ride.payment_method is PaymentMethod.QR
 
 
 async def test_create_ride_request_rejects_invalid_coordinates():

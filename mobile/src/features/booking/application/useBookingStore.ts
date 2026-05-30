@@ -6,7 +6,7 @@
  */
 import { create } from 'zustand';
 
-import type { Place, ServiceType } from '@/features/booking/domain/types';
+import type { PaymentMethod, Place, ServiceType } from '@/features/booking/domain/types';
 
 type BookingState = {
   /** Punto de partida; lo fija el mapa del Home al mover la cámara. */
@@ -15,11 +15,14 @@ type BookingState = {
   destination: Place | null;
   /** Servicio elegido para la solicitud. */
   service: ServiceType;
+  /** Forma de pago elegida para la solicitud. */
+  payment: PaymentMethod;
   /** Oferta del usuario (texto editable; se valida al buscar ofertas). */
   fare: string;
   setOrigin: (origin: Place) => void;
   setDestination: (destination: Place) => void;
   setService: (service: ServiceType) => void;
+  setPayment: (payment: PaymentMethod) => void;
   setFare: (fare: string) => void;
   /** Limpia el destino/oferta al iniciar una nueva búsqueda (conserva el origen). */
   resetTrip: () => void;
@@ -29,10 +32,12 @@ export const useBookingStore = create<BookingState>((set) => ({
   origin: null,
   destination: null,
   service: 'taxi',
+  payment: 'cash',
   fare: '',
   setOrigin: (origin) => set({ origin }),
   setDestination: (destination) => set({ destination }),
   setService: (service) => set({ service }),
+  setPayment: (payment) => set({ payment }),
   setFare: (fare) => set({ fare }),
   resetTrip: () => set({ destination: null, fare: '' }),
 }));

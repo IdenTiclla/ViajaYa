@@ -28,6 +28,7 @@ import { useBookingStore } from '@/features/booking/application/useBookingStore'
 import { useRoute } from '@/features/booking/application/useRoute';
 import { ridesRepository } from '@/features/booking/data/ridesRepository';
 import type { Coordinates, ServiceType } from '@/features/booking/domain/types';
+import { declutteredMapStyle } from '@/features/booking/presentation/mapStyle';
 
 const SERVICES: { id: ServiceType; label: string; icon: 'car-sport' | 'bicycle' }[] = [
   { id: 'taxi', label: 'Taxi', icon: 'car-sport' },
@@ -60,6 +61,8 @@ export function ConfigureTripScreen() {
   // Alto real del bottom sheet, para encuadrar los puntos por encima de él.
   const [sheetHeight, setSheetHeight] = useState(0);
   const keyboardHeight = useKeyboardHeight();
+  // Mostrar/ocultar etiquetas de lugares (el usuario lo controla con el toggle).
+  const [showPlaces, setShowPlaces] = useState(true);
 
   const createRide = useMutation({
     mutationFn: ridesRepository.create,
@@ -149,13 +152,18 @@ export function ConfigureTripScreen() {
         provider={PROVIDER_GOOGLE}
         style={StyleSheet.absoluteFill}
         initialRegion={region}
+        customMapStyle={showPlaces ? [] : declutteredMapStyle}
         onMapReady={() => fitToTrip(false)}>
         <Marker coordinate={origin.coordinates} anchor={{ x: 0.5, y: 0.5 }} title={origin.name}>
           <View style={styles.originDot} />
         </Marker>
         <Marker coordinate={destination.coordinates} title={destination.name} pinColor={colors.danger} />
         {polylineCoordinates.length >= 2 && (
-          <Polyline coordinates={polylineCoordinates} strokeColor={colors.primary} strokeWidth={4} />
+          <>
+            {/* Contorno blanco para que la ruta resalte sobre calles y etiquetas. */}
+            <Polyline coordinates={polylineCoordinates} strokeColor={colors.surface} strokeWidth={9} />
+            <Polyline coordinates={polylineCoordinates} strokeColor={colors.primary} strokeWidth={5} />
+          </>
         )}
       </MapView>
 
@@ -167,8 +175,18 @@ export function ConfigureTripScreen() {
           accessibilityLabel="Volver">
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
-        <Text style={styles.topTitle}>Confirmar viaje</Text>
-        <View style={styles.back} />
+        <TouchableOpacity
+          style={styles.back}
+          onPress={() => setShowPlaces((v) => !v)}
+          accessibilityRole="button"
+          accessibilityState={{ selected: showPlaces }}
+          accessibilityLabel={showPlaces ? 'Ocultar nombres de lugares' : 'Mostrar nombres de lugares'}>
+          <Ionicons
+            name={showPlaces ? 'business' : 'business-outline'}
+            size={22}
+            color={showPlaces ? colors.primary : colors.textSecondary}
+          />
+        </TouchableOpacity>
       </SafeAreaView>
 
       <SafeAreaView
@@ -330,17 +348,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 3,
   },
-  topTitle: {
-    fontSize: fontSize.md,
-    fontWeight: fontWeight.semibold,
-    color: colors.text,
-    backgroundColor: colors.surface,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.pill,
-    overflow: 'hidden',
-  },
-
   sheet: {
     position: 'absolute',
     left: 0,

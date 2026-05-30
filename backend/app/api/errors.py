@@ -10,6 +10,8 @@ from app.domain.exceptions import (
     EmailAlreadyExistsError,
     InvalidCredentialsError,
     InvalidEmailError,
+    InvalidFareError,
+    InvalidLocationError,
     InvalidTokenError,
     UnsupportedProviderError,
     WeakPasswordError,
@@ -22,6 +24,8 @@ _STATUS_MAP: dict[type[DomainError], int] = {
     InvalidTokenError: status.HTTP_401_UNAUTHORIZED,
     InvalidEmailError: 422,
     WeakPasswordError: 422,
+    InvalidLocationError: 422,
+    InvalidFareError: 422,
     UnsupportedProviderError: status.HTTP_400_BAD_REQUEST,
 }
 

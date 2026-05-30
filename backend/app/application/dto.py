@@ -7,8 +7,9 @@ a/desde estos DTOs.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal
 
-from app.domain.entities import AuthProvider
+from app.domain.entities import AuthProvider, ServiceType
 
 
 @dataclass(frozen=True)
@@ -46,3 +47,19 @@ class TokenPair:
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
+
+
+@dataclass(frozen=True)
+class LocationInput:
+    latitude: float
+    longitude: float
+    name: str
+    address: str
+
+
+@dataclass(frozen=True)
+class CreateRideRequestInput:
+    origin: LocationInput
+    destination: LocationInput
+    service_type: ServiceType
+    fare: Decimal

@@ -9,7 +9,7 @@ from __future__ import annotations
 import uuid
 from abc import ABC, abstractmethod
 
-from app.domain.entities import AuthProvider, User
+from app.domain.entities import AuthProvider, Location, RideRequest, User
 
 
 class UserRepository(ABC):
@@ -28,3 +28,19 @@ class UserRepository(ABC):
     @abstractmethod
     async def add(self, user: User) -> User:
         """Persiste un usuario nuevo y lo devuelve (con ``created_at`` poblado)."""
+
+
+class RideRequestRepository(ABC):
+    @abstractmethod
+    async def add(self, ride: RideRequest) -> RideRequest:
+        """Persiste una solicitud de viaje y la devuelve (con ``created_at``)."""
+
+    @abstractmethod
+    async def get_by_id(self, ride_id: uuid.UUID) -> RideRequest | None:
+        """Devuelve la solicitud con ese id, o ``None`` si no existe."""
+
+    @abstractmethod
+    async def list_recent_destinations(
+        self, rider_id: uuid.UUID, limit: int = 10
+    ) -> list[Location]:
+        """Destinos recientes y únicos del pasajero, del más nuevo al más viejo."""

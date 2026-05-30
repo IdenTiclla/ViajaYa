@@ -6,6 +6,7 @@ import enum
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
+from decimal import Decimal
 
 
 class AuthProvider(enum.StrEnum):
@@ -37,3 +38,50 @@ class User:
     @property
     def is_social(self) -> bool:
         return self.auth_provider is not AuthProvider.LOCAL
+
+
+class ServiceType(enum.StrEnum):
+    """Tipo de servicio solicitado en un viaje."""
+
+    TAXI = "taxi"
+    MOTO = "moto"
+
+
+class RideStatus(enum.StrEnum):
+    """Estado del ciclo de vida de una solicitud de viaje.
+
+    Por ahora solo cubrimos la creación de la solicitud (``SEARCHING``) y su
+    cancelación; la negociación de ofertas y el viaje en curso llegan en una
+    entrega posterior.
+    """
+
+    SEARCHING = "searching"
+    CANCELLED = "cancelled"
+
+
+@dataclass(frozen=True)
+class Location:
+    """Un punto del viaje: coordenadas + etiqueta legible (nombre y dirección)."""
+
+    latitude: float
+    longitude: float
+    name: str
+    address: str
+
+
+@dataclass
+class RideRequest:
+    """Solicitud de viaje creada por un pasajero.
+
+    Captura lo que produce el flujo móvil de origen/destino: de dónde a dónde,
+    con qué servicio y cuánto ofrece pagar. Nace en estado ``SEARCHING``.
+    """
+
+    rider_id: uuid.UUID
+    origin: Location
+    destination: Location
+    service_type: ServiceType
+    fare: Decimal
+    status: RideStatus = RideStatus.SEARCHING
+    id: uuid.UUID = field(default_factory=uuid.uuid4)
+    created_at: datetime | None = None

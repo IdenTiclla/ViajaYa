@@ -31,3 +31,11 @@ class InvalidTokenError(DomainError):
 
 class UnsupportedProviderError(DomainError):
     """El proveedor de OAuth solicitado no está soportado."""
+
+
+class InvalidLocationError(DomainError):
+    """Las coordenadas de un punto del viaje están fuera de rango."""
+
+
+class InvalidFareError(DomainError):
+    """El monto ofertado para el viaje no es válido (debe ser mayor que cero)."""

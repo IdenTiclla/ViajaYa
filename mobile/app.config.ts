@@ -72,6 +72,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   extra: {
     eas: { projectId: 'c3d5798c-c17f-4257-b14e-e09f2d92272c' },
     apiUrl: process.env.API_URL ?? 'http://localhost:8000/api/v1',
+    // Misma llave de Maps, usada también para la Routes API (cálculo del trayecto).
+    googleMapsApiKey:
+      process.env.GOOGLE_MAPS_API_KEY_ANDROID ?? process.env.GOOGLE_MAPS_API_KEY_IOS ?? '',
     googleClientIds: {
       ios: process.env.GOOGLE_OAUTH_CLIENT_ID_IOS ?? '',
       android: process.env.GOOGLE_OAUTH_CLIENT_ID_ANDROID ?? '',

@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useMemo, useRef, useState } from 'react';
+import { useRouter } from 'expo-router';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -10,18 +11,23 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import MapView, { Marker, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
+import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { useBookingStore } from '@/features/booking/application/useBookingStore';
+import { useRecentDestinations } from '@/features/booking/application/useRecentDestinations';
+import { useRegionPlace } from '@/features/booking/application/useRegionPlace';
+import type { Place, ServiceType } from '@/features/booking/domain/types';
+import { CenterPin } from '@/features/booking/presentation/CenterPin';
 import { useCurrentLocation } from '@/features/home/application/useCurrentLocation';
-import { recentDestinations } from '@/features/home/data/recentDestinations';
 import { useAuthStore } from '@/store/authStore';
 
-const SERVICES = [
-  { id: 'taxi', label: 'Taxi', caption: 'Rápido y cómodo', icon: 'car-sport' },
-  { id: 'moto', label: 'Moto', caption: 'Ágil en el tráfico', icon: 'bicycle' },
-] as const;
+const SERVICES: { id: ServiceType; label: string; caption: string; icon: 'car-sport' | 'bicycle' }[] =
+  [
+    { id: 'taxi', label: 'Taxi', caption: 'Rápido y cómodo', icon: 'car-sport' },
+    { id: 'moto', label: 'Moto', caption: 'Ágil en el tráfico', icon: 'bicycle' },
+  ];
 
 // El bottom sheet se desliza entre dos posiciones: colapsado (deja ver/usar gran
 // parte del mapa) y expandido (muestra todo el contenido).
@@ -44,8 +50,16 @@ function firstName(fullName: string | undefined): string {
 export function HomeScreen() {
   const user = useAuthStore((s) => s.user);
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { status, coordinates, retry } = useCurrentLocation();
   const mapRef = useRef<MapView>(null);
+
+  const setOrigin = useBookingStore((s) => s.setOrigin);
+  const setDestination = useBookingStore((s) => s.setDestination);
+  const setService = useBookingStore((s) => s.setService);
+  const { places: recentPlaces } = useRecentDestinations();
+  // Al terminar de mover el mapa, el centro pasa a ser el punto de partida.
+  const handleRegionChange = useRegionPlace(setOrigin, 'Punto de partida');
 
   // Empieza colapsado (mapa visible). translateY: 0 = expandido, MAX = colapsado.
   // `useState` con inicializador perezoso crea valores estables; el offset del
@@ -92,8 +106,27 @@ export function HomeScreen() {
     };
   }, [coordinates]);
 
+  // Siembra el origen con la ubicación actual la primera vez que llega.
+  const seeded = useRef(false);
+  useEffect(() => {
+    if (region && !seeded.current) {
+      seeded.current = true;
+      handleRegionChange(region);
+    }
+  }, [region, handleRegionChange]);
+
   const recenter = () => {
     if (region) mapRef.current?.animateToRegion(region, 500);
+  };
+
+  const openDestinationSearch = (service?: ServiceType) => {
+    if (service) setService(service);
+    router.push('/booking/destination');
+  };
+
+  const selectRecent = (place: Place) => {
+    setDestination(place);
+    router.navigate('/booking/configure');
   };
 
   return (
@@ -105,12 +138,14 @@ export function HomeScreen() {
           style={StyleSheet.absoluteFill}
           initialRegion={region}
           showsUserLocation
-          showsMyLocationButton={false}>
-          <Marker coordinate={region} title="Punto de recogida" />
-        </MapView>
+          showsMyLocationButton={false}
+          onRegionChangeComplete={handleRegionChange}
+        />
       ) : (
         <MapPlaceholder status={status} onRetry={retry} />
       )}
+
+      {status === 'granted' && region && <CenterPin label="Punto de partida" />}
 
       <SafeAreaView style={styles.topBar} edges={['top']} pointerEvents="box-none">
         <TopBarButton icon="menu" accessibilityLabel="Abrir menú" />
@@ -147,7 +182,8 @@ export function HomeScreen() {
 
           <TouchableOpacity
             style={styles.search}
-            accessibilityRole="search"
+            onPress={() => openDestinationSearch()}
+            accessibilityRole="button"
             accessibilityLabel="Buscar destino">
             <Ionicons name="search" size={20} color={colors.placeholder} />
             <Text style={styles.searchPlaceholder}>¿A dónde?</Text>
@@ -158,7 +194,9 @@ export function HomeScreen() {
               <TouchableOpacity
                 key={service.id}
                 style={styles.serviceCard}
-                accessibilityRole="button">
+                onPress={() => openDestinationSearch(service.id)}
+                accessibilityRole="button"
+                accessibilityLabel={`Pedir ${service.label}`}>
                 <View style={styles.serviceIcon}>
                   <Ionicons name={service.icon} size={26} color={colors.primaryDark} />
                 </View>
@@ -168,27 +206,33 @@ export function HomeScreen() {
             ))}
           </View>
 
-          <View style={styles.recentHeader}>
-            <Text style={styles.sectionTitle}>Destinos recientes</Text>
-            <TouchableOpacity accessibilityRole="button">
-              <Text style={styles.viewAll}>Ver todos</Text>
-            </TouchableOpacity>
-          </View>
+          {recentPlaces.length > 0 && (
+            <>
+              <View style={styles.recentHeader}>
+                <Text style={styles.sectionTitle}>Destinos recientes</Text>
+                <TouchableOpacity onPress={() => openDestinationSearch()} accessibilityRole="button">
+                  <Text style={styles.viewAll}>Ver todos</Text>
+                </TouchableOpacity>
+              </View>
 
-          {recentDestinations.map((destination) => (
-            <TouchableOpacity
-              key={destination.id}
-              style={styles.recentItem}
-              accessibilityRole="button">
-              <View style={styles.recentIcon}>
-                <Ionicons name="time-outline" size={20} color={colors.textSecondary} />
-              </View>
-              <View style={styles.recentText}>
-                <Text style={styles.recentName}>{destination.name}</Text>
-                <Text style={styles.recentAddress}>{destination.address}</Text>
-              </View>
-            </TouchableOpacity>
-          ))}
+              {recentPlaces.slice(0, 3).map((place) => (
+                <TouchableOpacity
+                  key={`${place.coordinates.latitude},${place.coordinates.longitude}`}
+                  style={styles.recentItem}
+                  onPress={() => selectRecent(place)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Ir a ${place.name}`}>
+                  <View style={styles.recentIcon}>
+                    <Ionicons name="time-outline" size={20} color={colors.textSecondary} />
+                  </View>
+                  <View style={styles.recentText}>
+                    <Text style={styles.recentName}>{place.name}</Text>
+                    <Text style={styles.recentAddress}>{place.address}</Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </>
+          )}
         </View>
       </Animated.View>
     </View>

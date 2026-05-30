@@ -16,13 +16,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.application.interfaces import SocialIdentityVerifier, TokenService
 from app.application.use_cases.authenticate_user import AuthenticateUser
 from app.application.use_cases.authenticate_with_oauth import AuthenticateWithOAuth
+from app.application.use_cases.create_ride_request import CreateRideRequest
+from app.application.use_cases.list_recent_destinations import ListRecentDestinations
 from app.application.use_cases.refresh_token import RefreshToken
 from app.application.use_cases.register_user import RegisterUser
 from app.domain.entities import AuthProvider, User
 from app.domain.exceptions import InvalidTokenError
-from app.domain.repositories import UserRepository
+from app.domain.repositories import RideRequestRepository, UserRepository
 from app.infrastructure.config import Settings, get_settings
-from app.infrastructure.db.repositories import SqlAlchemyUserRepository
+from app.infrastructure.db.repositories import (
+    SqlAlchemyRideRequestRepository,
+    SqlAlchemyUserRepository,
+)
 from app.infrastructure.db.session import get_session
 from app.infrastructure.oauth.facebook_verifier import FacebookIdentityVerifier
 from app.infrastructure.oauth.google_verifier import GoogleIdentityVerifier
@@ -38,6 +43,13 @@ def get_user_repository(session: SessionDep) -> UserRepository:
 
 
 UserRepositoryDep = Annotated[UserRepository, Depends(get_user_repository)]
+
+
+def get_ride_request_repository(session: SessionDep) -> RideRequestRepository:
+    return SqlAlchemyRideRequestRepository(session)
+
+
+RideRequestRepositoryDep = Annotated[RideRequestRepository, Depends(get_ride_request_repository)]
 
 
 @lru_cache
@@ -84,6 +96,14 @@ def get_authenticate_with_oauth(
     verifiers: Annotated[dict[str, SocialIdentityVerifier], Depends(get_oauth_verifiers)],
 ) -> AuthenticateWithOAuth:
     return AuthenticateWithOAuth(users, tokens, verifiers)
+
+
+def get_create_ride_request(rides: RideRequestRepositoryDep) -> CreateRideRequest:
+    return CreateRideRequest(rides)
+
+
+def get_list_recent_destinations(rides: RideRequestRepositoryDep) -> ListRecentDestinations:
+    return ListRecentDestinations(rides)
 
 
 # --- Usuario actual ---

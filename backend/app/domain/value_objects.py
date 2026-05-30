@@ -4,8 +4,14 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from decimal import Decimal
 
-from app.domain.exceptions import InvalidEmailError, WeakPasswordError
+from app.domain.exceptions import (
+    InvalidEmailError,
+    InvalidFareError,
+    InvalidLocationError,
+    WeakPasswordError,
+)
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _MIN_PASSWORD_LENGTH = 8
@@ -42,3 +48,28 @@ class RawPassword:
             raise WeakPasswordError(
                 f"La contraseña debe tener al menos {_MIN_PASSWORD_LENGTH} caracteres."
             )
+
+
+@dataclass(frozen=True, slots=True)
+class GeoPoint:
+    """Coordenadas geográficas validadas dentro de su rango admisible."""
+
+    latitude: float
+    longitude: float
+
+    def __post_init__(self) -> None:
+        if not -90.0 <= self.latitude <= 90.0:
+            raise InvalidLocationError(f"Latitud fuera de rango: {self.latitude!r}")
+        if not -180.0 <= self.longitude <= 180.0:
+            raise InvalidLocationError(f"Longitud fuera de rango: {self.longitude!r}")
+
+
+@dataclass(frozen=True, slots=True)
+class FareOffer:
+    """Monto ofertado por el pasajero. Debe ser estrictamente positivo."""
+
+    amount: Decimal
+
+    def __post_init__(self) -> None:
+        if self.amount <= 0:
+            raise InvalidFareError("La oferta debe ser mayor que cero.")

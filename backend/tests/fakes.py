@@ -10,9 +10,9 @@ from app.application.interfaces import (
     SocialIdentityVerifier,
     TokenService,
 )
-from app.domain.entities import AuthProvider, User
+from app.domain.entities import AuthProvider, Location, RideRequest, User
 from app.domain.exceptions import InvalidTokenError
-from app.domain.repositories import UserRepository
+from app.domain.repositories import RideRequestRepository, UserRepository
 
 
 class InMemoryUserRepository(UserRepository):
@@ -38,6 +38,35 @@ class InMemoryUserRepository(UserRepository):
     async def add(self, user: User) -> User:
         self.users[user.id] = user
         return user
+
+
+class InMemoryRideRequestRepository(RideRequestRepository):
+    def __init__(self) -> None:
+        self.rides: list[RideRequest] = []
+
+    async def add(self, ride: RideRequest) -> RideRequest:
+        self.rides.append(ride)
+        return ride
+
+    async def get_by_id(self, ride_id: uuid.UUID) -> RideRequest | None:
+        return next((r for r in self.rides if r.id == ride_id), None)
+
+    async def list_recent_destinations(
+        self, rider_id: uuid.UUID, limit: int = 10
+    ) -> list[Location]:
+        seen: set[tuple[float, float]] = set()
+        out: list[Location] = []
+        for ride in reversed(self.rides):  # del más reciente al más antiguo
+            if ride.rider_id != rider_id:
+                continue
+            key = (round(ride.destination.latitude, 5), round(ride.destination.longitude, 5))
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(ride.destination)
+            if len(out) >= limit:
+                break
+        return out
 
 
 class FakePasswordHasher(PasswordHasher):

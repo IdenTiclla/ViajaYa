@@ -47,6 +47,16 @@ class ServiceType(enum.StrEnum):
     MOTO = "moto"
 
 
+class PaymentMethod(enum.StrEnum):
+    """Forma de pago elegida para el viaje.
+
+    Por ahora la app soporta pago por QR y pago en efectivo.
+    """
+
+    QR = "qr"
+    CASH = "cash"
+
+
 class RideStatus(enum.StrEnum):
     """Estado del ciclo de vida de una solicitud de viaje.
 
@@ -82,6 +92,7 @@ class RideRequest:
     destination: Location
     service_type: ServiceType
     fare: Decimal
+    payment_method: PaymentMethod = PaymentMethod.CASH
     status: RideStatus = RideStatus.SEARCHING
     id: uuid.UUID = field(default_factory=uuid.uuid4)
     created_at: datetime | None = None

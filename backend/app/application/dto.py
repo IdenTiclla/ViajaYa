@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 
-from app.domain.entities import AuthProvider, ServiceType
+from app.domain.entities import AuthProvider, PaymentMethod, ServiceType
 
 
 @dataclass(frozen=True)
@@ -63,3 +63,4 @@ class CreateRideRequestInput:
     destination: LocationInput
     service_type: ServiceType
     fare: Decimal
+    payment_method: PaymentMethod = PaymentMethod.CASH

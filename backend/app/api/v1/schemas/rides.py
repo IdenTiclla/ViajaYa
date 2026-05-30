@@ -11,7 +11,13 @@ from decimal import Decimal
 
 from pydantic import BaseModel, Field
 
-from app.domain.entities import Location, RideRequest, RideStatus, ServiceType
+from app.domain.entities import (
+    Location,
+    PaymentMethod,
+    RideRequest,
+    RideStatus,
+    ServiceType,
+)
 
 
 class PointSchema(BaseModel):
@@ -37,6 +43,7 @@ class CreateRideRequestRequest(BaseModel):
     destination: PointSchema
     service_type: ServiceType
     fare: Decimal = Field(gt=0, max_digits=10, decimal_places=2)
+    payment_method: PaymentMethod = PaymentMethod.CASH
 
 
 class RideRequestResponse(BaseModel):
@@ -44,6 +51,7 @@ class RideRequestResponse(BaseModel):
     status: RideStatus
     service_type: ServiceType
     fare: Decimal
+    payment_method: PaymentMethod
     origin: PointSchema
     destination: PointSchema
     created_at: datetime | None
@@ -55,6 +63,7 @@ class RideRequestResponse(BaseModel):
             status=ride.status,
             service_type=ride.service_type,
             fare=ride.fare,
+            payment_method=ride.payment_method,
             origin=PointSchema.from_location(ride.origin),
             destination=PointSchema.from_location(ride.destination),
             created_at=ride.created_at,

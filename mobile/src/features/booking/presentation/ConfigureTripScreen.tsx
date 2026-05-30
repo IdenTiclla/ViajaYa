@@ -27,12 +27,17 @@ import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
 import { useRoute } from '@/features/booking/application/useRoute';
 import { ridesRepository } from '@/features/booking/data/ridesRepository';
-import type { Coordinates, ServiceType } from '@/features/booking/domain/types';
+import type { Coordinates, PaymentMethod, ServiceType } from '@/features/booking/domain/types';
 import { declutteredMapStyle } from '@/features/booking/presentation/mapStyle';
 
 const SERVICES: { id: ServiceType; label: string; icon: 'car-sport' | 'bicycle' }[] = [
   { id: 'taxi', label: 'Taxi', icon: 'car-sport' },
   { id: 'moto', label: 'Moto', icon: 'bicycle' },
+];
+
+const PAYMENTS: { id: PaymentMethod; label: string; icon: 'qr-code' | 'cash' }[] = [
+  { id: 'qr', label: 'QR', icon: 'qr-code' },
+  { id: 'cash', label: 'Efectivo', icon: 'cash' },
 ];
 
 // Márgenes del encuadre: arriba deja sitio a la barra superior; abajo es dinámico
@@ -54,6 +59,8 @@ export function ConfigureTripScreen() {
   const destination = useBookingStore((s) => s.destination);
   const service = useBookingStore((s) => s.service);
   const setService = useBookingStore((s) => s.setService);
+  const payment = useBookingStore((s) => s.payment);
+  const setPayment = useBookingStore((s) => s.setPayment);
   const fare = useBookingStore((s) => s.fare);
   const setFare = useBookingStore((s) => s.setFare);
   const mapRef = useRef<MapView>(null);
@@ -142,7 +149,7 @@ export function ConfigureTripScreen() {
 
   const searchOffers = () => {
     if (!fareIsValid || createRide.isPending) return;
-    createRide.mutate({ origin, destination, service, fare: fareValue });
+    createRide.mutate({ origin, destination, service, payment, fare: fareValue });
   };
 
   return (
@@ -261,6 +268,31 @@ export function ConfigureTripScreen() {
                 />
                 <Text style={[styles.serviceChipText, active && styles.serviceChipTextActive]}>
                   {s.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <Text style={styles.fieldLabel}>Método de pago</Text>
+        <View style={styles.services}>
+          {PAYMENTS.map((p) => {
+            const active = payment === p.id;
+            return (
+              <TouchableOpacity
+                key={p.id}
+                style={[styles.serviceChip, active && styles.serviceChipActive]}
+                onPress={() => setPayment(p.id)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                accessibilityLabel={`Pagar con ${p.label}`}>
+                <Ionicons
+                  name={p.icon}
+                  size={20}
+                  color={active ? colors.textOnPrimary : colors.text}
+                />
+                <Text style={[styles.serviceChipText, active && styles.serviceChipTextActive]}>
+                  {p.label}
                 </Text>
               </TouchableOpacity>
             );

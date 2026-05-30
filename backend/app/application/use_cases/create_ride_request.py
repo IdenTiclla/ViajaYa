@@ -36,5 +36,6 @@ class CreateRideRequest:
             ),
             service_type=data.service_type,
             fare=fare.amount,
+            payment_method=data.payment_method,
         )
         return await self._rides.add(ride)

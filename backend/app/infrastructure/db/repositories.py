@@ -84,6 +84,7 @@ def _ride_to_entity(row: RideRequestModel) -> RideRequest:
         ),
         service_type=row.service_type,
         fare=row.fare,
+        payment_method=row.payment_method,
         status=row.status,
         created_at=row.created_at,
     )
@@ -107,6 +108,7 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
             destination_address=ride.destination.address,
             service_type=ride.service_type,
             fare=ride.fare,
+            payment_method=ride.payment_method,
             status=ride.status,
         )
         self._session.add(row)

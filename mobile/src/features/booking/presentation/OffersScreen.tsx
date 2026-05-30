@@ -14,12 +14,14 @@ import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
 
 const SERVICE_LABELS = { taxi: 'Taxi', moto: 'Moto' } as const;
+const PAYMENT_LABELS = { qr: 'Pago por QR', cash: 'Pago en efectivo' } as const;
 
 export function OffersScreen() {
   const router = useRouter();
   const origin = useBookingStore((s) => s.origin);
   const destination = useBookingStore((s) => s.destination);
   const service = useBookingStore((s) => s.service);
+  const payment = useBookingStore((s) => s.payment);
   const fare = useBookingStore((s) => s.fare);
 
   return (
@@ -41,6 +43,8 @@ export function OffersScreen() {
         <SummaryRow icon="location" text={destination?.name ?? 'Destino'} color={colors.danger} />
         <View style={styles.meta}>
           <Text style={styles.metaText}>{SERVICE_LABELS[service]}</Text>
+          <Text style={styles.metaDot}>·</Text>
+          <Text style={styles.metaText}>{PAYMENT_LABELS[payment]}</Text>
           <Text style={styles.metaDot}>·</Text>
           <Text style={styles.metaText}>Tu oferta: Bs {fare || '—'}</Text>
         </View>

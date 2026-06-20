@@ -1,111 +1,526 @@
 /**
- * Búsqueda de ofertas — pantalla puente tras "Buscar Ofertas".
+ * Ofertas en vivo (pasajero) — diseño Material-You "Ofertas en Vivo".
  *
- * Muestra el resumen del viaje y un estado de "buscando conductores". La lista
- * real de ofertas (aceptar/rechazar, perfiles de conductor) es la siguiente
- * entrega; aquí se confirma que la solicitud quedó armada de extremo a extremo.
+ * Mapa de fondo con el trayecto y, superpuestas, las tarjetas translúcidas de
+ * los conductores que ofertaron. El pasajero **decide**: al pulsar Aceptar se le
+ * asigna el viaje (transacción atómica en el backend) y se muestra un overlay de
+ * confirmación antes de pasar al viaje en curso. Puede **rechazar** ofertas o
+ * **modificar** la solicitud (la pausa del pool y abre la edición) y **cancelar**
+ * (las únicas dos formas de salir de la negociación).
+ *
+ * La solicitud no caduca por tiempo; cada oferta vive 30 s (`expiresAt`) con su
+ * propio contador por tarjeta. Mientras no llegan ofertas se muestra la pantalla
+ * de búsqueda.
  */
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  Animated,
+  Easing,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { getApiErrorMessage, getApiErrorStatus } from '@/core/errors/apiError';
+import { useCountdown } from '@/core/hooks/useCountdown';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
+import { ConfirmationOverlay } from '@/features/booking/presentation/ConfirmationOverlay';
+import { SearchingDriversScreen } from '@/features/booking/presentation/SearchingDriversScreen';
+import {
+  useAcceptOffer,
+  useCancelRide,
+  usePauseForEdit,
+  useRejectOffer,
+} from '@/features/rides/application/useRideMutations';
+import { useNegotiationSocket } from '@/features/rides/application/useNegotiationSocket';
+import { useRide, useRideOffers } from '@/features/rides/application/useRides';
+import { deriveOfferTags, primaryTag, type OfferTagKind } from '@/features/rides/domain/offerTags';
+import type { Offer } from '@/features/rides/domain/types';
+import { OfferLifeTimer } from '@/features/rides/presentation/OfferLifeTimer';
+import { TripRouteMap } from '@/features/rides/presentation/TripRouteMap';
+import { RouteSummary } from '@/features/rides/presentation/RouteSummary';
+import { ConfirmDialog } from '@/shared/components';
 
 const SERVICE_LABELS = { taxi: 'Taxi', moto: 'Moto' } as const;
-const PAYMENT_LABELS = { qr: 'Pago por QR', cash: 'Pago en efectivo' } as const;
+
+/** Color + ícono por tipo de tag (ECONÓMICO / RÁPIDO / FAVORITO). */
+const TAG_META: Record<OfferTagKind, { icon: keyof typeof Ionicons.glyphMap; color: string; bg: string }> = {
+  cheapest: { icon: 'pricetag', color: colors.success, bg: 'rgba(15,157,88,0.12)' },
+  fastest: { icon: 'flash', color: '#B07A00', bg: 'rgba(245,197,24,0.18)' },
+  bestRated: { icon: 'star', color: colors.primary, bg: 'rgba(22,48,140,0.10)' },
+};
 
 export function OffersScreen() {
   const router = useRouter();
+  const { rideId } = useLocalSearchParams<{ rideId?: string }>();
+  const id = rideId ?? null;
+
   const origin = useBookingStore((s) => s.origin);
   const destination = useBookingStore((s) => s.destination);
-  const service = useBookingStore((s) => s.service);
-  const payment = useBookingStore((s) => s.payment);
   const fare = useBookingStore((s) => s.fare);
 
-  return (
-    <SafeAreaView style={styles.root}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.back}
-          onPress={() => router.back()}
-          accessibilityRole="button"
-          accessibilityLabel="Volver">
-          <Ionicons name="arrow-back" size={24} color={colors.text} />
-        </TouchableOpacity>
-        <Text style={styles.title}>Buscando ofertas</Text>
-        <View style={styles.back} />
-      </View>
+  // Ofertas y estado del viaje llegan en vivo por WebSocket (mutan la caché).
+  useNegotiationSocket(id, !!id);
 
-      <View style={styles.summary}>
-        <SummaryRow icon="navigate-circle" text={origin?.name ?? 'Origen'} color={colors.primary} />
-        <SummaryRow icon="location" text={destination?.name ?? 'Destino'} color={colors.danger} />
-        <View style={styles.meta}>
-          <Text style={styles.metaText}>{SERVICE_LABELS[service]}</Text>
-          <Text style={styles.metaDot}>·</Text>
-          <Text style={styles.metaText}>{PAYMENT_LABELS[payment]}</Text>
-          <Text style={styles.metaDot}>·</Text>
-          <Text style={styles.metaText}>Tu oferta: Bs {fare || '—'}</Text>
-        </View>
-      </View>
+  const { ride } = useRide(id);
+  const assigned = !!ride && ride.status !== 'searching';
+  const { offers } = useRideOffers(id, !assigned);
+  const acceptOffer = useAcceptOffer();
+  const rejectOffer = useRejectOffer();
+  const cancelRide = useCancelRide();
+  const pauseForEdit = usePauseForEdit();
 
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.centerTitle}>Buscando conductores cercanos…</Text>
-        <Text style={styles.centerSubtitle}>
-          Te mostraremos las ofertas de los conductores en cuanto respondan.
-        </Text>
-      </View>
-    </SafeAreaView>
+  // Descartes locales: tarjetas que el pasajero quitó de su pantalla.
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  // Tick por segundo para que las ofertas vencidas desaparezcan solas.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  const visibleOffers = useMemo(
+    () =>
+      offers.filter(
+        (o) =>
+          !dismissed.has(o.id) &&
+          (o.expiresAt == null || new Date(o.expiresAt).getTime() > now),
+      ),
+    [offers, dismissed, now],
   );
-}
 
-function SummaryRow({
-  icon,
-  text,
-  color,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  text: string;
-  color: string;
-}) {
+  // Tags derivados client-side (ECONÓMICO / RÁPIDO / FAVORITO).
+  const tagsMap = useMemo(() => deriveOfferTags(visibleOffers), [visibleOffers]);
+
+  const [confirming, setConfirming] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+
+  // Backup: si el viaje queda asignado por otra vía (p. ej. WS), ir al viaje.
+  useEffect(() => {
+    if (assigned && id && !confirming) {
+      router.replace({ pathname: '/booking/trip', params: { rideId: id } });
+    }
+  }, [assigned, id, confirming, router]);
+
+  const onAccept = (offer: Offer) => {
+    if (acceptOffer.isPending) return;
+    // Aceptar asigna el viaje (decisión final): mostramos el overlay al confirmar.
+    acceptOffer.mutate(offer.id, {
+      onSuccess: () => setConfirming(true),
+      onError: (error) => {
+        // La oferta murió en el camino (expiró/retirada/otro la tomó): la quitamos.
+        if (getApiErrorStatus(error) === 409) {
+          setDismissed((prev) => new Set(prev).add(offer.id));
+        }
+      },
+    });
+  };
+
+  const handleConfirmed = () => {
+    setConfirming(false);
+    if (id) router.replace({ pathname: '/booking/trip', params: { rideId: id } });
+  };
+
+  const onReject = (offer: Offer) => {
+    setDismissed((prev) => new Set(prev).add(offer.id));
+    if (id) rejectOffer.mutate({ offerId: offer.id, rideId: id });
+  };
+
+  const onModify = () => {
+    if (pauseForEdit.isPending || !id) return;
+    // Pausa la solicitud (la oculta del pool) y abre la edición sin cancelar.
+    pauseForEdit.mutate(id, {
+      onSuccess: () =>
+        router.replace({ pathname: '/booking/configure', params: { rideId: id } }),
+    });
+  };
+
+  const onCancel = () => {
+    setConfirmCancel(false);
+    if (cancelRide.isPending) return;
+    useBookingStore.getState().resetTrip();
+    if (!id) {
+      router.replace('/(app)/(tabs)');
+      return;
+    }
+    cancelRide.mutate(id, { onSuccess: () => router.replace('/(app)/(tabs)') });
+  };
+
+  if (assigned && !confirming) {
+    // El viaje quedó asignado: el overlay ya navegó, o este es el respaldo.
+    return null;
+  }
+
+  if (visibleOffers.length === 0) {
+    return (
+      <SearchingDriversScreen
+        rideId={id}
+        origin={origin}
+        destination={destination}
+        currentFare={ride?.fare ?? (fare ? Number.parseFloat(fare) : null)}
+      />
+    );
+  }
+
   return (
-    <View style={styles.summaryRow}>
-      <Ionicons name={icon} size={20} color={color} />
-      <Text style={styles.summaryText} numberOfLines={1}>
-        {text}
-      </Text>
+    <View style={styles.root}>
+      {origin && destination ? (
+        <TripRouteMap origin={origin} destination={destination} topPadding={190} bottomPadding={420} />
+      ) : (
+        <View style={styles.mapFallback} />
+      )}
+
+      <SafeAreaView edges={['top', 'bottom']} style={styles.overlay} pointerEvents="box-none">
+        {/* Cabecera: Cancelar (única salida destructiva) + Modificar */}
+        <View style={styles.topBar}>
+          <TouchableOpacity
+            style={styles.cancelBtn}
+            onPress={() => setConfirmCancel(true)}
+            disabled={cancelRide.isPending}
+            accessibilityRole="button"
+            accessibilityLabel="Cancelar solicitud">
+            <Ionicons name="close" size={16} color={colors.textOnPrimary} />
+            <Text style={styles.cancelBtnText}>
+              {cancelRide.isPending ? 'Cancelando…' : 'Cancelar'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.modifyBtn, pauseForEdit.isPending && styles.disabled]}
+            onPress={onModify}
+            disabled={pauseForEdit.isPending}
+            accessibilityRole="button"
+            accessibilityLabel="Modificar solicitud">
+            <Ionicons name="create-outline" size={16} color={colors.primary} />
+            <Text style={styles.modifyBtnText}>Modificar</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Resumen de ruta (informativo) */}
+        <View style={styles.routeWrap} pointerEvents="none">
+          <RouteSummary
+            origin={origin ?? { name: '—' }}
+            destination={destination ?? { name: '—' }}
+          />
+        </View>
+
+        {/* Sección "Ofertas en vivo" */}
+        <View style={styles.liveHeader} pointerEvents="none">
+          <View style={styles.liveTitleRow}>
+            <Text style={styles.liveTitle}>Ofertas en vivo</Text>
+            <LiveDot />
+          </View>
+          <Text style={styles.liveSubtitle}>
+            {visibleOffers.length}{' '}
+            {visibleOffers.length === 1 ? 'conductor cerca' : 'conductores cerca'}
+          </Text>
+        </View>
+
+        <ScrollView
+          style={styles.list}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}>
+          {acceptOffer.isError && (
+            <Text style={styles.error}>{getApiErrorMessage(acceptOffer.error)}</Text>
+          )}
+          {pauseForEdit.isError && (
+            <Text style={styles.error}>{getApiErrorMessage(pauseForEdit.error)}</Text>
+          )}
+          {visibleOffers.map((offer) => (
+            <OfferCard
+              key={offer.id}
+              offer={offer}
+              tag={primaryTag(tagsMap[offer.id])}
+              disabled={acceptOffer.isPending}
+              onAccept={() => onAccept(offer)}
+              onReject={() => onReject(offer)}
+            />
+          ))}
+          <View style={styles.listBottomSpacer} />
+        </ScrollView>
+      </SafeAreaView>
+
+      <ConfirmationOverlay visible={confirming} onDone={handleConfirmed} />
+
+      <ConfirmDialog
+        visible={confirmCancel}
+        icon="warning"
+        destructive
+        title="¿Cancelar solicitud?"
+        message="Si cancelas, perderás las ofertas de los conductores que ya están evaluando tu viaje y volverás a empezar."
+        confirmText="Sí, cancelar"
+        cancelText="Seguir negociando"
+        onConfirm={onCancel}
+        onCancel={() => setConfirmCancel(false)}
+      />
     </View>
   );
 }
 
+function OfferCard({
+  offer,
+  tag,
+  disabled,
+  onAccept,
+  onReject,
+}: {
+  offer: Offer;
+  tag: { kind: OfferTagKind; label: string; subLabel: string } | null;
+  disabled: boolean;
+  onAccept: () => void;
+  onReject: () => void;
+}) {
+  const { driver } = offer;
+  const secondsLeft = useCountdown(offer.expiresAt);
+  const initial = driver.fullName.trim().charAt(0).toUpperCase() || 'C';
+  const vehicle = [
+    driver.vehicleType ? SERVICE_LABELS[driver.vehicleType] : null,
+    driver.vehicleModel,
+    driver.plate,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  const tagMeta = tag ? TAG_META[tag.kind] : null;
+
+  return (
+    <View style={styles.card}>
+      <View style={styles.cardTop}>
+        <View style={styles.avatarWrap}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{initial}</Text>
+          </View>
+          {driver.rating != null && (
+            <View style={styles.ratingBadge}>
+              <Text style={styles.ratingBadgeText}>{driver.rating.toFixed(1)}★</Text>
+            </View>
+          )}
+        </View>
+        <View style={styles.cardInfo}>
+          <Text style={styles.driverName} numberOfLines={1}>
+            {driver.fullName}
+          </Text>
+          {tag && (
+            <View style={[styles.tagPill, { backgroundColor: tagMeta?.bg }]}>
+              <Ionicons name={tagMeta?.icon ?? 'pricetag'} size={11} color={tagMeta?.color} />
+              <Text style={[styles.tagText, { color: tagMeta?.color }]}>{tag.label}</Text>
+            </View>
+          )}
+          {!!vehicle && (
+            <Text style={styles.vehicle} numberOfLines={1}>
+              {vehicle}
+            </Text>
+          )}
+          <View style={styles.metaRow}>
+            {offer.etaMin != null && (
+              <View style={styles.eta}>
+                <Ionicons name="time-outline" size={13} color={colors.primary} />
+                <Text style={styles.etaText}>{offer.etaMin} min</Text>
+              </View>
+            )}
+            <OfferLifeTimer secondsLeft={secondsLeft} />
+          </View>
+        </View>
+        <View style={styles.priceCol}>
+          <Text style={styles.price}>Bs {offer.price.toFixed(2)}</Text>
+          {tag && <Text style={styles.priceSub}>{tag.subLabel}</Text>}
+        </View>
+      </View>
+
+      <View style={styles.cardActions}>
+        <TouchableOpacity
+          style={[styles.rejectBtn, disabled && styles.disabled]}
+          onPress={onReject}
+          disabled={disabled}
+          accessibilityRole="button"
+          accessibilityLabel={`Rechazar oferta de ${driver.fullName}`}>
+          <Text style={styles.rejectText}>Rechazar</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.acceptBtn, disabled && styles.disabled]}
+          onPress={onAccept}
+          disabled={disabled}
+          accessibilityRole="button"
+          accessibilityLabel={`Aceptar oferta de ${driver.fullName} por Bs ${offer.price.toFixed(2)}`}>
+          <Text style={styles.acceptText}>Aceptar</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+/** Punto verde que late: indicador "en vivo". */
+function LiveDot() {
+  const [value] = useState(() => new Animated.Value(0));
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(value, {
+          toValue: 1,
+          duration: 900,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(value, {
+          toValue: 0,
+          duration: 900,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [value]);
+  return (
+    <Animated.View
+      style={[styles.liveDot, { opacity: value.interpolate({ inputRange: [0, 1], outputRange: [1, 0.35] }) }]}
+    />
+  );
+}
+
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.background },
-  header: {
+  root: { flex: 1, backgroundColor: colors.surfaceMuted },
+  mapFallback: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: colors.surfaceMuted },
+
+  overlay: { flex: 1 },
+
+  // Cabecera translúcida sobre el mapa.
+  topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
   },
-  back: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  title: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.text },
+  cancelBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    height: 38,
+    borderRadius: radius.pill,
+    backgroundColor: colors.danger,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
+  cancelBtnText: { color: colors.textOnPrimary, fontSize: fontSize.sm, fontWeight: fontWeight.bold },
+  modifyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    height: 38,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  modifyBtnText: { color: colors.primary, fontSize: fontSize.sm, fontWeight: fontWeight.bold },
 
-  summary: {
-    marginHorizontal: spacing.lg,
+  // Contenedor del resumen de ruta.
+  routeWrap: { marginHorizontal: spacing.md, marginBottom: spacing.sm },
+
+  // Sección "Ofertas en vivo".
+  liveHeader: { paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
+  liveTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  liveTitle: { fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.text },
+  liveDot: { width: 8, height: 8, borderRadius: radius.pill, backgroundColor: colors.success },
+  liveSubtitle: { fontSize: fontSize.sm, color: colors.textSecondary, marginTop: 2 },
+
+  // Lista de tarjetas.
+  list: { flex: 1 },
+  listContent: { paddingHorizontal: spacing.md, gap: spacing.md, paddingBottom: spacing.xl },
+  listBottomSpacer: { height: spacing.xl },
+
+  // Tarjeta translúcida (glassmorphism con rgba + sombra).
+  card: {
     padding: spacing.md,
-    gap: spacing.sm,
-    borderRadius: radius.md,
-    backgroundColor: colors.surfaceMuted,
+    gap: spacing.md,
+    borderRadius: radius.lg,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(226,228,232,0.7)',
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
   },
-  summaryRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  summaryText: { flex: 1, fontSize: fontSize.md, color: colors.text },
-  meta: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xs },
-  metaText: { fontSize: fontSize.sm, color: colors.textSecondary },
-  metaDot: { color: colors.textSecondary },
+  cardTop: { flexDirection: 'row', gap: spacing.md },
+  avatarWrap: { width: 52, height: 52 },
+  avatar: {
+    width: 52,
+    height: 52,
+    borderRadius: radius.pill,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: { color: colors.textOnPrimary, fontSize: fontSize.lg, fontWeight: fontWeight.bold },
+  ratingBadge: {
+    position: 'absolute',
+    bottom: -4,
+    right: -6,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: radius.pill,
+    backgroundColor: colors.accent,
+    borderWidth: 2,
+    borderColor: colors.surface,
+  },
+  ratingBadgeText: { color: '#5A4500', fontSize: 10, fontWeight: fontWeight.bold },
 
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm, padding: spacing.xl },
-  centerTitle: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.text, textAlign: 'center' },
-  centerSubtitle: { fontSize: fontSize.sm, color: colors.textSecondary, textAlign: 'center' },
+  cardInfo: { flex: 1, gap: 3 },
+  driverName: { fontSize: fontSize.md, fontWeight: fontWeight.bold, color: colors.text },
+  tagPill: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: spacing.xs + 2,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+  },
+  tagText: { fontSize: 10, fontWeight: fontWeight.bold, letterSpacing: 0.3 },
+  vehicle: { fontSize: fontSize.sm, color: colors.textSecondary },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: 2, flexWrap: 'wrap' },
+  eta: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  etaText: { fontSize: fontSize.sm, color: colors.primary, fontWeight: fontWeight.semibold },
+
+  priceCol: { alignItems: 'flex-end', justifyContent: 'center' },
+  price: { fontSize: fontSize.xl, fontWeight: fontWeight.bold, color: colors.primary },
+  priceSub: { fontSize: 10, color: colors.textSecondary, fontWeight: fontWeight.semibold, marginTop: 2 },
+
+  cardActions: { flexDirection: 'row', gap: spacing.sm },
+  rejectBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(242,243,245,0.8)',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  rejectText: { fontSize: fontSize.md, fontWeight: fontWeight.bold, color: colors.text },
+  acceptBtn: {
+    flex: 1.5,
+    height: 48,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+  },
+  acceptText: { fontSize: fontSize.md, fontWeight: fontWeight.bold, color: colors.textOnPrimary },
+  disabled: { opacity: 0.5 },
+
+  error: { color: colors.danger, fontSize: fontSize.sm, textAlign: 'center' },
 });

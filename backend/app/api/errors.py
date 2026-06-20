@@ -6,13 +6,21 @@ from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 
 from app.domain.exceptions import (
+    AlreadyRatedError,
     DomainError,
+    DriverUnavailableError,
     EmailAlreadyExistsError,
     InvalidCredentialsError,
     InvalidEmailError,
     InvalidFareError,
     InvalidLocationError,
+    InvalidRatingError,
+    InvalidRideTransitionError,
     InvalidTokenError,
+    NotAuthorizedActionError,
+    OfferNotFoundError,
+    RideNotCompletedError,
+    RideNotFoundError,
     SavedPlaceNotFoundError,
     UnsupportedProviderError,
     WeakPasswordError,
@@ -28,6 +36,14 @@ _STATUS_MAP: dict[type[DomainError], int] = {
     InvalidLocationError: 422,
     InvalidFareError: 422,
     SavedPlaceNotFoundError: status.HTTP_404_NOT_FOUND,
+    RideNotFoundError: status.HTTP_404_NOT_FOUND,
+    OfferNotFoundError: status.HTTP_404_NOT_FOUND,
+    NotAuthorizedActionError: status.HTTP_403_FORBIDDEN,
+    InvalidRideTransitionError: status.HTTP_409_CONFLICT,
+    DriverUnavailableError: status.HTTP_409_CONFLICT,
+    RideNotCompletedError: status.HTTP_409_CONFLICT,
+    AlreadyRatedError: status.HTTP_409_CONFLICT,
+    InvalidRatingError: 422,
     UnsupportedProviderError: status.HTTP_400_BAD_REQUEST,
 }
 

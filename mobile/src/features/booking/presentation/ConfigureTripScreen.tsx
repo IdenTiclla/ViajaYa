@@ -8,7 +8,7 @@
  */
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -18,7 +18,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
+import MapView, { Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
@@ -27,8 +27,11 @@ import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
 import { useRoute } from '@/features/booking/application/useRoute';
 import { ridesRepository } from '@/features/booking/data/ridesRepository';
+import { useEditRide, usePauseForEdit } from '@/features/rides/application/useRideMutations';
 import type { Coordinates, PaymentMethod, ServiceType } from '@/features/booking/domain/types';
 import { declutteredMapStyle } from '@/features/booking/presentation/mapStyle';
+import { RoutePinMarker } from '@/features/rides/presentation/RoutePinMarker';
+import { RouteSummary } from '@/features/rides/presentation/RouteSummary';
 
 const SERVICES: { id: ServiceType; label: string; icon: 'car-sport' | 'bicycle' }[] = [
   { id: 'taxi', label: 'Taxi', icon: 'car-sport' },
@@ -40,9 +43,10 @@ const PAYMENTS: { id: PaymentMethod; label: string; icon: 'qr-code' | 'cash' }[]
   { id: 'cash', label: 'Efectivo', icon: 'cash' },
 ];
 
-// Márgenes del encuadre: arriba deja sitio a la barra superior; abajo es dinámico
-// (alto real del bottom sheet) para que ambos puntos queden en el área visible.
-const FIT_TOP = 120;
+// Márgenes del encuadre: arriba deja sitio a la barra superior + resumen de ruta;
+// abajo es dinámico (alto real del bottom sheet) para que ambos puntos queden en
+// el área visible.
+const FIT_TOP = 170;
 const FIT_SIDES = 60;
 
 function formatDistance(meters: number): string {
@@ -55,8 +59,12 @@ function formatDuration(seconds: number): string {
 
 export function ConfigureTripScreen() {
   const router = useRouter();
+  const { rideId } = useLocalSearchParams<{ rideId?: string }>();
+  const isEditing = !!rideId;
   const origin = useBookingStore((s) => s.origin);
   const destination = useBookingStore((s) => s.destination);
+  const setOrigin = useBookingStore((s) => s.setOrigin);
+  const setDestination = useBookingStore((s) => s.setDestination);
   const service = useBookingStore((s) => s.service);
   const setService = useBookingStore((s) => s.setService);
   const payment = useBookingStore((s) => s.payment);
@@ -65,6 +73,8 @@ export function ConfigureTripScreen() {
   const setFare = useBookingStore((s) => s.setFare);
   const mapRef = useRef<MapView>(null);
   const queryClient = useQueryClient();
+  const pauseForEdit = usePauseForEdit();
+  const editRide = useEditRide();
   // Alto real del bottom sheet, para encuadrar los puntos por encima de él.
   const [sheetHeight, setSheetHeight] = useState(0);
   const keyboardHeight = useKeyboardHeight();
@@ -73,12 +83,31 @@ export function ConfigureTripScreen() {
 
   const createRide = useMutation({
     mutationFn: ridesRepository.create,
-    onSuccess: () => {
+    onSuccess: (ride) => {
       // Refresca los recientes (este destino pasa a estar entre ellos).
       void queryClient.invalidateQueries({ queryKey: ['recent-destinations'] });
-      router.push('/booking/offers');
+      router.push({ pathname: '/booking/offers', params: { rideId: ride.id } });
     },
   });
+
+  // Modo edición (Modificar solicitud): al entrar, pausa la solicitud (la oculta
+  // del pool) una sola vez e hidrata el formulario con los datos del viaje.
+  const didInitEdit = useRef(false);
+  useEffect(() => {
+    if (!rideId || didInitEdit.current) return;
+    didInitEdit.current = true;
+    pauseForEdit.mutate(rideId, {
+      onSuccess: (ride) => {
+        setOrigin(ride.origin);
+        setDestination(ride.destination);
+        setService(ride.service);
+        setPayment(ride.payment);
+        setFare(String(ride.fare));
+      },
+    });
+    // pauseForEdit es estable (mutación de React Query); se ejecuta una sola vez.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rideId]);
 
   const { route, isLoading: routeLoading } = useRoute(origin, destination);
 
@@ -152,6 +181,14 @@ export function ConfigureTripScreen() {
     createRide.mutate({ origin, destination, service, payment, fare: fareValue });
   };
 
+  const saveEdit = () => {
+    if (!rideId || !fareIsValid || editRide.isPending) return;
+    editRide.mutate(
+      { rideId, input: { origin, destination, service, payment, fare: fareValue } },
+      { onSuccess: () => router.replace({ pathname: '/booking/offers', params: { rideId } }) },
+    );
+  };
+
   return (
     <View style={styles.root}>
       <MapView
@@ -161,10 +198,8 @@ export function ConfigureTripScreen() {
         initialRegion={region}
         customMapStyle={showPlaces ? [] : declutteredMapStyle}
         onMapReady={() => fitToTrip(false)}>
-        <Marker coordinate={origin.coordinates} anchor={{ x: 0.5, y: 0.5 }} title={origin.name}>
-          <View style={styles.originDot} />
-        </Marker>
-        <Marker coordinate={destination.coordinates} title={destination.name} pinColor={colors.danger} />
+        <RoutePinMarker kind="A" coordinate={origin.coordinates} label="Origen" />
+        <RoutePinMarker kind="B" coordinate={destination.coordinates} label="Destino" />
         {polylineCoordinates.length >= 2 && (
           <>
             {/* Contorno blanco para que la ruta resalte sobre calles y etiquetas. */}
@@ -175,71 +210,43 @@ export function ConfigureTripScreen() {
       </MapView>
 
       <SafeAreaView style={styles.topBar} edges={['top']} pointerEvents="box-none">
-        <TouchableOpacity
-          style={styles.back}
-          onPress={() => router.back()}
-          accessibilityRole="button"
-          accessibilityLabel="Volver">
-          <Ionicons name="arrow-back" size={24} color={colors.text} />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.back}
-          onPress={() => setShowPlaces((v) => !v)}
-          accessibilityRole="button"
-          accessibilityState={{ selected: showPlaces }}
-          accessibilityLabel={showPlaces ? 'Ocultar nombres de lugares' : 'Mostrar nombres de lugares'}>
-          <Ionicons
-            name={showPlaces ? 'business' : 'business-outline'}
-            size={22}
-            color={showPlaces ? colors.primary : colors.textSecondary}
+        <View style={styles.topLeft}>
+          <TouchableOpacity
+            style={styles.back}
+            onPress={() => router.back()}
+            accessibilityRole="button"
+            accessibilityLabel="Volver">
+            <Ionicons name="arrow-back" size={24} color={colors.text} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.back}
+            onPress={() => setShowPlaces((v) => !v)}
+            accessibilityRole="button"
+            accessibilityState={{ selected: showPlaces }}
+            accessibilityLabel={showPlaces ? 'Ocultar nombres de lugares' : 'Mostrar nombres de lugares'}>
+            <Ionicons
+              name={showPlaces ? 'business' : 'business-outline'}
+              size={22}
+              color={showPlaces ? colors.primary : colors.textSecondary}
+            />
+          </TouchableOpacity>
+        </View>
+        <View style={styles.summaryWrap}>
+          <RouteSummary
+            origin={origin}
+            destination={destination}
+            onEditOrigin={() =>
+              router.push({ pathname: '/booking/pick-on-map', params: { target: 'origin' } })
+            }
+            onEditDestination={() => router.push('/booking/destination')}
           />
-        </TouchableOpacity>
+        </View>
       </SafeAreaView>
 
       <SafeAreaView
         style={[styles.sheet, keyboardHeight > 0 && { bottom: keyboardHeight }]}
         edges={['bottom']}
         onLayout={(e) => setSheetHeight(e.nativeEvent.layout.height)}>
-        <View style={styles.route}>
-          <View style={styles.routeIcons}>
-            <View style={styles.originDotSmall} />
-            <View style={styles.routeLine} />
-            <Ionicons name="location" size={18} color={colors.danger} />
-          </View>
-          <View style={styles.routeText}>
-            <View style={styles.routeRow}>
-              <View style={styles.routeRowHeader}>
-                <Text style={styles.routeLabel}>Punto de partida</Text>
-                <TouchableOpacity
-                  onPress={() =>
-                    router.push({ pathname: '/booking/pick-on-map', params: { target: 'origin' } })
-                  }
-                  accessibilityRole="button"
-                  accessibilityLabel="Cambiar punto de partida">
-                  <Text style={styles.editLink}>Editar</Text>
-                </TouchableOpacity>
-              </View>
-              <Text style={styles.routeValue} numberOfLines={1}>
-                {origin.name} · {origin.address}
-              </Text>
-            </View>
-            <View style={styles.routeRow}>
-              <View style={styles.routeRowHeader}>
-                <Text style={styles.routeLabel}>Destino</Text>
-                <TouchableOpacity
-                  onPress={() => router.push('/booking/destination')}
-                  accessibilityRole="button"
-                  accessibilityLabel="Cambiar destino">
-                  <Text style={styles.editLink}>Editar</Text>
-                </TouchableOpacity>
-              </View>
-              <Text style={styles.routeValue} numberOfLines={1}>
-                {destination.name} · {destination.address}
-              </Text>
-            </View>
-          </View>
-        </View>
-
         {route && (
           <View style={styles.estimate}>
             <Ionicons name="navigate" size={16} color={colors.primary} />
@@ -317,17 +324,26 @@ export function ConfigureTripScreen() {
         {createRide.isError && (
           <Text style={styles.error}>{getApiErrorMessage(createRide.error)}</Text>
         )}
+        {editRide.isError && (
+          <Text style={styles.error}>{getApiErrorMessage(editRide.error)}</Text>
+        )}
+        {pauseForEdit.isError && (
+          <Text style={styles.error}>{getApiErrorMessage(pauseForEdit.error)}</Text>
+        )}
 
         <TouchableOpacity
-          style={[styles.cta, (!fareIsValid || createRide.isPending) && styles.ctaDisabled]}
-          disabled={!fareIsValid || createRide.isPending}
-          onPress={searchOffers}
+          style={[
+            styles.cta,
+            (!fareIsValid || createRide.isPending || editRide.isPending) && styles.ctaDisabled,
+          ]}
+          disabled={!fareIsValid || createRide.isPending || editRide.isPending}
+          onPress={isEditing ? saveEdit : searchOffers}
           accessibilityRole="button"
-          accessibilityLabel="Buscar ofertas">
-          {createRide.isPending ? (
+          accessibilityLabel={isEditing ? 'Guardar cambios' : 'Buscar ofertas'}>
+          {createRide.isPending || editRide.isPending ? (
             <ActivityIndicator color={colors.textOnPrimary} />
           ) : (
-            <Text style={styles.ctaText}>Buscar Ofertas</Text>
+            <Text style={styles.ctaText}>{isEditing ? 'Guardar cambios' : 'Buscar Ofertas'}</Text>
           )}
         </TouchableOpacity>
       </SafeAreaView>
@@ -347,26 +363,19 @@ const styles = StyleSheet.create({
   },
   fallbackButtonText: { color: colors.textOnPrimary, fontWeight: fontWeight.semibold },
 
-  originDot: {
-    width: 18,
-    height: 18,
-    borderRadius: radius.pill,
-    backgroundColor: colors.primary,
-    borderWidth: 3,
-    borderColor: colors.surface,
-  },
-
   topBar: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    alignItems: 'flex-start',
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
+    gap: spacing.sm,
   },
+  topLeft: { alignItems: 'flex-start', gap: spacing.xs },
+  summaryWrap: { flex: 1 },
   back: {
     width: 44,
     height: 44,
@@ -396,22 +405,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: -3 },
     elevation: 12,
   },
-
-  route: { flexDirection: 'row', gap: spacing.md },
-  routeIcons: { alignItems: 'center', paddingTop: 4 },
-  originDotSmall: {
-    width: 12,
-    height: 12,
-    borderRadius: radius.pill,
-    backgroundColor: colors.primary,
-  },
-  routeLine: { width: 2, flex: 1, minHeight: 20, backgroundColor: colors.border, marginVertical: 4 },
-  routeText: { flex: 1, gap: spacing.md },
-  routeRow: { gap: 2 },
-  routeRowHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  routeLabel: { fontSize: fontSize.xs, color: colors.textSecondary },
-  routeValue: { fontSize: fontSize.md, fontWeight: fontWeight.medium, color: colors.text },
-  editLink: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.primary },
 
   estimate: {
     flexDirection: 'row',

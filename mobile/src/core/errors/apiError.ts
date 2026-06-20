@@ -12,3 +12,10 @@ export function getApiErrorMessage(error: unknown, fallback = 'Algo salió mal. 
   }
   return fallback;
 }
+
+/** Código de estado HTTP del error, o `null` si no es un error con respuesta. */
+export function getApiErrorStatus(error: unknown): number | null {
+  // eslint-disable-next-line import/no-named-as-default-member
+  if (axios.isAxiosError(error)) return error.response?.status ?? null;
+  return null;
+}

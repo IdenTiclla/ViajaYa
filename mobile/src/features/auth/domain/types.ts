@@ -2,12 +2,24 @@
 
 export type AuthProvider = 'local' | 'google' | 'facebook';
 
+export type UserRole = 'passenger' | 'driver';
+
+/** Tipo de vehículo del conductor (coincide con `ServiceType` del booking). */
+export type VehicleType = 'taxi' | 'moto';
+
 export type User = {
   id: string;
   fullName: string;
   email: string;
   phone: string | null;
   authProvider: AuthProvider;
+  role: UserRole;
+  /** Solo conductores: tipo de vehículo y datos del mismo. */
+  vehicleType: VehicleType | null;
+  plate: string | null;
+  vehicleModel: string | null;
+  rating: number | null;
+  isOnline: boolean;
   createdAt: string | null;
 };
 

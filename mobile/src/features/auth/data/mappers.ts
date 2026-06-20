@@ -7,6 +7,12 @@ type UserDto = {
   email: string;
   phone: string | null;
   auth_provider: User['authProvider'];
+  role: User['role'];
+  vehicle_type: User['vehicleType'];
+  plate: string | null;
+  vehicle_model: string | null;
+  rating: number | null;
+  is_online: boolean;
   created_at: string | null;
 };
 
@@ -24,6 +30,12 @@ export function toUser(dto: UserDto): User {
     email: dto.email,
     phone: dto.phone,
     authProvider: dto.auth_provider,
+    role: dto.role,
+    vehicleType: dto.vehicle_type,
+    plate: dto.plate,
+    vehicleModel: dto.vehicle_model,
+    rating: dto.rating,
+    isOnline: dto.is_online,
     createdAt: dto.created_at,
   };
 }

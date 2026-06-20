@@ -1,5 +1,5 @@
 import { RideHistoryScreen } from '@/features/rides/presentation/RideHistoryScreen';
 
-export default function HistoryTab() {
+export default function DriverHistoryRoute() {
   return <RideHistoryScreen />;
 }

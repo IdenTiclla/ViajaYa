@@ -8,7 +8,7 @@
  */
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -27,6 +27,7 @@ import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
 import { useRoute } from '@/features/booking/application/useRoute';
 import { ridesRepository } from '@/features/booking/data/ridesRepository';
+import { useEditRide, usePauseForEdit } from '@/features/rides/application/useRideMutations';
 import type { Coordinates, PaymentMethod, ServiceType } from '@/features/booking/domain/types';
 import { declutteredMapStyle } from '@/features/booking/presentation/mapStyle';
 
@@ -55,8 +56,12 @@ function formatDuration(seconds: number): string {
 
 export function ConfigureTripScreen() {
   const router = useRouter();
+  const { rideId } = useLocalSearchParams<{ rideId?: string }>();
+  const isEditing = !!rideId;
   const origin = useBookingStore((s) => s.origin);
   const destination = useBookingStore((s) => s.destination);
+  const setOrigin = useBookingStore((s) => s.setOrigin);
+  const setDestination = useBookingStore((s) => s.setDestination);
   const service = useBookingStore((s) => s.service);
   const setService = useBookingStore((s) => s.setService);
   const payment = useBookingStore((s) => s.payment);
@@ -65,6 +70,8 @@ export function ConfigureTripScreen() {
   const setFare = useBookingStore((s) => s.setFare);
   const mapRef = useRef<MapView>(null);
   const queryClient = useQueryClient();
+  const pauseForEdit = usePauseForEdit();
+  const editRide = useEditRide();
   // Alto real del bottom sheet, para encuadrar los puntos por encima de él.
   const [sheetHeight, setSheetHeight] = useState(0);
   const keyboardHeight = useKeyboardHeight();
@@ -73,12 +80,31 @@ export function ConfigureTripScreen() {
 
   const createRide = useMutation({
     mutationFn: ridesRepository.create,
-    onSuccess: () => {
+    onSuccess: (ride) => {
       // Refresca los recientes (este destino pasa a estar entre ellos).
       void queryClient.invalidateQueries({ queryKey: ['recent-destinations'] });
-      router.push('/booking/offers');
+      router.push({ pathname: '/booking/offers', params: { rideId: ride.id } });
     },
   });
+
+  // Modo edición (Modificar solicitud): al entrar, pausa la solicitud (la oculta
+  // del pool) una sola vez e hidrata el formulario con los datos del viaje.
+  const didInitEdit = useRef(false);
+  useEffect(() => {
+    if (!rideId || didInitEdit.current) return;
+    didInitEdit.current = true;
+    pauseForEdit.mutate(rideId, {
+      onSuccess: (ride) => {
+        setOrigin(ride.origin);
+        setDestination(ride.destination);
+        setService(ride.service);
+        setPayment(ride.payment);
+        setFare(String(ride.fare));
+      },
+    });
+    // pauseForEdit es estable (mutación de React Query); se ejecuta una sola vez.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rideId]);
 
   const { route, isLoading: routeLoading } = useRoute(origin, destination);
 
@@ -150,6 +176,14 @@ export function ConfigureTripScreen() {
   const searchOffers = () => {
     if (!fareIsValid || createRide.isPending) return;
     createRide.mutate({ origin, destination, service, payment, fare: fareValue });
+  };
+
+  const saveEdit = () => {
+    if (!rideId || !fareIsValid || editRide.isPending) return;
+    editRide.mutate(
+      { rideId, input: { origin, destination, service, payment, fare: fareValue } },
+      { onSuccess: () => router.replace({ pathname: '/booking/offers', params: { rideId } }) },
+    );
   };
 
   return (
@@ -317,17 +351,26 @@ export function ConfigureTripScreen() {
         {createRide.isError && (
           <Text style={styles.error}>{getApiErrorMessage(createRide.error)}</Text>
         )}
+        {editRide.isError && (
+          <Text style={styles.error}>{getApiErrorMessage(editRide.error)}</Text>
+        )}
+        {pauseForEdit.isError && (
+          <Text style={styles.error}>{getApiErrorMessage(pauseForEdit.error)}</Text>
+        )}
 
         <TouchableOpacity
-          style={[styles.cta, (!fareIsValid || createRide.isPending) && styles.ctaDisabled]}
-          disabled={!fareIsValid || createRide.isPending}
-          onPress={searchOffers}
+          style={[
+            styles.cta,
+            (!fareIsValid || createRide.isPending || editRide.isPending) && styles.ctaDisabled,
+          ]}
+          disabled={!fareIsValid || createRide.isPending || editRide.isPending}
+          onPress={isEditing ? saveEdit : searchOffers}
           accessibilityRole="button"
-          accessibilityLabel="Buscar ofertas">
-          {createRide.isPending ? (
+          accessibilityLabel={isEditing ? 'Guardar cambios' : 'Buscar ofertas'}>
+          {createRide.isPending || editRide.isPending ? (
             <ActivityIndicator color={colors.textOnPrimary} />
           ) : (
-            <Text style={styles.ctaText}>Buscar Ofertas</Text>
+            <Text style={styles.ctaText}>{isEditing ? 'Guardar cambios' : 'Buscar Ofertas'}</Text>
           )}
         </TouchableOpacity>
       </SafeAreaView>

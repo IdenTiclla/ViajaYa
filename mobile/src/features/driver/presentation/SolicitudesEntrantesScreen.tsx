@@ -1,38 +1,56 @@
 /**
- * Solicitudes entrantes (conductor) — diseño Stitch "Panel de Control - Ofertas".
+ * Solicitudes entrantes (conductor) — diseño Material-You.
  *
- * Si el conductor ya tiene un viaje asignado, muestra el viaje en curso. Si no,
- * lista (polling) las solicitudes abiertas de su vehículo con un toggle
- * **Lista / Mapa**. Acciones por solicitud: Aceptar, Contraofertar (modal) y
- * Rechazar (botón o deslizando hacia la derecha). Tocar una abre el detalle.
+ * Tres estados: viaje activo → seguimiento; sin solicitudes → "Buscando viajes"
+ * (mapa + radar + hoja con rendimiento del día); con solicitudes → cabecera glass
+ * + toggle Lista/Mapa y tarjetas translúcidas. El conductor **oferta** (no
+ * asigna): Aceptar deja la tarjeta en "Oferta enviada" y sigue viendo otras.
  */
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
-import { useDriverRequests } from '@/features/driver/application/useDriverRequests';
 import { CounterOfferModal } from '@/features/driver/presentation/CounterOfferModal';
+import { DriverSearchMap } from '@/features/driver/presentation/DriverSearchMap';
+import { DriverTopBar } from '@/features/driver/presentation/DriverTopBar';
+import { RadarPulse } from '@/features/driver/presentation/RadarPulse';
 import { RequestCard } from '@/features/driver/presentation/RequestCard';
 import { SolicitudesMapa } from '@/features/driver/presentation/SolicitudesMapa';
 import { ViajeEnCursoConductorScreen } from '@/features/driver/presentation/ViajeEnCursoConductorScreen';
-import { useCreateOffer } from '@/features/rides/application/useRideMutations';
+import { useWatchPosition, type WatchedPosition } from '@/features/home/application/useWatchPosition';
+import { useDriverEarnings } from '@/features/rides/application/useCloseFlow';
+import { useCreateOffer, useSetOnline } from '@/features/rides/application/useRideMutations';
 import { useDriverActiveRide, useOpenRides } from '@/features/rides/application/useRides';
-import type { OpenRide } from '@/features/rides/domain/types';
+import type { DriverEarnings, OpenRide } from '@/features/rides/domain/types';
+import { useDriverRequests } from '@/features/driver/application/useDriverRequests';
+import { useAuthStore } from '@/store/authStore';
 
 type ViewMode = 'list' | 'map';
 
 export function SolicitudesEntrantesScreen() {
   const router = useRouter();
   const { ride: activeRide } = useDriverActiveRide();
-  // El WebSocket del conductor vive en el layout `(driver)`: las solicitudes
-  // nuevas y los avisos de aceptación llegan en vivo en cualquier pantalla.
-  // Mientras haya viaje activo, no pedimos solicitudes nuevas.
-  const { rides, isLoading } = useOpenRides(!activeRide);
+  const { rides } = useOpenRides(!activeRide);
   const createOffer = useCreateOffer();
+
+  const user = useAuthStore((s) => s.user);
+  const setOnline = useSetOnline();
+  const [online, setOnlineState] = useState(user?.isOnline ?? false);
+  const toggleOnline = (next: boolean) => {
+    setOnlineState(next); // optimista
+    setOnline.mutate(next, {
+      onSuccess: (value) => setOnlineState(value),
+      onError: () => setOnlineState(!next),
+    });
+  };
+  const { data: earnings } = useDriverEarnings(online);
+  // Ubicación continua (navegación): el mapa sigue al conductor centrado en el
+  // estado de búsqueda y detrás de la lista de solicitudes.
+  const position = useWatchPosition();
 
   const dismissed = useDriverRequests((s) => s.dismissed);
   const rejected = useDriverRequests((s) => s.rejected);
@@ -43,14 +61,12 @@ export function SolicitudesEntrantesScreen() {
   const [mode, setMode] = useState<ViewMode>('list');
   const [counterFor, setCounterFor] = useState<OpenRide | null>(null);
 
-  // Oculta las solicitudes que el conductor descartó localmente.
   const visibleRides = useMemo(
     () => rides.filter((r) => !dismissed.has(r.id)),
     [rides, dismissed],
   );
 
-  // Ofertar NO saca al conductor de la lista: la tarjeta pasa a "esperando" y él
-  // sigue viendo (y ofertando a) otras solicitudes en tiempo real.
+  // Ofertar NO saca al conductor de la lista: la tarjeta pasa a "esperando".
   const acceptAtFare = (ride: OpenRide) => {
     createOffer.mutate(
       { rideId: ride.id, input: { acceptAtFare: true } },
@@ -72,8 +88,6 @@ export function SolicitudesEntrantesScreen() {
     );
   };
 
-  // Tocar una tarjeta: si ya oferté (o me rechazaron, o me aceptaron), muestra
-  // el estado de esa oferta; si aún no oferté, abre el detalle para ofertar.
   const openDetail = (ride: OpenRide) => {
     if (isOffered(ride.id) || rejected.has(ride.id)) {
       router.push({ pathname: '/(driver)/oferta-enviada', params: { rideId: ride.id } });
@@ -94,70 +108,79 @@ export function SolicitudesEntrantesScreen() {
     return <ViajeEnCursoConductorScreen ride={activeRide} />;
   }
 
+  if (visibleRides.length === 0) {
+    return (
+      <SearchingState
+        online={online}
+        pending={setOnline.isPending}
+        onToggle={toggleOnline}
+        earnings={earnings}
+        position={position}
+      />
+    );
+  }
+
+  const topBar = (
+    <DriverTopBar online={online} pending={setOnline.isPending} onToggle={toggleOnline} />
+  );
+
   return (
-    <SafeAreaView style={styles.root}>
-      <View style={styles.topRow}>
-        <Text style={styles.header}>Solicitudes ({visibleRides.length})</Text>
-        <View style={styles.toggle}>
-          <ToggleButton
-            icon="list"
-            label="Lista"
-            active={mode === 'list'}
-            onPress={() => setMode('list')}
-          />
-          <ToggleButton
-            icon="map"
-            label="Mapa"
-            active={mode === 'map'}
-            onPress={() => setMode('map')}
-          />
-        </View>
-      </View>
-
-      {createOffer.isError && (
-        <Text style={styles.error}>{getApiErrorMessage(createOffer.error)}</Text>
-      )}
-
+    <View style={styles.root}>
       {mode === 'map' ? (
-        <SolicitudesMapa
-          rides={visibleRides}
-          disabled={createOffer.isPending}
-          onOpenDetail={openDetail}
-          onAccept={acceptAtFare}
-          onCounter={setCounterFor}
-          onDismiss={(r) => dismiss(r.id)}
-          isOffered={isOffered}
-        />
-      ) : (
-        <FlatList
-          data={visibleRides}
-          keyExtractor={(r) => r.id}
-          contentContainerStyle={styles.list}
-          renderItem={({ item }) => (
-            <RequestCard
-              ride={item}
-              offered={isOffered(item.id)}
-              rejected={rejected.has(item.id)}
-              disabled={createOffer.isPending}
-              onPress={() => openDetail(item)}
-              onAccept={() => acceptAtFare(item)}
-              onCounter={() => setCounterFor(item)}
-              onDismiss={() => dismiss(item.id)}
-            />
-          )}
-          ListEmptyComponent={
-            <View style={styles.center}>
-              {isLoading ? (
-                <ActivityIndicator size="large" color={colors.primary} />
-              ) : (
-                <>
-                  <Ionicons name="cube-outline" size={48} color={colors.textSecondary} />
-                  <Text style={styles.emptyText}>No hay solicitudes por ahora.</Text>
-                </>
-              )}
+        <View style={styles.mapLayer}>
+          <SolicitudesMapa
+            rides={visibleRides}
+            disabled={createOffer.isPending}
+            onOpenDetail={openDetail}
+            onAccept={acceptAtFare}
+            onCounter={setCounterFor}
+            onDismiss={(r) => dismiss(r.id)}
+            isOffered={isOffered}
+          />
+          <View pointerEvents="box-none" style={styles.mapHeader}>
+            {topBar}
+            <View style={styles.headerGlass}>
+              <Text style={styles.headerText}>Solicitudes ({visibleRides.length})</Text>
+              <ViewModeToggle mode={mode} onChange={setMode} />
             </View>
-          }
-        />
+          </View>
+        </View>
+      ) : (
+        <>
+          <DriverSearchMap
+            coordinates={position.coordinates}
+            status={position.status}
+            retry={position.retry}
+          />
+          <View style={styles.scrim} pointerEvents="box-none">
+            {topBar}
+            <View style={styles.headerGlass}>
+              <Text style={styles.headerText}>Solicitudes ({visibleRides.length})</Text>
+              <ViewModeToggle mode={mode} onChange={setMode} />
+            </View>
+            {createOffer.isError && (
+              <Text style={styles.error}>{getApiErrorMessage(createOffer.error)}</Text>
+            )}
+            <ScrollView
+              style={styles.list}
+              contentContainerStyle={styles.listContent}
+              showsVerticalScrollIndicator={false}>
+              {visibleRides.map((item) => (
+                <RequestCard
+                  key={item.id}
+                  ride={item}
+                  offered={isOffered(item.id)}
+                  rejected={rejected.has(item.id)}
+                  disabled={createOffer.isPending}
+                  onPress={() => openDetail(item)}
+                  onAccept={() => acceptAtFare(item)}
+                  onCounter={() => setCounterFor(item)}
+                  onDismiss={() => dismiss(item.id)}
+                />
+              ))}
+            </ScrollView>
+          </View>
+        </>
       )}
 
       <CounterOfferModal
@@ -167,7 +190,109 @@ export function SolicitudesEntrantesScreen() {
         onCancel={() => setCounterFor(null)}
         onSubmit={submitCounter}
       />
-    </SafeAreaView>
+    </View>
+  );
+}
+
+/** Estado "Buscando viajes" (sin solicitudes). */
+function SearchingState({
+  online,
+  pending,
+  onToggle,
+  earnings,
+  position,
+}: {
+  online: boolean;
+  pending: boolean;
+  onToggle: (next: boolean) => void;
+  earnings: DriverEarnings | undefined;
+  position: WatchedPosition;
+}) {
+  return (
+    <View style={styles.root}>
+      <DriverSearchMap coordinates={position.coordinates} status={position.status} retry={position.retry} />
+      <View style={styles.scrim} pointerEvents="box-none">
+        <DriverTopBar online={online} pending={pending} onToggle={onToggle} />
+
+        <View style={styles.statusPillWrap} pointerEvents="none">
+          <View style={styles.statusPill}>
+            <Ionicons
+              name={online ? 'pulse' : 'cloud-offline-outline'}
+              size={16}
+              color={online ? colors.success : colors.textSecondary}
+            />
+            <Text style={styles.statusPillText}>
+              {online ? 'Buscando viajes cercanos…' : 'Estás desconectado'}
+            </Text>
+          </View>
+        </View>
+
+        {/* Pulso centrado: el mapa sigue al conductor centrado, así que coincide
+            con su ubicación. El ícono rota según el rumbo del vehículo. */}
+        {online && position.coordinates && (
+          <View style={styles.radarLayer} pointerEvents="none">
+            <RadarPulse heading={position.heading} />
+          </View>
+        )}
+
+        <SafeAreaView edges={['bottom']} style={styles.sheetWrap}>
+          <View style={styles.sheet}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetTitle}>{online ? 'Buscando viajes' : 'Desconectado'}</Text>
+            <Text style={styles.sheetSubtitle}>
+              {online ? 'Búsqueda activa en curso' : 'Conéctate para recibir solicitudes'}
+            </Text>
+
+            <View style={styles.statsCard}>
+              <View style={styles.statsHeader}>
+                <Text style={styles.statsLabel}>Rendimiento de hoy</Text>
+                <Ionicons name="stats-chart" size={16} color={colors.primary} />
+              </View>
+              <View style={styles.statsRow}>
+                <View style={styles.statItem}>
+                  <Text style={styles.statValue}>
+                    {earnings ? String(earnings.tripsToday) : '—'}
+                  </Text>
+                  <Text style={styles.statCaption}>Viajes completados</Text>
+                </View>
+                <View style={styles.statDivider} />
+                <View style={styles.statItem}>
+                  <Text style={styles.statValue}>
+                    {earnings ? `Bs ${earnings.totalToday.toFixed(2)}` : '—'}
+                  </Text>
+                  <Text style={styles.statCaption}>Ganancias</Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        </SafeAreaView>
+      </View>
+    </View>
+  );
+}
+
+function ViewModeToggle({
+  mode,
+  onChange,
+}: {
+  mode: ViewMode;
+  onChange: (mode: ViewMode) => void;
+}) {
+  return (
+    <View style={styles.toggle}>
+      <ToggleButton
+        icon="list"
+        label="Lista"
+        active={mode === 'list'}
+        onPress={() => onChange('list')}
+      />
+      <ToggleButton
+        icon="map"
+        label="Mapa"
+        active={mode === 'map'}
+        onPress={() => onChange('map')}
+      />
+    </View>
   );
 }
 
@@ -189,7 +314,7 @@ function ToggleButton({
       accessibilityRole="button"
       accessibilityState={{ selected: active }}
       accessibilityLabel={`Ver en ${label.toLowerCase()}`}>
-      <Ionicons name={icon} size={16} color={active ? colors.textOnPrimary : colors.textSecondary} />
+      <Ionicons name={icon} size={14} color={active ? colors.textOnPrimary : colors.textSecondary} />
       <Text style={[styles.toggleText, active && styles.toggleTextActive]}>{label}</Text>
     </TouchableOpacity>
   );
@@ -197,15 +322,49 @@ function ToggleButton({
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
-  topRow: {
+  scrim: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+
+  // Estado "con solicitudes" — modo lista (sobre el mapa de fondo).
+  list: { flex: 1 },
+  listContent: { paddingHorizontal: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxl },
+  error: {
+    color: colors.danger,
+    fontSize: fontSize.sm,
+    textAlign: 'center',
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.xs,
+  },
+
+  // Modo mapa.
+  mapLayer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+  mapHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    gap: spacing.xs,
+  },
+  headerGlass: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
+    marginHorizontal: spacing.md,
+    marginTop: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderWidth: 1,
+    borderColor: 'rgba(226,228,232,0.7)',
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 5,
   },
-  header: { fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.text },
+  headerText: { fontSize: fontSize.md, fontWeight: fontWeight.bold, color: colors.text },
 
+  // Toggle Lista/Mapa.
   toggle: {
     flexDirection: 'row',
     padding: 3,
@@ -217,22 +376,99 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.sm + 2,
     paddingVertical: spacing.xs,
     borderRadius: radius.pill,
   },
   toggleBtnActive: { backgroundColor: colors.primary },
-  toggleText: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textSecondary },
+  toggleText: { fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: colors.textSecondary },
   toggleTextActive: { color: colors.textOnPrimary },
 
-  list: { padding: spacing.lg, gap: spacing.md, flexGrow: 1 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm, padding: spacing.xl },
-  emptyText: { fontSize: fontSize.md, color: colors.textSecondary, textAlign: 'center' },
-  error: {
-    color: colors.danger,
-    fontSize: fontSize.sm,
-    textAlign: 'center',
-    marginTop: spacing.sm,
-    marginHorizontal: spacing.lg,
+  // Estado vacío: status pill + radar + hoja.
+  statusPillWrap: { alignItems: 'center', marginTop: spacing.md },
+  statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs + 2,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderWidth: 1,
+    borderColor: 'rgba(226,228,232,0.7)',
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 5,
   },
+  statusPillText: { fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.text },
+
+  radarLayer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  sheetWrap: { position: 'absolute', bottom: 0, left: 0, right: 0 },
+  sheet: {
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.md,
+    padding: spacing.lg,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: -3 },
+    elevation: 12,
+    gap: spacing.xs,
+  },
+  sheetHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: radius.pill,
+    backgroundColor: colors.border,
+    alignSelf: 'center',
+    marginBottom: spacing.xs,
+  },
+  sheetTitle: { fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.text, textAlign: 'center' },
+  sheetSubtitle: {
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: spacing.xs,
+  },
+
+  statsCard: {
+    backgroundColor: 'rgba(22,48,140,0.05)',
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(22,48,140,0.15)',
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  statsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  statsLabel: {
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+    fontWeight: fontWeight.semibold,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  statsRow: { flexDirection: 'row', alignItems: 'center' },
+  statItem: { flex: 1 },
+  statValue: { fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.primary },
+  statCaption: { fontSize: fontSize.xs, color: colors.textSecondary, marginTop: 2 },
+  statDivider: { width: 1, alignSelf: 'stretch', backgroundColor: 'rgba(22,48,140,0.12)', marginHorizontal: spacing.md },
 });

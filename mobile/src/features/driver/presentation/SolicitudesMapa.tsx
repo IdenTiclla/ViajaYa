@@ -1,10 +1,11 @@
 /**
- * Ofertas en Mapa (conductor) — diseño Stitch "Ofertas en Mapa".
+ * Ofertas en Mapa (conductor) — diseño Material-You.
  *
- * Mapa con un marcador (precio) por solicitud abierta y un carrusel inferior de
- * tarjetas. La solicitud seleccionada (la del centro del carrusel o el marcador
- * tocado) dibuja su **trayecto** (origen→destino por calles). Tocar una tarjeta
- * abre el detalle; también permite aceptar/contraofertar/rechazar directamente.
+ * Mapa con un marcador **A** (origen) por cada solicitud abierta y un carrusel
+ * inferior de tarjetas. La solicitud seleccionada (centro del carrusel o marcador
+ * tocado) dibuja su **trayecto** origen→destino por calles, su marcador **B**
+ * (destino) y **encuadra la ruta** para apreciarla completa en pantalla. Tocar
+ * una tarjeta abre el detalle; también permite aceptar/contraofertar/rechazar.
  */
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
@@ -65,7 +66,7 @@ export function SolicitudesMapa({
         ? polyline
         : [selectedRide.origin.coordinates, selectedRide.destination.coordinates];
     mapRef.current?.fitToCoordinates(coords, {
-      edgePadding: { top: 80, right: 60, bottom: 300, left: 60 },
+      edgePadding: { top: 170, right: 60, bottom: 280, left: 60 },
       animated: true,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -109,31 +110,29 @@ export function SolicitudesMapa({
             <Polyline coordinates={polyline} strokeColor={colors.primary} strokeWidth={5} />
           </>
         )}
-        {selectedRide && (
-          <Marker
-            coordinate={selectedRide.destination.coordinates}
-            title={selectedRide.destination.name}
-            pinColor={colors.danger}
-            anchor={{ x: 0.5, y: 1 }}
-          />
-        )}
-        {/* Marcador (precio) por cada origen */}
+        {/* Origen (A) de cada solicitud; la seleccionada destaca, las demás atenúan. */}
         {rides.map((ride) => {
           const active = ride.id === selectedRide?.id;
           return (
             <Marker
-              key={ride.id}
+              key={`a-${ride.id}`}
               coordinate={ride.origin.coordinates}
               onPress={() => select(ride, rides.indexOf(ride))}
-              anchor={{ x: 0.5, y: 1 }}>
-              <View style={[styles.priceMarker, active && styles.priceMarkerActive]}>
-                <Text style={[styles.priceMarkerText, active && styles.priceMarkerTextActive]}>
-                  Bs {ride.fare.toFixed(0)}
-                </Text>
+              anchor={{ x: 0.5, y: 0.5 }}>
+              <View style={[styles.pinBase, styles.pinA, !active && styles.pinDim]}>
+                <Text style={styles.pinLabel}>A</Text>
               </View>
             </Marker>
           );
         })}
+        {/* Destino (B) de la solicitud seleccionada */}
+        {selectedRide && (
+          <Marker coordinate={selectedRide.destination.coordinates} anchor={{ x: 0.5, y: 0.5 }}>
+            <View style={[styles.pinBase, styles.pinB]}>
+              <Text style={styles.pinLabel}>B</Text>
+            </View>
+          </Marker>
+        )}
       </MapView>
 
       <FlatList
@@ -258,17 +257,25 @@ const styles = StyleSheet.create({
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm, padding: spacing.xl },
   emptyText: { fontSize: fontSize.md, color: colors.textSecondary, textAlign: 'center' },
 
-  priceMarker: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+  // Pines A (origen) / B (destino).
+  pinBase: {
+    width: 32,
+    height: 32,
     borderRadius: radius.pill,
-    backgroundColor: colors.surface,
-    borderWidth: 2,
-    borderColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: colors.surface,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
   },
-  priceMarkerActive: { backgroundColor: colors.primary },
-  priceMarkerText: { color: colors.primary, fontSize: fontSize.sm, fontWeight: fontWeight.bold },
-  priceMarkerTextActive: { color: colors.textOnPrimary },
+  pinA: { backgroundColor: colors.primary },
+  pinB: { backgroundColor: colors.danger },
+  pinDim: { opacity: 0.5 },
+  pinLabel: { color: colors.textOnPrimary, fontSize: fontSize.sm, fontWeight: fontWeight.bold },
 
   carouselWrap: { position: 'absolute', left: 0, right: 0, bottom: spacing.lg },
   carousel: { paddingHorizontal: spacing.lg, gap: spacing.md },

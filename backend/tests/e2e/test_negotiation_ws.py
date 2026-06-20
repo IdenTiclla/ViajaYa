@@ -300,6 +300,31 @@ def test_driver_receives_open_ride_event_when_passenger_connects(ws_client: Test
             event = ws.receive_json()
             assert event["type"] == "ride_created"
             assert event["data"]["service_type"] == "taxi"
+            # El evento llega ya con los datos del pasajero (no solo en el snapshot).
+            assert event["data"]["rider"]["full_name"] == "rider"
+            assert event["data"]["rider"]["trips_completed"] == 0
+
+
+def test_open_rides_endpoint_includes_rider(ws_client: TestClient):
+    """GET /rides/open trae los datos del pasajero cuando este está presente."""
+    rider_token = _register(ws_client, "rider@x.com")
+    driver_token = _register(ws_client, "driver@x.com")
+    _promote_driver(ws_client, "driver@x.com")
+
+    ride = ws_client.post(RIDES, json=_ride_payload(), headers=_headers(rider_token)).json()
+
+    with ws_client.websocket_connect(
+        f"/api/v1/ws/rides/{ride['id']}?token={rider_token}"
+    ) as rider_ws:
+        assert rider_ws.receive_json()["type"] == "offers_snapshot"
+
+        resp = ws_client.get(RIDES + "/open", headers=_headers(driver_token))
+        assert resp.status_code == 200, resp.text
+        data = resp.json()
+        assert len(data) == 1
+        assert data[0]["id"] == ride["id"]
+        assert data[0]["rider"]["full_name"] == "rider"
+        assert data[0]["rider"]["trips_completed"] == 0
 
 
 def test_open_ride_visible_during_grace_after_disconnect(ws_client: TestClient):

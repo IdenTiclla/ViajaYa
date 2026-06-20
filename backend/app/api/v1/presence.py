@@ -20,6 +20,7 @@ import time
 import uuid
 
 from app.domain.entities import RideRequest, RideStatus
+from app.domain.repositories import OpenRideDetail
 from app.infrastructure.realtime.hub import hub, ride_topic
 
 # Cuánto sigue "presente" una solicitud tras caerse la conexión del pasajero,
@@ -45,22 +46,23 @@ def is_ride_present(ride: RideRequest) -> bool:
     return False
 
 
-def present_rides(rides: list[RideRequest]) -> list[RideRequest]:
-    """Filtra una lista de solicitudes a solo las que tienen pasajero presente."""
-    return [ride for ride in rides if is_ride_present(ride)]
+def present_rides(details: list[OpenRideDetail]) -> list[OpenRideDetail]:
+    """Filtra una lista de solicitudes enriquecidas a solo las que tienen pasajero presente."""
+    return [detail for detail in details if is_ride_present(detail.ride)]
 
 
-async def on_passenger_connect(ride: RideRequest) -> None:
+async def on_passenger_connect(detail: OpenRideDetail) -> None:
     """El pasajero abrió/recuperó su conexión.
 
     Cancela la ventana de gracia y, si la solicitud sigue buscando, la (re)publica
-    al pool para que los conductores la vean (el cliente deduplica por id).
+    al pool (ya enriquecida con sus datos) para que los conductores la vean (el
+    cliente deduplica por id).
     """
-    _last_seen.pop(ride.id, None)
-    if ride.status is RideStatus.SEARCHING:
+    _last_seen.pop(detail.ride.id, None)
+    if detail.ride.status is RideStatus.SEARCHING:
         from app.api.v1 import events
 
-        await events.publish_ride_created(ride)
+        await events.publish_ride_created(detail)
 
 
 def on_passenger_disconnect(ride: RideRequest) -> None:

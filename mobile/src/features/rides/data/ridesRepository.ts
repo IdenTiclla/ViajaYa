@@ -78,6 +78,13 @@ export function toOffer(dto: OfferDto): Offer {
   };
 }
 
+type OpenRideRiderDto = {
+  id: string;
+  full_name: string;
+  rating: number | null;
+  trips_completed: number;
+};
+
 export type OpenRideDto = {
   id: string;
   service_type: OpenRide['service'];
@@ -85,6 +92,7 @@ export type OpenRideDto = {
   payment_method: OpenRide['payment'];
   origin: PointDto;
   destination: PointDto;
+  rider: OpenRideRiderDto;
   created_at: string | null;
 };
 
@@ -96,6 +104,12 @@ export function toOpenRide(dto: OpenRideDto): OpenRide {
     fare: Number.parseFloat(dto.fare),
     origin: toPlace(dto.origin),
     destination: toPlace(dto.destination),
+    rider: {
+      id: dto.rider.id,
+      fullName: dto.rider.full_name,
+      rating: dto.rider.rating,
+      tripsCompleted: dto.rider.trips_completed,
+    },
     createdAt: dto.created_at,
   };
 }

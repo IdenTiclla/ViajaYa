@@ -18,7 +18,8 @@ from app.application.dto import (
     RideDetail,
     RidePausedResult,
 )
-from app.domain.entities import Offer, RideRequest, ServiceType
+from app.domain.entities import Offer, ServiceType
+from app.domain.repositories import OpenRideDetail
 from app.infrastructure.realtime.hub import (
     driver_topic,
     hub,
@@ -41,11 +42,15 @@ def _envelope(event_type: str, data: object) -> dict:
     return {"type": event_type, "data": data}
 
 
-async def publish_ride_created(ride: RideRequest) -> None:
-    """Una solicitud nueva (o renovada) aparece para los conductores del pool."""
-    payload = OpenRideResponse.from_entity(ride).model_dump(mode="json")
+async def publish_ride_created(detail: OpenRideDetail) -> None:
+    """Una solicitud nueva (o renovada) aparece para los conductores del pool.
+
+    Llega ya enriquecida con los datos del pasajero: el conductor los ve en la
+    tarjeta desde el primer ``ride_created`` (no solo en el snapshot).
+    """
+    payload = OpenRideResponse.from_open_ride(detail).model_dump(mode="json")
     await hub.broadcast(
-        pool_topic(ride.service_type.value), _envelope(RIDE_CREATED, payload)
+        pool_topic(detail.ride.service_type.value), _envelope(RIDE_CREATED, payload)
     )
 
 

@@ -42,6 +42,29 @@ class OfferAcceptance:
     losing_driver_ids: list[uuid.UUID]
 
 
+@dataclass(frozen=True)
+class RiderSummary:
+    """Datos públicos del pasajero que el conductor ve en una solicitud abierta.
+
+    ``rating`` suele ser ``None`` para pasajeros (hoy el recálculo de rating es
+    solo para conductores); la UI lo omite cuando no existe. ``trips_completed``
+    es el historial de viajes completados del pasajero.
+    """
+
+    full_name: str
+    rating: float | None
+    trips_completed: int
+
+
+@dataclass(frozen=True)
+class OpenRideDetail:
+    """Solicitud abierta enriquecida con el resumen del pasajero, tal como la ve
+    un conductor en su lista (REST y snapshot/``ride_created`` del WebSocket)."""
+
+    ride: RideRequest
+    rider: RiderSummary
+
+
 class UserRepository(ABC):
     @abstractmethod
     async def get_by_id(self, user_id: uuid.UUID) -> User | None:
@@ -80,6 +103,21 @@ class RideRequestRepository(ABC):
     @abstractmethod
     async def list_open_for_service(self, service_type: ServiceType) -> list[RideRequest]:
         """Solicitudes ``SEARCHING`` del tipo de servicio dado, de la más nueva a la más vieja."""
+
+    @abstractmethod
+    async def list_open_with_rider(self, service_type: ServiceType) -> list[OpenRideDetail]:
+        """Solicitudes ``SEARCHING`` enriquecidas con el resumen del pasajero
+        (nombre, rating y viajes completados), en **una sola query** (JOIN +
+        conteo, sin N+1). Orden: de la más nueva a la más vieja."""
+
+    @abstractmethod
+    async def rider_summary(self, rider_id: uuid.UUID) -> RiderSummary | None:
+        """Resumen público de un pasajero, o ``None`` si no existe."""
+
+    @abstractmethod
+    async def open_ride_with_rider(self, ride_id: uuid.UUID) -> OpenRideDetail | None:
+        """Detalle enriquecido de una solicitud (para publicar ``ride_created`` con
+        los datos del pasajero), o ``None`` si no existe."""
 
     @abstractmethod
     async def list_by_driver(self, driver_id: uuid.UUID) -> list[RideRequest]:

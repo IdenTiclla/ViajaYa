@@ -359,8 +359,10 @@ async def test_set_driver_online_rejects_passenger():
 
 
 async def test_list_open_rides_filters_by_vehicle_type():
-    rides = InMemoryRideRequestRepository()
+    users = InMemoryUserRepository()
+    rides = InMemoryRideRequestRepository(users=users)
     rider = _passenger()
+    await users.add(rider)
     await rides.add(_ride(rider.id, service=ServiceType.TAXI))
     await rides.add(_ride(rider.id, service=ServiceType.MOTO))
 
@@ -368,7 +370,9 @@ async def test_list_open_rides_filters_by_vehicle_type():
     open_rides = await ListOpenRides(rides).execute(taxi_driver)
 
     assert len(open_rides) == 1
-    assert open_rides[0].service_type is ServiceType.TAXI
+    assert open_rides[0].ride.service_type is ServiceType.TAXI
+    assert open_rides[0].rider.full_name == "Pasa"
+    assert open_rides[0].rider.trips_completed == 0
 
 
 async def test_list_offers_hides_expired_offers():

@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Response, status
 
 from app.api.deps import (
     CurrentUserDep,
+    RideRequestRepositoryDep,
     get_accept_offer,
     get_cancel_ride,
     get_create_offer,
@@ -117,8 +118,8 @@ async def open_rides(
     Solo las que tienen al pasajero presente (conexión WS viva): las abandonadas
     no se muestran.
     """
-    rides = await use_case.execute(current_user)
-    return [OpenRideResponse.from_entity(ride) for ride in present_rides(rides)]
+    details = await use_case.execute(current_user)
+    return [OpenRideResponse.from_open_ride(detail) for detail in present_rides(details)]
 
 
 @router.post(
@@ -263,13 +264,16 @@ async def update_fare(
     current_user: CurrentUserDep,
     use_case: Annotated[UpdateRideFare, Depends(get_update_ride_fare)],
     get_ride_use_case: Annotated[GetRide, Depends(get_get_ride)],
+    rides_repo: RideRequestRepositoryDep,
 ) -> RideResponse:
     """El pasajero aumenta su oferta mientras se buscan conductores."""
-    ride = await use_case.execute(current_user, ride_id, body.fare)
+    await use_case.execute(current_user, ride_id, body.fare)
     detail = await get_ride_use_case.execute(current_user, ride_id)
     # Al pasajero (su detalle) y al pool de conductores (ven el nuevo monto).
     await events.publish_ride_status(detail)
-    await events.publish_ride_created(ride)
+    open_detail = await rides_repo.open_ride_with_rider(ride_id)
+    if open_detail is not None:
+        await events.publish_ride_created(open_detail)
     return RideResponse.from_detail(detail)
 
 
@@ -309,6 +313,7 @@ async def edit_ride(
     body: RideEdit,
     current_user: CurrentUserDep,
     use_case: Annotated[EditRide, Depends(get_edit_ride)],
+    rides_repo: RideRequestRepositoryDep,
 ) -> RideResponse:
     """Guarda los cambios de una solicitud pausada y la vuelve a publicar en el pool."""
     ride = await use_case.execute(
@@ -323,6 +328,8 @@ async def edit_ride(
         ),
     )
     detail = RideDetail(ride=ride, driver=None, accepted_offer=None)
-    await events.publish_ride_created(ride)
+    open_detail = await rides_repo.open_ride_with_rider(ride_id)
+    if open_detail is not None:
+        await events.publish_ride_created(open_detail)
     await events.publish_ride_status(detail)
     return RideResponse.from_detail(detail)

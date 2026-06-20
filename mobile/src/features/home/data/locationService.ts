@@ -51,6 +51,33 @@ export const locationService = {
   },
 
   /**
+   * Suscribe a la ubicación en movimiento del dispositivo (para navegación del
+   * conductor). Devuelve una suscripción con `remove()` (o ``null`` si el permiso
+   * fue denegado). Llama al callback con cada nueva posición y su rumbo
+   * (`heading` en grados, o ``null`` si no está disponible).
+   */
+  async watchPosition(
+    callback: (coordinates: Coordinates, heading: number | null) => void,
+  ): Promise<{ remove: () => void } | null> {
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== Location.PermissionStatus.GRANTED) {
+      return null;
+    }
+
+    const subscription = await Location.watchPositionAsync(
+      { accuracy: Location.Accuracy.High, timeInterval: 2000, distanceInterval: 3 },
+      (loc) => {
+        const heading = loc.coords.heading;
+        callback(
+          { latitude: loc.coords.latitude, longitude: loc.coords.longitude },
+          heading != null && heading >= 0 ? heading : null,
+        );
+      },
+    );
+    return subscription;
+  },
+
+  /**
    * Geocodificación inversa: convierte coordenadas en una etiqueta legible.
    *
    * Devuelve siempre una forma literal — **calle y número** como `name`, y el

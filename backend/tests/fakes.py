@@ -29,8 +29,10 @@ from app.domain.exceptions import InvalidTokenError
 from app.domain.repositories import (
     OfferAcceptance,
     OfferRepository,
+    OpenRideDetail,
     RatingRepository,
     RideRequestRepository,
+    RiderSummary,
     SavedPlaceRepository,
     UserRepository,
 )
@@ -72,8 +74,10 @@ class InMemoryUserRepository(UserRepository):
 
 
 class InMemoryRideRequestRepository(RideRequestRepository):
-    def __init__(self) -> None:
+    def __init__(self, users: InMemoryUserRepository | None = None) -> None:
         self.rides: list[RideRequest] = []
+        # Opcional: para construir el resumen del pasajero con sus datos reales.
+        self._users = users
 
     async def add(self, ride: RideRequest) -> RideRequest:
         self.rides.append(ride)
@@ -97,6 +101,59 @@ class InMemoryRideRequestRepository(RideRequestRepository):
             and r.status is RideStatus.SEARCHING
             and not r.paused
         ]
+
+    async def list_open_with_rider(self, service_type: ServiceType) -> list[OpenRideDetail]:
+        return [
+            self._detail_for(r)
+            for r in reversed(self.rides)
+            if r.service_type == service_type
+            and r.status is RideStatus.SEARCHING
+            and not r.paused
+        ]
+
+    async def rider_summary(self, rider_id: uuid.UUID) -> RiderSummary | None:
+        if self._users is None:
+            return None
+        user = await self._users.get_by_id(rider_id)
+        if user is None:
+            return None
+        return RiderSummary(
+            full_name=user.full_name,
+            rating=user.rating,
+            trips_completed=self._count_completed(rider_id),
+        )
+
+    async def open_ride_with_rider(self, ride_id: uuid.UUID) -> OpenRideDetail | None:
+        ride = await self.get_by_id(ride_id)
+        if ride is None:
+            return None
+        return self._detail_for(ride)
+
+    def _count_completed(self, rider_id: uuid.UUID) -> int:
+        return sum(
+            1
+            for r in self.rides
+            if r.rider_id == rider_id and r.status is RideStatus.COMPLETED
+        )
+
+    def _detail_for(self, ride: RideRequest) -> OpenRideDetail:
+        # Con usuarios cableados usamos los datos reales; sin ellos, un resumen de
+        # respaldo para los tests que no necesitan el nombre del pasajero.
+        full_name = "Pasajero"
+        rating: float | None = None
+        if self._users is not None:
+            user = self._users.users.get(ride.rider_id)
+            if user is not None:
+                full_name = user.full_name
+                rating = user.rating
+        return OpenRideDetail(
+            ride=ride,
+            rider=RiderSummary(
+                full_name=full_name,
+                rating=rating,
+                trips_completed=self._count_completed(ride.rider_id),
+            ),
+        )
 
     async def list_by_driver(self, driver_id: uuid.UUID) -> list[RideRequest]:
         return [r for r in reversed(self.rides) if r.driver_id == driver_id]

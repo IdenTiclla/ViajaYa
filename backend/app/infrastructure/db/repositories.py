@@ -23,8 +23,10 @@ from app.domain.entities import (
 from app.domain.repositories import (
     OfferAcceptance,
     OfferRepository,
+    OpenRideDetail,
     RatingRepository,
     RideRequestRepository,
+    RiderSummary,
     SavedPlaceRepository,
     UserRepository,
 )
@@ -223,6 +225,78 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
             .order_by(RideRequestModel.created_at.desc())
         )
         return [_ride_to_entity(row) for row in result.scalars().all()]
+
+    async def list_open_with_rider(self, service_type: ServiceType) -> list[OpenRideDetail]:
+        # Una sola query: JOIN con el pasajero + subquery correlacionada que cuenta
+        # sus viajes completados. Así el pool de solicitudes (alto volumen, refresco
+        # por polling + WS) se carga sin N+1. ``correlate(UserModel)`` fija la
+        # correlación con la tabla exterior (evita el error de auto-correlación).
+        trips_completed = (
+            select(func.count(RideRequestModel.id))
+            .where(
+                RideRequestModel.rider_id == UserModel.id,
+                RideRequestModel.status == RideStatus.COMPLETED,
+            )
+            .correlate(UserModel)
+            .scalar_subquery()
+        )
+        result = await self._session.execute(
+            select(RideRequestModel, UserModel, trips_completed)
+            .join(UserModel, UserModel.id == RideRequestModel.rider_id)
+            .where(
+                RideRequestModel.service_type == service_type,
+                RideRequestModel.status == RideStatus.SEARCHING,
+                RideRequestModel.paused.is_(False),
+            )
+            .order_by(RideRequestModel.created_at.desc())
+        )
+        details: list[OpenRideDetail] = []
+        for ride_row, user_row, trips in result.all():
+            details.append(
+                OpenRideDetail(
+                    ride=_ride_to_entity(ride_row),
+                    rider=RiderSummary(
+                        full_name=user_row.full_name,
+                        rating=user_row.rating,
+                        trips_completed=int(trips or 0),
+                    ),
+                )
+            )
+        return details
+
+    async def rider_summary(self, rider_id: uuid.UUID) -> RiderSummary | None:
+        trips_completed = (
+            select(func.count(RideRequestModel.id))
+            .where(
+                RideRequestModel.rider_id == rider_id,
+                RideRequestModel.status == RideStatus.COMPLETED,
+            )
+            .scalar_subquery()
+        )
+        result = await self._session.execute(
+            select(UserModel, trips_completed).where(UserModel.id == rider_id)
+        )
+        row = result.first()
+        if row is None:
+            return None
+        user_row, trips = row
+        return RiderSummary(
+            full_name=user_row.full_name,
+            rating=user_row.rating,
+            trips_completed=int(trips or 0),
+        )
+
+    async def open_ride_with_rider(self, ride_id: uuid.UUID) -> OpenRideDetail | None:
+        # Solicitud + resumen del pasajero para publicar ``ride_created`` con los
+        # datos del pasajero. Volumen bajo (una vez por creación/edición/aumento
+        # de oferta): tres lecturas sencillas es aceptable.
+        ride = await self.get_by_id(ride_id)
+        if ride is None:
+            return None
+        rider = await self.rider_summary(ride.rider_id)
+        if rider is None:
+            return None
+        return OpenRideDetail(ride=ride, rider=rider)
 
     async def list_by_driver(self, driver_id: uuid.UUID) -> list[RideRequest]:
         result = await self._session.execute(

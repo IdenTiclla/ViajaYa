@@ -19,6 +19,7 @@ from app.domain.entities import (
     RideStatus,
     ServiceType,
 )
+from app.domain.repositories import OpenRideDetail
 
 
 class PointSchema(BaseModel):
@@ -87,6 +88,15 @@ class RideFareUpdate(BaseModel):
     fare: Decimal = Field(gt=0, max_digits=10, decimal_places=2)
 
 
+class OpenRideRiderResponse(BaseModel):
+    """Datos públicos del pasajero que el conductor ve en una solicitud abierta."""
+
+    id: uuid.UUID
+    full_name: str
+    rating: float | None = None
+    trips_completed: int
+
+
 class OpenRideResponse(BaseModel):
     """Solicitud abierta tal como la ve un conductor en su lista."""
 
@@ -96,10 +106,13 @@ class OpenRideResponse(BaseModel):
     payment_method: PaymentMethod
     origin: PointSchema
     destination: PointSchema
+    rider: OpenRideRiderResponse
     created_at: datetime | None
 
     @classmethod
-    def from_entity(cls, ride: RideRequest) -> OpenRideResponse:
+    def from_open_ride(cls, detail: OpenRideDetail) -> OpenRideResponse:
+        ride = detail.ride
+        rider = detail.rider
         return cls(
             id=ride.id,
             service_type=ride.service_type,
@@ -107,6 +120,12 @@ class OpenRideResponse(BaseModel):
             payment_method=ride.payment_method,
             origin=PointSchema.from_location(ride.origin),
             destination=PointSchema.from_location(ride.destination),
+            rider=OpenRideRiderResponse(
+                id=ride.rider_id,
+                full_name=rider.full_name,
+                rating=rider.rating,
+                trips_completed=rider.trips_completed,
+            ),
             created_at=ride.created_at,
         )
 

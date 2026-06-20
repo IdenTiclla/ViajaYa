@@ -45,6 +45,14 @@ export type Offer = {
   expiresAt: string | null;
 };
 
+/** Datos públicos del pasajero que el conductor ve en una solicitud abierta. */
+export type OpenRideRider = {
+  id: string;
+  fullName: string;
+  rating: number | null;
+  tripsCompleted: number;
+};
+
 /** Solicitud abierta tal como la ve un conductor en su lista. */
 export type OpenRide = {
   id: string;
@@ -53,6 +61,7 @@ export type OpenRide = {
   fare: number;
   origin: Place;
   destination: Place;
+  rider: OpenRideRider;
   createdAt: string | null;
 };
 

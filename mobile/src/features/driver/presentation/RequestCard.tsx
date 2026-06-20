@@ -1,9 +1,11 @@
 /**
- * Tarjeta de una solicitud entrante (conductor).
+ * Tarjeta de una solicitud entrante (conductor) — diseño Material-You glass.
  *
- * - Tap en la tarjeta → abre el detalle del trayecto.
- * - Botones Contraofertar / Aceptar y un botón Rechazar (descartar).
- * - Se puede **descartar deslizando hacia la derecha** (revela el panel rojo).
+ * Muestra los datos públicos del pasajero (nombre, rating, viajes completados),
+ * el trayecto origen→destino con su distancia y el precio ofertado. Acciones:
+ * Contraofertar (modal) / Aceptar (oferta al precio del pasajero). Se puede
+ * **rechazar deslizando** a la derecha (panel rojo) o con el botón. Estados
+ * `offered`/`rejected` preservados del flujo de multi-oferta.
  */
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo, useRef } from 'react';
@@ -15,6 +17,8 @@ import ReanimatedSwipeable, {
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 import { formatKm, haversineKm, pricePerKm } from '@/features/rides/domain/geo';
 import type { OpenRide } from '@/features/rides/domain/types';
+
+const PAYMENT_LABELS = { qr: 'QR', cash: 'Efectivo' } as const;
 
 type Props = {
   ride: OpenRide;
@@ -44,6 +48,14 @@ export function RequestCard({
   );
   const perKm = pricePerKm(ride.fare, tripKm);
 
+  const { rider } = ride;
+  const initial = rider.fullName.trim().charAt(0).toUpperCase() || '?';
+  const meta = [
+    ride.service === 'taxi' ? 'Taxi' : 'Moto',
+    `${rider.tripsCompleted} ${rider.tripsCompleted === 1 ? 'viaje' : 'viajes'}`,
+    PAYMENT_LABELS[ride.payment],
+  ].join(' · ');
+
   const renderLeftActions = () => (
     <View style={styles.swipeAction}>
       <Ionicons name="close-circle" size={26} color={colors.textOnPrimary} />
@@ -62,35 +74,51 @@ export function RequestCard({
         activeOpacity={0.9}
         onPress={onPress}
         accessibilityRole="button"
-        accessibilityLabel={`Ver detalle del trayecto, ${ride.service === 'taxi' ? 'taxi' : 'moto'}, Bs ${ride.fare.toFixed(2)}`}
+        accessibilityLabel={`Solicitud de ${rider.fullName}, ${ride.service === 'taxi' ? 'taxi' : 'moto'}, Bs ${ride.fare.toFixed(2)}`}
         style={styles.card}>
-        <View style={styles.cardHeader}>
-          <View style={styles.serviceTag}>
-            <Ionicons
-              name={ride.service === 'taxi' ? 'car-sport' : 'bicycle'}
-              size={16}
-              color={colors.primary}
-            />
-            <Text style={styles.serviceText}>{ride.service === 'taxi' ? 'Taxi' : 'Moto'}</Text>
-            <Text style={styles.distance}>· {formatKm(tripKm)}</Text>
+        <View style={styles.cardTop}>
+          <View style={styles.avatarWrap}>
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>{initial}</Text>
+            </View>
+            {rider.rating != null && (
+              <View style={styles.ratingBadge}>
+                <Text style={styles.ratingBadgeText}>{rider.rating.toFixed(1)}★</Text>
+              </View>
+            )}
           </View>
-          <View style={styles.fareBox}>
+          <View style={styles.cardInfo}>
+            <Text style={styles.riderName} numberOfLines={1}>
+              {rider.fullName}
+            </Text>
+            <Text style={styles.meta} numberOfLines={1}>
+              {meta}
+            </Text>
+            <View style={styles.tripMeta}>
+              <Ionicons name="navigate-outline" size={12} color={colors.textSecondary} />
+              <Text style={styles.tripMetaText}>Viaje de {formatKm(tripKm)}</Text>
+            </View>
+          </View>
+          <View style={styles.priceCol}>
             <Text style={styles.fare}>Bs {ride.fare.toFixed(2)}</Text>
             {perKm && <Text style={styles.perKm}>Bs {perKm}/km</Text>}
           </View>
         </View>
 
-        <View style={styles.routeRow}>
-          <Ionicons name="navigate-circle" size={18} color={colors.primary} />
-          <Text style={styles.routeText} numberOfLines={1}>
-            {ride.origin.name}
-          </Text>
-        </View>
-        <View style={styles.routeRow}>
-          <Ionicons name="location" size={18} color={colors.danger} />
-          <Text style={styles.routeText} numberOfLines={1}>
-            {ride.destination.name}
-          </Text>
+        <View style={styles.route}>
+          <View style={styles.routeDots}>
+            <View style={styles.dotOrigin} />
+            <View style={styles.trackLine} />
+            <Ionicons name="location" size={16} color={colors.danger} />
+          </View>
+          <View style={styles.routeTexts}>
+            <Text style={styles.routeText} numberOfLines={1}>
+              {ride.origin.name}
+            </Text>
+            <Text style={[styles.routeText, styles.routeDest]} numberOfLines={1}>
+              {ride.destination.name}
+            </Text>
+          </View>
         </View>
 
         {rejected ? (
@@ -151,7 +179,7 @@ export function RequestCard({
               disabled={disabled}
               accessibilityRole="button"
               accessibilityLabel="Rechazar solicitud">
-              <Ionicons name="close" size={16} color={colors.danger} />
+              <Ionicons name="close" size={14} color={colors.danger} />
               <Text style={styles.rejectText}>Rechazar</Text>
             </TouchableOpacity>
           </>
@@ -163,7 +191,7 @@ export function RequestCard({
 
 const styles = StyleSheet.create({
   swipeAction: {
-    width: 104,
+    width: 96,
     backgroundColor: colors.danger,
     borderRadius: radius.md,
     justifyContent: 'center',
@@ -175,28 +203,70 @@ const styles = StyleSheet.create({
 
   card: {
     padding: spacing.md,
-    gap: spacing.sm,
-    borderRadius: radius.md,
+    gap: spacing.md,
+    borderRadius: radius.lg,
+    backgroundColor: 'rgba(255,255,255,0.92)',
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+    borderColor: 'rgba(226,228,232,0.7)',
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 5,
   },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  serviceTag: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  serviceText: { fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.primary },
-  distance: { fontSize: fontSize.sm, color: colors.textSecondary },
-  fareBox: { alignItems: 'flex-end' },
-  fare: { fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.text },
-  perKm: { fontSize: fontSize.xs, color: colors.textSecondary },
+  cardTop: { flexDirection: 'row', gap: spacing.md },
+  avatarWrap: { width: 48, height: 48 },
+  avatar: {
+    width: 48,
+    height: 48,
+    borderRadius: radius.pill,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: { color: colors.textOnPrimary, fontSize: fontSize.lg, fontWeight: fontWeight.bold },
+  ratingBadge: {
+    position: 'absolute',
+    bottom: -3,
+    right: -6,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: radius.pill,
+    backgroundColor: colors.accent,
+    borderWidth: 2,
+    borderColor: colors.surface,
+  },
+  ratingBadgeText: { color: '#5A4500', fontSize: 10, fontWeight: fontWeight.bold },
 
-  routeRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  routeText: { flex: 1, fontSize: fontSize.md, color: colors.text },
+  cardInfo: { flex: 1, gap: 3 },
+  riderName: { fontSize: fontSize.md, fontWeight: fontWeight.bold, color: colors.text },
+  meta: { fontSize: fontSize.xs, color: colors.textSecondary },
+  tripMeta: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  tripMetaText: { fontSize: fontSize.xs, color: colors.textSecondary },
 
-  cardActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xs },
-  actionBtn: { flex: 1, height: 44, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
+  priceCol: { alignItems: 'flex-end', justifyContent: 'center' },
+  fare: { fontSize: fontSize.xl, fontWeight: fontWeight.bold, color: colors.primary },
+  perKm: { fontSize: 10, color: colors.textSecondary, fontWeight: fontWeight.semibold, marginTop: 2 },
+
+  route: { flexDirection: 'row', gap: spacing.sm },
+  routeDots: { alignItems: 'center', gap: 2, paddingTop: 2 },
+  dotOrigin: { width: 9, height: 9, borderRadius: radius.pill, backgroundColor: colors.primary },
+  trackLine: { width: 2, height: 14, backgroundColor: colors.border },
+  routeTexts: { flex: 1, gap: spacing.sm },
+  routeText: { fontSize: fontSize.sm, color: colors.text },
+  routeDest: { fontWeight: fontWeight.semibold },
+
+  cardActions: { flexDirection: 'row', gap: spacing.sm },
+  actionBtn: {
+    flex: 1,
+    height: 46,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   counter: { borderWidth: 1, borderColor: colors.primary, backgroundColor: colors.surface },
-  counterText: { color: colors.primary, fontSize: fontSize.md, fontWeight: fontWeight.semibold },
-  accept: { backgroundColor: colors.primary },
+  counterText: { color: colors.primary, fontSize: fontSize.sm, fontWeight: fontWeight.semibold },
+  accept: { backgroundColor: colors.primary, flex: 1.6 },
   acceptText: { color: colors.textOnPrimary, fontSize: fontSize.md, fontWeight: fontWeight.bold },
   disabled: { opacity: 0.5 },
 
@@ -213,14 +283,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    marginTop: spacing.xs,
     padding: spacing.sm,
     borderRadius: radius.sm,
     backgroundColor: colors.surfaceMuted,
   },
   offeredText: { fontSize: fontSize.sm, color: colors.textSecondary },
 
-  reofferWrap: { gap: spacing.sm, marginTop: spacing.xs },
+  reofferWrap: { gap: spacing.sm },
   rejectedBox: {
     flexDirection: 'row',
     alignItems: 'center',

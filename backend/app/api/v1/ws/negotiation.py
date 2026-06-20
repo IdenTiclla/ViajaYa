@@ -80,6 +80,9 @@ async def passenger_ws(
             await websocket.close(code=_POLICY_VIOLATION)
             return
 
+        # Detalle enriquecido con el pasajero: al conectar publicamos el ride al
+        # pool con sus datos (ride_created), no solo en el snapshot del conductor.
+        open_detail = await rides.open_ride_with_rider(ride_id)
         details = await ListOffersForRide(rides, offers, users).execute(user, ride_id)
         snapshot = [OfferResponse.from_detail(d).model_dump(mode="json") for d in details]
 
@@ -90,7 +93,8 @@ async def passenger_ws(
     # Presencia: la solicitud aparece en el pool mientras el pasajero esté
     # presente (conectado o dentro de la ventana de gracia). Minimizar/cambiar de
     # pantalla no la saca; solo cerrar la app (no reconectar tras la gracia).
-    await presence.on_passenger_connect(ride)
+    if open_detail is not None:
+        await presence.on_passenger_connect(open_detail)
     try:
         await _drain(websocket)
     finally:
@@ -117,7 +121,7 @@ async def driver_ws(
             return
 
         open_rides = presence.present_rides(await ListOpenRides(rides).execute(user))
-        snapshot = [OpenRideResponse.from_entity(r).model_dump(mode="json") for r in open_rides]
+        snapshot = [OpenRideResponse.from_open_ride(d).model_dump(mode="json") for d in open_rides]
 
     await websocket.send_json({"type": "open_rides_snapshot", "data": snapshot})
 

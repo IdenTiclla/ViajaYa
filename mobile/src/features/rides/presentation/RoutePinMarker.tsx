@@ -1,0 +1,94 @@
+/**
+ * Marcador de ruta reutilizable: pin circular con letra (A = origen, B = destino)
+ * y un tooltip "Origen"/"Destino" flotando arriba. Lo usan todas las vistas que
+ * muestran un trayecto (pasajero y conductor) para que origen y destino se vean
+ * siempre igual.
+ *
+ * El `anchor` centra el PIN en la coordenada (el tooltip queda encima sin
+ * desplazar el punto).
+ */
+import { StyleSheet, Text, View } from 'react-native';
+import { Marker } from 'react-native-maps';
+
+import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import type { Coordinates } from '@/features/booking/domain/types';
+
+type Props = {
+  kind: 'A' | 'B';
+  coordinate: Coordinates;
+  /** Texto del tooltip (p. ej. "Origen", "Destino"). */
+  label: string;
+  /** Atenuar el pin (p. ej. orígenes no seleccionados en el mapa de solicitudes). */
+  dim?: boolean;
+  onPress?: () => void;
+};
+
+const PIN_SIZE = 32;
+
+export function RoutePinMarker({ kind, coordinate, label, dim, onPress }: Props) {
+  return (
+    <Marker coordinate={coordinate} anchor={{ x: 0.5, y: 0.5 }} onPress={onPress}>
+      <View style={styles.wrap}>
+        <View style={styles.tooltipAnchor} pointerEvents="none">
+          <View style={styles.tooltip}>
+            <Text style={styles.tooltipText}>{label}</Text>
+          </View>
+        </View>
+        <View
+          style={[styles.pinBase, kind === 'A' ? styles.pinA : styles.pinB, dim && styles.pinDim]}>
+          <Text style={styles.pinLabel}>{kind}</Text>
+        </View>
+      </View>
+    </Marker>
+  );
+}
+
+const styles = StyleSheet.create({
+  wrap: {
+    width: PIN_SIZE,
+    height: PIN_SIZE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Contenedor absoluto del ancho del pin: centra el tooltip sobre el pin.
+  tooltipAnchor: {
+    position: 'absolute',
+    bottom: '100%',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    paddingBottom: spacing.xs,
+  },
+  tooltip: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.sm,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 3,
+  },
+  tooltipText: { fontSize: 10, fontWeight: fontWeight.bold, color: colors.text },
+  pinBase: {
+    width: PIN_SIZE,
+    height: PIN_SIZE,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: colors.surface,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
+  pinA: { backgroundColor: colors.primary },
+  pinB: { backgroundColor: colors.danger },
+  pinDim: { opacity: 0.5 },
+  pinLabel: { color: colors.textOnPrimary, fontSize: fontSize.sm, fontWeight: fontWeight.bold },
+});

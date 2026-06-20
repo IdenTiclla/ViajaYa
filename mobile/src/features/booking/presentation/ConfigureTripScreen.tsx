@@ -18,7 +18,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
+import MapView, { Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
@@ -30,6 +30,8 @@ import { ridesRepository } from '@/features/booking/data/ridesRepository';
 import { useEditRide, usePauseForEdit } from '@/features/rides/application/useRideMutations';
 import type { Coordinates, PaymentMethod, ServiceType } from '@/features/booking/domain/types';
 import { declutteredMapStyle } from '@/features/booking/presentation/mapStyle';
+import { RoutePinMarker } from '@/features/rides/presentation/RoutePinMarker';
+import { RouteSummary } from '@/features/rides/presentation/RouteSummary';
 
 const SERVICES: { id: ServiceType; label: string; icon: 'car-sport' | 'bicycle' }[] = [
   { id: 'taxi', label: 'Taxi', icon: 'car-sport' },
@@ -41,9 +43,10 @@ const PAYMENTS: { id: PaymentMethod; label: string; icon: 'qr-code' | 'cash' }[]
   { id: 'cash', label: 'Efectivo', icon: 'cash' },
 ];
 
-// Márgenes del encuadre: arriba deja sitio a la barra superior; abajo es dinámico
-// (alto real del bottom sheet) para que ambos puntos queden en el área visible.
-const FIT_TOP = 120;
+// Márgenes del encuadre: arriba deja sitio a la barra superior + resumen de ruta;
+// abajo es dinámico (alto real del bottom sheet) para que ambos puntos queden en
+// el área visible.
+const FIT_TOP = 190;
 const FIT_SIDES = 60;
 
 function formatDistance(meters: number): string {
@@ -195,10 +198,8 @@ export function ConfigureTripScreen() {
         initialRegion={region}
         customMapStyle={showPlaces ? [] : declutteredMapStyle}
         onMapReady={() => fitToTrip(false)}>
-        <Marker coordinate={origin.coordinates} anchor={{ x: 0.5, y: 0.5 }} title={origin.name}>
-          <View style={styles.originDot} />
-        </Marker>
-        <Marker coordinate={destination.coordinates} title={destination.name} pinColor={colors.danger} />
+        <RoutePinMarker kind="A" coordinate={origin.coordinates} label="Origen" />
+        <RoutePinMarker kind="B" coordinate={destination.coordinates} label="Destino" />
         {polylineCoordinates.length >= 2 && (
           <>
             {/* Contorno blanco para que la ruta resalte sobre calles y etiquetas. */}
@@ -209,71 +210,41 @@ export function ConfigureTripScreen() {
       </MapView>
 
       <SafeAreaView style={styles.topBar} edges={['top']} pointerEvents="box-none">
-        <TouchableOpacity
-          style={styles.back}
-          onPress={() => router.back()}
-          accessibilityRole="button"
-          accessibilityLabel="Volver">
-          <Ionicons name="arrow-back" size={24} color={colors.text} />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.back}
-          onPress={() => setShowPlaces((v) => !v)}
-          accessibilityRole="button"
-          accessibilityState={{ selected: showPlaces }}
-          accessibilityLabel={showPlaces ? 'Ocultar nombres de lugares' : 'Mostrar nombres de lugares'}>
-          <Ionicons
-            name={showPlaces ? 'business' : 'business-outline'}
-            size={22}
-            color={showPlaces ? colors.primary : colors.textSecondary}
-          />
-        </TouchableOpacity>
+        <View style={styles.topRow}>
+          <TouchableOpacity
+            style={styles.back}
+            onPress={() => router.back()}
+            accessibilityRole="button"
+            accessibilityLabel="Volver">
+            <Ionicons name="arrow-back" size={24} color={colors.text} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.back}
+            onPress={() => setShowPlaces((v) => !v)}
+            accessibilityRole="button"
+            accessibilityState={{ selected: showPlaces }}
+            accessibilityLabel={showPlaces ? 'Ocultar nombres de lugares' : 'Mostrar nombres de lugares'}>
+            <Ionicons
+              name={showPlaces ? 'business' : 'business-outline'}
+              size={22}
+              color={showPlaces ? colors.primary : colors.textSecondary}
+            />
+          </TouchableOpacity>
+        </View>
+        <RouteSummary
+          origin={origin}
+          destination={destination}
+          onEditOrigin={() =>
+            router.push({ pathname: '/booking/pick-on-map', params: { target: 'origin' } })
+          }
+          onEditDestination={() => router.push('/booking/destination')}
+        />
       </SafeAreaView>
 
       <SafeAreaView
         style={[styles.sheet, keyboardHeight > 0 && { bottom: keyboardHeight }]}
         edges={['bottom']}
         onLayout={(e) => setSheetHeight(e.nativeEvent.layout.height)}>
-        <View style={styles.route}>
-          <View style={styles.routeIcons}>
-            <View style={styles.originDotSmall} />
-            <View style={styles.routeLine} />
-            <Ionicons name="location" size={18} color={colors.danger} />
-          </View>
-          <View style={styles.routeText}>
-            <View style={styles.routeRow}>
-              <View style={styles.routeRowHeader}>
-                <Text style={styles.routeLabel}>Punto de partida</Text>
-                <TouchableOpacity
-                  onPress={() =>
-                    router.push({ pathname: '/booking/pick-on-map', params: { target: 'origin' } })
-                  }
-                  accessibilityRole="button"
-                  accessibilityLabel="Cambiar punto de partida">
-                  <Text style={styles.editLink}>Editar</Text>
-                </TouchableOpacity>
-              </View>
-              <Text style={styles.routeValue} numberOfLines={1}>
-                {origin.name} · {origin.address}
-              </Text>
-            </View>
-            <View style={styles.routeRow}>
-              <View style={styles.routeRowHeader}>
-                <Text style={styles.routeLabel}>Destino</Text>
-                <TouchableOpacity
-                  onPress={() => router.push('/booking/destination')}
-                  accessibilityRole="button"
-                  accessibilityLabel="Cambiar destino">
-                  <Text style={styles.editLink}>Editar</Text>
-                </TouchableOpacity>
-              </View>
-              <Text style={styles.routeValue} numberOfLines={1}>
-                {destination.name} · {destination.address}
-              </Text>
-            </View>
-          </View>
-        </View>
-
         {route && (
           <View style={styles.estimate}>
             <Ionicons name="navigate" size={16} color={colors.primary} />
@@ -390,25 +361,19 @@ const styles = StyleSheet.create({
   },
   fallbackButtonText: { color: colors.textOnPrimary, fontWeight: fontWeight.semibold },
 
-  originDot: {
-    width: 18,
-    height: 18,
-    borderRadius: radius.pill,
-    backgroundColor: colors.primary,
-    borderWidth: 3,
-    borderColor: colors.surface,
-  },
-
   topBar: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    gap: spacing.sm,
+  },
+  topRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
   },
   back: {
     width: 44,
@@ -439,22 +404,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: -3 },
     elevation: 12,
   },
-
-  route: { flexDirection: 'row', gap: spacing.md },
-  routeIcons: { alignItems: 'center', paddingTop: 4 },
-  originDotSmall: {
-    width: 12,
-    height: 12,
-    borderRadius: radius.pill,
-    backgroundColor: colors.primary,
-  },
-  routeLine: { width: 2, flex: 1, minHeight: 20, backgroundColor: colors.border, marginVertical: 4 },
-  routeText: { flex: 1, gap: spacing.md },
-  routeRow: { gap: 2 },
-  routeRowHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  routeLabel: { fontSize: fontSize.xs, color: colors.textSecondary },
-  routeValue: { fontSize: fontSize.md, fontWeight: fontWeight.medium, color: colors.text },
-  editLink: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.primary },
 
   estimate: {
     flexDirection: 'row',

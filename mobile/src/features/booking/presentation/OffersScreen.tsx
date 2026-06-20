@@ -44,6 +44,7 @@ import { deriveOfferTags, primaryTag, type OfferTagKind } from '@/features/rides
 import type { Offer } from '@/features/rides/domain/types';
 import { OfferLifeTimer } from '@/features/rides/presentation/OfferLifeTimer';
 import { TripRouteMap } from '@/features/rides/presentation/TripRouteMap';
+import { RouteSummary } from '@/features/rides/presentation/RouteSummary';
 import { ConfirmDialog } from '@/shared/components';
 
 const SERVICE_LABELS = { taxi: 'Taxi', moto: 'Moto' } as const;
@@ -169,7 +170,7 @@ export function OffersScreen() {
   return (
     <View style={styles.root}>
       {origin && destination ? (
-        <TripRouteMap origin={origin} destination={destination} bottomPadding={420} />
+        <TripRouteMap origin={origin} destination={destination} topPadding={190} bottomPadding={420} />
       ) : (
         <View style={styles.mapFallback} />
       )}
@@ -200,15 +201,11 @@ export function OffersScreen() {
         </View>
 
         {/* Resumen de ruta (informativo) */}
-        <View style={styles.routePill} pointerEvents="none">
-          <View style={styles.routeDots}>
-            <View style={styles.dotOrigin} />
-            <View style={styles.trackLine} />
-            <View style={styles.dotDest} />
-          </View>
-          <Text style={styles.routeText} numberOfLines={1}>
-            {origin?.name ?? '—'} · {destination?.name ?? '—'}
-          </Text>
+        <View style={styles.routeWrap} pointerEvents="none">
+          <RouteSummary
+            origin={origin ?? { name: '—' }}
+            destination={destination ?? { name: '—' }}
+          />
         </View>
 
         {/* Sección "Ofertas en vivo" */}
@@ -428,30 +425,8 @@ const styles = StyleSheet.create({
   },
   modifyBtnText: { color: colors.primary, fontSize: fontSize.sm, fontWeight: fontWeight.bold },
 
-  // Pill de ruta.
-  routePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginHorizontal: spacing.md,
-    marginBottom: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.md,
-    backgroundColor: 'rgba(255,255,255,0.85)',
-    borderWidth: 1,
-    borderColor: colors.border,
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
-  },
-  routeDots: { alignItems: 'center', gap: 2 },
-  dotOrigin: { width: 9, height: 9, borderRadius: radius.pill, backgroundColor: colors.primary },
-  trackLine: { width: 2, height: 12, backgroundColor: colors.border },
-  dotDest: { width: 9, height: 9, backgroundColor: colors.danger, transform: [{ rotate: '45deg' }] },
-  routeText: { flex: 1, fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.text },
+  // Contenedor del resumen de ruta.
+  routeWrap: { marginHorizontal: spacing.md, marginBottom: spacing.sm },
 
   // Sección "Ofertas en vivo".
   liveHeader: { paddingHorizontal: spacing.md, paddingBottom: spacing.sm },

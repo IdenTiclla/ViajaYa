@@ -36,6 +36,7 @@ import {
   useUpdateRideFare,
 } from '@/features/rides/application/useRideMutations';
 import { TripRouteMap } from '@/features/rides/presentation/TripRouteMap';
+import { RouteSummary } from '@/features/rides/presentation/RouteSummary';
 import { ConfirmDialog } from '@/shared/components';
 
 /** Incrementos rápidos de la oferta (en Bs) con su etiqueta de prioridad. */
@@ -110,38 +111,22 @@ export function SearchingDriversScreen({
   return (
     <View style={styles.root}>
       {origin && destination ? (
-        <TripRouteMap origin={origin} destination={destination} bottomPadding={440} />
+        <TripRouteMap
+          origin={origin}
+          destination={destination}
+          topPadding={170}
+          bottomPadding={440}
+        />
       ) : (
         <View style={styles.mapFallback} />
       )}
 
       <View style={styles.scrim} pointerEvents="box-none">
         <SafeAreaView edges={['top']} style={styles.topArea} pointerEvents="box-none">
-          <View style={styles.summary}>
-            <View style={styles.summaryTrack}>
-              <View style={styles.dotOrigin} />
-              <View style={styles.trackLine} />
-              <View style={styles.dotDest} />
-            </View>
-            <View style={styles.summaryText}>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryPlace} numberOfLines={1}>
-                  {origin?.name ?? 'Tu ubicación'}
-                </Text>
-                <View style={[styles.badge, styles.badgeOrigin]}>
-                  <Text style={[styles.badgeText, styles.badgeTextOrigin]}>Inicio</Text>
-                </View>
-              </View>
-              <View style={styles.summaryRow}>
-                <Text style={[styles.summaryPlace, styles.summaryDest]} numberOfLines={1}>
-                  {destination?.name ?? 'Destino'}
-                </Text>
-                <View style={[styles.badge, styles.badgeDest]}>
-                  <Text style={[styles.badgeText, styles.badgeTextDest]}>Destino</Text>
-                </View>
-              </View>
-            </View>
-          </View>
+          <RouteSummary
+            origin={origin ?? { name: 'Tu ubicación' }}
+            destination={destination ?? { name: 'Destino' }}
+          />
         </SafeAreaView>
 
         <View style={styles.center} pointerEvents="none">
@@ -380,35 +365,6 @@ const styles = StyleSheet.create({
   scrim: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
 
   topArea: { paddingHorizontal: spacing.md, paddingTop: spacing.sm },
-  summary: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
-  },
-  summaryTrack: { alignItems: 'center', gap: 2 },
-  dotOrigin: { width: 10, height: 10, borderRadius: radius.pill, backgroundColor: colors.primary },
-  trackLine: { width: 2, height: 16, backgroundColor: colors.border },
-  dotDest: { width: 10, height: 10, backgroundColor: colors.danger, transform: [{ rotate: '45deg' }] },
-  summaryText: { flex: 1, gap: spacing.sm },
-  summaryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
-  summaryPlace: { flex: 1, fontSize: fontSize.sm, color: colors.textSecondary },
-  summaryDest: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.text },
-  badge: { paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.pill },
-  badgeOrigin: { backgroundColor: colors.surfaceMuted },
-  badgeDest: { backgroundColor: '#FDECEA' },
-  badgeText: { fontSize: 10, fontWeight: fontWeight.bold, textTransform: 'uppercase' },
-  badgeTextOrigin: { color: colors.primary },
-  badgeTextDest: { color: colors.danger },
 
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 

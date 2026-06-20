@@ -9,7 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
+import MapView, { Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
@@ -23,6 +23,8 @@ import { RideUnavailableScreen } from '@/features/driver/presentation/RideUnavai
 import { useCreateOffer } from '@/features/rides/application/useRideMutations';
 import { useOpenRides } from '@/features/rides/application/useRides';
 import { formatKm, haversineKm, pricePerKm } from '@/features/rides/domain/geo';
+import { RoutePinMarker } from '@/features/rides/presentation/RoutePinMarker';
+import { RouteSummary } from '@/features/rides/presentation/RouteSummary';
 
 function formatDuration(seconds: number): string {
   return `${Math.max(1, Math.round(seconds / 60))} min`;
@@ -75,7 +77,7 @@ export function DetalleTrayectoScreen() {
   const fitToTrip = (animated: boolean) => {
     if (polyline.length < 2) return;
     mapRef.current?.fitToCoordinates(polyline, {
-      edgePadding: { top: 80, right: 50, bottom: 360, left: 50 },
+      edgePadding: { top: 180, right: 50, bottom: 360, left: 50 },
       animated,
     });
   };
@@ -154,10 +156,8 @@ export function DetalleTrayectoScreen() {
         initialRegion={region}
         customMapStyle={declutteredMapStyle}
         onMapReady={() => fitToTrip(false)}>
-        <Marker coordinate={ride.origin.coordinates} anchor={{ x: 0.5, y: 0.5 }} title={ride.origin.name}>
-          <View style={styles.originDot} />
-        </Marker>
-        <Marker coordinate={ride.destination.coordinates} title={ride.destination.name} pinColor={colors.danger} />
+        <RoutePinMarker kind="A" coordinate={ride.origin.coordinates} label="Origen" />
+        <RoutePinMarker kind="B" coordinate={ride.destination.coordinates} label="Destino" />
         {polyline.length >= 2 && (
           <>
             <Polyline coordinates={polyline} strokeColor={colors.surface} strokeWidth={9} />
@@ -174,6 +174,7 @@ export function DetalleTrayectoScreen() {
           accessibilityLabel="Volver">
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
+        <RouteSummary origin={ride.origin} destination={ride.destination} />
       </SafeAreaView>
 
       <SafeAreaView style={styles.sheet} edges={['bottom']}>
@@ -203,21 +204,6 @@ export function DetalleTrayectoScreen() {
             value={route ? formatDuration(route.durationSeconds) : '—'}
           />
           <Stat icon="card" label="Pago" value={ride.payment === 'qr' ? 'QR' : 'Efectivo'} />
-        </View>
-
-        <View style={styles.routeCard}>
-          <View style={styles.routeRow}>
-            <Ionicons name="navigate-circle" size={20} color={colors.primary} />
-            <Text style={styles.routeText} numberOfLines={1}>
-              {ride.origin.name}
-            </Text>
-          </View>
-          <View style={styles.routeRow}>
-            <Ionicons name="location" size={20} color={colors.danger} />
-            <Text style={styles.routeText} numberOfLines={1}>
-              {ride.destination.name}
-            </Text>
-          </View>
         </View>
 
         {createOffer.isError && (
@@ -290,16 +276,15 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceMuted },
   center: { alignItems: 'center', justifyContent: 'center', gap: spacing.md, padding: spacing.lg },
 
-  originDot: {
-    width: 18,
-    height: 18,
-    borderRadius: radius.pill,
-    backgroundColor: colors.primary,
-    borderWidth: 3,
-    borderColor: colors.surface,
+  topBar: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    gap: spacing.sm,
   },
-
-  topBar: { position: 'absolute', top: 0, left: 0, right: 0, paddingHorizontal: spacing.md, paddingTop: spacing.sm },
   iconBtn: {
     width: 44,
     height: 44,
@@ -364,10 +349,6 @@ const styles = StyleSheet.create({
   },
   statValue: { fontSize: fontSize.md, fontWeight: fontWeight.bold, color: colors.text },
   statLabel: { fontSize: fontSize.xs, color: colors.textSecondary },
-
-  routeCard: { gap: spacing.sm },
-  routeRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  routeText: { flex: 1, fontSize: fontSize.md, color: colors.text },
 
   actions: { flexDirection: 'row', gap: spacing.sm },
   actionBtn: { flex: 1, height: 52, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },

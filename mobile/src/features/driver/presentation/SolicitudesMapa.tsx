@@ -10,13 +10,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
 import { Dimensions, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
+import MapView, { Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 import { useRoute } from '@/features/booking/application/useRoute';
 import { declutteredMapStyle } from '@/features/booking/presentation/mapStyle';
 import type { Coordinates } from '@/features/booking/domain/types';
 import { formatKm, haversineKm, pricePerKm } from '@/features/rides/domain/geo';
+import { RoutePinMarker } from '@/features/rides/presentation/RoutePinMarker';
 import type { OpenRide } from '@/features/rides/domain/types';
 
 const { width } = Dimensions.get('window');
@@ -58,8 +59,10 @@ export function SolicitudesMapa({
       ? [selectedRide.origin.coordinates, selectedRide.destination.coordinates]
       : [];
 
-  // Encuadra el trayecto de la solicitud seleccionada cuando cambia.
-  useEffect(() => {
+  // Encuadra el trayecto de la solicitud seleccionada. Al montar, el `useEffect`
+  // corre antes de que el mapa esté listo (mapRef nulo) y el fit era no-op; por
+  // eso repetimos el encuadre (sin animación) en `onMapReady`.
+  const fitSelected = (animated = true) => {
     if (!selectedRide) return;
     const coords =
       polyline.length >= 2
@@ -67,8 +70,12 @@ export function SolicitudesMapa({
         : [selectedRide.origin.coordinates, selectedRide.destination.coordinates];
     mapRef.current?.fitToCoordinates(coords, {
       edgePadding: { top: 170, right: 60, bottom: 280, left: 60 },
-      animated: true,
+      animated,
     });
+  };
+
+  useEffect(() => {
+    fitSelected(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, polyline.length]);
 
@@ -102,7 +109,8 @@ export function SolicitudesMapa({
         provider={PROVIDER_GOOGLE}
         style={StyleSheet.absoluteFill}
         initialRegion={initialRegion}
-        customMapStyle={declutteredMapStyle}>
+        customMapStyle={declutteredMapStyle}
+        onMapReady={() => fitSelected(false)}>
         {/* Trayecto de la solicitud seleccionada */}
         {polyline.length >= 2 && (
           <>
@@ -114,24 +122,23 @@ export function SolicitudesMapa({
         {rides.map((ride) => {
           const active = ride.id === selectedRide?.id;
           return (
-            <Marker
+            <RoutePinMarker
               key={`a-${ride.id}`}
+              kind="A"
               coordinate={ride.origin.coordinates}
+              label="Origen"
+              dim={!active}
               onPress={() => select(ride, rides.indexOf(ride))}
-              anchor={{ x: 0.5, y: 0.5 }}>
-              <View style={[styles.pinBase, styles.pinA, !active && styles.pinDim]}>
-                <Text style={styles.pinLabel}>A</Text>
-              </View>
-            </Marker>
+            />
           );
         })}
         {/* Destino (B) de la solicitud seleccionada */}
         {selectedRide && (
-          <Marker coordinate={selectedRide.destination.coordinates} anchor={{ x: 0.5, y: 0.5 }}>
-            <View style={[styles.pinBase, styles.pinB]}>
-              <Text style={styles.pinLabel}>B</Text>
-            </View>
-          </Marker>
+          <RoutePinMarker
+            kind="B"
+            coordinate={selectedRide.destination.coordinates}
+            label="Destino"
+          />
         )}
       </MapView>
 
@@ -256,26 +263,6 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm, padding: spacing.xl },
   emptyText: { fontSize: fontSize.md, color: colors.textSecondary, textAlign: 'center' },
-
-  // Pines A (origen) / B (destino).
-  pinBase: {
-    width: 32,
-    height: 32,
-    borderRadius: radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: colors.surface,
-    shadowColor: '#000',
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
-  },
-  pinA: { backgroundColor: colors.primary },
-  pinB: { backgroundColor: colors.danger },
-  pinDim: { opacity: 0.5 },
-  pinLabel: { color: colors.textOnPrimary, fontSize: fontSize.sm, fontWeight: fontWeight.bold },
 
   carouselWrap: { position: 'absolute', left: 0, right: 0, bottom: spacing.lg },
   carousel: { paddingHorizontal: spacing.lg, gap: spacing.md },

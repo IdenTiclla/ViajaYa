@@ -46,7 +46,7 @@ const PAYMENTS: { id: PaymentMethod; label: string; icon: 'qr-code' | 'cash' }[]
 // Márgenes del encuadre: arriba deja sitio a la barra superior + resumen de ruta;
 // abajo es dinámico (alto real del bottom sheet) para que ambos puntos queden en
 // el área visible.
-const FIT_TOP = 190;
+const FIT_TOP = 170;
 const FIT_SIDES = 60;
 
 function formatDistance(meters: number): string {
@@ -210,7 +210,7 @@ export function ConfigureTripScreen() {
       </MapView>
 
       <SafeAreaView style={styles.topBar} edges={['top']} pointerEvents="box-none">
-        <View style={styles.topRow}>
+        <View style={styles.topLeft}>
           <TouchableOpacity
             style={styles.back}
             onPress={() => router.back()}
@@ -231,14 +231,16 @@ export function ConfigureTripScreen() {
             />
           </TouchableOpacity>
         </View>
-        <RouteSummary
-          origin={origin}
-          destination={destination}
-          onEditOrigin={() =>
-            router.push({ pathname: '/booking/pick-on-map', params: { target: 'origin' } })
-          }
-          onEditDestination={() => router.push('/booking/destination')}
-        />
+        <View style={styles.summaryWrap}>
+          <RouteSummary
+            origin={origin}
+            destination={destination}
+            onEditOrigin={() =>
+              router.push({ pathname: '/booking/pick-on-map', params: { target: 'origin' } })
+            }
+            onEditDestination={() => router.push('/booking/destination')}
+          />
+        </View>
       </SafeAreaView>
 
       <SafeAreaView
@@ -366,15 +368,14 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
     gap: spacing.sm,
   },
-  topRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
+  topLeft: { alignItems: 'flex-start', gap: spacing.xs },
+  summaryWrap: { flex: 1 },
   back: {
     width: 44,
     height: 44,

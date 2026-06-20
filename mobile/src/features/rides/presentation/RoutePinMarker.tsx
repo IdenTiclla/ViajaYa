@@ -1,11 +1,11 @@
 /**
  * Marcador de ruta reutilizable: pin circular con letra (A = origen, B = destino)
- * y un tooltip "Origen"/"Destino" flotando arriba. Lo usan todas las vistas que
- * muestran un trayecto (pasajero y conductor) para que origen y destino se vean
- * siempre igual.
+ * y un tooltip "Origen"/"Destino" arriba. Lo usan todas las vistas que muestran un
+ * trayecto (pasajero y conductor) para que origen y destino se vean siempre igual.
  *
- * El `anchor` centra el PIN en la coordenada (el tooltip queda encima sin
- * desplazar el punto).
+ * El tooltip va en flujo (no absoluto) para que renderice de forma fiable dentro
+ * del marker en iOS y Android; el `anchor` apunta al pin (no al centro del
+ * conjunto) para que el punto quede exacto en la coordenada.
  */
 import { StyleSheet, Text, View } from 'react-native';
 import { Marker } from 'react-native-maps';
@@ -23,16 +23,14 @@ type Props = {
   onPress?: () => void;
 };
 
-const PIN_SIZE = 32;
+const PIN_SIZE = 30;
 
 export function RoutePinMarker({ kind, coordinate, label, dim, onPress }: Props) {
   return (
-    <Marker coordinate={coordinate} anchor={{ x: 0.5, y: 0.5 }} onPress={onPress}>
+    <Marker coordinate={coordinate} anchor={{ x: 0.5, y: 0.72 }} onPress={onPress}>
       <View style={styles.wrap}>
-        <View style={styles.tooltipAnchor} pointerEvents="none">
-          <View style={styles.tooltip}>
-            <Text style={styles.tooltipText}>{label}</Text>
-          </View>
+        <View style={styles.tooltip}>
+          <Text style={styles.tooltipText}>{label}</Text>
         </View>
         <View
           style={[styles.pinBase, kind === 'A' ? styles.pinA : styles.pinB, dim && styles.pinDim]}>
@@ -44,30 +42,17 @@ export function RoutePinMarker({ kind, coordinate, label, dim, onPress }: Props)
 }
 
 const styles = StyleSheet.create({
-  wrap: {
-    width: PIN_SIZE,
-    height: PIN_SIZE,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  // Contenedor absoluto del ancho del pin: centra el tooltip sobre el pin.
-  tooltipAnchor: {
-    position: 'absolute',
-    bottom: '100%',
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    paddingBottom: spacing.xs,
-  },
+  wrap: { alignItems: 'center' },
   tooltip: {
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,
+    marginBottom: spacing.xs,
     borderRadius: radius.sm,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     shadowColor: '#000',
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.18,
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 1 },
     elevation: 3,

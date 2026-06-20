@@ -50,7 +50,7 @@ export function RouteSummary({ origin, destination, onEditOrigin, onEditDestinat
         </View>
         <View style={styles.row}>
           <View style={styles.rowHeader}>
-            <Text style={styles.label}>Destino</Text>
+            <Text style={styles.label}>Punto de destino</Text>
             {onEditDestination && (
               <TouchableOpacity
                 onPress={onEditDestination}
@@ -72,9 +72,9 @@ export function RouteSummary({ origin, destination, onEditOrigin, onEditDestinat
 const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
-    gap: spacing.md,
-    padding: spacing.md,
-    borderRadius: radius.lg,
+    gap: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: radius.md,
     backgroundColor: 'rgba(255,255,255,0.92)',
     borderWidth: 1,
     borderColor: 'rgba(226,228,232,0.7)',
@@ -86,31 +86,31 @@ const styles = StyleSheet.create({
   },
   track: { alignItems: 'center', paddingTop: 2 },
   dotA: {
-    width: 22,
-    height: 22,
+    width: 18,
+    height: 18,
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.primary,
   },
   dotB: {
-    width: 22,
-    height: 22,
+    width: 18,
+    height: 18,
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.danger,
   },
-  dotText: { color: colors.textOnPrimary, fontSize: 11, fontWeight: fontWeight.bold },
-  line: { width: 2, minHeight: 18, flex: 1, backgroundColor: colors.border, marginVertical: 3 },
-  texts: { flex: 1, gap: spacing.md },
-  row: { gap: 2 },
+  dotText: { color: colors.textOnPrimary, fontSize: 10, fontWeight: fontWeight.bold },
+  line: { width: 2, minHeight: 12, flex: 1, backgroundColor: colors.border, marginVertical: 2 },
+  texts: { flex: 1, gap: spacing.sm },
+  row: { gap: 1 },
   rowHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
   label: { fontSize: fontSize.xs, color: colors.textSecondary, fontWeight: fontWeight.medium },
-  value: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.text },
-  edit: { fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.primary },
+  value: { fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.text },
+  edit: { fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: colors.primary },
 });

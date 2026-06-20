@@ -174,7 +174,9 @@ export function DetalleTrayectoScreen() {
           accessibilityLabel="Volver">
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
-        <RouteSummary origin={ride.origin} destination={ride.destination} />
+        <View style={styles.summaryWrap}>
+          <RouteSummary origin={ride.origin} destination={ride.destination} />
+        </View>
       </SafeAreaView>
 
       <SafeAreaView style={styles.sheet} edges={['bottom']}>
@@ -281,10 +283,13 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
     gap: spacing.sm,
   },
+  summaryWrap: { flex: 1 },
   iconBtn: {
     width: 44,
     height: 44,

@@ -89,3 +89,46 @@ async def test_recent_destinations_empty_then_populated(client):
     data = populated.json()
     assert len(data) == 1
     assert data[0]["name"] == "Trabajo"
+
+
+async def test_update_fare_increases_offer(client):
+    headers = await _auth_header(client)
+    created = await client.post(RIDES, json=_ride_payload(fare="25.00"), headers=headers)
+    ride_id = created.json()["id"]
+
+    resp = await client.patch(
+        f"{RIDES}/{ride_id}/fare", json={"fare": "32.00"}, headers=headers
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["fare"] == "32.00"
+
+
+async def test_update_fare_rejects_non_increase(client):
+    headers = await _auth_header(client)
+    created = await client.post(RIDES, json=_ride_payload(fare="25.00"), headers=headers)
+    ride_id = created.json()["id"]
+
+    resp = await client.patch(
+        f"{RIDES}/{ride_id}/fare", json={"fare": "20.00"}, headers=headers
+    )
+
+    assert resp.status_code == 422
+
+
+async def test_update_fare_rejects_non_owner(client):
+    owner = await _auth_header(client)
+    created = await client.post(RIDES, json=_ride_payload(), headers=owner)
+    ride_id = created.json()["id"]
+
+    other = await client.post(
+        REGISTER,
+        json={"full_name": "Bob", "email": "bob@example.com", "password": "secret123"},
+    )
+    other_headers = {"Authorization": f"Bearer {other.json()['tokens']['access_token']}"}
+
+    resp = await client.patch(
+        f"{RIDES}/{ride_id}/fare", json={"fare": "99.00"}, headers=other_headers
+    )
+
+    assert resp.status_code == 403

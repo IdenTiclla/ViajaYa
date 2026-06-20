@@ -24,3 +24,6 @@ web-build/
 .env
 .env.*
 !.env.example
+
+
+.claude/

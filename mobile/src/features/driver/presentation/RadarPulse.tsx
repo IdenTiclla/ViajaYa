@@ -18,10 +18,10 @@ import { Animated, Easing, StyleSheet, View } from 'react-native';
 
 import { colors, radius } from '@/core/theme';
 
-const SIZE = 110;
-const RING_COUNT = 3;
+const SIZE = 80;
+const RING_COUNT = 4;
 const RING_DURATION_MS = 2700;
-const RING_STAGGER_MS = 900;
+const RING_STAGGER_MS = 675;
 const NAVIGATE_OFFSET_DEG = 45;
 const ROTATE_DURATION_MS = 400;
 
@@ -89,8 +89,8 @@ export function RadarPulse({ heading = null }: { heading?: number | null }) {
   }, [heading, rotate]);
 
   const ringStyle = (value: Animated.Value) => ({
-    transform: [{ scale: value.interpolate({ inputRange: [0, 1], outputRange: [0.5, 1.6] }) }],
-    opacity: value.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.75, 0.4, 0] }),
+    transform: [{ scale: value.interpolate({ inputRange: [0, 1], outputRange: [0.3, 2.4] }) }],
+    opacity: value.interpolate({ inputRange: [0, 0.75, 1], outputRange: [1, 0.7, 0] }),
   });
 
   return (
@@ -112,7 +112,7 @@ export function RadarPulse({ heading = null }: { heading?: number | null }) {
             ],
           },
         ]}>
-        <Ionicons name="navigate" size={20} color={colors.textOnPrimary} />
+        <Ionicons name="navigate" size={12} color={colors.textOnPrimary} />
       </Animated.View>
     </View>
   );
@@ -125,28 +125,28 @@ const styles = StyleSheet.create({
     width: SIZE,
     height: SIZE,
     borderRadius: radius.pill,
-    backgroundColor: 'rgba(22,48,140,0.12)',
+    backgroundColor: 'rgba(22,48,140,0.2)',
   },
   ring: {
     position: 'absolute',
     width: SIZE,
     height: SIZE,
     borderRadius: radius.pill,
-    borderWidth: 2,
+    borderWidth: 3,
     borderColor: colors.primary,
-    backgroundColor: 'rgba(22,48,140,0.16)',
+    backgroundColor: 'rgba(22,48,140,0.35)',
   },
   core: {
-    width: 42,
-    height: 42,
+    width: 24,
+    height: 24,
     borderRadius: radius.pill,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: colors.primary,
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 8,
+    shadowOpacity: 0.45,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 6,
   },
 });

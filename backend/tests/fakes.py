@@ -36,6 +36,7 @@ from app.domain.repositories import (
     SavedPlaceRepository,
     UserRepository,
 )
+from app.domain.ride_policy import is_offer_expired
 
 _ACTIVE_RIDE_STATUSES = (
     RideStatus.ACCEPTED,
@@ -216,6 +217,13 @@ class InMemoryOfferRepository(OfferRepository):
     async def list_by_ride(self, ride_id: uuid.UUID) -> list[Offer]:
         return [o for o in reversed(self.offers) if o.ride_id == ride_id]
 
+    async def list_active_by_driver(self, driver_id: uuid.UUID) -> list[Offer]:
+        return [
+            o
+            for o in reversed(self.offers)
+            if o.driver_id == driver_id and o.status in ACTIVE_OFFER_STATUSES
+        ]
+
     async def get_active_by_driver_and_ride(
         self, ride_id: uuid.UUID, driver_id: uuid.UUID
     ) -> Offer | None:
@@ -298,6 +306,17 @@ class InMemoryOfferRepository(OfferRepository):
             withdrawn_ride_ids=list(dict.fromkeys(withdrawn)),
             losing_driver_ids=list(dict.fromkeys(losers)),
         )
+
+    async def mark_expired_if_pending(self, offer_id: uuid.UUID) -> Offer | None:
+        offer = await self.get_by_id(offer_id)
+        if (
+            offer is None
+            or offer.status is not OfferStatus.PENDING
+            or not is_offer_expired(offer)
+        ):
+            return None
+        offer.status = OfferStatus.EXPIRED
+        return offer
 
 
 class InMemoryRatingRepository(RatingRepository):

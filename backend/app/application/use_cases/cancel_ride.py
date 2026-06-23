@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import uuid
 
-from app.domain.entities import RideRequest, RideStatus, User
+from app.application.dto import CancelRideResult
+from app.domain.entities import OfferStatus, RideStatus, User
 from app.domain.exceptions import (
     InvalidRideTransitionError,
     NotAuthorizedActionError,
     RideNotFoundError,
 )
 from app.domain.repositories import OfferRepository, RideRequestRepository
+from app.domain.ride_policy import is_offer_expired
 
 # Estados desde los que aún se puede cancelar (antes de iniciar el viaje).
 _CANCELLABLE = {RideStatus.SEARCHING, RideStatus.ACCEPTED, RideStatus.ARRIVING}
@@ -21,7 +23,7 @@ class CancelRide:
         self._rides = rides
         self._offers = offers
 
-    async def execute(self, user: User, ride_id: uuid.UUID) -> RideRequest:
+    async def execute(self, user: User, ride_id: uuid.UUID) -> CancelRideResult:
         ride = await self._rides.get_by_id(ride_id)
         if ride is None:
             raise RideNotFoundError("La solicitud de viaje no existe.")
@@ -36,6 +38,11 @@ class CancelRide:
 
         ride.status = RideStatus.CANCELLED
         updated = await self._rides.update(ride)
-        # La solicitud murió: sus ofertas pendientes mueren con ella.
+        # Ofertas vivas que mueren con la solicitud (para avisar a sus conductores).
+        cancelled = [
+            o
+            for o in await self._offers.list_by_ride(ride_id)
+            if o.status is OfferStatus.PENDING and not is_offer_expired(o)
+        ]
         await self._offers.reject_pending(ride_id)
-        return updated
+        return CancelRideResult(ride=updated, cancelled_offers=cancelled)

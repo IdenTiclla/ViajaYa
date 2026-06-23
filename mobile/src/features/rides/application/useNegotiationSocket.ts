@@ -12,6 +12,7 @@ import { useEffect } from 'react';
 
 import { openSocket } from '@/core/realtime/socket';
 import { useDriverRequests } from '@/features/driver/application/useDriverRequests';
+import { useDriverToasts } from '@/features/driver/application/useDriverToasts';
 import {
   type OfferDto,
   type OpenRideDto,
@@ -102,27 +103,84 @@ export function useDriverPoolSocket(enabled = true): void {
           queryClient.setQueryData<OpenRide[]>(['open-rides'], (prev = []) =>
             prev.filter((r) => r.id !== rideId),
           );
+          // La solicitud salió del pool: limpia su estado local (sin zombies).
+          useDriverRequests.getState().clearRide(rideId);
           break;
         }
-        case 'offer_accepted':
+        case 'offer_accepted': {
           // El pasajero aceptó su oferta: el viaje se le asigna y la pantalla del
-          // conductor cambia a navegación.
-          queryClient.setQueryData(['driver-active-ride'], toRide(msg.data as RideDto));
+          // conductor cambia a navegación. Limpia el estado de esa oferta.
+          const ride = toRide(msg.data as RideDto);
+          queryClient.setQueryData(['driver-active-ride'], ride);
+          useDriverRequests.getState().clearRide(ride.id);
+          useDriverToasts.getState().push({
+            kind: 'accepted',
+            rideId: ride.id,
+            title: '¡Viaje confirmado!',
+            message: 'El pasajero aceptó tu oferta.',
+          });
           break;
+        }
+        case 'offer_expired': {
+          // Su oferta venció (30 s) sin respuesta del pasajero (aviso en vivo).
+          const { ride_id: rideId } = msg.data as { ride_id: string };
+          useDriverRequests.getState().markExpired(rideId);
+          useDriverToasts.getState().push({
+            kind: 'expired',
+            rideId,
+            title: 'Oferta expirada',
+            message: 'Pasaron 30 s sin respuesta del pasajero.',
+          });
+          break;
+        }
         case 'offer_rejected': {
-          // Su oferta murió: el pasajero la rechazó (`declined`) u otro
-          // conductor confirmó primero (`ride_taken`).
+          // Su oferta murió. La razón distingue el desenlace para el mensaje correcto.
           const { ride_id: rideId, reason } = msg.data as {
             ride_id: string;
             reason?: string;
           };
+          const store = useDriverRequests.getState();
+          const toasts = useDriverToasts.getState();
           if (reason === 'ride_taken') {
-            useDriverRequests.getState().markTaken(rideId);
+            store.markTaken(rideId);
+            toasts.push({
+              kind: 'taken',
+              rideId,
+              title: 'Viaje tomado',
+              message: 'Otro conductor se quedó con este viaje.',
+            });
+          } else if (reason === 'ride_paused') {
+            store.markPaused(rideId);
+            toasts.push({
+              kind: 'paused',
+              rideId,
+              title: 'Solicitud en modificación',
+              message: 'El pasajero está modificando su solicitud.',
+            });
+          } else if (reason === 'ride_cancelled') {
+            store.markRejected(rideId);
+            toasts.push({
+              kind: 'cancelled',
+              rideId,
+              title: 'Viaje cancelado',
+              message: 'El pasajero canceló la solicitud.',
+            });
           } else {
-            useDriverRequests.getState().markRejected(rideId);
+            store.markRejected(rideId); // declined
+            toasts.push({
+              kind: 'rejected',
+              rideId,
+              title: 'Oferta rechazada',
+              message: 'El pasajero rechazó tu oferta.',
+            });
           }
           break;
         }
+        case 'driver_active_ride':
+          // Snapshot al reconectar: recupera el viaje activo si lo eligieron con el
+          // WS caído.
+          queryClient.setQueryData(['driver-active-ride'], toRide(msg.data as RideDto));
+          break;
         case 'offers_withdrawn':
           // Sus otras ofertas se retiraron al ganar otro viaje; refresca el pool.
           void queryClient.invalidateQueries({ queryKey: ['open-rides'] });

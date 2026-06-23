@@ -12,6 +12,7 @@ from app.application.dto import CreateOfferInput
 from app.application.use_cases.accept_offer import AcceptOffer
 from app.application.use_cases.cancel_ride import CancelRide
 from app.application.use_cases.create_offer import CreateOffer
+from app.application.use_cases.expire_offer import ExpireOffer
 from app.application.use_cases.list_offers_for_ride import ListOffersForRide
 from app.application.use_cases.list_open_rides import ListOpenRides
 from app.application.use_cases.set_driver_online import SetDriverOnline
@@ -437,3 +438,43 @@ async def test_cancel_ride_kills_active_offers():
 
     assert (await offers.get_by_id(o1.detail.offer.id)).status is OfferStatus.REJECTED
     assert (await offers.get_by_id(o2.detail.offer.id)).status is OfferStatus.REJECTED
+
+
+async def test_expire_offer_marks_expired_when_past_ttl():
+    rides, offers = InMemoryRideRequestRepository(), InMemoryOfferRepository()
+    rider, driver = _passenger(), _driver()
+    ride = await rides.add(_ride(rider.id))
+    created = await CreateOffer(rides, offers).execute(
+        driver, ride.id, CreateOfferInput(accept_at_fare=True)
+    )
+    offer = created.detail.offer
+    # La envejecemos más allá del TTL (30 s).
+    (await offers.get_by_id(offer.id)).created_at = datetime.now(UTC) - (
+        OFFER_TTL + timedelta(seconds=1)
+    )
+
+    expired = await ExpireOffer(offers).execute(offer.id)
+
+    assert expired is not None
+    assert expired.status is OfferStatus.EXPIRED
+    assert (await offers.get_by_id(offer.id)).status is OfferStatus.EXPIRED
+
+
+async def test_expire_offer_skips_already_resolved_offer():
+    """Una oferta ya aceptada (o no vencida) no se expira: race-safe."""
+    rides = InMemoryRideRequestRepository()
+    users = InMemoryUserRepository()
+    offers = InMemoryOfferRepository(rides=rides, users=users)
+    rider, driver = _passenger(), _driver()
+    await users.add(driver)
+    ride = await rides.add(_ride(rider.id))
+    created = await CreateOffer(rides, offers).execute(
+        driver, ride.id, CreateOfferInput(accept_at_fare=True)
+    )
+    await AcceptOffer(rides, offers).execute(rider, created.detail.offer.id)
+    (await offers.get_by_id(created.detail.offer.id)).created_at = datetime.now(UTC) - (
+        OFFER_TTL + timedelta(seconds=1)
+    )
+
+    assert await ExpireOffer(offers).execute(created.detail.offer.id) is None
+    assert (await offers.get_by_id(created.detail.offer.id)).status is OfferStatus.ACCEPTED

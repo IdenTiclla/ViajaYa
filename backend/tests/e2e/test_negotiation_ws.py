@@ -384,3 +384,65 @@ def test_open_rides_snapshot_excludes_absent_passenger(ws_client: TestClient):
         snapshot = ws.receive_json()
         assert snapshot["type"] == "open_rides_snapshot"
         assert snapshot["data"] == []
+
+
+def test_driver_notified_when_passenger_cancels(ws_client: TestClient):
+    """Al cancelar el pasajero, el conductor con oferta viva recibe offer_rejected
+    con razón ``ride_cancelled`` (no ``ride_taken`` ni desaparición muda)."""
+    rider_token = _register(ws_client, "rider@x.com")
+    driver_token = _register(ws_client, "driver@x.com")
+    _promote_driver(ws_client, "driver@x.com")
+
+    ride = ws_client.post(RIDES, json=_ride_payload(), headers=_headers(rider_token)).json()
+
+    with ws_client.websocket_connect(f"/api/v1/ws/driver?token={driver_token}") as ws:
+        assert ws.receive_json()["type"] == "open_rides_snapshot"
+
+        # El pasajero abre su conexión (presencia) y el conductor ofrece.
+        with ws_client.websocket_connect(
+            f"/api/v1/ws/rides/{ride['id']}?token={rider_token}"
+        ) as rider_ws:
+            assert rider_ws.receive_json()["type"] == "offers_snapshot"
+            ws_client.post(
+                f"{RIDES}/{ride['id']}/offers",
+                json={"accept_at_fare": True},
+                headers=_headers(driver_token),
+            )
+
+        # El pasajero cancela → al conductor le llegan ride_closed (pool) y
+        # offer_rejected (personal, reason ride_cancelled). (También hay un
+        # ride_created previo encolado al abrir el pasajero su conexión.)
+        ws_client.post(f"{RIDES}/{ride['id']}/cancel", headers=_headers(rider_token))
+        events = [ws.receive_json() for _ in range(3)]
+        rejected = next(e for e in events if e["type"] == "offer_rejected")
+        assert rejected["data"]["ride_id"] == ride["id"]
+        assert rejected["data"]["reason"] == "ride_cancelled"
+
+
+def test_driver_recovers_active_ride_on_reconnect(ws_client: TestClient):
+    """Si el WS del conductor estaba caído cuando lo eligieron, al reconectar
+    recupera el viaje activo (snapshot ``driver_active_ride``)."""
+    rider_token = _register(ws_client, "rider@x.com")
+    driver_token = _register(ws_client, "driver@x.com")
+    _promote_driver(ws_client, "driver@x.com")
+
+    ride = ws_client.post(RIDES, json=_ride_payload(), headers=_headers(rider_token)).json()
+    offer = ws_client.post(
+        f"{RIDES}/{ride['id']}/offers",
+        json={"accept_at_fare": True},
+        headers=_headers(driver_token),
+    ).json()
+
+    # El pasajero acepta sin que el conductor esté conectado (simula caída del WS).
+    accepted = ws_client.post(
+        f"{RIDES}/offers/{offer['id']}/accept", headers=_headers(rider_token)
+    )
+    assert accepted.status_code == 200, accepted.text
+
+    # Al reconectar, el conductor recupera su viaje activo.
+    with ws_client.websocket_connect(f"/api/v1/ws/driver?token={driver_token}") as ws:
+        assert ws.receive_json()["type"] == "open_rides_snapshot"
+        active = ws.receive_json()
+        assert active["type"] == "driver_active_ride"
+        assert active["data"]["id"] == ride["id"]
+        assert active["data"]["status"] == "accepted"

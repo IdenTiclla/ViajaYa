@@ -35,6 +35,7 @@ OFFER_REJECTED = "offer_rejected"
 OFFER_WITHDRAWN = "offer_withdrawn"
 OFFER_ACCEPTED = "offer_accepted"
 OFFERS_WITHDRAWN = "offers_withdrawn"
+OFFER_EXPIRED = "offer_expired"
 RIDE_STATUS = "ride_status"
 
 
@@ -94,8 +95,9 @@ async def publish_offer_created(detail: OfferDetail) -> None:
 
 
 async def publish_offer_rejected(offer: Offer, reason: str = "declined") -> None:
-    """La oferta murió para el conductor: rechazada por el pasajero (``declined``)
-    o el viaje fue tomado por otro conductor (``ride_taken``)."""
+    """La oferta murió para el conductor: rechazada por el pasajero (``declined``),
+    el viaje fue tomado por otro conductor (``ride_taken``), el pasajero lo pausó
+    para editar (``ride_paused``) o lo canceló (``ride_cancelled``)."""
     await hub.broadcast(
         driver_topic(offer.driver_id),
         _envelope(
@@ -104,6 +106,22 @@ async def publish_offer_rejected(offer: Offer, reason: str = "declined") -> None
                 "ride_id": str(offer.ride_id),
                 "offer_id": str(offer.id),
                 "reason": reason,
+            },
+        ),
+    )
+
+
+async def publish_offer_expired(offer: Offer) -> None:
+    """La oferta del conductor venció (30 s) sin respuesta del pasajero. Se avisa
+    en tiempo real para que el conductor deje de ver "esperando" y pueda reofertar."""
+    await hub.broadcast(
+        driver_topic(offer.driver_id),
+        _envelope(
+            OFFER_EXPIRED,
+            {
+                "ride_id": str(offer.ride_id),
+                "offer_id": str(offer.id),
+                "reason": "expired",
             },
         ),
     )

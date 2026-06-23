@@ -14,16 +14,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
-import { CounterOfferModal } from '@/features/driver/presentation/CounterOfferModal';
 import { DriverSearchMap } from '@/features/driver/presentation/DriverSearchMap';
 import { DriverTopBar } from '@/features/driver/presentation/DriverTopBar';
+import { KeypadModal } from '@/features/driver/presentation/KeypadModal';
 import { RadarPulse } from '@/features/driver/presentation/RadarPulse';
 import { RequestCard } from '@/features/driver/presentation/RequestCard';
 import { SolicitudesMapa } from '@/features/driver/presentation/SolicitudesMapa';
 import { ViajeEnCursoConductorScreen } from '@/features/driver/presentation/ViajeEnCursoConductorScreen';
 import { useWatchPosition, type WatchedPosition } from '@/features/home/application/useWatchPosition';
 import { useDriverEarnings } from '@/features/rides/application/useCloseFlow';
-import { useCreateOffer, useSetOnline } from '@/features/rides/application/useRideMutations';
+import { useCreateOffer, useSetOnline, useWithdrawOffer } from '@/features/rides/application/useRideMutations';
 import { useDriverActiveRide, useOpenRides } from '@/features/rides/application/useRides';
 import type { DriverEarnings, OpenRide } from '@/features/rides/domain/types';
 import { useDriverRequests } from '@/features/driver/application/useDriverRequests';
@@ -54,19 +54,30 @@ export function SolicitudesEntrantesScreen() {
 
   const dismissed = useDriverRequests((s) => s.dismissed);
   const rejected = useDriverRequests((s) => s.rejected);
+  const expired = useDriverRequests((s) => s.expired);
+  const paused = useDriverRequests((s) => s.paused);
+  const offeredMap = useDriverRequests((s) => s.offered);
   const isOffered = useDriverRequests((s) => s.isOffered);
   const dismiss = useDriverRequests((s) => s.dismiss);
   const markOffered = useDriverRequests((s) => s.markOffered);
+  const withdrawOffer = useWithdrawOffer();
 
   const [mode, setMode] = useState<ViewMode>('list');
-  const [counterFor, setCounterFor] = useState<OpenRide | null>(null);
+  const [keypadFor, setKeypadFor] = useState<OpenRide | null>(null);
+  // Ride a seleccionar al abrir el mapa desde la lista (toca una tarjeta).
+  const [selectedForMap, setSelectedForMap] = useState<string | null>(null);
 
   const visibleRides = useMemo(
     () => rides.filter((r) => !dismissed.has(r.id)),
     [rides, dismissed],
   );
 
-  // Ofertar NO saca al conductor de la lista: la tarjeta pasa a "esperando".
+  // Ride cuya oferta/aceptación está en curso (para el "Esperando…" de su tarjeta).
+  // Gate por isPending: `createOffer.variables` persiste tras el onSuccess (React
+  // Query no lo limpia), así que sin este gate el botón quedaría en spinner fijo.
+  const pendingRideId = createOffer.isPending ? createOffer.variables?.rideId ?? null : null;
+
+  // Ofertar NO saca al conductor de la lista: la tarjeta pasa a "Oferta enviada".
   const acceptAtFare = (ride: OpenRide) => {
     createOffer.mutate(
       { rideId: ride.id, input: { acceptAtFare: true } },
@@ -74,34 +85,53 @@ export function SolicitudesEntrantesScreen() {
     );
   };
 
-  const submitCounter = (price: number, etaMin: number | undefined) => {
-    if (!counterFor) return;
-    const ride = counterFor;
+  // Contraoferta rápida (+Bs): envía al instante precio = oferta del pasajero + delta.
+  const quickAdd = (ride: OpenRide, delta: number) => {
+    const price = Math.round((ride.fare + delta) * 100) / 100;
     createOffer.mutate(
-      { rideId: ride.id, input: { acceptAtFare: false, price, etaMin } },
+      { rideId: ride.id, input: { acceptAtFare: false, price } },
+      { onSuccess: (offer) => markOffered(ride.id, offer) },
+    );
+  };
+
+  // Precio propio desde el teclado numérico.
+  const submitKeypad = (price: number) => {
+    if (!keypadFor) return;
+    const ride = keypadFor;
+    createOffer.mutate(
+      { rideId: ride.id, input: { acceptAtFare: false, price } },
       {
         onSuccess: (offer) => {
           markOffered(ride.id, offer);
-          setCounterFor(null);
+          setKeypadFor(null);
         },
       },
     );
   };
 
-  const openDetail = (ride: OpenRide) => {
-    if (isOffered(ride.id) || rejected.has(ride.id)) {
-      router.push({ pathname: '/(driver)/oferta-enviada', params: { rideId: ride.id } });
-      return;
-    }
-    router.push({
-      pathname: '/(driver)/trayecto',
-      params: {
-        rideId: ride.id,
-        originName: ride.origin.name,
-        destName: ride.destination.name,
-        fare: String(ride.fare),
-      },
+  // Retira la oferta enviada a una solicitud (desde la lista o el mapa).
+  const withdraw = (ride: OpenRide) => {
+    const offer = useDriverRequests.getState().getOffer(ride.id);
+    if (!offer) return;
+    withdrawOffer.mutate(offer.offerId, {
+      onSuccess: () => useDriverRequests.getState().clearRide(ride.id),
     });
+  };
+
+  // Lista: al tocar una tarjeta abre SIEMPRE el mapa con esa solicitud seleccionada
+  // (sin importar su estado). El estado se ve en la card del mapa; desde ahí, al
+  // tocarla, se abre la pantalla de estado (openStatus).
+  const openInMap = (ride: OpenRide) => {
+    setSelectedForMap(ride.id);
+    setMode('map');
+  };
+
+  // Mapa: al tocar la card flotante de una oferta enviada/expirada/rechazada, abre
+  // la pantalla de estado (esperando confirmación).
+  const openStatus = (ride: OpenRide) => {
+    if (isOffered(ride.id) || rejected.has(ride.id) || expired.has(ride.id)) {
+      router.push({ pathname: '/(driver)/oferta-enviada', params: { rideId: ride.id } });
+    }
   };
 
   if (activeRide) {
@@ -129,13 +159,21 @@ export function SolicitudesEntrantesScreen() {
       {mode === 'map' ? (
         <View style={styles.mapLayer}>
           <SolicitudesMapa
+            key={selectedForMap ?? 'default'}
             rides={visibleRides}
-            disabled={createOffer.isPending}
-            onOpenDetail={openDetail}
-            onAccept={acceptAtFare}
-            onCounter={setCounterFor}
-            onDismiss={(r) => dismiss(r.id)}
+            disabled={createOffer.isPending || withdrawOffer.isPending}
             isOffered={isOffered}
+            pendingRideId={pendingRideId}
+            offeredMap={offeredMap}
+            rejected={rejected}
+            expired={expired}
+            paused={paused}
+            initialSelectedId={selectedForMap}
+            onOpenDetail={openStatus}
+            onAccept={acceptAtFare}
+            onDismiss={(r) => dismiss(r.id)}
+            onQuickAdd={quickAdd}
+            onWithdraw={withdraw}
           />
           <View pointerEvents="box-none" style={styles.mapHeader}>
             {topBar}
@@ -171,11 +209,17 @@ export function SolicitudesEntrantesScreen() {
                   ride={item}
                   offered={isOffered(item.id)}
                   rejected={rejected.has(item.id)}
-                  disabled={createOffer.isPending}
-                  onPress={() => openDetail(item)}
+                  expired={expired.has(item.id)}
+                  paused={paused.has(item.id)}
+                  disabled={createOffer.isPending || withdrawOffer.isPending}
+                  pendingAccept={pendingRideId === item.id}
+                  offerExpiresAt={offeredMap[item.id]?.expiresAt ?? null}
+                  onPress={() => openInMap(item)}
                   onAccept={() => acceptAtFare(item)}
-                  onCounter={() => setCounterFor(item)}
                   onDismiss={() => dismiss(item.id)}
+                  onQuickAdd={(delta) => quickAdd(item, delta)}
+                  onOpenKeypad={() => setKeypadFor(item)}
+                  onWithdraw={() => withdraw(item)}
                 />
               ))}
             </ScrollView>
@@ -183,12 +227,13 @@ export function SolicitudesEntrantesScreen() {
         </>
       )}
 
-      <CounterOfferModal
-        visible={!!counterFor}
-        riderFare={counterFor?.fare ?? 0}
+      <KeypadModal
+        key={keypadFor?.id ?? 'none'}
+        visible={!!keypadFor}
+        riderFare={keypadFor?.fare ?? 0}
         submitting={createOffer.isPending}
-        onCancel={() => setCounterFor(null)}
-        onSubmit={submitCounter}
+        onCancel={() => setKeypadFor(null)}
+        onSubmit={submitKeypad}
       />
     </View>
   );

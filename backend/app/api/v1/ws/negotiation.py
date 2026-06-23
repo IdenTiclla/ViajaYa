@@ -16,12 +16,15 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 
 from app.api.deps import get_session_factory
-from app.api.v1 import presence
+from app.api.v1 import events, presence
 from app.api.v1.schemas.offers import OfferResponse
-from app.api.v1.schemas.rides import OpenRideResponse
+from app.api.v1.schemas.rides import OpenRideResponse, RideResponse
+from app.application.use_cases.expire_offer import ExpireOffer
+from app.application.use_cases.get_driver_active_ride import GetDriverActiveRide
 from app.application.use_cases.list_offers_for_ride import ListOffersForRide
 from app.application.use_cases.list_open_rides import ListOpenRides
 from app.domain.entities import UserRole
+from app.domain.ride_policy import is_offer_expired
 from app.infrastructure.config import get_settings
 from app.infrastructure.db.repositories import (
     SqlAlchemyOfferRepository,
@@ -113,6 +116,7 @@ async def driver_ws(
     async with session_factory() as session:
         users = SqlAlchemyUserRepository(session)
         rides = SqlAlchemyRideRequestRepository(session)
+        offers = SqlAlchemyOfferRepository(session)
         tokens = JwtTokenService(get_settings())
 
         user = await authenticate_ws(token, users, tokens)
@@ -123,11 +127,34 @@ async def driver_ws(
         open_rides = presence.present_rides(await ListOpenRides(rides).execute(user))
         snapshot = [OpenRideResponse.from_open_ride(d).model_dump(mode="json") for d in open_rides]
 
+        # Recuperación de estado al (re)conectar (cierres de WS / reinicio):
+        # 1) vencer ofertas del conductor que ya pasaron su TTL → offer_expired.
+        expired_offers = []
+        for offer in await offers.list_active_by_driver(user.id):
+            if is_offer_expired(offer):
+                done = await ExpireOffer(offers).execute(offer.id)
+                if done is not None:
+                    expired_offers.append(done)
+        # 2) viaje activo (recupera un offer_accepted que se perdió).
+        active_detail = await GetDriverActiveRide(rides, offers).execute(user)
+
     await websocket.send_json({"type": "open_rides_snapshot", "data": snapshot})
 
     topics = [pool_topic(user.vehicle_type.value), driver_topic(user.id)]
     for topic in topics:
         hub.subscribe(topic, websocket)
+
+    # Se difunde tras suscribir para que el conductor lo reciba como evento vivo.
+    for offer in expired_offers:
+        await events.publish_offer_expired(offer)
+    if active_detail is not None:
+        await websocket.send_json(
+            {
+                "type": "driver_active_ride",
+                "data": RideResponse.from_detail(active_detail).model_dump(mode="json"),
+            }
+        )
+
     try:
         await _drain(websocket)
     finally:

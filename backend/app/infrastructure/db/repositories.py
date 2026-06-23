@@ -30,6 +30,7 @@ from app.domain.repositories import (
     SavedPlaceRepository,
     UserRepository,
 )
+from app.domain.ride_policy import is_offer_expired
 from app.infrastructure.db.models import (
     OfferModel,
     RideRatingModel,
@@ -405,6 +406,17 @@ class SqlAlchemyOfferRepository(OfferRepository):
         )
         return [_offer_to_entity(row) for row in result.scalars().all()]
 
+    async def list_active_by_driver(self, driver_id: uuid.UUID) -> list[Offer]:
+        result = await self._session.execute(
+            select(OfferModel)
+            .where(
+                OfferModel.driver_id == driver_id,
+                OfferModel.status.in_(_ACTIVE_OFFER_STATUSES),
+            )
+            .order_by(OfferModel.created_at.desc())
+        )
+        return [_offer_to_entity(row) for row in result.scalars().all()]
+
     async def get_active_by_driver_and_ride(
         self, ride_id: uuid.UUID, driver_id: uuid.UUID
     ) -> Offer | None:
@@ -552,6 +564,27 @@ class SqlAlchemyOfferRepository(OfferRepository):
             withdrawn_ride_ids=withdrawn_ride_ids,
             losing_driver_ids=losing_driver_ids,
         )
+
+    async def mark_expired_if_pending(self, offer_id: uuid.UUID) -> Offer | None:
+        # Vence la oferta solo si sigue PENDING y ya pasó su TTL (race-safe con un
+        # accept/reject/withdraw/supersede simultáneo: esos la sacan de PENDING y
+        # aquí no se toca). Bloqueo de fila para serializar contra accept_atomically.
+        offer_row = (
+            await self._session.execute(
+                select(OfferModel).where(OfferModel.id == offer_id).with_for_update()
+            )
+        ).scalar_one_or_none()
+        if (
+            offer_row is None
+            or offer_row.status is not OfferStatus.PENDING
+            or not is_offer_expired(_offer_to_entity(offer_row))
+        ):
+            await self._session.rollback()
+            return None
+        offer_row.status = OfferStatus.EXPIRED
+        await self._session.commit()
+        await self._session.refresh(offer_row)
+        return _offer_to_entity(offer_row)
 
 
 def _rating_to_entity(row: RideRatingModel) -> RideRating:

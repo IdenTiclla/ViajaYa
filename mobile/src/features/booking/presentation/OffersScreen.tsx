@@ -27,7 +27,6 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage, getApiErrorStatus } from '@/core/errors/apiError';
-import { useCountdown } from '@/core/hooks/useCountdown';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
 import { ConfirmationOverlay } from '@/features/booking/presentation/ConfirmationOverlay';
@@ -143,13 +142,24 @@ export function OffersScreen() {
   const onCancel = () => {
     setConfirmCancel(false);
     if (cancelRide.isPending) return;
-    useBookingStore.getState().resetTrip();
     if (!id) {
+      useBookingStore.getState().resetTrip();
       router.replace('/(app)/(tabs)');
       return;
     }
-    cancelRide.mutate(id, { onSuccess: () => router.replace('/(app)/(tabs)') });
+    // Resetea el store recién cuando el backend confirma: si la red falla, el
+    // usuario se queda en la pantalla con el error (sin ride huérfano).
+    cancelRide.mutate(id, {
+      onSuccess: () => {
+        useBookingStore.getState().resetTrip();
+        router.replace('/(app)/(tabs)');
+      },
+    });
   };
+
+  // Oferta cuyo Aceptar está en curso: solo esa tarjeta se bloquea (las demás
+  // siguen permitiendo Rechazar, que es ortogonal).
+  const acceptingId = acceptOffer.isPending ? acceptOffer.variables ?? null : null;
 
   if (assigned && !confirming) {
     // El viaje quedó asignado: el overlay ya navegó, o este es el respaldo.
@@ -235,7 +245,8 @@ export function OffersScreen() {
               key={offer.id}
               offer={offer}
               tag={primaryTag(tagsMap[offer.id])}
-              disabled={acceptOffer.isPending}
+              now={now}
+              acceptingId={acceptingId}
               onAccept={() => onAccept(offer)}
               onReject={() => onReject(offer)}
             />
@@ -264,18 +275,25 @@ export function OffersScreen() {
 function OfferCard({
   offer,
   tag,
-  disabled,
+  now,
+  acceptingId,
   onAccept,
   onReject,
 }: {
   offer: Offer;
   tag: { kind: OfferTagKind; label: string; subLabel: string } | null;
-  disabled: boolean;
+  /** Tick global (segundo a segundo) compartido por todas las tarjetas. */
+  now: number;
+  /** Oferta cuyo Aceptar está en curso (solo esa se bloquea). */
+  acceptingId: string | null;
   onAccept: () => void;
   onReject: () => void;
 }) {
   const { driver } = offer;
-  const secondsLeft = useCountdown(offer.expiresAt);
+  const expiresMs = offer.expiresAt ? new Date(offer.expiresAt).getTime() : null;
+  const secondsLeft =
+    expiresMs != null ? Math.max(0, Math.ceil((expiresMs - now) / 1000)) : null;
+  const acceptInFlight = acceptingId === offer.id;
   const initial = driver.fullName.trim().charAt(0).toUpperCase() || 'C';
   const vehicle = [
     driver.vehicleType ? SERVICE_LABELS[driver.vehicleType] : null,
@@ -332,17 +350,16 @@ function OfferCard({
 
       <View style={styles.cardActions}>
         <TouchableOpacity
-          style={[styles.rejectBtn, disabled && styles.disabled]}
+          style={styles.rejectBtn}
           onPress={onReject}
-          disabled={disabled}
           accessibilityRole="button"
           accessibilityLabel={`Rechazar oferta de ${driver.fullName}`}>
           <Text style={styles.rejectText}>Rechazar</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.acceptBtn, disabled && styles.disabled]}
+          style={[styles.acceptBtn, acceptInFlight && styles.disabled]}
           onPress={onAccept}
-          disabled={disabled}
+          disabled={acceptInFlight}
           accessibilityRole="button"
           accessibilityLabel={`Aceptar oferta de ${driver.fullName} por Bs ${offer.price.toFixed(2)}`}>
           <Text style={styles.acceptText}>Aceptar</Text>

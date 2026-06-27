@@ -23,6 +23,7 @@ import { formatKm, haversineKm, pricePerKm } from '@/features/rides/domain/geo';
 import { OfferLifeTimer } from '@/features/rides/presentation/OfferLifeTimer';
 import { RoutePinMarker } from '@/features/rides/presentation/RoutePinMarker';
 import type { OpenRide } from '@/features/rides/domain/types';
+import Animated, { SlideInDown } from 'react-native-reanimated';
 
 const PAYMENT_LABELS = { qr: 'QR', cash: 'Efectivo' } as const;
 const QUICK_DELTAS = [1, 2, 5] as const;
@@ -38,12 +39,14 @@ type Props = {
   rejected: Set<string>;
   expired: Set<string>;
   paused: Set<string>;
+  taken: Set<string>;
   /** Ride a seleccionar al abrir el mapa (al tocar una tarjeta desde la lista). */
   initialSelectedId?: string | null;
   onOpenDetail: (ride: OpenRide) => void;
   onAccept: (ride: OpenRide) => void;
   onDismiss: (ride: OpenRide) => void;
   onQuickAdd: (ride: OpenRide, delta: number) => void;
+  onOpenKeypad: (ride: OpenRide) => void;
   onWithdraw: (ride: OpenRide) => void;
 };
 
@@ -56,11 +59,13 @@ export function SolicitudesMapa({
   rejected,
   expired,
   paused,
+  taken,
   initialSelectedId,
   onOpenDetail,
   onAccept,
   onDismiss,
   onQuickAdd,
+  onOpenKeypad,
   onWithdraw,
 }: Props) {
   const mapRef = useRef<MapView>(null);
@@ -181,6 +186,7 @@ export function SolicitudesMapa({
                 rejected={rejected.has(item.id)}
                 expired={expired.has(item.id)}
                 paused={paused.has(item.id)}
+                taken={taken.has(item.id)}
                 disabled={disabled}
                 pendingAccept={pendingRideId === item.id}
                 offerExpiresAt={offeredMap[item.id]?.expiresAt ?? null}
@@ -192,6 +198,7 @@ export function SolicitudesMapa({
                 onAccept={() => onAccept(item)}
                 onDismiss={() => onDismiss(item)}
                 onQuickAdd={(delta) => onQuickAdd(item, delta)}
+                onOpenKeypad={() => onOpenKeypad(item)}
                 onWithdraw={() => onWithdraw(item)}
               />
             </View>
@@ -224,6 +231,7 @@ function MapCard({
   rejected,
   expired,
   paused,
+  taken,
   disabled,
   pendingAccept,
   offerExpiresAt,
@@ -231,6 +239,7 @@ function MapCard({
   onAccept,
   onDismiss,
   onQuickAdd,
+  onOpenKeypad,
   onWithdraw,
 }: {
   ride: OpenRide;
@@ -238,6 +247,7 @@ function MapCard({
   rejected: boolean;
   expired: boolean;
   paused: boolean;
+  taken: boolean;
   disabled: boolean;
   pendingAccept: boolean;
   offerExpiresAt: string | null;
@@ -245,6 +255,7 @@ function MapCard({
   onAccept: () => void;
   onDismiss: () => void;
   onQuickAdd: (delta: number) => void;
+  onOpenKeypad: () => void;
   onWithdraw: () => void;
 }) {
   const secondsLeft = useCountdown(offerExpiresAt);
@@ -261,7 +272,7 @@ function MapCard({
   return (
     <TouchableOpacity activeOpacity={0.95} onPress={onPress} style={styles.card}>
       {offered && (
-        <View style={styles.offeredBanner}>
+        <Animated.View entering={SlideInDown.duration(200)} style={styles.offeredBanner}>
           <Ionicons name="checkmark-circle" size={15} color={colors.textOnPrimary} />
           <Text style={styles.bannerTextOn}>
             {secondsLeft != null && secondsLeft <= 0 ? 'Expirando…' : 'Oferta enviada'}
@@ -277,12 +288,25 @@ function MapCard({
             accessibilityLabel="Retirar oferta">
             <Text style={styles.withdrawBtnText}>Retirar</Text>
           </TouchableOpacity>
-        </View>
+        </Animated.View>
       )}
       {paused && (
         <View style={styles.pausedBanner}>
           <Ionicons name="create-outline" size={15} color={colors.textSecondary} />
           <Text style={styles.bannerTextDark}>El pasajero está modificando su solicitud</Text>
+          <TouchableOpacity
+            style={styles.dismissBannerBtn}
+            onPress={onDismiss}
+            accessibilityRole="button"
+            accessibilityLabel="Quitar solicitud del mapa">
+            <Text style={styles.dismissBannerBtnText}>Quitar</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+      {taken && (
+        <View style={styles.takenBanner}>
+          <Ionicons name="trophy-outline" size={15} color={colors.textOnPrimary} />
+          <Text style={styles.bannerTextOn}>Otro conductor tomó el viaje</Text>
         </View>
       )}
       {expired && (
@@ -323,7 +347,7 @@ function MapCard({
         </View>
       </View>
 
-      {!offered && !paused && (
+      {!offered && !paused && !taken && (
         <>
           <View style={styles.quickRow}>
             {QUICK_DELTAS.map((delta) => (
@@ -337,6 +361,15 @@ function MapCard({
                 <Text style={styles.quickPillText}>+Bs {delta}</Text>
               </TouchableOpacity>
             ))}
+            <TouchableOpacity
+              style={[styles.keypadBtn, disabled && styles.disabled]}
+              onPress={onOpenKeypad}
+              disabled={disabled}
+              accessibilityRole="button"
+              accessibilityLabel="Contraofertar con un monto personalizado">
+              <Ionicons name="create-outline" size={16} color="#7A6000" />
+              <Text style={styles.quickPillText}>Monto</Text>
+            </TouchableOpacity>
           </View>
 
           <View style={styles.routeRow}>
@@ -519,6 +552,30 @@ const styles = StyleSheet.create({
   },
   bannerTextOn: { color: colors.textOnPrimary, fontSize: fontSize.xs, fontWeight: fontWeight.bold },
   bannerTextDark: { color: colors.text, fontSize: fontSize.xs, fontWeight: fontWeight.bold },
+  dismissBannerBtn: {
+    marginLeft: 'auto',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  dismissBannerBtnText: { color: colors.textSecondary, fontSize: fontSize.xs, fontWeight: fontWeight.bold },
+  takenBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    marginHorizontal: -spacing.md,
+    marginTop: -spacing.md,
+    marginBottom: -spacing.xs,
+    paddingVertical: spacing.xs + 2,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.primary,
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
+  },
   withdrawBtn: {
     marginLeft: 'auto',
     paddingHorizontal: spacing.sm,
@@ -536,6 +593,18 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(245,197,24,0.18)',
     borderWidth: 1,
     borderColor: 'rgba(245,197,24,0.5)',
+  },
+  keypadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs + 2,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(245,197,24,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(245,197,24,0.5)',
+    marginLeft: 'auto',
   },
   quickPillText: { color: '#7A6000', fontSize: fontSize.sm, fontWeight: fontWeight.bold },
 

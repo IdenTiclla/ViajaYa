@@ -83,8 +83,13 @@ def _to_location_input(point) -> LocationInput:
     )
 
 
+# Tareas de expiración de ofertas en vuelo. Se guardan para evitar que el GC de
+# asyncio las reclame antes de los 30 s (create_task sin referencia es frágil).
+_EXPIRY_TASKS: set[asyncio.Task[None]] = set()
+
+
 async def _expire_offer_after(offer_id: uuid.UUID) -> None:
-    """Vence la oferta a los 30 s y avisa al conductor en tiempo real por WS.
+    """Vence la oferta a los 30 s y avisa en tiempo real por WS a conductor y pasajero.
 
     Tarea diferida lanzada al crear la oferta, con una sesión nueva (la del
     request ya cerró). Si para entonces la oferta fue aceptada/rechazada/retirada/
@@ -264,8 +269,10 @@ async def create_offer(
         await events.publish_offer_superseded(result.superseded_offer_id, result.detail)
     else:
         await events.publish_offer_created(result.detail)
-    # Avisa al conductor si su oferta vence a los 30 s sin respuesta (tiempo real).
-    asyncio.create_task(_expire_offer_after(result.detail.offer.id))
+    # Avisa a conductor y pasajero si la oferta vence a los 30 s sin respuesta.
+    task = asyncio.create_task(_expire_offer_after(result.detail.offer.id))
+    _EXPIRY_TASKS.add(task)
+    task.add_done_callback(_EXPIRY_TASKS.discard)
     return OfferResponse.from_detail(result.detail)
 
 

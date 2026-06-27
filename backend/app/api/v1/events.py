@@ -112,19 +112,22 @@ async def publish_offer_rejected(offer: Offer, reason: str = "declined") -> None
 
 
 async def publish_offer_expired(offer: Offer) -> None:
-    """La oferta del conductor venció (30 s) sin respuesta del pasajero. Se avisa
-    en tiempo real para que el conductor deje de ver "esperando" y pueda reofertar."""
-    await hub.broadcast(
-        driver_topic(offer.driver_id),
-        _envelope(
-            OFFER_EXPIRED,
-            {
-                "ride_id": str(offer.ride_id),
-                "offer_id": str(offer.id),
-                "reason": "expired",
-            },
-        ),
-    )
+    """La oferta del conductor venció (30 s) sin respuesta del pasajero.
+
+    Se avisa en tiempo real a ambos lados: el conductor deja de ver "esperando" y
+    puede reofertar; el pasajero recibe el evento para retirar la tarjeta de su
+    lista en vivo (sin depender de volver a pollear ``/offers``). Se incluye el
+    ``driver_id`` para que el cliente pueda leer el nombre del conductor de su
+    caché antes de remover la tarjeta.
+    """
+    payload = {
+        "ride_id": str(offer.ride_id),
+        "offer_id": str(offer.id),
+        "driver_id": str(offer.driver_id),
+        "reason": "expired",
+    }
+    await hub.broadcast(driver_topic(offer.driver_id), _envelope(OFFER_EXPIRED, payload))
+    await hub.broadcast(ride_topic(offer.ride_id), _envelope(OFFER_EXPIRED, payload))
 
 
 async def publish_offer_withdrawn_by_driver(offer: Offer) -> None:

@@ -16,7 +16,7 @@ import { getApiErrorMessage } from '@/core/errors/apiError';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 import { DriverSearchMap } from '@/features/driver/presentation/DriverSearchMap';
 import { DriverTopBar } from '@/features/driver/presentation/DriverTopBar';
-import { KeypadModal } from '@/features/driver/presentation/KeypadModal';
+import { OfferSentOverlay } from '@/features/driver/presentation/OfferSentOverlay';
 import { RadarPulse } from '@/features/driver/presentation/RadarPulse';
 import { RequestCard } from '@/features/driver/presentation/RequestCard';
 import { SolicitudesMapa } from '@/features/driver/presentation/SolicitudesMapa';
@@ -26,6 +26,7 @@ import { useDriverEarnings } from '@/features/rides/application/useCloseFlow';
 import { useCreateOffer, useSetOnline, useWithdrawOffer } from '@/features/rides/application/useRideMutations';
 import { useDriverActiveRide, useOpenRides } from '@/features/rides/application/useRides';
 import type { DriverEarnings, OpenRide } from '@/features/rides/domain/types';
+import { FareKeypad } from '@/features/rides/presentation/FareKeypad';
 import { useDriverRequests } from '@/features/driver/application/useDriverRequests';
 import { useAuthStore } from '@/store/authStore';
 
@@ -56,6 +57,7 @@ export function SolicitudesEntrantesScreen() {
   const rejected = useDriverRequests((s) => s.rejected);
   const expired = useDriverRequests((s) => s.expired);
   const paused = useDriverRequests((s) => s.paused);
+  const taken = useDriverRequests((s) => s.taken);
   const offeredMap = useDriverRequests((s) => s.offered);
   const isOffered = useDriverRequests((s) => s.isOffered);
   const dismiss = useDriverRequests((s) => s.dismiss);
@@ -66,6 +68,8 @@ export function SolicitudesEntrantesScreen() {
   const [keypadFor, setKeypadFor] = useState<OpenRide | null>(null);
   // Ride a seleccionar al abrir el mapa desde la lista (toca una tarjeta).
   const [selectedForMap, setSelectedForMap] = useState<string | null>(null);
+  // Feedback efímero "Oferta enviada" al enviar una oferta.
+  const [offerSent, setOfferSent] = useState(false);
 
   const visibleRides = useMemo(
     () => rides.filter((r) => !dismissed.has(r.id)),
@@ -81,7 +85,12 @@ export function SolicitudesEntrantesScreen() {
   const acceptAtFare = (ride: OpenRide) => {
     createOffer.mutate(
       { rideId: ride.id, input: { acceptAtFare: true } },
-      { onSuccess: (offer) => markOffered(ride.id, offer) },
+      {
+        onSuccess: (offer) => {
+          markOffered(ride.id, offer);
+          setOfferSent(true);
+        },
+      },
     );
   };
 
@@ -90,7 +99,12 @@ export function SolicitudesEntrantesScreen() {
     const price = Math.round((ride.fare + delta) * 100) / 100;
     createOffer.mutate(
       { rideId: ride.id, input: { acceptAtFare: false, price } },
-      { onSuccess: (offer) => markOffered(ride.id, offer) },
+      {
+        onSuccess: (offer) => {
+          markOffered(ride.id, offer);
+          setOfferSent(true);
+        },
+      },
     );
   };
 
@@ -104,6 +118,7 @@ export function SolicitudesEntrantesScreen() {
         onSuccess: (offer) => {
           markOffered(ride.id, offer);
           setKeypadFor(null);
+          setOfferSent(true);
         },
       },
     );
@@ -168,11 +183,13 @@ export function SolicitudesEntrantesScreen() {
             rejected={rejected}
             expired={expired}
             paused={paused}
+            taken={taken}
             initialSelectedId={selectedForMap}
             onOpenDetail={openStatus}
             onAccept={acceptAtFare}
             onDismiss={(r) => dismiss(r.id)}
             onQuickAdd={quickAdd}
+            onOpenKeypad={(r) => setKeypadFor(r)}
             onWithdraw={withdraw}
           />
           <View pointerEvents="box-none" style={styles.mapHeader}>
@@ -211,6 +228,7 @@ export function SolicitudesEntrantesScreen() {
                   rejected={rejected.has(item.id)}
                   expired={expired.has(item.id)}
                   paused={paused.has(item.id)}
+                  taken={taken.has(item.id)}
                   disabled={createOffer.isPending || withdrawOffer.isPending}
                   pendingAccept={pendingRideId === item.id}
                   offerExpiresAt={offeredMap[item.id]?.expiresAt ?? null}
@@ -227,14 +245,17 @@ export function SolicitudesEntrantesScreen() {
         </>
       )}
 
-      <KeypadModal
+      <FareKeypad
         key={keypadFor?.id ?? 'none'}
         visible={!!keypadFor}
-        riderFare={keypadFor?.fare ?? 0}
+        mode="absolute"
+        subtitle={`El pasajero ofrece Bs ${(keypadFor?.fare ?? 0).toFixed(2)}`}
         submitting={createOffer.isPending}
         onCancel={() => setKeypadFor(null)}
         onSubmit={submitKeypad}
       />
+
+      <OfferSentOverlay visible={offerSent} onDone={() => setOfferSent(false)} />
     </View>
   );
 }

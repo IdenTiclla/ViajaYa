@@ -11,6 +11,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 
 import { openSocket } from '@/core/realtime/socket';
+import { usePassengerToasts } from '@/features/booking/application/usePassengerToasts';
 import { useDriverRequests } from '@/features/driver/application/useDriverRequests';
 import { useDriverToasts } from '@/features/driver/application/useDriverToasts';
 import {
@@ -41,11 +42,24 @@ export function useNegotiationSocket(rideId: string | null, enabled = true): voi
         case 'offer_created': {
           // Nueva oferta o el conductor mejoró la suya: upsert por id.
           const offer = toOffer(msg.data as OfferDto);
+          const isNew = !queryClient
+            .getQueryData<Offer[]>(['ride-offers', rideId])
+            ?.some((o) => o.id === offer.id);
           queryClient.setQueryData<Offer[]>(['ride-offers', rideId], (prev = []) =>
             prev.some((o) => o.id === offer.id)
               ? prev.map((o) => (o.id === offer.id ? offer : o))
               : [offer, ...prev],
           );
+          // Aviso solo de ofertas genuinamente nuevas (las mejoras reemplazan y
+          // no deben spamear).
+          if (isNew) {
+            usePassengerToasts.getState().push({
+              kind: 'offer_received',
+              rideId,
+              title: 'Nueva oferta',
+              message: `${offer.driver.fullName}: Bs ${offer.price.toFixed(2)}`,
+            });
+          }
           break;
         }
         case 'offer_withdrawn': {
@@ -55,9 +69,45 @@ export function useNegotiationSocket(rideId: string | null, enabled = true): voi
             driver_id: string;
             offer_id?: string | null;
           };
+          const existing =
+            queryClient.getQueryData<Offer[]>(['ride-offers', rideId]) ?? [];
+          const removed = existing.find((o) =>
+            offerId ? o.id === offerId : o.driver.id === driverId,
+          );
           queryClient.setQueryData<Offer[]>(['ride-offers', rideId], (prev = []) =>
             prev.filter((o) => (offerId ? o.id !== offerId : o.driver.id !== driverId)),
           );
+          if (removed) {
+            usePassengerToasts.getState().push({
+              kind: 'offer_withdrawn',
+              rideId,
+              title: 'Oferta retirada',
+              message: `${removed.driver.fullName} retiró su oferta.`,
+            });
+          }
+          break;
+        }
+        case 'offer_expired': {
+          // La oferta del conductor venció (30 s) sin respuesta: el backend la
+          // emite también al pasajero para retirar la tarjeta en vivo.
+          const { offer_id: offerId } = msg.data as {
+            offer_id: string;
+            ride_id: string;
+          };
+          const existing =
+            queryClient.getQueryData<Offer[]>(['ride-offers', rideId]) ?? [];
+          const expired = existing.find((o) => o.id === offerId);
+          queryClient.setQueryData<Offer[]>(['ride-offers', rideId], (prev = []) =>
+            prev.filter((o) => o.id !== offerId),
+          );
+          if (expired) {
+            usePassengerToasts.getState().push({
+              kind: 'offer_expired',
+              rideId,
+              title: 'Oferta expirada',
+              message: `La oferta de ${expired.driver.fullName} expiró.`,
+            });
+          }
           break;
         }
         case 'ride_status':

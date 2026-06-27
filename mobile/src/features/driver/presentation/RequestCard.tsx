@@ -14,6 +14,7 @@ import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'rea
 import ReanimatedSwipeable, {
   type SwipeableMethods,
 } from 'react-native-gesture-handler/ReanimatedSwipeable';
+import Animated, { SlideInDown } from 'react-native-reanimated';
 
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 import { useCountdown } from '@/core/hooks/useCountdown';
@@ -32,6 +33,8 @@ type Props = {
   expired: boolean;
   /** El pasajero está modificando la solicitud (no se puede ofertar aún). */
   paused: boolean;
+  /** Otro conductor se llevó el viaje (la card desaparecerá pronto por WS). */
+  taken: boolean;
   /** Bloquea toda interacción (hay una mutación en curso). */
   disabled: boolean;
   /** Esta tarjeta es la que está enviando la oferta/aceptación (botón "Esperando…"). */
@@ -53,6 +56,7 @@ export function RequestCard({
   rejected,
   expired,
   paused,
+  taken,
   disabled,
   pendingAccept,
   offerExpiresAt,
@@ -113,6 +117,19 @@ export function RequestCard({
             <Text style={styles.pausedBannerText}>
               El pasajero está modificando su solicitud
             </Text>
+            <TouchableOpacity
+              style={styles.dismissBannerBtn}
+              onPress={onDismiss}
+              accessibilityRole="button"
+              accessibilityLabel="Quitar solicitud del panel">
+              <Text style={styles.dismissBannerBtnText}>Quitar</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        {taken && (
+          <View style={styles.takenBanner}>
+            <Ionicons name="trophy-outline" size={15} color={colors.textOnPrimary} />
+            <Text style={styles.takenBannerText}>Otro conductor tomó el viaje</Text>
           </View>
         )}
         {rejected && (
@@ -152,7 +169,7 @@ export function RequestCard({
         {/* Contraoferta rápida (rápida +Bs y lápiz): visible mientras se pueda
             ofertar (default, expired y rejected). En expired/rejected es la forma
             de mejorar la oferta tras un rechazo/vencimiento. */}
-        {!offered && !paused && (
+        {!offered && !paused && !taken && (
           <View style={styles.quick}>
             <Text style={styles.quickLabel}>CONTRAOFERTA RÁPIDA</Text>
             <View style={styles.quickRow}>
@@ -201,7 +218,7 @@ export function RequestCard({
           </View>
         </View>
 
-        {offered || paused ? null : expired || rejected ? (
+        {offered || paused || taken ? null : expired || rejected ? (
           <View style={styles.cardActions}>
             <TouchableOpacity
               style={[styles.actionBtn, styles.accept, disabled && styles.disabled]}
@@ -266,7 +283,7 @@ function OfferedBanner({
   const secondsLeft = useCountdown(expiresAt);
   const expiring = secondsLeft != null && secondsLeft <= 0;
   return (
-    <View style={styles.offeredBanner}>
+    <Animated.View entering={SlideInDown.duration(200)} style={styles.offeredBanner}>
       <Ionicons name="checkmark-circle" size={15} color={colors.textOnPrimary} />
       <Text style={styles.offeredBannerText}>{expiring ? 'Expirando…' : 'Oferta enviada'}</Text>
       {!expiring && secondsLeft != null && <OfferLifeTimer secondsLeft={secondsLeft} label="" />}
@@ -278,7 +295,7 @@ function OfferedBanner({
         accessibilityLabel="Retirar oferta">
         <Text style={styles.withdrawBtnText}>Retirar</Text>
       </TouchableOpacity>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -356,6 +373,29 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceMuted,
   },
   pausedBannerText: { color: colors.textSecondary, fontSize: fontSize.xs, fontWeight: fontWeight.bold },
+  dismissBannerBtn: {
+    marginLeft: 'auto',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  dismissBannerBtnText: { color: colors.textSecondary, fontSize: fontSize.xs, fontWeight: fontWeight.bold },
+  takenBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    marginHorizontal: -spacing.md,
+    marginTop: -spacing.md,
+    marginBottom: -spacing.xs,
+    paddingVertical: spacing.xs + 2,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.primary,
+  },
+  takenBannerText: { color: colors.textOnPrimary, fontSize: fontSize.xs, fontWeight: fontWeight.bold },
   rejectedBanner: {
     flexDirection: 'row',
     alignItems: 'center',

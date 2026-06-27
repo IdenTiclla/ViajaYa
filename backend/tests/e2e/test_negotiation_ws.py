@@ -446,3 +446,57 @@ def test_driver_recovers_active_ride_on_reconnect(ws_client: TestClient):
         assert active["type"] == "driver_active_ride"
         assert active["data"]["id"] == ride["id"]
         assert active["data"]["status"] == "accepted"
+
+
+def test_passenger_receives_offer_expired(ws_client: TestClient, monkeypatch):
+    """Al vencer una oferta (30 s sin respuesta), el pasajero recibe ``offer_expired``
+    en vivo para retirar la tarjeta — no depende de volver a pollear ``/offers``.
+
+    Cubre la corrección de ``publish_offer_expired``, que ahora emite también al
+    ``ride_topic`` (antes solo al canal del conductor).
+    """
+    import uuid as _uuid
+    from datetime import timedelta
+
+    from app.api.v1 import events
+    from app.application.use_cases.expire_offer import ExpireOffer
+    from app.domain import ride_policy
+    from app.infrastructure.db.repositories import SqlAlchemyOfferRepository
+
+    # Forzamos la expiración sin esperar los 30 s reales.
+    monkeypatch.setattr(ride_policy, "OFFER_TTL", timedelta(seconds=0))
+
+    rider_token = _register(ws_client, "rider@x.com")
+    driver_token = _register(ws_client, "driver@x.com")
+    _promote_driver(ws_client, "driver@x.com")
+
+    ride = ws_client.post(RIDES, json=_ride_payload(), headers=_headers(rider_token)).json()
+
+    with ws_client.websocket_connect(
+        f"/api/v1/ws/rides/{ride['id']}?token={rider_token}"
+    ) as ws:
+        assert ws.receive_json()["type"] == "offers_snapshot"
+
+        offer = ws_client.post(
+            f"{RIDES}/{ride['id']}/offers",
+            json={"accept_at_fare": True},
+            headers=_headers(driver_token),
+        ).json()
+        assert ws.receive_json()["type"] == "offer_created"
+
+        async def expire() -> None:
+            async with ws_client.factory() as session:  # type: ignore[attr-defined]
+                offers_repo = SqlAlchemyOfferRepository(session)
+                offer_entity = await ExpireOffer(offers_repo).execute(
+                    _uuid.UUID(offer["id"])
+                )
+            assert offer_entity is not None
+            await events.publish_offer_expired(offer_entity)
+
+        ws_client.portal.call(expire)
+
+        event = ws.receive_json()
+        assert event["type"] == "offer_expired"
+        assert event["data"]["offer_id"] == offer["id"]
+        assert event["data"]["ride_id"] == ride["id"]
+        assert event["data"]["reason"] == "expired"

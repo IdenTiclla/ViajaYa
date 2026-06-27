@@ -1,7 +1,7 @@
 /**
- * Muestra los toasts del conductor (desenlaces de oferta) en la parte superior,
+ * Muestra los toasts del pasajero (desenlaces de oferta) en la parte superior,
  * estilo Material-You glass, con auto-descarte a los 3.5 s. Se monta en el layout
- * del conductor para aparecer sobre cualquier pantalla (lista, mapa, inicio).
+ * autenticado del pasajero para aparecer sobre cualquier pantalla.
  */
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect } from 'react';
@@ -11,21 +11,18 @@ import Animated, { FadeInDown, FadeOutUp, LinearTransition } from 'react-native-
 
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 import {
-  type DriverToast,
-  type DriverToastKind,
-  useDriverToasts,
-} from '@/features/driver/application/useDriverToasts';
+  type PassengerToast,
+  type PassengerToastKind,
+  usePassengerToasts,
+} from '@/features/booking/application/usePassengerToasts';
 
-const META: Record<DriverToastKind, { icon: keyof typeof Ionicons.glyphMap; color: string }> = {
-  expired: { icon: 'time-outline', color: '#B07A00' },
-  rejected: { icon: 'close-circle', color: colors.danger },
-  taken: { icon: 'car-sport', color: colors.danger },
-  cancelled: { icon: 'ban-outline', color: colors.danger },
-  paused: { icon: 'create-outline', color: colors.textSecondary },
-  accepted: { icon: 'checkmark-circle', color: colors.success },
+const META: Record<PassengerToastKind, { icon: keyof typeof Ionicons.glyphMap; color: string }> = {
+  offer_received: { icon: 'pricetag', color: colors.success },
+  offer_expired: { icon: 'time-outline', color: '#B07A00' },
+  offer_withdrawn: { icon: 'remove-circle-outline', color: colors.textSecondary },
 };
 
-function ToastItem({ toast, onDismiss }: { toast: DriverToast; onDismiss: () => void }) {
+function ToastItem({ toast, onDismiss }: { toast: PassengerToast; onDismiss: () => void }) {
   useEffect(() => {
     const timer = setTimeout(onDismiss, 3500);
     return () => clearTimeout(timer);
@@ -50,9 +47,9 @@ function ToastItem({ toast, onDismiss }: { toast: DriverToast; onDismiss: () => 
   );
 }
 
-export function DriverToaster() {
-  const toasts = useDriverToasts((s) => s.toasts);
-  const dismiss = useDriverToasts((s) => s.dismiss);
+export function PassengerToaster() {
+  const toasts = usePassengerToasts((s) => s.toasts);
+  const dismiss = usePassengerToasts((s) => s.dismiss);
 
   if (toasts.length === 0) return null;
   return (

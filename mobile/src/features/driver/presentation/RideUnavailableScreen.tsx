@@ -21,6 +21,7 @@ export function RideUnavailableScreen({
   priceLabel = 'Última oferta',
   title = 'Viaje ya no disponible',
   hint = 'Este servicio fue tomado por otro conductor o cancelado por el pasajero. ¡No te preocupes! Sigue buscando oportunidades en el mapa.',
+  badge,
 }: {
   price: number | null;
   originName: string | null;
@@ -29,6 +30,9 @@ export function RideUnavailableScreen({
   priceLabel?: string;
   title?: string;
   hint?: string;
+  /** Etiqueta opcional de la tarjeta (p. ej. "Expirado", "Cancelado"). Si no se
+   * pasa, no se muestra (antes estaba hardcodeada como "Expirado"). */
+  badge?: string;
 }) {
   return (
     <View style={styles.root}>
@@ -57,9 +61,11 @@ export function RideUnavailableScreen({
               <Text style={styles.cardLabel}>{priceLabel}</Text>
               <Text style={styles.price}>{price != null ? `Bs ${price.toFixed(2)}` : '—'}</Text>
             </View>
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>Expirado</Text>
-            </View>
+            {badge ? (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{badge}</Text>
+              </View>
+            ) : null}
           </View>
 
           <View style={styles.timeline}>

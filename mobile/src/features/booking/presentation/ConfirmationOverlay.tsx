@@ -1,13 +1,17 @@
 /**
  * Overlay de confirmación: se muestra al aceptar una oferta (el viaje quedó
- * asignado). Ícono verde con rebote, mensaje y auto-ocultado; al terminar llama
- * `onDone` (para navegar al viaje en curso).
+ * asignado). Ícono verde con rebote; avanza al **tap** del usuario (tras un
+ * mínimo de ~500 ms para evitar un toque accidental) o, como respaldo, se
+ * auto-oculta a los 3 s. Al terminar llama a `onDone` (navega al viaje).
  */
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useState } from 'react';
-import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+
+const MIN_DISPLAY_MS = 500;
+const FALLBACK_MS = 3000;
 
 export function ConfirmationOverlay({
   visible,
@@ -17,10 +21,13 @@ export function ConfirmationOverlay({
   onDone: () => void;
 }) {
   const [scale] = useState(() => new Animated.Value(0));
+  // Ref (no state): el onPress la lee al tap; evita re-renders en cascada.
+  const canDismissRef = useRef(false);
 
   useEffect(() => {
     if (!visible) return;
     scale.setValue(0);
+    canDismissRef.current = false;
     const anim = Animated.sequence([
       Animated.timing(scale, {
         toValue: 1.15,
@@ -36,10 +43,14 @@ export function ConfirmationOverlay({
       }),
     ]);
     anim.start();
-    const timeout = setTimeout(onDone, 1600);
+    const minTimer = setTimeout(() => {
+      canDismissRef.current = true;
+    }, MIN_DISPLAY_MS);
+    const fallback = setTimeout(onDone, FALLBACK_MS);
     return () => {
       anim.stop();
-      clearTimeout(timeout);
+      clearTimeout(minTimer);
+      clearTimeout(fallback);
     };
     // visible dispara la animación; onDone es estable (useCallback en el padre).
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -48,15 +59,22 @@ export function ConfirmationOverlay({
   if (!visible) return null;
 
   return (
-    <View style={styles.overlay} accessibilityRole="alert" accessibilityLabel="Viaje confirmado">
+    <Pressable
+      style={styles.overlay}
+      onPress={() => {
+        if (canDismissRef.current) onDone();
+      }}
+      accessibilityRole="alert"
+      accessibilityLabel="Viaje confirmado. Toca para continuar.">
       <Animated.View style={[styles.card, { transform: [{ scale }] }]}>
         <View style={styles.iconCircle}>
           <Ionicons name="checkmark-circle" size={56} color={colors.success} />
         </View>
         <Text style={styles.title}>¡Viaje Confirmado!</Text>
         <Text style={styles.hint}>Tu conductor está en camino</Text>
+        <Text style={styles.tapHint}>Toca para continuar</Text>
       </Animated.View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -96,4 +114,5 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: fontSize.xl, fontWeight: fontWeight.bold, color: colors.text },
   hint: { fontSize: fontSize.md, color: colors.textSecondary, textAlign: 'center' },
+  tapHint: { fontSize: fontSize.xs, color: colors.primary, fontWeight: fontWeight.semibold, marginTop: spacing.xs },
 });

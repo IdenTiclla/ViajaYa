@@ -20,7 +20,6 @@ import {
   Easing,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -35,6 +34,7 @@ import {
   usePauseForEdit,
   useUpdateRideFare,
 } from '@/features/rides/application/useRideMutations';
+import { FareKeypad } from '@/features/rides/presentation/FareKeypad';
 import { TripRouteMap } from '@/features/rides/presentation/TripRouteMap';
 import { RouteSummary } from '@/features/rides/presentation/RouteSummary';
 import { ConfirmDialog } from '@/shared/components';
@@ -63,7 +63,7 @@ export function SearchingDriversScreen({
   const updateFare = useUpdateRideFare();
   const pauseForEdit = usePauseForEdit();
 
-  const [customAmount, setCustomAmount] = useState('');
+  const [customKeypad, setCustomKeypad] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
 
   // La búsqueda no caduca: se sale al modificar (pausa y edita) o cancelar.
@@ -83,30 +83,29 @@ export function SearchingDriversScreen({
   const onCancel = () => {
     setConfirmCancel(false);
     if (cancelRide.isPending) return;
-    useBookingStore.getState().resetTrip();
     if (!rideId) {
+      useBookingStore.getState().resetTrip();
       router.replace('/(app)/(tabs)');
       return;
     }
+    // Resetea el store recién cuando el backend confirma el cancel.
     cancelRide.mutate(rideId, {
-      onSuccess: () => router.replace('/(app)/(tabs)'),
+      onSuccess: () => {
+        useBookingStore.getState().resetTrip();
+        router.replace('/(app)/(tabs)');
+      },
     });
   };
 
   // Aumentar la oferta = oferta actual + incremento (redondeado a 2 decimales).
+  // Requiere conocer la oferta vigente; sin ella (ride aún cargando) no aplicamos.
   const applyIncrease = (delta: number) => {
-    if (!rideId || updateFare.isPending || delta <= 0) return;
-    const base = currentFare ?? 0;
-    const next = Math.round((base + delta) * 100) / 100;
+    if (!rideId || updateFare.isPending || delta <= 0 || currentFare == null) return;
+    const next = Math.round((currentFare + delta) * 100) / 100;
     updateFare.mutate({ rideId, fare: next });
   };
 
-  const onApplyCustom = () => {
-    const delta = Number.parseFloat(customAmount.replace(',', '.'));
-    if (!Number.isFinite(delta) || delta <= 0) return;
-    applyIncrease(delta);
-    setCustomAmount('');
-  };
+  const fareLocked = currentFare == null || updateFare.isPending;
 
   return (
     <View style={styles.root}>
@@ -166,10 +165,10 @@ export function SearchingDriversScreen({
                 style={[
                   styles.bidBtn,
                   i === 0 && styles.bidBtnSuggested,
-                  updateFare.isPending && styles.disabled,
+                  fareLocked && styles.disabled,
                 ]}
                 onPress={() => applyIncrease(inc.delta)}
-                disabled={updateFare.isPending}
+                disabled={fareLocked}
                 accessibilityRole="button"
                 accessibilityLabel={`Aumentar oferta en ${inc.delta} bolivianos`}>
                 <Text style={styles.bidAmount}>+Bs {inc.delta}</Text>
@@ -178,27 +177,15 @@ export function SearchingDriversScreen({
             ))}
           </View>
 
-          <View style={styles.customRow}>
-            <Text style={styles.customPrefix}>+Bs</Text>
-            <TextInput
-              style={styles.customInput}
-              value={customAmount}
-              onChangeText={setCustomAmount}
-              placeholder="Monto personalizado"
-              placeholderTextColor={colors.placeholder}
-              keyboardType="decimal-pad"
-              returnKeyType="done"
-              onSubmitEditing={onApplyCustom}
-            />
-            <TouchableOpacity
-              style={[styles.applyBtn, (updateFare.isPending || !customAmount) && styles.disabled]}
-              onPress={onApplyCustom}
-              disabled={updateFare.isPending || !customAmount}
-              accessibilityRole="button"
-              accessibilityLabel="Aplicar monto personalizado">
-              <Text style={styles.applyText}>Aplicar</Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            style={[styles.customBtn, fareLocked && styles.disabled]}
+            onPress={() => setCustomKeypad(true)}
+            disabled={fareLocked}
+            accessibilityRole="button"
+            accessibilityLabel="Aumentar oferta con un monto personalizado">
+            <Ionicons name="add-circle-outline" size={18} color={colors.primary} />
+            <Text style={styles.customBtnText}>Monto personalizado</Text>
+          </TouchableOpacity>
 
           {updateFare.isError && (
             <Text style={styles.error}>{getApiErrorMessage(updateFare.error)}</Text>
@@ -248,6 +235,19 @@ export function SearchingDriversScreen({
         cancelText="No, seguir esperando"
         onConfirm={onCancel}
         onCancel={() => setConfirmCancel(false)}
+      />
+
+      <FareKeypad
+        visible={customKeypad}
+        mode="increment"
+        subtitle={currentFare != null ? `Tu oferta actual: Bs ${currentFare.toFixed(2)}` : undefined}
+        submitting={updateFare.isPending}
+        submitLabel="Aplicar"
+        onCancel={() => setCustomKeypad(false)}
+        onSubmit={(delta) => {
+          applyIncrease(delta);
+          setCustomKeypad(false);
+        }}
       />
     </View>
   );
@@ -442,26 +442,18 @@ const styles = StyleSheet.create({
   bidAmount: { fontSize: fontSize.sm, fontWeight: fontWeight.bold, color: colors.text },
   bidHintSmall: { fontSize: 10, color: colors.textSecondary, marginTop: 2 },
 
-  customRow: {
+  customBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-    height: 52,
-    paddingHorizontal: spacing.md,
+    justifyContent: 'center',
+    gap: spacing.xs,
+    height: 48,
     borderRadius: radius.md,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
   },
-  customPrefix: { fontSize: fontSize.md, fontWeight: fontWeight.bold, color: colors.primary },
-  customInput: { flex: 1, fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.text },
-  applyBtn: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.sm,
-    backgroundColor: colors.primary,
-  },
-  applyText: { fontSize: fontSize.sm, fontWeight: fontWeight.bold, color: colors.textOnPrimary },
+  customBtnText: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.primary },
 
   progressTrack: {
     height: 6,

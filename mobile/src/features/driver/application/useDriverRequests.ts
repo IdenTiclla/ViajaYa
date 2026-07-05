@@ -4,14 +4,19 @@
  * El backend no tiene "rechazo" de solicitud por parte del conductor: descartar
  * es un gesto del cliente para ocultar de su lista las que no le interesan.
  *
- * `offered` recuerda la oferta que el conductor envió a cada solicitud (id,
- * precio, ETA e instante de expiración, 30 s) **mientras siga viva**. Al vencer,
- * la solicitud vuelve a ser ofertable. `rejected` marca las solicitudes cuya
- * oferta el pasajero rechazó (aviso en vivo por WebSocket): el conductor puede
- * volver a ofertar o **mejorar** su propuesta. `taken` marca solicitudes que
- * otro conductor se llevó. Se comparte entre la lista, el mapa, el detalle y la
- * pantalla de estado.
+ * `offered` recuerda la oferta enviada a cada solicitud (id, precio, ETA y
+ * expiración 30 s) **mientras siga viva**. Los demás conjuntos marcan el
+ * desenlace en vivo por WebSocket:
+ * - `rejected`: el pasajero rechazó la oferta (`declined`) o canceló el viaje
+ *   (`ride_cancelled`) — el conductor puede volver a ofertar.
+ * - `taken`: otro conductor se llevó el viaje.
+ * - `expired`: la oferta venció (30 s) sin respuesta.
+ * - `paused`: el pasajero está modificando la solicitud (no se puede ofertar).
+ *
+ * Al marcar un desenlace se limpia `offered[rideId]` (sin zombies). Se comparte
+ * entre la lista, el mapa y la pantalla de estado.
  */
+import { useEffect } from 'react';
 import { create } from 'zustand';
 
 /** Datos de la oferta que el conductor envió a una solicitud. */
@@ -27,10 +32,14 @@ const FALLBACK_TTL_MS = 30_000;
 type DriverRequestsState = {
   dismissed: Set<string>;
   offered: Record<string, SentOffer>;
-  /** rideId cuya oferta del conductor fue rechazada por el pasajero (en vivo). */
+  /** Oferta rechazada por el pasajero, o viaje cancelado (puede reofertar). */
   rejected: Set<string>;
-  /** rideId que otro conductor se llevó (viaje perdido). */
+  /** Viaje que otro conductor se llevó. */
   taken: Set<string>;
+  /** Oferta que venció (30 s) sin respuesta del pasajero. */
+  expired: Set<string>;
+  /** Solicitud pausada por el pasajero (modificándola). */
+  paused: Set<string>;
   dismiss: (rideId: string) => void;
   markOffered: (
     rideId: string,
@@ -38,7 +47,9 @@ type DriverRequestsState = {
   ) => void;
   markRejected: (rideId: string) => void;
   markTaken: (rideId: string) => void;
-  /** Limpia todo rastro de una solicitud (p. ej. al ganar/abandonarla). */
+  markExpired: (rideId: string) => void;
+  markPaused: (rideId: string) => void;
+  /** Limpia todo rastro de una solicitud (al ganarla o salir del pool). */
   clearRide: (rideId: string) => void;
   getOffer: (rideId: string) => SentOffer | null;
   isDismissed: (rideId: string) => boolean;
@@ -50,14 +61,20 @@ export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
   offered: {},
   rejected: new Set(),
   taken: new Set(),
+  expired: new Set(),
+  paused: new Set(),
   dismiss: (rideId) => set((s) => ({ dismissed: new Set(s.dismissed).add(rideId) })),
   markOffered: (rideId, offer) =>
     set((s) => {
-      // Volver a ofertar limpia el rechazo/pérdida previa de esa solicitud.
+      // Volver a ofertar limpia cualquier desenlace previo de esa solicitud.
       const rejected = new Set(s.rejected);
       rejected.delete(rideId);
       const taken = new Set(s.taken);
       taken.delete(rideId);
+      const expired = new Set(s.expired);
+      expired.delete(rideId);
+      const paused = new Set(s.paused);
+      paused.delete(rideId);
       return {
         offered: {
           ...s.offered,
@@ -71,11 +88,36 @@ export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
         },
         rejected,
         taken,
+        expired,
+        paused,
       };
     }),
-  // Crea estructuras nuevas para que los selectores re-rendericen.
-  markRejected: (rideId) => set((s) => ({ rejected: new Set(s.rejected).add(rideId) })),
-  markTaken: (rideId) => set((s) => ({ taken: new Set(s.taken).add(rideId) })),
+  // Cada desenlace limpia la entrada de `offered` (sin zombies) y crea sets nuevos
+  // para que los selectores re-rendericen.
+  markRejected: (rideId) =>
+    set((s) => {
+      const offered = { ...s.offered };
+      delete offered[rideId];
+      return { offered, rejected: new Set(s.rejected).add(rideId) };
+    }),
+  markTaken: (rideId) =>
+    set((s) => {
+      const offered = { ...s.offered };
+      delete offered[rideId];
+      return { offered, taken: new Set(s.taken).add(rideId) };
+    }),
+  markExpired: (rideId) =>
+    set((s) => {
+      const offered = { ...s.offered };
+      delete offered[rideId];
+      return { offered, expired: new Set(s.expired).add(rideId) };
+    }),
+  markPaused: (rideId) =>
+    set((s) => {
+      const offered = { ...s.offered };
+      delete offered[rideId];
+      return { offered, paused: new Set(s.paused).add(rideId) };
+    }),
   clearRide: (rideId) =>
     set((s) => {
       const offered = { ...s.offered };
@@ -84,18 +126,55 @@ export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
       rejected.delete(rideId);
       const taken = new Set(s.taken);
       taken.delete(rideId);
-      return { offered, rejected, taken };
+      const expired = new Set(s.expired);
+      expired.delete(rideId);
+      const paused = new Set(s.paused);
+      paused.delete(rideId);
+      const dismissed = new Set(s.dismissed);
+      dismissed.delete(rideId);
+      return { offered, rejected, taken, expired, paused, dismissed };
     }),
   getOffer: (rideId) => get().offered[rideId] ?? null,
   isDismissed: (rideId) => get().dismissed.has(rideId),
-  // Hay oferta "en pie" si existe, no expiró (30 s) y no fue rechazada (en ese
-  // caso el conductor debe poder re-ofertar, así que ya no cuenta como ofertada).
+  // Hay oferta "en pie" si existe, no expiró (30 s) y no tuvo desenlace terminal.
   isOffered: (rideId) => {
     const offer = get().offered[rideId];
     return (
       offer != null &&
       Date.now() < new Date(offer.expiresAt).getTime() &&
-      !get().rejected.has(rideId)
+      !get().rejected.has(rideId) &&
+      !get().taken.has(rideId) &&
+      !get().expired.has(rideId) &&
+      !get().paused.has(rideId)
     );
   },
 }));
+
+/**
+ * Autocuración: pasa a `expired` cualquier oferta cuyo TTL (30 s) ya venció.
+ *
+ * El estado `expired` normalmente lo puebla el WS `offer_expired`, pero si el
+ * conductor cambió de cuenta o se cayó la conexión durante la ventana de la
+ * oferta, el evento se pierde y la tarjeta quedaba pegada en "Expirando…".
+ * Este hook hace tick cada segundo (y al montar) y marca lo vencido. Cuelga de
+ * la pantalla principal del conductor (lista + mapa comparten el mismo estado).
+ */
+export function useAutoExpireOffers(): void {
+  useEffect(() => {
+    const tick = () => {
+      const now = Date.now();
+      const state = useDriverRequests.getState();
+      for (const [rideId, offer] of Object.entries(state.offered)) {
+        if (
+          new Date(offer.expiresAt).getTime() <= now &&
+          !state.expired.has(rideId)
+        ) {
+          state.markExpired(rideId);
+        }
+      }
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
+}

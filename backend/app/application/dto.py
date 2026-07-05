@@ -141,6 +141,15 @@ class RidePausedResult:
 
 
 @dataclass(frozen=True)
+class CancelRideResult:
+    """Resultado de cancelar un viaje: el ride cancelado y las ofertas vivas que
+    murieron con él, para avisar a esos conductores (``reason: ride_cancelled``)."""
+
+    ride: RideRequest
+    cancelled_offers: list[Offer]
+
+
+@dataclass(frozen=True)
 class AcceptOfferResult:
     """Resultado de que el pasajero acepte una oferta (asignación del viaje):
     el viaje asignado, los ``ride_id`` de otros pasajeros cuyas ofertas vivas del

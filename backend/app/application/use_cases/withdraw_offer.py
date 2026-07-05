@@ -1,8 +1,8 @@
-"""Caso de uso: el conductor retira su propia oferta.
+"""Caso de uso: el conductor retira su propia oferta pendiente.
 
-Cubre dos gestos de la app del conductor: "retirar propuesta" mientras espera
-(``PENDING``) y "rechazar" una aceptación del pasajero que no quiere confirmar
-(``RIDER_ACCEPTED``). En ambos casos la oferta muere y el pasajero deja de verla.
+El conductor desiste de una oferta ``PENDING`` (ya no quiere ese viaje, o la
+quiso mejorar con otra). La oferta muere (pasa a ``REJECTED``) y el pasajero
+deja de verla en vivo por WebSocket.
 """
 
 from __future__ import annotations

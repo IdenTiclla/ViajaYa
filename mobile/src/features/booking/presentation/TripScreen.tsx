@@ -9,7 +9,7 @@
  */
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Linking,
@@ -28,7 +28,7 @@ import { useCancelRide } from '@/features/rides/application/useRideMutations';
 import { useRide } from '@/features/rides/application/useRides';
 import { TripRouteMap } from '@/features/rides/presentation/TripRouteMap';
 import type { Ride, RideStatus } from '@/features/rides/domain/types';
-import { Button } from '@/shared/components';
+import { Button, ConfirmDialog } from '@/shared/components';
 
 const SERVICE_LABELS = { taxi: 'Taxi', moto: 'Moto' } as const;
 
@@ -63,6 +63,7 @@ export function TripScreen() {
   useNegotiationSocket(id, !!id);
   const { ride, isLoading } = useRide(id);
   const cancelRide = useCancelRide();
+  const [confirmCancel, setConfirmCancel] = useState(false);
 
   const goHome = () => router.replace('/(app)/(tabs)');
   const goRate = () => router.replace(`/(app)/booking/rating?rideId=${id}`);
@@ -154,10 +155,25 @@ export function TripScreen() {
             title="Cancelar viaje"
             variant="secondary"
             loading={cancelRide.isPending}
-            onPress={() => id && cancelRide.mutate(id)}
+            onPress={() => setConfirmCancel(true)}
           />
         ) : null}
       </SafeAreaView>
+
+      <ConfirmDialog
+        visible={confirmCancel}
+        icon="warning"
+        destructive
+        title="¿Cancelar viaje?"
+        message="Tu conductor ya está en camino. Si cancelas ahora, se le notificará que el viaje fue cancelado."
+        confirmText="Sí, cancelar"
+        cancelText="Seguir"
+        onConfirm={() => {
+          setConfirmCancel(false);
+          if (id) cancelRide.mutate(id);
+        }}
+        onCancel={() => setConfirmCancel(false)}
+      />
     </View>
   );
 }

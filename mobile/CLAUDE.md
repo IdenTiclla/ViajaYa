@@ -17,12 +17,13 @@ El enrutado (`src/app/`) solo monta pantallas; la lógica vive en `src/features/
 src/
 ├── app/                 # Rutas (expo-router, file-based). Solo composición de pantallas.
 │   ├── (auth)/            # Grupo no autenticado: login, register
-│   ├── (app)/             # Grupo autenticado (gated por sesión)
+│   ├── (app)/             # Grupo pasajero autenticado (gated por sesión)
 │   │   ├── (tabs)/          # index (home), history, wallet, profile
-│   │   └── booking/         # destination, configure, offers, pick-on-map, saved-places, edit-place
+│   │   └── booking/         # destination, configure, offers, pick-on-map, saved-places, edit-place, trip, rating
+│   ├── (driver)/          # Grupo conductor autenticado: (tabs)/solicitudes, oferta-enviada, historial
 │   ├── _layout.tsx        # Layout raíz: providers (React Query, theme, gesture handler)
 │   └── index.tsx
-├── features/            # Una carpeta por feature: auth, booking, home
+├── features/            # Una carpeta por feature: auth, booking, home, driver, rides
 │   └── <feature>/
 │       ├── domain/        # types.ts — tipos del dominio (sin React ni IO)
 │       ├── data/          # repositories/services: llamadas a la API y mappers DTO↔dominio
@@ -32,7 +33,7 @@ src/
 │   ├── config/env.ts     # Config tipada desde app.config.ts (extra) vía expo-constants
 │   ├── http/             # client.ts (axios + interceptores token/refresh), tokenStorage (SecureStore)
 │   ├── errors/apiError.ts
-│   ├── hooks/            # hooks genéricos (useKeyboardHeight, ...)
+│   ├── hooks/            # hooks genéricos (useCountdown, ...)
 │   └── theme/            # tokens.ts + index.ts (design system)
 ├── shared/components/  # UI reutilizable: Button, TextField, Checkbox, SocialButton, ...
 └── store/authStore.ts  # Estado de sesión global (Zustand)

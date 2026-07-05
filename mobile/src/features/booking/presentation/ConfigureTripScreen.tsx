@@ -14,7 +14,6 @@ import {
   ActivityIndicator,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -22,14 +21,15 @@ import MapView, { Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-ma
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
-import { useKeyboardHeight } from '@/core/hooks/useKeyboardHeight';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
 import { useRoute } from '@/features/booking/application/useRoute';
 import { ridesRepository } from '@/features/booking/data/ridesRepository';
-import { useEditRide, usePauseForEdit } from '@/features/rides/application/useRideMutations';
+import { useEditRide } from '@/features/rides/application/useRideMutations';
+import { useRide } from '@/features/rides/application/useRides';
 import type { Coordinates, PaymentMethod, ServiceType } from '@/features/booking/domain/types';
 import { declutteredMapStyle } from '@/features/booking/presentation/mapStyle';
+import { FareKeypad } from '@/features/rides/presentation/FareKeypad';
 import { RoutePinMarker } from '@/features/rides/presentation/RoutePinMarker';
 import { RouteSummary } from '@/features/rides/presentation/RouteSummary';
 
@@ -73,13 +73,12 @@ export function ConfigureTripScreen() {
   const setFare = useBookingStore((s) => s.setFare);
   const mapRef = useRef<MapView>(null);
   const queryClient = useQueryClient();
-  const pauseForEdit = usePauseForEdit();
   const editRide = useEditRide();
   // Alto real del bottom sheet, para encuadrar los puntos por encima de él.
   const [sheetHeight, setSheetHeight] = useState(0);
-  const keyboardHeight = useKeyboardHeight();
   // Mostrar/ocultar etiquetas de lugares (el usuario lo controla con el toggle).
   const [showPlaces, setShowPlaces] = useState(true);
+  const [fareKeypadOpen, setFareKeypadOpen] = useState(false);
 
   const createRide = useMutation({
     mutationFn: ridesRepository.create,
@@ -90,24 +89,22 @@ export function ConfigureTripScreen() {
     },
   });
 
-  // Modo edición (Modificar solicitud): al entrar, pausa la solicitud (la oculta
-  // del pool) una sola vez e hidrata el formulario con los datos del viaje.
+  // Modo edición (Modificar solicitud): el llamador (Offers/Searching) ya pausó
+  // la solicitud antes de navegar; aquí solo hidratamos el formulario con los
+  // datos del viaje. La caché ['ride', id] la pobló usePauseForEdit.onSuccess.
+  const { ride: existingRide } = useRide(rideId ?? null);
   const didInitEdit = useRef(false);
   useEffect(() => {
-    if (!rideId || didInitEdit.current) return;
+    if (!rideId || didInitEdit.current || !existingRide) return;
     didInitEdit.current = true;
-    pauseForEdit.mutate(rideId, {
-      onSuccess: (ride) => {
-        setOrigin(ride.origin);
-        setDestination(ride.destination);
-        setService(ride.service);
-        setPayment(ride.payment);
-        setFare(String(ride.fare));
-      },
-    });
-    // pauseForEdit es estable (mutación de React Query); se ejecuta una sola vez.
+    setOrigin(existingRide.origin);
+    setDestination(existingRide.destination);
+    setService(existingRide.service);
+    setPayment(existingRide.payment);
+    setFare(String(existingRide.fare));
+    // existingRide viene de la caché; se hidrata una sola vez.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rideId]);
+  }, [rideId, existingRide]);
 
   const { route, isLoading: routeLoading } = useRoute(origin, destination);
 
@@ -244,7 +241,7 @@ export function ConfigureTripScreen() {
       </SafeAreaView>
 
       <SafeAreaView
-        style={[styles.sheet, keyboardHeight > 0 && { bottom: keyboardHeight }]}
+        style={styles.sheet}
         edges={['bottom']}
         onLayout={(e) => setSheetHeight(e.nativeEvent.layout.height)}>
         {route && (
@@ -307,28 +304,23 @@ export function ConfigureTripScreen() {
         </View>
 
         <Text style={styles.fieldLabel}>Tu oferta</Text>
-        <View style={styles.fareRow}>
+        <TouchableOpacity
+          style={styles.fareRow}
+          onPress={() => setFareKeypadOpen(true)}
+          accessibilityRole="button"
+          accessibilityLabel={`Monto de tu oferta: ${fare || '0'} bolivianos. Toca para editarlo.`}>
           <Text style={styles.fareCurrency}>Bs</Text>
-          <TextInput
-            style={styles.fareInput}
-            value={fare}
-            onChangeText={setFare}
-            placeholder="0.00"
-            placeholderTextColor={colors.placeholder}
-            keyboardType="decimal-pad"
-            returnKeyType="done"
-            accessibilityLabel="Monto de tu oferta en bolivianos"
-          />
-        </View>
+          <Text style={[styles.fareInput, !fare && styles.farePlaceholder]}>
+            {fare || '0.00'}
+          </Text>
+          <Ionicons name="create-outline" size={18} color={colors.textSecondary} />
+        </TouchableOpacity>
 
         {createRide.isError && (
           <Text style={styles.error}>{getApiErrorMessage(createRide.error)}</Text>
         )}
         {editRide.isError && (
           <Text style={styles.error}>{getApiErrorMessage(editRide.error)}</Text>
-        )}
-        {pauseForEdit.isError && (
-          <Text style={styles.error}>{getApiErrorMessage(pauseForEdit.error)}</Text>
         )}
 
         <TouchableOpacity
@@ -347,6 +339,20 @@ export function ConfigureTripScreen() {
           )}
         </TouchableOpacity>
       </SafeAreaView>
+
+      <FareKeypad
+        visible={fareKeypadOpen}
+        mode="absolute"
+        subtitle="Tu oferta"
+        initialValue={fare ? Number.parseFloat(fare.replace(',', '.')) : undefined}
+        submitting={createRide.isPending || editRide.isPending}
+        submitLabel="Listo"
+        onCancel={() => setFareKeypadOpen(false)}
+        onSubmit={(amount) => {
+          setFare(String(amount));
+          setFareKeypadOpen(false);
+        }}
+      />
     </View>
   );
 }
@@ -449,6 +455,7 @@ const styles = StyleSheet.create({
   },
   fareCurrency: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.textSecondary },
   fareInput: { flex: 1, fontSize: fontSize.lg, fontWeight: fontWeight.semibold, color: colors.text, padding: 0 },
+  farePlaceholder: { color: colors.placeholder },
 
   cta: {
     height: 56,

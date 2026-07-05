@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from typing import Annotated
 
@@ -53,6 +54,7 @@ from app.application.use_cases.cancel_ride import CancelRide
 from app.application.use_cases.create_offer import CreateOffer
 from app.application.use_cases.create_ride_request import CreateRideRequest
 from app.application.use_cases.edit_ride import EditRide
+from app.application.use_cases.expire_offer import ExpireOffer
 from app.application.use_cases.get_ride import GetRide
 from app.application.use_cases.list_offers_for_ride import ListOffersForRide
 from app.application.use_cases.list_open_rides import ListOpenRides
@@ -65,6 +67,9 @@ from app.application.use_cases.update_ride_fare import UpdateRideFare
 from app.application.use_cases.update_ride_status import UpdateRideStatus
 from app.application.use_cases.withdraw_offer import WithdrawOffer
 from app.domain.entities import RideStatus
+from app.domain.ride_policy import OFFER_TTL
+from app.infrastructure.db.repositories import SqlAlchemyOfferRepository
+from app.infrastructure.db.session import async_session_factory
 
 router = APIRouter(prefix="/rides", tags=["rides"])
 
@@ -76,6 +81,31 @@ def _to_location_input(point) -> LocationInput:
         name=point.name,
         address=point.address,
     )
+
+
+# Tareas de expiración de ofertas en vuelo. Se guardan para evitar que el GC de
+# asyncio las reclame antes de los 30 s (create_task sin referencia es frágil).
+_EXPIRY_TASKS: set[asyncio.Task[None]] = set()
+
+
+async def _expire_offer_after(offer_id: uuid.UUID) -> None:
+    """Vence la oferta a los 30 s y avisa en tiempo real por WS a conductor y pasajero.
+
+    Tarea diferida lanzada al crear la oferta, con una sesión nueva (la del
+    request ya cerró). Si para entonces la oferta fue aceptada/rechazada/retirada/
+    mejorada, el use case no la toca (race-safe). Es best-effort: nunca debe
+    romper el worker (si el servidor reinició, la sesión cayó, etc.).
+    """
+    try:
+        await asyncio.sleep(OFFER_TTL.total_seconds())
+        async with async_session_factory() as session:
+            offers = SqlAlchemyOfferRepository(session)
+            offer = await ExpireOffer(offers).execute(offer_id)
+        if offer is not None:
+            await events.publish_offer_expired(offer)
+    except Exception:
+        # La expiración es de UX (notificación en vivo): no crítica.
+        pass
 
 
 @router.post("", response_model=RideRequestResponse, status_code=status.HTTP_201_CREATED)
@@ -239,6 +269,10 @@ async def create_offer(
         await events.publish_offer_superseded(result.superseded_offer_id, result.detail)
     else:
         await events.publish_offer_created(result.detail)
+    # Avisa a conductor y pasajero si la oferta vence a los 30 s sin respuesta.
+    task = asyncio.create_task(_expire_offer_after(result.detail.offer.id))
+    _EXPIRY_TASKS.add(task)
+    task.add_done_callback(_EXPIRY_TASKS.discard)
     return OfferResponse.from_detail(result.detail)
 
 
@@ -285,11 +319,14 @@ async def cancel_ride(
     get_ride_use_case: Annotated[GetRide, Depends(get_get_ride)],
 ) -> RideResponse:
     """Cancela el viaje (pasajero o conductor asignado), antes de iniciarlo."""
-    await use_case.execute(current_user, ride_id)
+    result = await use_case.execute(current_user, ride_id)
     detail = await get_ride_use_case.execute(current_user, ride_id)
     await events.publish_ride_status(detail)
     # Si estaba en el pool (buscando), que los conductores la quiten de su lista.
     await events.publish_ride_closed(detail.ride.id, detail.ride.service_type)
+    # Avisa a los conductores con oferta viva: el viaje se canceló (no "tomada").
+    for offer in result.cancelled_offers:
+        await events.publish_offer_rejected(offer, reason="ride_cancelled")
     return RideResponse.from_detail(detail)
 
 

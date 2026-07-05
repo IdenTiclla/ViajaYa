@@ -155,6 +155,10 @@ class OfferRepository(ABC):
         """Ofertas de una solicitud, de la más nueva a la más antigua."""
 
     @abstractmethod
+    async def list_active_by_driver(self, driver_id: uuid.UUID) -> list[Offer]:
+        """Ofertas vivas (``PENDING``) de un conductor, de la más nueva a la más vieja."""
+
+    @abstractmethod
     async def get_active_by_driver_and_ride(
         self, ride_id: uuid.UUID, driver_id: uuid.UUID
     ) -> Offer | None:
@@ -184,6 +188,16 @@ class OfferRepository(ABC):
 
         Devuelve ``None`` si el conductor ya no está disponible o el viaje/oferta
         dejó de ser asignable (el caso de uso lo traduce a ``DriverUnavailableError``).
+        """
+
+    @abstractmethod
+    async def mark_expired_if_pending(self, offer_id: uuid.UUID) -> Offer | None:
+        """Vence la oferta (``EXPIRED``) solo si sigue ``PENDING`` y pasó su TTL.
+
+        Devuelve la oferta ya ``EXPIRED``, o ``None`` si ya no era ``PENDING`` o no
+        estaba vencida (race-safe contra accept/reject/withdraw/supersede: esos la
+        sacan de ``PENDING`` y aquí no se toca). Así el backend puede avisar al
+        conductor en tiempo real cuando su oferta muere por tiempo.
         """
 
 

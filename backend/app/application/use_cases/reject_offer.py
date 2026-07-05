@@ -34,8 +34,8 @@ class RejectOffer:
             raise RideNotFoundError("La solicitud de viaje no existe.")
         if ride.rider_id != rider.id:
             raise NotAuthorizedActionError("No puedes rechazar ofertas de este viaje.")
-        # Se puede rechazar una oferta pendiente o desistir de una ya aceptada
-        # (mientras el conductor no haya confirmado).
+        # Solo se puede rechazar una oferta pendiente (active). El conductor recibe
+        # el aviso por WebSocket y su pantalla de espera deja de mostrarse vigente.
         if offer.status not in ACTIVE_OFFER_STATUSES:
             raise InvalidRideTransitionError("La oferta ya no está disponible.")
 

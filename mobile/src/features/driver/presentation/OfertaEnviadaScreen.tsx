@@ -25,7 +25,6 @@ import { useCountdown } from '@/core/hooks/useCountdown';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 import { useRoute } from '@/features/booking/application/useRoute';
 import { useDriverRequests } from '@/features/driver/application/useDriverRequests';
-import { CounterOfferModal } from '@/features/driver/presentation/CounterOfferModal';
 import { RideUnavailableScreen } from '@/features/driver/presentation/RideUnavailableScreen';
 import { ViajeEnCursoConductorScreen } from '@/features/driver/presentation/ViajeEnCursoConductorScreen';
 import {
@@ -34,6 +33,7 @@ import {
 } from '@/features/rides/application/useRideMutations';
 import { useDriverActiveRide, useOpenRides } from '@/features/rides/application/useRides';
 import { formatKm, haversineKm } from '@/features/rides/domain/geo';
+import { FareKeypad } from '@/features/rides/presentation/FareKeypad';
 import { OfferLifeTimer } from '@/features/rides/presentation/OfferLifeTimer';
 import { TripRouteMap } from '@/features/rides/presentation/TripRouteMap';
 
@@ -51,8 +51,10 @@ export function OfertaEnviadaScreen() {
   // Estado en vivo de la oferta (rechazo por WebSocket; oferta en store).
   const rejectedRides = useDriverRequests((s) => s.rejected);
   const takenRides = useDriverRequests((s) => s.taken);
+  const expiredRides = useDriverRequests((s) => s.expired);
   const offeredMap = useDriverRequests((s) => s.offered);
   const markOffered = useDriverRequests((s) => s.markOffered);
+  const markExpired = useDriverRequests((s) => s.markExpired);
   const clearRide = useDriverRequests((s) => s.clearRide);
   const wasRejected = !!rideId && rejectedRides.has(rideId);
   const wasTaken = !!rideId && takenRides.has(rideId);
@@ -70,9 +72,17 @@ export function OfertaEnviadaScreen() {
   const destination = openRide?.destination ?? null;
   const { route } = useRoute(origin, destination);
 
-  // El contador es el de la propia oferta del conductor (30 s).
+  // El contador es el de la propia oferta del conductor (30 s), solo para display.
   const secondsLeft = useCountdown(sentOffer?.expiresAt ?? null);
-  const offerExpired = sentOffer?.expiresAt != null && secondsLeft === 0;
+  // Autoridad única: el store `expired` (poblado por el WS, o por markExpired
+  // optimista si el countdown llega antes). Así esta pantalla y las cards del
+  // mapa/lista coinciden en cuándo la oferta venció.
+  useEffect(() => {
+    if (rideId && sentOffer?.expiresAt && secondsLeft === 0 && !expiredRides.has(rideId)) {
+      markExpired(rideId);
+    }
+  }, [rideId, secondsLeft, sentOffer, expiredRides, markExpired]);
+  const offerExpired = rideId != null && expiredRides.has(rideId);
 
   const originName = openRide?.origin.name ?? null;
   const destName = openRide?.destination.name ?? null;
@@ -88,10 +98,10 @@ export function OfertaEnviadaScreen() {
     );
   };
 
-  const submitCounter = (price: number, etaMin: number | undefined) => {
+  const submitCounter = (price: number) => {
     if (!rideId) return;
     createOffer.mutate(
-      { rideId, input: { acceptAtFare: false, price, etaMin } },
+      { rideId, input: { acceptAtFare: false, price } },
       {
         onSuccess: (offer) => {
           markOffered(rideId, offer);
@@ -148,9 +158,10 @@ export function OfertaEnviadaScreen() {
           onImprove={() => setShowCounter(true)}
           onBack={backToList}
         />
-        <CounterOfferModal
+        <FareKeypad
           visible={showCounter}
-          riderFare={openRide?.fare ?? 0}
+          mode="absolute"
+          subtitle={`El pasajero ofrece Bs ${(openRide?.fare ?? 0).toFixed(2)}`}
           submitting={createOffer.isPending}
           onCancel={() => setShowCounter(false)}
           onSubmit={submitCounter}
@@ -294,9 +305,10 @@ export function OfertaEnviadaScreen() {
         </View>
       </SafeAreaView>
 
-      <CounterOfferModal
+      <FareKeypad
         visible={showCounter}
-        riderFare={openRide?.fare ?? 0}
+        mode="absolute"
+        subtitle={`El pasajero ofrece Bs ${(openRide?.fare ?? 0).toFixed(2)}`}
         submitting={createOffer.isPending}
         onCancel={() => setShowCounter(false)}
         onSubmit={submitCounter}

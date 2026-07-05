@@ -83,26 +83,38 @@ Accede a la config con `get_settings()` (cacheado con `@lru_cache`); no leas `os
 
 - **auth** (`/auth`): `POST /register`, `POST /login`, `POST /refresh`, `POST /oauth/{provider}`, `GET /me`
 - **rides** (`/rides`):
-  - `POST ""` (crear solicitud), `GET /recent-destinations`
+  - `POST ""` (crear solicitud), `GET /recent-destinations`, `GET /history`
   - `GET /open` (conductor: solicitudes `SEARCHING` de su `vehicle_type`)
-  - `GET /{id}` (polling del detalle del viaje, pasajero o conductor asignado)
-  - `GET /{id}/offers` (pasajero: ofertas `PENDING` de su viaje)
-  - `POST /{id}/offers` (conductor: aceptar al precio o contraofertar)
-  - `POST /offers/{offer_id}/accept` (pasajero: elige una oferta → asigna conductor)
-  - `PATCH /{id}/status` (conductor: `ACCEPTED→ARRIVING→IN_PROGRESS→COMPLETED`)
-  - `POST /{id}/cancel` (pasajero/conductor, antes de `IN_PROGRESS`)
-- **drivers** (`/drivers`): `POST /me/online` (conductor: alterna disponibilidad)
+  - `GET /{id}` (detalle del viaje, pasajero o conductor asignado)
+  - `GET /{id}/offers`, `POST /{id}/offers` (pasajero lista; conductor crea oferta: aceptar al fare o contraofertar)
+  - `POST /offers/{offer_id}/accept` (pasajero: elige oferta → asigna conductor), `/reject`, `/withdraw`
+  - `PATCH /{id}/status` (conductor: `ACCEPTED→ARRIVING→IN_PROGRESS→COMPLETED`), `POST /{id}/rating`
+  - `PATCH /{id}/fare` (pasajero: subir la oferta en búsqueda), `POST /{id}/pause-edit` + `PATCH /{id}` (modificar solicitud), `POST /{id}/cancel`
+- **drivers** (`/drivers`): `POST /me/online`, `GET /me/active-ride`, `GET /me/earnings`
 - **saved-places** (`/saved-places`): `GET ""`, `POST ""`, `PUT /{place_id}`, `DELETE /{place_id}`
+- **WebSocket** (`app/api/v1/ws/`): `/ws/rides/{ride_id}` (pasajero: ofertas/estado),
+  `/ws/driver` (conductor: pool + su viaje activo). Publican `app/api/v1/events.py` vía
+  `hub.broadcast` a `ride_topic`/`driver_topic`/`pool_topic`.
 
 Rutas protegidas: usan `CurrentUserDep` (header `Authorization: Bearer <access_token>`).
 
-### Modelo de ofertas (entrega 0002)
+### Modelo de negociación (el pasajero decide)
 
-El pasajero crea un `RideRequest` (`SEARCHING`); los conductores en línea cuyo
-`vehicle_type` coincide ofertan (`Offer` `PENDING`: aceptar al `fare` o contraofertar
-con `price`+`eta_min`); el pasajero acepta una (`ACCEPTED`, el resto `REJECTED`, se fija
-`driver_id`/`accepted_offer_id`) y el conductor avanza el ciclo de vida hasta `COMPLETED`.
-Tiempo real por **polling** (sin websockets). `UserRole` distingue `passenger`/`driver`.
+El pasajero crea un `RideRequest` (`SEARCHING`); los conductores cuyo `vehicle_type`
+coincide ofertan (`Offer` `PENDING`: aceptar al `fare` o contraofertar con `price`+`eta_min`;
+mejorar la oferta **reemplaza** la anterior y devuelve la vieja para retirarla). **El pasajero
+decide**: `POST /offers/{id}/accept` = **asignación directa** (`ACCEPTED`, demás offers
+`REJECTED`, se fija `driver_id`/`accepted_offer_id`); `reject` y `withdraw` disponibles.
+El conductor avanza `ACCEPTED→ARRIVING→IN_PROGRESS→COMPLETED`.
+
+- **Modificar solicitud NO cancela** (ortogonal al status): `POST /{id}/pause-edit` oculta la
+  solicitud del pool y retira sus offers vivas (`reason=ride_paused`); `PATCH /{id}` edita
+  origen/destino/servicio/fare/pago y la republica. Flag `RideRequest.paused`.
+- **Aumentar oferta**: `PATCH /{id}/fare` sube el fare (solo en `SEARCHING`) y reanuncia al pool.
+- **Expiración**: la oferta caduca a los 30 s (`offer_expired`); la solicitud sigue `SEARCHING`.
+- **Tiempo real por WebSocket** (`events.py` + `hub`): `ride_created`, `ride_closed`,
+  `offer_created`, `offer_superseded`, `offer_rejected`, `offer_withdrawn`, `offer_accepted`,
+  `offer_expired`, `ride_status`. El polling del cliente queda solo como respaldo.
 
 ## Seed de datos de prueba
 

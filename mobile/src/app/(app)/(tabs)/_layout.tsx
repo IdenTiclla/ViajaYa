@@ -1,19 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router/js-tabs';
 
-import { colors, fontSize } from '@/core/theme';
+import { PillTabBar } from '@/core/components/PillTabBar';
 
 /** Navegación principal autenticada (diseño Stitch): Viaje / Historial / Billetera / Perfil. */
 export default function TabsLayout() {
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.textSecondary,
-        tabBarStyle: { borderTopColor: colors.border, backgroundColor: colors.surface },
-        tabBarLabelStyle: { fontSize: fontSize.xs },
-      }}>
+    <Tabs tabBar={(props) => <PillTabBar {...props} />} screenOptions={{ headerShown: false }}>
       <Tabs.Screen
         name="index"
         options={{

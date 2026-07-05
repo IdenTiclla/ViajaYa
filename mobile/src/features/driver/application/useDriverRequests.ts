@@ -53,6 +53,10 @@ type DriverRequestsState = {
   clearPaused: (rideId: string) => void;
   /** Saca una solicitud del set `dismissed` (al volver renovada al pool). */
   clearDismissed: (rideId: string) => void;
+  /** Saca una solicitud del set `expired` (la oferta previa caducó; el ride se renovó). */
+  clearExpired: (rideId: string) => void;
+  /** Saca una solicitud del set `rejected` (la oferta previa fue rechazada; el ride se renovó). */
+  clearRejected: (rideId: string) => void;
   /** Limpia todo rastro de una solicitud (al ganarla o salir del pool). */
   clearRide: (rideId: string) => void;
   getOffer: (rideId: string) => SentOffer | null;
@@ -135,6 +139,20 @@ export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
       const dismissed = new Set(s.dismissed);
       dismissed.delete(rideId);
       return { dismissed };
+    }),
+  clearExpired: (rideId) =>
+    set((s) => {
+      if (!s.expired.has(rideId)) return s;
+      const expired = new Set(s.expired);
+      expired.delete(rideId);
+      return { expired };
+    }),
+  clearRejected: (rideId) =>
+    set((s) => {
+      if (!s.rejected.has(rideId)) return s;
+      const rejected = new Set(s.rejected);
+      rejected.delete(rideId);
+      return { rejected };
     }),
   clearRide: (rideId) =>
     set((s) => {

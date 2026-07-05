@@ -144,10 +144,15 @@ export function useDriverPoolSocket(enabled = true): void {
           // Upsert: una solicitud nueva se antepone; una ya conocida se
           // reemplaza (p. ej. el pasajero aumentó su oferta → nuevo monto, o
           // terminó de modificarla y volvió al pool). En ese segundo caso hay que
-          // limpiar `paused` (para que deje de mostrar el banner "El pasajero
-          // está modificando su solicitud") y también `dismissed`: si el conductor
-          // había descartado la tarjeta, la oferta renovada (monto mayor o datos
-          // cambiados) debe reaparecer — el descarte previo ya no aplica.
+          // resetear el estado local del conductor sobre esa tarjeta, porque los
+          // desenlaces previos caducan al renovarse la solicitud:
+          // - `paused`: deja de mostrar "El pasajero está modificando su solicitud".
+          // - `dismissed`: si la había descartado, la oferta renovada reaparece.
+          // - `expired`/`rejected`: la oferta PREVIA del conductor (que venció o fue
+          //   rechazada) ya no aplica al nuevo contexto (monto mayor o datos
+          //   cambiados); sin esto, la tarjeta seguiría mostrando "Tu oferta expiró"
+          //   / "Tu oferta fue rechazada" sobre un precio que el conductor nunca
+          //   ofertó. No se toca `offered` (oferta viva) ni `taken`.
           const ride = toOpenRide(msg.data as OpenRideDto);
           queryClient.setQueryData<OpenRide[]>(['open-rides'], (prev = []) =>
             prev.some((r) => r.id === ride.id)
@@ -156,6 +161,8 @@ export function useDriverPoolSocket(enabled = true): void {
           );
           useDriverRequests.getState().clearPaused(ride.id);
           useDriverRequests.getState().clearDismissed(ride.id);
+          useDriverRequests.getState().clearExpired(ride.id);
+          useDriverRequests.getState().clearRejected(ride.id);
           break;
         }
         case 'ride_closed': {

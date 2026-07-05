@@ -142,13 +142,18 @@ export function useDriverPoolSocket(enabled = true): void {
           break;
         case 'ride_created': {
           // Upsert: una solicitud nueva se antepone; una ya conocida se
-          // reemplaza (p. ej. el pasajero aumentó su oferta → nuevo monto).
+          // reemplaza (p. ej. el pasajero aumentó su oferta → nuevo monto, o
+          // terminó de modificarla y volvió al pool). En el segundo caso hay que
+          // limpiar el flag `paused` para que la tarjeta deje de mostrar el banner
+          // "El pasajero está modificando su solicitud" (bug de timing: aparecía
+          // al guardar, no durante).
           const ride = toOpenRide(msg.data as OpenRideDto);
           queryClient.setQueryData<OpenRide[]>(['open-rides'], (prev = []) =>
             prev.some((r) => r.id === ride.id)
               ? prev.map((r) => (r.id === ride.id ? ride : r))
               : [ride, ...prev],
           );
+          useDriverRequests.getState().clearPaused(ride.id);
           break;
         }
         case 'ride_closed': {
@@ -158,6 +163,29 @@ export function useDriverPoolSocket(enabled = true): void {
           );
           // La solicitud salió del pool: limpia su estado local (sin zombies).
           useDriverRequests.getState().clearRide(rideId);
+          break;
+        }
+        case 'ride_paused': {
+          // El pasajero pausó la solicitud para editarla (Modificar). El ride sale
+          // del pool (ride_closed) pero al conductor con oferta le llega este
+          // evento con el payload completo para que **mantenga** la tarjeta en su
+          // lista, marcada como pausada (banner "El pasajero está modificando su
+          // solicitud" + solo Quitar) durante la edición. Reemplaza al viejo
+          // `offer_rejected(ride_paused)` que no traía los datos y, combinado con
+          // el ride_closed, hacía desaparecer la tarjeta durante la edición.
+          const ride = toOpenRide(msg.data as OpenRideDto);
+          queryClient.setQueryData<OpenRide[]>(['open-rides'], (prev = []) =>
+            prev.some((r) => r.id === ride.id)
+              ? prev.map((r) => (r.id === ride.id ? ride : r))
+              : [ride, ...prev],
+          );
+          useDriverRequests.getState().markPaused(ride.id);
+          useDriverToasts.getState().push({
+            kind: 'paused',
+            rideId: ride.id,
+            title: 'Solicitud en modificación',
+            message: 'El pasajero está modificando su solicitud.',
+          });
           break;
         }
         case 'offer_accepted': {
@@ -201,14 +229,6 @@ export function useDriverPoolSocket(enabled = true): void {
               rideId,
               title: 'Viaje tomado',
               message: 'Otro conductor se quedó con este viaje.',
-            });
-          } else if (reason === 'ride_paused') {
-            store.markPaused(rideId);
-            toasts.push({
-              kind: 'paused',
-              rideId,
-              title: 'Solicitud en modificación',
-              message: 'El pasajero está modificando su solicitud.',
             });
           } else if (reason === 'ride_cancelled') {
             store.markRejected(rideId);

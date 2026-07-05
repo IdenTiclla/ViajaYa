@@ -47,7 +47,7 @@ export function PerfilConductorScreen() {
           <Button
             title="Historial de viajes"
             variant="secondary"
-            onPress={() => router.push('/(driver)/historial')}
+            onPress={() => router.navigate('/(driver)/(tabs)/historial')}
           />
           <Button title="Cerrar sesión" variant="secondary" onPress={() => void signOut()} />
         </View>

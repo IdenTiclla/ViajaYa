@@ -143,10 +143,11 @@ export function useDriverPoolSocket(enabled = true): void {
         case 'ride_created': {
           // Upsert: una solicitud nueva se antepone; una ya conocida se
           // reemplaza (p. ej. el pasajero aumentó su oferta → nuevo monto, o
-          // terminó de modificarla y volvió al pool). En el segundo caso hay que
-          // limpiar el flag `paused` para que la tarjeta deje de mostrar el banner
-          // "El pasajero está modificando su solicitud" (bug de timing: aparecía
-          // al guardar, no durante).
+          // terminó de modificarla y volvió al pool). En ese segundo caso hay que
+          // limpiar `paused` (para que deje de mostrar el banner "El pasajero
+          // está modificando su solicitud") y también `dismissed`: si el conductor
+          // había descartado la tarjeta, la oferta renovada (monto mayor o datos
+          // cambiados) debe reaparecer — el descarte previo ya no aplica.
           const ride = toOpenRide(msg.data as OpenRideDto);
           queryClient.setQueryData<OpenRide[]>(['open-rides'], (prev = []) =>
             prev.some((r) => r.id === ride.id)
@@ -154,6 +155,7 @@ export function useDriverPoolSocket(enabled = true): void {
               : [ride, ...prev],
           );
           useDriverRequests.getState().clearPaused(ride.id);
+          useDriverRequests.getState().clearDismissed(ride.id);
           break;
         }
         case 'ride_closed': {

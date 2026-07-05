@@ -9,7 +9,10 @@ export default function Index() {
 
   if (status === 'loading') return null;
   if (status !== 'authenticated') return <Redirect href="/(auth)/login" />;
+  // El conductor entra viendo las solicitudes/ofertas entrantes; el pasajero, su viaje.
   return (
-    <Redirect href={user?.role === 'driver' ? '/(driver)/(tabs)' : '/(app)/(tabs)'} />
+    <Redirect
+      href={user?.role === 'driver' ? '/(driver)/(tabs)/solicitudes' : '/(app)/(tabs)'}
+    />
   );
 }

@@ -421,6 +421,48 @@ def test_driver_notified_when_passenger_cancels(ws_client: TestClient):
         assert rejected["data"]["reason"] == "ride_cancelled"
 
 
+def test_driver_receives_ride_paused_on_pause_edit(ws_client: TestClient):
+    """Al pausar para editar, el conductor con oferta recibe ``ride_paused`` con el
+    payload completo del ride (para mantener la tarjeta visible en estado
+    "modificando" durante la edición) — en vez del viejo ``offer_rejected(ride_paused)``
+    que, sumado al ``ride_closed`` del pool, hacía desaparecer la tarjeta (bug de
+    timing: el banner aparecía tras guardar, no durante)."""
+    rider_token = _register(ws_client, "rider@x.com")
+    driver_token = _register(ws_client, "driver@x.com")
+    _promote_driver(ws_client, "driver@x.com")
+
+    ride = ws_client.post(RIDES, json=_ride_payload(), headers=_headers(rider_token)).json()
+
+    with ws_client.websocket_connect(f"/api/v1/ws/driver?token={driver_token}") as ws:
+        assert ws.receive_json()["type"] == "open_rides_snapshot"
+
+        # El pasajero abre presencia y el conductor oferta.
+        with ws_client.websocket_connect(
+            f"/api/v1/ws/rides/{ride['id']}?token={rider_token}"
+        ) as rider_ws:
+            assert rider_ws.receive_json()["type"] == "offers_snapshot"
+            offer = ws_client.post(
+                f"{RIDES}/{ride['id']}/offers",
+                json={"accept_at_fare": True},
+                headers=_headers(driver_token),
+            ).json()
+
+        # El pasajero pausa para editar → al conductor le llegan ride_closed (pool)
+        # y ride_paused (personal, con el ride + offer_id). (También hay un
+        # ride_created previo encolado al abrir el pasajero su conexión.)
+        ws_client.post(f"{RIDES}/{ride['id']}/pause-edit", headers=_headers(rider_token))
+        events = [ws.receive_json() for _ in range(3)]
+        paused = next(e for e in events if e["type"] == "ride_paused")
+        assert paused["data"]["id"] == ride["id"]
+        assert paused["data"]["offer_id"] == offer["id"]
+        # Ya no debe llegar offer_rejected con razón ride_paused (evento reemplazado).
+        assert not any(
+            e.get("type") == "offer_rejected"
+            and e.get("data", {}).get("reason") == "ride_paused"
+            for e in events
+        )
+
+
 def test_driver_recovers_active_ride_on_reconnect(ws_client: TestClient):
     """Si el WS del conductor estaba caído cuando lo eligieron, al reconectar
     recupera el viaje activo (snapshot ``driver_active_ride``)."""

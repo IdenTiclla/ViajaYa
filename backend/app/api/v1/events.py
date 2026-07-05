@@ -30,6 +30,7 @@ from app.infrastructure.realtime.hub import (
 # Tipos de evento (deben coincidir con el cliente móvil).
 RIDE_CREATED = "ride_created"
 RIDE_CLOSED = "ride_closed"
+RIDE_PAUSED = "ride_paused"
 OFFER_CREATED = "offer_created"
 OFFER_REJECTED = "offer_rejected"
 OFFER_WITHDRAWN = "offer_withdrawn"
@@ -63,10 +64,24 @@ async def publish_ride_closed(ride_id: uuid.UUID, service_type: ServiceType) -> 
     )
 
 
-async def publish_ride_paused(result: RidePausedResult) -> None:
+async def publish_ride_paused(
+    result: RidePausedResult, open_detail: OpenRideDetail | None
+) -> None:
     """El pasajero pausó la solicitud para editarla: sale del pool y se retiran sus
-    ofertas vivas (el pasajero quita las tarjetas; los conductores ven morir su
-    oferta por ``ride_paused``)."""
+    ofertas vivas.
+
+    - Al pool: ``RIDE_CLOSED`` (los conductores **sin** oferta dejan de verla; no
+      pueden ofertar sobre una solicitud que va a mutar).
+    - A cada conductor **con** oferta viva: ``RIDE_PAUSED`` con el payload completo
+      del ride, para que el cliente lo mantenga en su lista marcado como pausado
+      (banner "El pasajero está modificando su solicitud" + solo Quitar) **mientras
+      dure la edición**. Reemplaza al viejo ``OFFER_REJECTED {ride_paused}`` que no
+      transportaba los datos del ride y, sumado al ``RIDE_CLOSED``, hacía desaparecer
+      la tarjeta durante la edición (bug de timing). Si ``open_detail`` es ``None``
+      (no debería ocurrir: el ride y su rider acaban de validarse) se omite este
+      aviso y sólo queda el ``RIDE_CLOSED`` del pool.
+    - Al pasajero: ``OFFER_WITHDRAWN`` para que quite las tarjetas de ofertas.
+    """
     ride = result.ride
     await publish_ride_closed(ride.id, ride.service_type)
     for offer in result.paused_offers:
@@ -77,13 +92,15 @@ async def publish_ride_paused(result: RidePausedResult) -> None:
                 {"driver_id": str(offer.driver_id), "offer_id": str(offer.id)},
             ),
         )
-        await hub.broadcast(
-            driver_topic(offer.driver_id),
-            _envelope(
-                OFFER_REJECTED,
-                {"ride_id": str(ride.id), "offer_id": str(offer.id), "reason": "ride_paused"},
-            ),
-        )
+        if open_detail is not None:
+            payload = OpenRideResponse.from_open_ride(open_detail).model_dump(mode="json")
+            await hub.broadcast(
+                driver_topic(offer.driver_id),
+                _envelope(
+                    RIDE_PAUSED,
+                    {**payload, "offer_id": str(offer.id)},
+                ),
+            )
 
 
 async def publish_offer_created(detail: OfferDetail) -> None:
@@ -96,8 +113,8 @@ async def publish_offer_created(detail: OfferDetail) -> None:
 
 async def publish_offer_rejected(offer: Offer, reason: str = "declined") -> None:
     """La oferta murió para el conductor: rechazada por el pasajero (``declined``),
-    el viaje fue tomado por otro conductor (``ride_taken``), el pasajero lo pausó
-    para editar (``ride_paused``) o lo canceló (``ride_cancelled``)."""
+    el viaje fue tomado por otro conductor (``ride_taken``) o lo canceló
+    (``ride_cancelled``)."""
     await hub.broadcast(
         driver_topic(offer.driver_id),
         _envelope(

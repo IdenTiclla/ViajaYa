@@ -52,12 +52,14 @@ export function OfertaEnviadaScreen() {
   const rejectedRides = useDriverRequests((s) => s.rejected);
   const takenRides = useDriverRequests((s) => s.taken);
   const expiredRides = useDriverRequests((s) => s.expired);
+  const pausedRides = useDriverRequests((s) => s.paused);
   const offeredMap = useDriverRequests((s) => s.offered);
   const markOffered = useDriverRequests((s) => s.markOffered);
   const markExpired = useDriverRequests((s) => s.markExpired);
   const clearRide = useDriverRequests((s) => s.clearRide);
   const wasRejected = !!rideId && rejectedRides.has(rideId);
   const wasTaken = !!rideId && takenRides.has(rideId);
+  const isPaused = !!rideId && pausedRides.has(rideId);
   const sentOffer = rideId ? offeredMap[rideId] : undefined;
 
   const createOffer = useCreateOffer();
@@ -126,6 +128,24 @@ export function OfertaEnviadaScreen() {
         onBack={backToList}
         title="Otro conductor tomó el viaje"
         hint="Esta vez se adelantaron. ¡No te desanimes! Hay más solicitudes esperándote en el mapa."
+      />
+    );
+  }
+
+  // El pasajero está modificando la solicitud (Modificar): la oferta fue retirada
+  // temporalmente. No es un viaje perdido — al terminar la edición, el conductor
+  // podrá ofertar de nuevo desde la lista. (Sin este guard, la pantalla caía en
+  // el estado "Viaje ya no disponible".)
+  if (isPaused) {
+    return (
+      <RideUnavailableScreen
+        price={offerPrice}
+        originName={originName}
+        destName={destName}
+        onBack={backToList}
+        priceLabel="Tu oferta"
+        title="El pasajero está modificando su solicitud"
+        hint="Tu oferta se retiró mientras el pasajero edita los detalles. Cuando termine, la solicitud volverá a la lista y podrás ofertar de nuevo."
       />
     );
   }

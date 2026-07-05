@@ -49,6 +49,8 @@ type DriverRequestsState = {
   markTaken: (rideId: string) => void;
   markExpired: (rideId: string) => void;
   markPaused: (rideId: string) => void;
+  /** Saca una solicitud del set `paused` sin tocar el resto (al volver al pool). */
+  clearPaused: (rideId: string) => void;
   /** Limpia todo rastro de una solicitud (al ganarla o salir del pool). */
   clearRide: (rideId: string) => void;
   getOffer: (rideId: string) => SentOffer | null;
@@ -117,6 +119,13 @@ export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
       const offered = { ...s.offered };
       delete offered[rideId];
       return { offered, paused: new Set(s.paused).add(rideId) };
+    }),
+  clearPaused: (rideId) =>
+    set((s) => {
+      if (!s.paused.has(rideId)) return s;
+      const paused = new Set(s.paused);
+      paused.delete(rideId);
+      return { paused };
     }),
   clearRide: (rideId) =>
     set((s) => {

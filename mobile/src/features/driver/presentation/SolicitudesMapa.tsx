@@ -190,6 +190,7 @@ export function SolicitudesMapa({
                 disabled={disabled}
                 pendingAccept={pendingRideId === item.id}
                 offerExpiresAt={offeredMap[item.id]?.expiresAt ?? null}
+                offerPrice={offeredMap[item.id]?.price ?? null}
                 onPress={
                   isOffered(item.id) || rejected.has(item.id) || expired.has(item.id)
                     ? () => onOpenDetail(item)
@@ -235,6 +236,7 @@ function MapCard({
   disabled,
   pendingAccept,
   offerExpiresAt,
+  offerPrice,
   onPress,
   onAccept,
   onDismiss,
@@ -251,6 +253,8 @@ function MapCard({
   disabled: boolean;
   pendingAccept: boolean;
   offerExpiresAt: string | null;
+  /** Precio que el conductor ofertó (mostrado cuando `offered`). */
+  offerPrice: number | null;
   onPress?: () => void;
   onAccept: () => void;
   onDismiss: () => void;
@@ -260,7 +264,10 @@ function MapCard({
 }) {
   const secondsLeft = useCountdown(offerExpiresAt);
   const tripKm = haversineKm(ride.origin.coordinates, ride.destination.coordinates);
-  const perKm = pricePerKm(ride.fare, tripKm);
+  // Con oferta enviada mostramos el monto que el conductor propuso (no el fare
+  // del pasajero), para que vea su contraoferta reflejada en la tarjeta.
+  const displayPrice = offered && offerPrice != null ? offerPrice : ride.fare;
+  const perKm = pricePerKm(displayPrice, tripKm);
   const { rider } = ride;
   const initial = rider.fullName.trim().charAt(0).toUpperCase() || '?';
   const meta = [
@@ -342,8 +349,12 @@ function MapCard({
           </Text>
         </View>
         <View style={styles.priceCol}>
-          <Text style={styles.fare}>Bs {ride.fare.toFixed(2)}</Text>
-          {perKm && <Text style={styles.perKm}>Bs {perKm}/km</Text>}
+          <Text style={styles.fare}>Bs {displayPrice.toFixed(2)}</Text>
+          {offered && offerPrice != null ? (
+            <Text style={styles.perKm}>Tu oferta</Text>
+          ) : perKm ? (
+            <Text style={styles.perKm}>Bs {perKm}/km</Text>
+          ) : null}
         </View>
       </View>
 

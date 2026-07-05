@@ -248,6 +248,8 @@ def test_passenger_sees_improved_offer_replace_old_one(ws_client: TestClient):
         withdrawn = ws.receive_json()
         assert withdrawn["type"] == "offer_withdrawn"
         assert withdrawn["data"]["offer_id"] == first["id"]
+        # La mejora se distingue de un retiro real: el cliente no muestra toast.
+        assert withdrawn["data"]["reason"] == "superseded"
 
         created = ws.receive_json()
         assert created["type"] == "offer_created"

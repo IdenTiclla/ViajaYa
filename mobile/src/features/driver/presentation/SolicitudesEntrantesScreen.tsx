@@ -27,7 +27,7 @@ import { useCreateOffer, useSetOnline, useWithdrawOffer } from '@/features/rides
 import { useDriverActiveRide, useOpenRides } from '@/features/rides/application/useRides';
 import type { DriverEarnings, OpenRide } from '@/features/rides/domain/types';
 import { FareKeypad } from '@/features/rides/presentation/FareKeypad';
-import { useDriverRequests } from '@/features/driver/application/useDriverRequests';
+import { useAutoExpireOffers, useDriverRequests } from '@/features/driver/application/useDriverRequests';
 import { useAuthStore } from '@/store/authStore';
 
 type ViewMode = 'list' | 'map';
@@ -54,6 +54,9 @@ export function SolicitudesEntrantesScreen() {
   const position = useWatchPosition();
 
   const dismissed = useDriverRequests((s) => s.dismissed);
+  // Autocuración: expira en cliente las ofertas vencidas si se perdió el WS
+  // (p. ej. el conductor cambió de cuenta durante los 30 s de la oferta).
+  useAutoExpireOffers();
   const rejected = useDriverRequests((s) => s.rejected);
   const expired = useDriverRequests((s) => s.expired);
   const paused = useDriverRequests((s) => s.paused);
@@ -232,6 +235,7 @@ export function SolicitudesEntrantesScreen() {
                   disabled={createOffer.isPending || withdrawOffer.isPending}
                   pendingAccept={pendingRideId === item.id}
                   offerExpiresAt={offeredMap[item.id]?.expiresAt ?? null}
+                  offerPrice={offeredMap[item.id]?.price ?? null}
                   onPress={() => openInMap(item)}
                   onAccept={() => acceptAtFare(item)}
                   onDismiss={() => dismiss(item.id)}
@@ -246,7 +250,6 @@ export function SolicitudesEntrantesScreen() {
       )}
 
       <FareKeypad
-        key={keypadFor?.id ?? 'none'}
         visible={!!keypadFor}
         mode="absolute"
         subtitle={`El pasajero ofrece Bs ${(keypadFor?.fare ?? 0).toFixed(2)}`}

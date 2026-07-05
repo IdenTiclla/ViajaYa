@@ -6,7 +6,7 @@
  * (TextInput stock). La lógica vive en `features/rides/domain/fareInput.ts`.
  */
 import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
@@ -27,7 +27,7 @@ type Props = {
   mode?: FareMode;
   /** Subtítulo libre bajo el título (p. ej. "El pasajero ofrece Bs 15.00"). */
   subtitle?: string;
-  /** Valor inicial al abrir (edición/mejora); resetea al remontar con `key`. */
+  /** Valor inicial: el estado se resincroniza desde aquí cada vez que se abre. */
   initialValue?: number;
   submitting?: boolean;
   submitLabel?: string;
@@ -48,6 +48,14 @@ export function FareKeypad({
   onSubmit,
 }: Props) {
   const [state, setState] = useState(() => fromValue(initialValue));
+  // El componente vive montado con `visible=false`: al abrirse, el estado se
+  // resincroniza desde `initialValue` (descarta entradas canceladas y refleja
+  // el monto vigente aunque haya cambiado después del montaje).
+  const wasVisible = useRef(visible);
+  useEffect(() => {
+    if (visible && !wasVisible.current) setState(fromValue(initialValue));
+    wasVisible.current = visible;
+  }, [visible, initialValue]);
   const value = toValue(state);
   const ready = canSubmit(state) && !submitting;
   const decimalOn = state.decimalActive;

@@ -41,6 +41,8 @@ type Props = {
   pendingAccept: boolean;
   /** Expiración (ISO) de la oferta enviada; alimenta el contador del banner offered. */
   offerExpiresAt: string | null;
+  /** Precio que el conductor ofertó (mostrado cuando `offered`). */
+  offerPrice: number | null;
   onPress: () => void;
   onAccept: () => void;
   onDismiss: () => void;
@@ -60,6 +62,7 @@ export function RequestCard({
   disabled,
   pendingAccept,
   offerExpiresAt,
+  offerPrice,
   onPress,
   onAccept,
   onDismiss,
@@ -72,7 +75,10 @@ export function RequestCard({
     () => haversineKm(ride.origin.coordinates, ride.destination.coordinates),
     [ride.origin, ride.destination],
   );
-  const perKm = pricePerKm(ride.fare, tripKm);
+  // Con oferta enviada mostramos el monto que el conductor propuso (no el fare
+  // del pasajero), para que vea su contraoferta reflejada en la tarjeta.
+  const displayPrice = offered && offerPrice != null ? offerPrice : ride.fare;
+  const perKm = pricePerKm(displayPrice, tripKm);
 
   const { rider } = ride;
   const initial = rider.fullName.trim().charAt(0).toUpperCase() || '?';
@@ -100,7 +106,7 @@ export function RequestCard({
         activeOpacity={0.9}
         onPress={onPress}
         accessibilityRole="button"
-        accessibilityLabel={`Solicitud de ${rider.fullName}, ${ride.service === 'taxi' ? 'taxi' : 'moto'}, Bs ${ride.fare.toFixed(2)}`}
+        accessibilityLabel={`Solicitud de ${rider.fullName}, ${ride.service === 'taxi' ? 'taxi' : 'moto'}, ${offered && offerPrice != null ? `tu oferta Bs ${offerPrice.toFixed(2)}` : `Bs ${ride.fare.toFixed(2)}`}`}
         style={styles.card}>
         {offered && (
           <OfferedBanner expiresAt={offerExpiresAt} disabled={disabled} onWithdraw={onWithdraw} />
@@ -161,8 +167,12 @@ export function RequestCard({
             </Text>
           </View>
           <View style={styles.priceCol}>
-            <Text style={styles.fare}>Bs {ride.fare.toFixed(2)}</Text>
-            {perKm && <Text style={styles.perKm}>Bs {perKm}/km</Text>}
+            <Text style={styles.fare}>Bs {displayPrice.toFixed(2)}</Text>
+            {offered && offerPrice != null ? (
+              <Text style={styles.perKm}>Tu oferta</Text>
+            ) : perKm ? (
+              <Text style={styles.perKm}>Bs {perKm}/km</Text>
+            ) : null}
           </View>
         </View>
 

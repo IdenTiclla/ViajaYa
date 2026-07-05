@@ -16,6 +16,7 @@
  * Al marcar un desenlace se limpia `offered[rideId]` (sin zombies). Se comparte
  * entre la lista, el mapa y la pantalla de estado.
  */
+import { useEffect } from 'react';
 import { create } from 'zustand';
 
 /** Datos de la oferta que el conductor envió a una solicitud. */
@@ -148,3 +149,32 @@ export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
     );
   },
 }));
+
+/**
+ * Autocuración: pasa a `expired` cualquier oferta cuyo TTL (30 s) ya venció.
+ *
+ * El estado `expired` normalmente lo puebla el WS `offer_expired`, pero si el
+ * conductor cambió de cuenta o se cayó la conexión durante la ventana de la
+ * oferta, el evento se pierde y la tarjeta quedaba pegada en "Expirando…".
+ * Este hook hace tick cada segundo (y al montar) y marca lo vencido. Cuelga de
+ * la pantalla principal del conductor (lista + mapa comparten el mismo estado).
+ */
+export function useAutoExpireOffers(): void {
+  useEffect(() => {
+    const tick = () => {
+      const now = Date.now();
+      const state = useDriverRequests.getState();
+      for (const [rideId, offer] of Object.entries(state.offered)) {
+        if (
+          new Date(offer.expiresAt).getTime() <= now &&
+          !state.expired.has(rideId)
+        ) {
+          state.markExpired(rideId);
+        }
+      }
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
+}

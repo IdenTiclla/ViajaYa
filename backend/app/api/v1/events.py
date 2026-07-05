@@ -142,7 +142,12 @@ async def publish_offer_withdrawn_by_driver(offer: Offer) -> None:
 
 
 async def publish_offer_superseded(superseded_offer_id: uuid.UUID, detail: OfferDetail) -> None:
-    """El conductor mejoró su oferta: se retira la vieja y se anuncia la nueva."""
+    """El conductor mejoró su oferta: se retira la vieja y se anuncia la nueva.
+
+    El ``reason: "superseded"`` distingue este retiro de uno real: el cliente
+    quita la tarjeta vieja sin avisar "retiró su oferta" (el ``offer_created``
+    inmediato ya anuncia el monto nuevo).
+    """
     await hub.broadcast(
         ride_topic(detail.offer.ride_id),
         _envelope(
@@ -150,6 +155,7 @@ async def publish_offer_superseded(superseded_offer_id: uuid.UUID, detail: Offer
             {
                 "driver_id": str(detail.driver.id),
                 "offer_id": str(superseded_offer_id),
+                "reason": "superseded",
             },
         ),
     )

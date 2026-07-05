@@ -65,9 +65,12 @@ export function useNegotiationSocket(rideId: string | null, enabled = true): voi
         case 'offer_withdrawn': {
           // El conductor retiró/reemplazó su oferta o tomó otro viaje. Si llega
           // `offer_id` quitamos solo esa tarjeta; si no, todas las del conductor.
-          const { driver_id: driverId, offer_id: offerId } = msg.data as {
+          // `reason === 'superseded'` = mejora: se quita sin toast (el
+          // `offer_created` inmediato ya anuncia el monto nuevo).
+          const { driver_id: driverId, offer_id: offerId, reason } = msg.data as {
             driver_id: string;
             offer_id?: string | null;
+            reason?: string;
           };
           const existing =
             queryClient.getQueryData<Offer[]>(['ride-offers', rideId]) ?? [];
@@ -77,7 +80,7 @@ export function useNegotiationSocket(rideId: string | null, enabled = true): voi
           queryClient.setQueryData<Offer[]>(['ride-offers', rideId], (prev = []) =>
             prev.filter((o) => (offerId ? o.id !== offerId : o.driver.id !== driverId)),
           );
-          if (removed) {
+          if (removed && reason !== 'superseded') {
             usePassengerToasts.getState().push({
               kind: 'offer_withdrawn',
               rideId,

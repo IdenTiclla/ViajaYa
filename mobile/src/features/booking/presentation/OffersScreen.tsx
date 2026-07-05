@@ -68,8 +68,12 @@ export function OffersScreen() {
   useNegotiationSocket(id, !!id);
 
   const { ride } = useRide(id);
-  const assigned = !!ride && ride.status !== 'searching';
-  const { offers } = useRideOffers(id, !assigned);
+  // Solo cuenta como asignado si hay conductor real; al cancelar, el viaje pasa
+  // a 'cancelled' y NO debe llevar a la pantalla de viaje (vendría a mostrar
+  // "Viaje cancelado"). El handler de cancelar ya envía al inicio directamente.
+  const assigned = !!ride && ride.status !== 'searching' && ride.status !== 'cancelled';
+  const cancelled = ride?.status === 'cancelled';
+  const { offers } = useRideOffers(id, !assigned && !cancelled);
   const acceptOffer = useAcceptOffer();
   const rejectOffer = useRejectOffer();
   const cancelRide = useCancelRide();
@@ -105,6 +109,15 @@ export function OffersScreen() {
       router.replace({ pathname: '/booking/trip', params: { rideId: id } });
     }
   }, [assigned, id, confirming, router]);
+
+  // El viaje se canceló sin que esta pantalla lo iniciara (otro dispositivo,
+  // sesión previa): sin este efecto el pasajero quedaría "buscando" un viaje
+  // muerto. El cancel local también pasa por aquí sin daño (replace idempotente).
+  useEffect(() => {
+    if (!cancelled || cancelRide.isPending || confirming) return;
+    useBookingStore.getState().resetTrip();
+    router.replace('/(app)/(tabs)');
+  }, [cancelled, cancelRide.isPending, confirming, router]);
 
   const onAccept = (offer: Offer) => {
     if (acceptOffer.isPending) return;
@@ -166,7 +179,10 @@ export function OffersScreen() {
     return null;
   }
 
-  if (visibleOffers.length === 0) {
+  // Mientras el overlay de confirmación está activo NO se cambia a la pantalla
+  // de búsqueda: si la oferta aceptada (única visible) expira en ese instante,
+  // desmontar el overlay dejaría `confirming` colgado y al pasajero sin navegar.
+  if (visibleOffers.length === 0 && !confirming) {
     return (
       <SearchingDriversScreen
         rideId={id}
@@ -180,36 +196,12 @@ export function OffersScreen() {
   return (
     <View style={styles.root}>
       {origin && destination ? (
-        <TripRouteMap origin={origin} destination={destination} topPadding={190} bottomPadding={420} />
+        <TripRouteMap origin={origin} destination={destination} topPadding={170} bottomPadding={170} />
       ) : (
         <View style={styles.mapFallback} />
       )}
 
-      <SafeAreaView edges={['top', 'bottom']} style={styles.overlay} pointerEvents="box-none">
-        {/* Cabecera: Cancelar (única salida destructiva) + Modificar */}
-        <View style={styles.topBar}>
-          <TouchableOpacity
-            style={styles.cancelBtn}
-            onPress={() => setConfirmCancel(true)}
-            disabled={cancelRide.isPending}
-            accessibilityRole="button"
-            accessibilityLabel="Cancelar solicitud">
-            <Ionicons name="close" size={16} color={colors.textOnPrimary} />
-            <Text style={styles.cancelBtnText}>
-              {cancelRide.isPending ? 'Cancelando…' : 'Cancelar'}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.modifyBtn, pauseForEdit.isPending && styles.disabled]}
-            onPress={onModify}
-            disabled={pauseForEdit.isPending}
-            accessibilityRole="button"
-            accessibilityLabel="Modificar solicitud">
-            <Ionicons name="create-outline" size={16} color={colors.primary} />
-            <Text style={styles.modifyBtnText}>Modificar</Text>
-          </TouchableOpacity>
-        </View>
-
+      <SafeAreaView edges={['top']} style={styles.overlay} pointerEvents="box-none">
         {/* Resumen de ruta (informativo) */}
         <View style={styles.routeWrap} pointerEvents="none">
           <RouteSummary
@@ -218,7 +210,7 @@ export function OffersScreen() {
           />
         </View>
 
-        {/* Sección "Ofertas en vivo" */}
+        {/* Sección "Ofertas en vivo" — sobre tarjeta glass para que se lea sobre el mapa */}
         <View style={styles.liveHeader} pointerEvents="none">
           <View style={styles.liveTitleRow}>
             <Text style={styles.liveTitle}>Ofertas en vivo</Text>
@@ -237,9 +229,6 @@ export function OffersScreen() {
           {acceptOffer.isError && (
             <Text style={styles.error}>{getApiErrorMessage(acceptOffer.error)}</Text>
           )}
-          {pauseForEdit.isError && (
-            <Text style={styles.error}>{getApiErrorMessage(pauseForEdit.error)}</Text>
-          )}
           {visibleOffers.map((offer) => (
             <OfferCard
               key={offer.id}
@@ -253,6 +242,36 @@ export function OffersScreen() {
           ))}
           <View style={styles.listBottomSpacer} />
         </ScrollView>
+      </SafeAreaView>
+
+      {/* Acciones en bloques grandes, igual que al buscar ofertas */}
+      <SafeAreaView edges={['bottom']} style={styles.actionsSheet}>
+        {pauseForEdit.isError && (
+          <Text style={styles.error}>{getApiErrorMessage(pauseForEdit.error)}</Text>
+        )}
+        {cancelRide.isError && (
+          <Text style={styles.error}>{getApiErrorMessage(cancelRide.error)}</Text>
+        )}
+        <TouchableOpacity
+          style={[styles.modify, pauseForEdit.isPending && styles.disabled]}
+          onPress={onModify}
+          disabled={pauseForEdit.isPending}
+          accessibilityRole="button"
+          accessibilityLabel="Modificar solicitud">
+          <Ionicons name="create-outline" size={20} color={colors.primary} />
+          <Text style={styles.modifyText}>Modificar solicitud</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.cancel, cancelRide.isPending && styles.disabled]}
+          onPress={() => setConfirmCancel(true)}
+          disabled={cancelRide.isPending}
+          accessibilityRole="button"
+          accessibilityLabel="Cancelar solicitud">
+          <Ionicons name="close" size={18} color={colors.danger} />
+          <Text style={styles.cancelText}>
+            {cancelRide.isPending ? 'Cancelando…' : 'Cancelar solicitud'}
+          </Text>
+        </TouchableOpacity>
       </SafeAreaView>
 
       <ConfirmationOverlay visible={confirming} onDone={handleConfirmed} />
@@ -405,48 +424,20 @@ const styles = StyleSheet.create({
 
   overlay: { flex: 1 },
 
-  // Cabecera translúcida sobre el mapa.
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.xs,
-  },
-  cancelBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-    height: 38,
-    borderRadius: radius.pill,
-    backgroundColor: colors.danger,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
-  },
-  cancelBtnText: { color: colors.textOnPrimary, fontSize: fontSize.sm, fontWeight: fontWeight.bold },
-  modifyBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-    height: 38,
-    borderRadius: radius.pill,
-    backgroundColor: 'rgba(255,255,255,0.85)',
-    borderWidth: 1,
-    borderColor: colors.primary,
-  },
-  modifyBtnText: { color: colors.primary, fontSize: fontSize.sm, fontWeight: fontWeight.bold },
-
   // Contenedor del resumen de ruta.
-  routeWrap: { marginHorizontal: spacing.md, marginBottom: spacing.sm },
+  routeWrap: { marginHorizontal: spacing.md, marginTop: spacing.sm, marginBottom: spacing.sm },
 
-  // Sección "Ofertas en vivo".
-  liveHeader: { paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
+  // Sección "Ofertas en vivo" sobre tarjeta glass (legible sobre el mapa).
+  liveHeader: {
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(226,228,232,0.7)',
+  },
   liveTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   liveTitle: { fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.text },
   liveDot: { width: 8, height: 8, borderRadius: radius.pill, backgroundColor: colors.success },
@@ -454,8 +445,40 @@ const styles = StyleSheet.create({
 
   // Lista de tarjetas.
   list: { flex: 1 },
-  listContent: { paddingHorizontal: spacing.md, gap: spacing.md, paddingBottom: spacing.xl },
-  listBottomSpacer: { height: spacing.xl },
+  listContent: { paddingHorizontal: spacing.md, gap: spacing.md, paddingBottom: spacing.lg },
+  listBottomSpacer: { height: spacing.md },
+
+  // Contenedor de acciones (sin hoja): bloques grandes directamente sobre el mapa.
+  actionsSheet: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.sm,
+    gap: spacing.sm,
+  },
+  modify: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    height: 52,
+    borderRadius: radius.md,
+    borderWidth: 2,
+    borderColor: colors.primary,
+    backgroundColor: colors.surface,
+  },
+  modifyText: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.primary },
+  cancel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    height: 48,
+    borderRadius: radius.md,
+    backgroundColor: '#FDECEA',
+    borderWidth: 1,
+    borderColor: '#F5C6C2',
+  },
+  cancelText: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.danger },
 
   // Tarjeta translúcida (glassmorphism con rgba + sombra).
   card: {

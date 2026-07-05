@@ -21,7 +21,6 @@ import MapView, { Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-ma
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
-import { useKeyboardHeight } from '@/core/hooks/useKeyboardHeight';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
 import { useRoute } from '@/features/booking/application/useRoute';
@@ -77,7 +76,6 @@ export function ConfigureTripScreen() {
   const editRide = useEditRide();
   // Alto real del bottom sheet, para encuadrar los puntos por encima de él.
   const [sheetHeight, setSheetHeight] = useState(0);
-  const keyboardHeight = useKeyboardHeight();
   // Mostrar/ocultar etiquetas de lugares (el usuario lo controla con el toggle).
   const [showPlaces, setShowPlaces] = useState(true);
   const [fareKeypadOpen, setFareKeypadOpen] = useState(false);
@@ -243,7 +241,7 @@ export function ConfigureTripScreen() {
       </SafeAreaView>
 
       <SafeAreaView
-        style={[styles.sheet, keyboardHeight > 0 && { bottom: keyboardHeight }]}
+        style={styles.sheet}
         edges={['bottom']}
         onLayout={(e) => setSheetHeight(e.nativeEvent.layout.height)}>
         {route && (

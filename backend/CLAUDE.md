@@ -28,7 +28,7 @@ app/
 │   ├── db/                    # SQLAlchemy: base, models, session, repositories (SqlAlchemy*)
 │   ├── security/              # bcrypt_hasher, jwt_service
 │   ├── oauth/                 # google_verifier, facebook_verifier
-│   └── realtime/              # hub (singleton pub/sub por topic), ws_auth (token por ?token=)
+│   └── realtime/              # hub (singleton pub/sub por topic), ws_auth (subprotocol seguro)
 └── api/                     # Capa HTTP (FastAPI).
     ├── deps.py                # Inyección: ÚNICO cableo infra→app (factories get_*, *Dep)
     ├── errors.py              # DomainError → HTTP (map _STATUS_MAP, sin HTTPException disperso)
@@ -156,7 +156,8 @@ offers vivas del conductor elegido en **otros rides** (`OfferAcceptance.withdraw
 - **Aumentar oferta**: `PATCH /{id}/fare` sube el fare (solo en `SEARCHING`) y reanuncia al pool
   (`ride_created` con el monto nuevo).
 - **Expiración**: la oferta caduca a los 30 s (`OFFER_TTL` en `domain/ride_policy.py`); la solicitud
-  **no caduca** por tiempo (sigue `SEARCHING` hasta cancelar). Mecanismo: tarea fire-and-forget
+  no caduca mientras el pasajero siga presente, pero se cancela si desaparecen WS y heartbeat HTTP
+  durante la gracia. Mecanismo de ofertas: tarea fire-and-forget
   `asyncio.create_task(_expire_offer_after(offer_id))` en `rides.py` que duerme el TTL y llama
   `ExpireOffer` (race-safe: `mark_expired_if_pending` solo vence si sigue `PENDING`) + publica
   `offer_expired`. Al (re)conectar el conductor, `driver_ws` barre y vence sus offers pasadas de TTL.
@@ -165,13 +166,14 @@ offers vivas del conductor elegido en **otros rides** (`OfferAcceptance.withdraw
 
 ## Tiempo real (WebSocket)
 
-Endpoints en `api/v1/ws/negotiation.py` (auth: access token por query param `?token=…`, RN no permite
-headers en `WebSocket`; cierre 1008 si es inválido):
+Endpoints en `api/v1/ws/negotiation.py` (auth: subprotocolos `viajaya.auth` + access token,
+fuera de la URL y los access logs; cierre 1008 si es inválido):
 
 - **`WS /ws/rides/{ride_id}`** — pasajero dueño. Snapshot inicial `offers_snapshot` + eventos del `ride_topic`.
-- **`WS /ws/driver`** — conductor en línea. Snapshot `open_rides_snapshot` + al (re)conectar vence
-  offers pasadas de TTL (`ExpireOffer`) y recupera el viaje activo (`driver_active_ride`). Suscrito a
-  `pool:{vehicle_type}` y `driver:{id}`.
+- **`WS /ws/driver`** — conductor en línea. Handshake ordenado `open_rides_snapshot` →
+  `driver_offers_snapshot` → `driver_active_ride` (si existe); excluye ofertas vencidas y recupera
+  ofertas pendientes/viaje activo al reiniciar. Después recibe eventos de `pool:{vehicle_type}` y
+  `driver:{id}`. Una barrera de entrega evita la ventana ciega entre snapshot y suscripción.
 
 **Eventos** (`api/v1/events.py`, publicados vía `hub.broadcast` a `ride_topic`/`driver_topic`/`pool_topic`):
 
@@ -185,12 +187,13 @@ offer_withdrawn, offer_accepted, offers_withdrawn (plural), offer_expired, ride_
 
 Presencia (`api/v1/presence.py`): la solicitud aparece en `/rides/open` mientras el pasajero esté
 conectado al WS o dentro de la ventana de gracia (`PRESENCE_GRACE_SECONDS = 120`). Minimizar/cambiar
-de pantalla no la saca; solo cerrar la app (sin reconectar tras la gracia).
+de pantalla no la saca; `GET /rides/me/active` renueva la presencia mientras HTTP siga vivo. Solo
+cerrar la app o perder ambos canales durante toda la gracia cancela la búsqueda.
 
 ## Migraciones (Alembic)
 
 - Config: `alembic.ini` + `migrations/env.py` (engine **async** con `async_engine_from_config`).
-- **12 migraciones** en `migrations/versions/` (`0001_create_users` … `0012_ride_paused`).
+- **15 migraciones** en `migrations/versions/` (`0001_create_users` … `0015_unique_active_ride`).
 - Importante: los enums se persisten por **valor** minúsculo vía `values_callable=_enum_values`
   en `infrastructure/db/models.py` (migración `0006_normalize_enum_values`). No rompas esa convención
   o se caerán columnas existentes.

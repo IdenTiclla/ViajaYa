@@ -49,7 +49,7 @@ src/
 │   ├── components/       # PillTabBar (bottom bar Stitch: tab activo con pill amarillo)
 │   ├── config/env.ts     # Config tipada desde Constants.expoConfig.extra
 │   ├── http/             # client.ts (axios + interceptores token/refresh), tokenStorage (SecureStore)
-│   ├── realtime/socket.ts # WS genérico con reconnect (token por ?token=, backoff exponencial)
+│   ├── realtime/socket.ts # WS genérico con reconnect (token por subprotocol, backoff exponencial)
 │   ├── errors/apiError.ts
 │   ├── hooks/            # useCountdown (AppState-aware), …
 │   └── theme/            # tokens.ts + index.ts (design system)
@@ -64,8 +64,8 @@ src/
 - **Todo el IO HTTP pasa por `src/core/http/client.ts`** (instancia `api`). Ya adjunta el Bearer token
   y refresca ante 401 (dedupe de refresh concurrente). No crees instancias axios sueltas ni uses `fetch`.
 - **Tiempo real: el WS es la vía principal; el polling de React Query es solo respaldo lento.**
-  El WS muta la caché de React Query en vivo (vía `queryClient.setQueryData`). Token viaja como
-  `?token=` query param (RN no permite headers en `WebSocket`).
+  El WS muta la caché de React Query en vivo (vía `queryClient.setQueryData`). El token viaja
+  como subprotocolo `viajaya.auth`, fuera de la URL y de los access logs.
 - **Config solo desde `@/core/config/env`.** Nunca leas `process.env` en runtime; las claves se exponen
   vía `app.config.ts` → `extra` → `env`. Edita `.env` (ver `.env.example`) para valores locales.
 - **Reusa `shared/components/`** antes de crear UI nueva; respeta los `theme/tokens`.
@@ -113,14 +113,16 @@ Las rutas ocultas declaran `tabBarButton: () => null` (ej. el `index` redirect d
 
 ## WebSockets en el cliente
 
-Infra: `core/realtime/socket.ts` — `openSocket(path, onMessage)`. Backoff exponencial (1 s→30 s),
-reconecta al volver a foreground (`AppState`). **Solo bajada**: parsea `{type,data}` y lo pasa al callback.
+Infra: `core/realtime/socket.ts` — `openSocket(path, onMessage)`. Backoff exponencial (1 s→5 s),
+reemplaza sockets suspendidos al volver a foreground (`AppState`) y procesa los mensajes en orden.
+**Solo bajada**: parsea `{type,data}` y lo pasa al callback.
 
 Eventos que escuchan los hooks (WS → mutación de caché React Query + estado Zustand + toast):
 
 - **Pasajero** (`/ws/rides/{rideId}`): `offers_snapshot`, `offer_created`, `offer_withdrawn`
   (salvo `reason==='superseded'`), `offer_expired`, `ride_status`.
-- **Conductor** (`/ws/driver`): `open_rides_snapshot`, `ride_created` (upsert + `clearPaused` +
+- **Conductor** (`/ws/driver`): `open_rides_snapshot`, `driver_offers_snapshot` (rehidrata
+  ofertas pendientes tras reiniciar), `ride_created` (upsert + `clearPaused` +
   `clearDismissed` — revive la tarjeta descartada al subir el fare), `ride_closed`, `ride_paused`,
   `offer_accepted`, `offer_expired`, `offer_rejected` (`ride_taken`/`ride_cancelled`/`declined`),
   `offers_withdrawn`, `ride_status`, `driver_active_ride` (snapshot al reconectar).

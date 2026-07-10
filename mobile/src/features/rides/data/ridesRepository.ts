@@ -124,10 +124,19 @@ type RideDriverDto = {
   vehicle_model: string | null;
 };
 
+type RideRiderDto = {
+  id: string;
+  full_name: string;
+  phone: string | null;
+  rating: number | null;
+};
+
 export type RideDto = {
   id: string;
   rider_id: string;
+  rider: RideRiderDto;
   status: RideStatus;
+  paused: boolean;
   service_type: Ride['service'];
   fare: string;
   payment_method: Ride['payment'];
@@ -142,7 +151,14 @@ export function toRide(dto: RideDto): Ride {
   return {
     id: dto.id,
     riderId: dto.rider_id,
+    rider: {
+      id: dto.rider.id,
+      fullName: dto.rider.full_name,
+      phone: dto.rider.phone,
+      rating: dto.rider.rating,
+    },
     status: dto.status,
+    paused: dto.paused,
     service: dto.service_type,
     fare: Number.parseFloat(dto.fare),
     payment: dto.payment_method,
@@ -284,6 +300,17 @@ export const ridesRepository = {
   },
 
   // --- Pasajero ---
+  async getPassengerActiveRide(): Promise<Ride | null> {
+    const { data } = await api.get<RideDto | null>('/rides/me/active');
+    return data ? toRide(data) : null;
+  },
+
+  /** Ambos roles: ultimo viaje completado que el usuario aun no califico. */
+  async getPendingRatingRide(): Promise<Ride | null> {
+    const { data } = await api.get<RideDto | null>('/rides/me/pending-rating');
+    return data ? toRide(data) : null;
+  },
+
   async listOffers(rideId: string): Promise<Offer[]> {
     const { data } = await api.get<OfferDto[]>(`/rides/${rideId}/offers`);
     return data.map(toOffer);
@@ -322,6 +349,10 @@ export const ridesRepository = {
       score: input.score,
       comment: input.comment,
     });
+  },
+
+  async skipRating(rideId: string): Promise<void> {
+    await api.post(`/rides/${rideId}/rating/skip`);
   },
 
   async cancel(rideId: string): Promise<Ride> {

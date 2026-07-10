@@ -26,6 +26,8 @@ type BookingState = {
   setFare: (fare: string) => void;
   /** Limpia el destino/oferta al iniciar una nueva búsqueda (conserva el origen). */
   resetTrip: () => void;
+  /** Limpia todo dato sensible al cambiar de cuenta. */
+  resetAll: () => void;
 };
 
 export const useBookingStore = create<BookingState>((set) => ({
@@ -40,4 +42,6 @@ export const useBookingStore = create<BookingState>((set) => ({
   setPayment: (payment) => set({ payment }),
   setFare: (fare) => set({ fare }),
   resetTrip: () => set({ destination: null, fare: '' }),
+  resetAll: () =>
+    set({ origin: null, destination: null, service: 'taxi', payment: 'cash', fare: '' }),
 }));

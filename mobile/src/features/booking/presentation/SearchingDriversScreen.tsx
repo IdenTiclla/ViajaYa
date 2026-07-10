@@ -18,8 +18,11 @@ import { useEffect, useState } from 'react';
 import {
   Animated,
   Easing,
+  KeyboardAvoidingView,
+  Platform,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -34,7 +37,7 @@ import {
   usePauseForEdit,
   useUpdateRideFare,
 } from '@/features/rides/application/useRideMutations';
-import { FareKeypad } from '@/features/rides/presentation/FareKeypad';
+import { formatBolivianos } from '@/features/rides/domain/money';
 import { TripRouteMap } from '@/features/rides/presentation/TripRouteMap';
 import { RouteSummary } from '@/features/rides/presentation/RouteSummary';
 import { ConfirmDialog } from '@/shared/components';
@@ -51,20 +54,25 @@ export function SearchingDriversScreen({
   origin,
   destination,
   currentFare,
+  connectionError,
+  onRetry,
 }: {
   rideId: string | null;
   origin: Place | null;
   destination: Place | null;
   /** Oferta vigente del viaje (en vivo); base para los incrementos. */
   currentFare: number | null;
+  connectionError?: unknown;
+  onRetry?: () => void;
 }) {
   const router = useRouter();
   const cancelRide = useCancelRide();
   const updateFare = useUpdateRideFare();
   const pauseForEdit = usePauseForEdit();
 
-  const [customKeypad, setCustomKeypad] = useState(false);
+  const [customIncrease, setCustomIncrease] = useState('');
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const hasConnectionError = connectionError != null;
 
   // La búsqueda no caduca: se sale al modificar (pausa y edita) o cancelar.
   const onModify = () => {
@@ -106,6 +114,17 @@ export function SearchingDriversScreen({
   };
 
   const fareLocked = currentFare == null || updateFare.isPending;
+  const customIncreaseValue = Number(customIncrease.replace(',', '.'));
+  const customIncreaseIsValid = Number.isFinite(customIncreaseValue) && customIncreaseValue > 0;
+
+  const applyCustomIncrease = () => {
+    if (!rideId || fareLocked || !customIncreaseIsValid || currentFare == null) return;
+    const next = Math.round((currentFare + customIncreaseValue) * 100) / 100;
+    updateFare.mutate(
+      { rideId, fare: next },
+      { onSuccess: () => setCustomIncrease('') },
+    );
+  };
 
   return (
     <View style={styles.root}>
@@ -132,6 +151,10 @@ export function SearchingDriversScreen({
           <PulseLoader />
         </View>
 
+        <KeyboardAvoidingView
+          style={styles.sheetAvoider}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          pointerEvents="box-none">
         <SafeAreaView edges={['bottom']} style={styles.sheet}>
           <View style={styles.sheetHandle} />
 
@@ -139,14 +162,29 @@ export function SearchingDriversScreen({
           <View style={styles.statusRow}>
             <View style={styles.statusText}>
               <View style={styles.statusTitleRow}>
-                <View style={styles.liveDot} />
-                <Text style={styles.statusTitle}>Buscando ofertas…</Text>
+                <View style={[styles.liveDot, hasConnectionError && styles.offlineDot]} />
+                <Text style={[styles.statusTitle, hasConnectionError && styles.offlineTitle]}>
+                  {hasConnectionError ? 'Reconectando…' : 'Buscando ofertas…'}
+                </Text>
               </View>
-              <Text style={styles.statusSubtitle}>Conectando con conductores cercanos</Text>
+              <Text style={styles.statusSubtitle} numberOfLines={2}>
+                {hasConnectionError
+                  ? getApiErrorMessage(connectionError)
+                  : 'Conectando con conductores cercanos'}
+              </Text>
             </View>
-            <View style={styles.syncBadge}>
-              <Ionicons name="sync" size={18} color={colors.primary} />
-            </View>
+            <TouchableOpacity
+              style={styles.syncBadge}
+              onPress={onRetry}
+              disabled={!hasConnectionError || !onRetry}
+              accessibilityRole={hasConnectionError ? 'button' : undefined}
+              accessibilityLabel={hasConnectionError ? 'Reintentar conexión' : undefined}>
+              <Ionicons
+                name={hasConnectionError ? 'refresh' : 'sync'}
+                size={18}
+                color={hasConnectionError ? colors.danger : colors.primary}
+              />
+            </TouchableOpacity>
           </View>
 
           {/* Aumentar oferta */}
@@ -155,7 +193,7 @@ export function SearchingDriversScreen({
             <Text style={styles.bidHint}>Recibe ofertas más rápido</Text>
           </View>
           {currentFare != null && (
-            <Text style={styles.currentFare}>Tu oferta actual: Bs {currentFare.toFixed(2)}</Text>
+            <Text style={styles.currentFare}>Tu oferta actual: Bs {formatBolivianos(currentFare)}</Text>
           )}
 
           <View style={styles.bidGrid}>
@@ -177,15 +215,35 @@ export function SearchingDriversScreen({
             ))}
           </View>
 
-          <TouchableOpacity
-            style={[styles.customBtn, fareLocked && styles.disabled]}
-            onPress={() => setCustomKeypad(true)}
-            disabled={fareLocked}
-            accessibilityRole="button"
-            accessibilityLabel="Aumentar oferta con un monto personalizado">
-            <Ionicons name="add-circle-outline" size={18} color={colors.primary} />
-            <Text style={styles.customBtnText}>Monto personalizado</Text>
-          </TouchableOpacity>
+          <View style={[styles.customInputRow, fareLocked && styles.disabled]}>
+            <View style={styles.customInputLabel}>
+              <Ionicons name="add-circle-outline" size={18} color={colors.primary} />
+              <Text style={styles.customBtnText}>Monto personalizado</Text>
+            </View>
+            <View style={styles.customInputControls}>
+              <Text style={styles.customCurrency}>Bs</Text>
+              <TextInput
+                value={customIncrease}
+                onChangeText={setCustomIncrease}
+                placeholder="5"
+                placeholderTextColor={colors.placeholder}
+                keyboardType="decimal-pad"
+                inputMode="decimal"
+                maxLength={9}
+                editable={!fareLocked}
+                style={styles.customAmountInput}
+                accessibilityLabel="Aumentar oferta en bolivianos"
+              />
+              <TouchableOpacity
+                style={[styles.customApply, (!customIncreaseIsValid || fareLocked) && styles.disabled]}
+                onPress={applyCustomIncrease}
+                disabled={!customIncreaseIsValid || fareLocked}
+                accessibilityRole="button"
+                accessibilityLabel="Aplicar aumento personalizado">
+                <Text style={styles.customApplyText}>Aplicar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
 
           {updateFare.isError && (
             <Text style={styles.error}>{getApiErrorMessage(updateFare.error)}</Text>
@@ -223,6 +281,7 @@ export function SearchingDriversScreen({
             </Text>
           </TouchableOpacity>
         </SafeAreaView>
+        </KeyboardAvoidingView>
       </View>
 
       <ConfirmDialog
@@ -237,18 +296,6 @@ export function SearchingDriversScreen({
         onCancel={() => setConfirmCancel(false)}
       />
 
-      <FareKeypad
-        visible={customKeypad}
-        mode="increment"
-        subtitle={currentFare != null ? `Tu oferta actual: Bs ${currentFare.toFixed(2)}` : undefined}
-        submitting={updateFare.isPending}
-        submitLabel="Aplicar"
-        onCancel={() => setCustomKeypad(false)}
-        onSubmit={(delta) => {
-          applyIncrease(delta);
-          setCustomKeypad(false);
-        }}
-      />
     </View>
   );
 }
@@ -368,6 +415,15 @@ const styles = StyleSheet.create({
 
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
+  sheetAvoider: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    justifyContent: 'flex-end',
+  },
+
   loader: { width: 88, height: 88, alignItems: 'center', justifyContent: 'center' },
   ring: { position: 'absolute', width: 88, height: 88, borderRadius: radius.pill, backgroundColor: colors.primary },
   loaderCore: {
@@ -411,7 +467,9 @@ const styles = StyleSheet.create({
   statusText: { flex: 1 },
   statusTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   liveDot: { width: 8, height: 8, borderRadius: radius.pill, backgroundColor: colors.primary },
+  offlineDot: { backgroundColor: colors.danger },
   statusTitle: { fontSize: fontSize.md, fontWeight: fontWeight.bold, color: colors.primary },
+  offlineTitle: { color: colors.danger },
   statusSubtitle: { fontSize: fontSize.xs, color: colors.textSecondary, marginTop: 2 },
   syncBadge: {
     width: 34,
@@ -442,18 +500,25 @@ const styles = StyleSheet.create({
   bidAmount: { fontSize: fontSize.sm, fontWeight: fontWeight.bold, color: colors.text },
   bidHintSmall: { fontSize: 10, color: colors.textSecondary, marginTop: 2 },
 
-  customBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+  customInputRow: {
     gap: spacing.xs,
-    height: 48,
+    padding: spacing.sm,
     borderRadius: radius.md,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
   },
+  customInputLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  customInputControls: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   customBtnText: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.primary },
+  customCurrency: { fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textSecondary },
+  customAmountInput: { flex: 1, minWidth: 0, color: colors.text, fontSize: fontSize.md, paddingVertical: 0, textAlign: 'right' },
+  customApply: { paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderRadius: radius.sm, backgroundColor: colors.primary },
+  customApplyText: { color: colors.textOnPrimary, fontSize: fontSize.sm, fontWeight: fontWeight.semibold },
 
   progressTrack: {
     height: 6,

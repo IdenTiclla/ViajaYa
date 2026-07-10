@@ -8,7 +8,8 @@
  */
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useState } from 'react';
+import { Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -16,9 +17,15 @@ import { getApiErrorMessage } from '@/core/errors/apiError';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 import { useRoute } from '@/features/booking/application/useRoute';
 import { useCancelRide, useUpdateRideStatus } from '@/features/rides/application/useRideMutations';
+import { formatBolivianos } from '@/features/rides/domain/money';
+import {
+  DRIVER_ACTIVE_RIDE_KEY,
+  PENDING_RATING_RIDE_KEY,
+} from '@/features/rides/application/useRides';
 import { RideRatingCard } from '@/features/rides/presentation/RideRatingCard';
 import { TripRouteMap } from '@/features/rides/presentation/TripRouteMap';
 import type { Ride, RideStatus } from '@/features/rides/domain/types';
+import { ConfirmDialog } from '@/shared/components';
 
 const SERVICE_LABELS = { taxi: 'Taxi', moto: 'Moto' } as const;
 
@@ -47,17 +54,30 @@ function formatDuration(seconds: number): string {
 export function ViajeEnCursoConductorScreen({ ride }: { ride: Ride }) {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const [confirmCancel, setConfirmCancel] = useState(false);
   const updateStatus = useUpdateRideStatus();
   const cancelRide = useCancelRide();
   const { route } = useRoute(ride.origin, ride.destination);
 
+  const clearMatchingRide = (queryKey: readonly string[]) => {
+    queryClient.setQueryData<Ride | null>(queryKey, (current) =>
+      current?.id === ride.id ? null : current,
+    );
+  };
+
+  const closeCancelledRide = () => {
+    clearMatchingRide(DRIVER_ACTIVE_RIDE_KEY);
+    router.replace('/(driver)/(tabs)/solicitudes');
+  };
+
+  const closeRatingRide = () => {
+    clearMatchingRide(DRIVER_ACTIVE_RIDE_KEY);
+    clearMatchingRide(PENDING_RATING_RIDE_KEY);
+    router.replace('/(driver)/(tabs)/solicitudes');
+  };
+
   // El pasajero (o el propio conductor) canceló: avisar y volver a solicitudes.
   if (ride.status === 'cancelled') {
-    const dismiss = () => {
-      // Despeja el viaje activo de inmediato para volver al flujo de solicitudes.
-      queryClient.setQueryData(['driver-active-ride'], null);
-      router.replace('/(driver)/(tabs)/solicitudes');
-    };
     return (
       <SafeAreaView style={styles.cancelledRoot}>
         <View style={styles.cancelledIcon}>
@@ -69,7 +89,7 @@ export function ViajeEnCursoConductorScreen({ ride }: { ride: Ride }) {
         </Text>
         <TouchableOpacity
           style={styles.cancelledBtn}
-          onPress={dismiss}
+          onPress={closeCancelledRide}
           accessibilityRole="button"
           accessibilityLabel="Volver a solicitudes">
           <Ionicons name="compass" size={20} color={colors.textOnPrimary} />
@@ -86,7 +106,8 @@ export function ViajeEnCursoConductorScreen({ ride }: { ride: Ride }) {
         <RideRatingCard
           ride={ride}
           rateeRole="passenger"
-          onDone={() => router.replace('/(driver)/(tabs)')}
+          counterpartName={ride.rider.fullName}
+          onDone={closeRatingRide}
         />
       </SafeAreaView>
     );
@@ -99,7 +120,7 @@ export function ViajeEnCursoConductorScreen({ ride }: { ride: Ride }) {
 
   return (
     <View style={styles.root}>
-      <TripRouteMap origin={ride.origin} destination={ride.destination} bottomPadding={360} />
+      <TripRouteMap origin={ride.origin} destination={ride.destination} bottomPadding={440} />
 
       <SafeAreaView edges={['top']} style={styles.navBannerWrap} pointerEvents="box-none">
         <View style={styles.navBanner}>
@@ -124,57 +145,118 @@ export function ViajeEnCursoConductorScreen({ ride }: { ride: Ride }) {
       <SafeAreaView style={styles.sheet} edges={['bottom']}>
         <View style={styles.sheetHandle} />
 
-        <View style={styles.header}>
-          <View style={styles.serviceBadge}>
-            <Ionicons
-              name={ride.service === 'taxi' ? 'car-sport' : 'bicycle'}
-              size={18}
-              color={colors.primary}
-            />
-            <Text style={styles.serviceBadgeText}>{SERVICE_LABELS[ride.service]}</Text>
+        <ScrollView
+          style={styles.sheetScroll}
+          contentContainerStyle={styles.sheetContent}
+          showsVerticalScrollIndicator={false}
+          bounces={false}>
+          <View style={styles.header}>
+            <View style={styles.serviceBadge}>
+              <Ionicons
+                name={ride.service === 'taxi' ? 'car-sport' : 'bicycle'}
+                size={18}
+                color={colors.primary}
+              />
+              <Text style={styles.serviceBadgeText}>{SERVICE_LABELS[ride.service]}</Text>
+            </View>
+            <Text style={styles.price}>Bs {formatBolivianos(ride.acceptedPrice ?? ride.fare)}</Text>
           </View>
-          <Text style={styles.price}>Bs {(ride.acceptedPrice ?? ride.fare).toFixed(2)}</Text>
-        </View>
 
-        <View style={styles.routeCard}>
-          <Row icon="navigate-circle" color={colors.primary} label="Recoger en" value={ride.origin.name} />
-          <Row icon="location" color={colors.danger} label="Destino" value={ride.destination.name} />
-          <Row
-            icon="card"
-            color={colors.textSecondary}
-            label="Pago"
-            value={ride.payment === 'qr' ? 'QR' : 'Efectivo'}
-          />
-        </View>
+          <View style={styles.routeCard}>
+            <Row icon="navigate-circle" color={colors.primary} label="Recoger en" value={ride.origin.name} />
+            <Row icon="location" color={colors.danger} label="Destino" value={ride.destination.name} />
+            <Row
+              icon="card"
+              color={colors.textSecondary}
+              label="Pago"
+              value={ride.payment === 'qr' ? 'QR' : 'Efectivo'}
+            />
+          </View>
 
-        {(updateStatus.isError || cancelRide.isError) && (
-          <Text style={styles.error}>
-            {getApiErrorMessage(updateStatus.error ?? cancelRide.error)}
-          </Text>
-        )}
+          <View style={styles.passengerBlock}>
+            <View style={styles.passengerAvatar}>
+              <Text style={styles.passengerAvatarText}>
+                {ride.rider.fullName.trim().charAt(0).toUpperCase() || 'P'}
+              </Text>
+            </View>
+            <View style={styles.passengerInfo}>
+              <Text style={styles.passengerName} numberOfLines={1}>
+                {ride.rider.fullName}
+              </Text>
+              <View style={styles.passengerMeta}>
+                <Text style={styles.passengerRole}>Pasajero</Text>
+                {ride.rider.rating !== null && (
+                  <>
+                    <Ionicons name="star" size={13} color={colors.accent} />
+                    <Text style={styles.passengerRating}>{ride.rider.rating.toFixed(1)}</Text>
+                  </>
+                )}
+              </View>
+            </View>
+            {ride.rider.phone && (
+              <View style={styles.contactActions}>
+                <TouchableOpacity
+                  style={styles.contactBtn}
+                  onPress={() => void Linking.openURL(`sms:${ride.rider.phone}`)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Enviar SMS a ${ride.rider.fullName}`}>
+                  <Ionicons name="chatbubble-outline" size={20} color={colors.primary} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.contactBtn}
+                  onPress={() => void Linking.openURL(`tel:${ride.rider.phone}`)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Llamar a ${ride.rider.fullName}`}>
+                  <Ionicons name="call-outline" size={20} color={colors.primary} />
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
 
-        {next && (
-          <TouchableOpacity
-            style={[styles.primaryBtn, updateStatus.isPending && styles.disabled]}
-            onPress={() => updateStatus.mutate({ rideId: ride.id, status: next.status })}
-            disabled={updateStatus.isPending}
-            accessibilityRole="button"
-            accessibilityLabel={next.label}>
-            <Ionicons name="checkmark-circle" size={20} color={colors.textOnPrimary} />
-            <Text style={styles.primaryText}>{next.label}</Text>
-          </TouchableOpacity>
-        )}
-        {canCancel && (
-          <TouchableOpacity
-            style={styles.cancelBtn}
-            onPress={() => cancelRide.mutate(ride.id)}
-            disabled={cancelRide.isPending}
-            accessibilityRole="button"
-            accessibilityLabel="Cancelar viaje">
-            <Text style={styles.cancelText}>Cancelar viaje</Text>
-          </TouchableOpacity>
-        )}
+          {(updateStatus.isError || cancelRide.isError) && (
+            <Text style={styles.error}>
+              {getApiErrorMessage(updateStatus.error ?? cancelRide.error)}
+            </Text>
+          )}
+
+          {next && (
+            <TouchableOpacity
+              style={[styles.primaryBtn, updateStatus.isPending && styles.disabled]}
+              onPress={() => updateStatus.mutate({ rideId: ride.id, status: next.status })}
+              disabled={updateStatus.isPending}
+              accessibilityRole="button"
+              accessibilityLabel={next.label}>
+              <Ionicons name="checkmark-circle" size={20} color={colors.textOnPrimary} />
+              <Text style={styles.primaryText}>{next.label}</Text>
+            </TouchableOpacity>
+          )}
+          {canCancel && (
+            <TouchableOpacity
+              style={[styles.cancelBtn, cancelRide.isPending && styles.disabled]}
+              onPress={() => setConfirmCancel(true)}
+              disabled={cancelRide.isPending}
+              accessibilityRole="button"
+              accessibilityLabel="Cancelar viaje">
+              <Text style={styles.cancelText}>Cancelar viaje</Text>
+            </TouchableOpacity>
+          )}
+        </ScrollView>
       </SafeAreaView>
+
+      <ConfirmDialog
+        visible={confirmCancel}
+        icon="warning-outline"
+        destructive
+        title="¿Cancelar viaje?"
+        message="El pasajero será notificado y este viaje ya no podrá continuar."
+        confirmText="Sí, cancelar"
+        cancelText="Seguir con el viaje"
+        onConfirm={() => {
+          setConfirmCancel(false);
+          cancelRide.mutate(ride.id);
+        }}
+        onCancel={() => setConfirmCancel(false)}
+      />
     </View>
   );
 }
@@ -277,8 +359,9 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    padding: spacing.lg,
-    gap: spacing.md,
+    maxHeight: '72%',
+    paddingTop: spacing.sm,
+    paddingHorizontal: spacing.lg,
     backgroundColor: colors.background,
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,
@@ -288,7 +371,16 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: -3 },
     elevation: 12,
   },
-  sheetHandle: { width: 40, height: 4, borderRadius: radius.pill, backgroundColor: colors.border, alignSelf: 'center' },
+  sheetHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: radius.pill,
+    backgroundColor: colors.border,
+    alignSelf: 'center',
+    marginBottom: spacing.sm,
+  },
+  sheetScroll: { flexShrink: 1 },
+  sheetContent: { gap: spacing.md, paddingBottom: spacing.lg },
 
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   serviceBadge: {
@@ -314,6 +406,44 @@ const styles = StyleSheet.create({
   rowText: { flex: 1 },
   rowLabel: { fontSize: fontSize.xs, color: colors.textSecondary },
   rowValue: { fontSize: fontSize.md, fontWeight: fontWeight.medium, color: colors.text },
+
+  passengerBlock: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceMuted,
+  },
+  passengerAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.pill,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  passengerAvatarText: {
+    color: colors.textOnPrimary,
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.bold,
+  },
+  passengerInfo: { flex: 1, minWidth: 0, gap: 2 },
+  passengerName: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.text },
+  passengerMeta: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  passengerRole: { fontSize: fontSize.xs, color: colors.textSecondary, marginRight: spacing.xs },
+  passengerRating: { fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: colors.text },
+  contactActions: { flexDirection: 'row', gap: spacing.xs },
+  contactBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
   primaryBtn: {
     flexDirection: 'row',

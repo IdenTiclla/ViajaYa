@@ -3,8 +3,8 @@
  *
  * Muestra el resumen del viaje terminado y permite calificar a la otra parte
  * (1–5 estrellas + comentario). El botón "Finalizar" envía la calificación si se
- * eligieron estrellas; si no, simplemente cierra. Sigue el diseño Stitch
- * "Viaje Finalizado".
+ * eligieron estrellas; si no, registra que el usuario decidió omitirla. Sigue el
+ * diseño Stitch "Viaje Finalizado".
  */
 import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
@@ -12,7 +12,8 @@ import { StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
-import { useRateRide } from '@/features/rides/application/useCloseFlow';
+import { useRateRide, useSkipRating } from '@/features/rides/application/useCloseFlow';
+import { formatBolivianos } from '@/features/rides/domain/money';
 import type { Ride } from '@/features/rides/domain/types';
 import { Button } from '@/shared/components';
 
@@ -38,19 +39,27 @@ export function RideRatingCard({
   const [score, setScore] = useState(0);
   const [comment, setComment] = useState('');
   const rate = useRateRide();
+  const skip = useSkipRating();
 
-  const price = (ride.acceptedPrice ?? ride.fare).toFixed(2);
+  const price = formatBolivianos(ride.acceptedPrice ?? ride.fare);
   const rateeLabel = rateeRole === 'driver' ? 'tu conductor' : 'tu pasajero';
   const initial = (counterpartName?.trim().charAt(0) || '?').toUpperCase();
+  const submitting = rate.isPending || skip.isPending;
 
   const finish = () => {
+    if (submitting) return;
     if (score >= 1) {
-      rate.mutate(
-        { rideId: ride.id, input: { score, comment: comment.trim() || null } },
-        { onSuccess: onDone },
-      );
+      skip.reset();
+      void rate
+        .mutateAsync({
+          rideId: ride.id,
+          input: { score, comment: comment.trim() || null },
+        })
+        .then(onDone)
+        .catch(() => undefined);
     } else {
-      onDone();
+      rate.reset();
+      void skip.mutateAsync(ride.id).then(onDone).catch(() => undefined);
     }
   };
 
@@ -114,9 +123,11 @@ export function RideRatingCard({
         multiline
       />
 
-      {rate.isError && <Text style={styles.error}>{getApiErrorMessage(rate.error)}</Text>}
+      {(rate.isError || skip.isError) && (
+        <Text style={styles.error}>{getApiErrorMessage(rate.error ?? skip.error)}</Text>
+      )}
 
-      <Button title="Finalizar" loading={rate.isPending} onPress={finish} />
+      <Button title="Finalizar" loading={submitting} onPress={finish} />
     </View>
   );
 }

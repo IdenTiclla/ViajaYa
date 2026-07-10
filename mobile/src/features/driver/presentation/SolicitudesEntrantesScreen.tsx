@@ -9,7 +9,18 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
@@ -24,9 +35,13 @@ import { ViajeEnCursoConductorScreen } from '@/features/driver/presentation/Viaj
 import { useWatchPosition, type WatchedPosition } from '@/features/home/application/useWatchPosition';
 import { useDriverEarnings } from '@/features/rides/application/useCloseFlow';
 import { useCreateOffer, useSetOnline, useWithdrawOffer } from '@/features/rides/application/useRideMutations';
-import { useDriverActiveRide, useOpenRides } from '@/features/rides/application/useRides';
+import { formatBolivianos, formatBolivianosInput } from '@/features/rides/domain/money';
+import {
+  useDriverActiveRide,
+  useOpenRides,
+  usePendingRatingRide,
+} from '@/features/rides/application/useRides';
 import type { DriverEarnings, OpenRide } from '@/features/rides/domain/types';
-import { FareKeypad } from '@/features/rides/presentation/FareKeypad';
 import { useAutoExpireOffers, useDriverRequests } from '@/features/driver/application/useDriverRequests';
 import { useAuthStore } from '@/store/authStore';
 
@@ -34,13 +49,28 @@ type ViewMode = 'list' | 'map';
 
 export function SolicitudesEntrantesScreen() {
   const router = useRouter();
-  const { ride: activeRide } = useDriverActiveRide();
-  const { rides } = useOpenRides(!activeRide);
-  const createOffer = useCreateOffer();
-
   const user = useAuthStore((s) => s.user);
   const setOnline = useSetOnline();
   const [online, setOnlineState] = useState(user?.isOnline ?? false);
+  const activeQuery = useDriverActiveRide();
+  const pendingRatingQuery = usePendingRatingRide();
+  const activeRide = activeQuery.ride;
+  const pendingRatingRide = pendingRatingQuery.ride;
+  const flowLoading =
+    activeQuery.isLoading ||
+    (!activeRide &&
+      (pendingRatingQuery.isLoading ||
+        (!pendingRatingRide && pendingRatingQuery.isFetching)));
+  const flowError =
+    !activeRide && (activeQuery.isError || pendingRatingQuery.isError);
+  const { rides } = useOpenRides(
+    online &&
+      !flowLoading &&
+      !flowError &&
+      !activeRide &&
+      !pendingRatingRide,
+  );
+  const createOffer = useCreateOffer();
   const toggleOnline = (next: boolean) => {
     setOnlineState(next); // optimista
     setOnline.mutate(next, {
@@ -68,15 +98,16 @@ export function SolicitudesEntrantesScreen() {
   const withdrawOffer = useWithdrawOffer();
 
   const [mode, setMode] = useState<ViewMode>('list');
-  const [keypadFor, setKeypadFor] = useState<OpenRide | null>(null);
+  const [priceInputFor, setPriceInputFor] = useState<OpenRide | null>(null);
+  const [customPrice, setCustomPrice] = useState('');
   // Ride a seleccionar al abrir el mapa desde la lista (toca una tarjeta).
   const [selectedForMap, setSelectedForMap] = useState<string | null>(null);
   // Feedback efímero "Oferta enviada" al enviar una oferta.
   const [offerSent, setOfferSent] = useState(false);
 
   const visibleRides = useMemo(
-    () => rides.filter((r) => !dismissed.has(r.id)),
-    [rides, dismissed],
+    () => (online ? rides.filter((r) => !dismissed.has(r.id)) : []),
+    [online, rides, dismissed],
   );
 
   // Ride cuya oferta/aceptación está en curso (para el "Esperando…" de su tarjeta).
@@ -111,16 +142,24 @@ export function SolicitudesEntrantesScreen() {
     );
   };
 
-  // Precio propio desde el teclado numérico.
-  const submitKeypad = (price: number) => {
-    if (!keypadFor) return;
-    const ride = keypadFor;
+  const openPriceInput = (ride: OpenRide) => {
+    createOffer.reset();
+    setCustomPrice(formatBolivianosInput(ride.fare));
+    setPriceInputFor(ride);
+  };
+
+  const parsedCustomPrice = Number(customPrice.replace(',', '.'));
+  const customPriceIsValid = Number.isFinite(parsedCustomPrice) && parsedCustomPrice > 0;
+
+  const submitCustomPrice = () => {
+    if (!priceInputFor || !customPriceIsValid || createOffer.isPending) return;
+    const ride = priceInputFor;
     createOffer.mutate(
-      { rideId: ride.id, input: { acceptAtFare: false, price } },
+      { rideId: ride.id, input: { acceptAtFare: false, price: parsedCustomPrice } },
       {
         onSuccess: (offer) => {
           markOffered(ride.id, offer);
-          setKeypadFor(null);
+          setPriceInputFor(null);
           setOfferSent(true);
         },
       },
@@ -154,6 +193,28 @@ export function SolicitudesEntrantesScreen() {
 
   if (activeRide) {
     return <ViajeEnCursoConductorScreen ride={activeRide} />;
+  }
+
+  if (flowLoading) {
+    return <DriverFlowRecovery />;
+  }
+
+  if (flowError) {
+    return (
+      <DriverFlowRecovery
+        error={getApiErrorMessage(
+          activeQuery.isError ? activeQuery.error : pendingRatingQuery.error,
+        )}
+        onRetry={() => {
+          void activeQuery.refetch();
+          void pendingRatingQuery.refetch();
+        }}
+      />
+    );
+  }
+
+  if (pendingRatingRide) {
+    return <ViajeEnCursoConductorScreen ride={pendingRatingRide} />;
   }
 
   if (visibleRides.length === 0) {
@@ -192,7 +253,7 @@ export function SolicitudesEntrantesScreen() {
             onAccept={acceptAtFare}
             onDismiss={(r) => dismiss(r.id)}
             onQuickAdd={quickAdd}
-            onOpenKeypad={(r) => setKeypadFor(r)}
+            onOpenPriceInput={openPriceInput}
             onWithdraw={withdraw}
           />
           <View pointerEvents="box-none" style={styles.mapHeader}>
@@ -240,7 +301,7 @@ export function SolicitudesEntrantesScreen() {
                   onAccept={() => acceptAtFare(item)}
                   onDismiss={() => dismiss(item.id)}
                   onQuickAdd={(delta) => quickAdd(item, delta)}
-                  onOpenKeypad={() => setKeypadFor(item)}
+                  onOpenPriceInput={() => openPriceInput(item)}
                   onWithdraw={() => withdraw(item)}
                 />
               ))}
@@ -249,17 +310,101 @@ export function SolicitudesEntrantesScreen() {
         </>
       )}
 
-      <FareKeypad
-        visible={!!keypadFor}
-        mode="absolute"
-        subtitle={`El pasajero ofrece Bs ${(keypadFor?.fare ?? 0).toFixed(2)}`}
-        submitting={createOffer.isPending}
-        onCancel={() => setKeypadFor(null)}
-        onSubmit={submitKeypad}
-      />
+      <Modal
+        visible={priceInputFor != null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPriceInputFor(null)}>
+        <KeyboardAvoidingView
+          style={styles.priceModalBackdrop}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={styles.priceModal}>
+            <Text style={styles.priceModalTitle}>Tu contraoferta</Text>
+            <Text style={styles.priceModalHint}>
+              El pasajero ofrece Bs {formatBolivianos(priceInputFor?.fare ?? 0)}
+            </Text>
+            <View style={styles.priceInputRow}>
+              <Text style={styles.priceCurrency}>Bs</Text>
+              <TextInput
+                autoFocus
+                value={customPrice}
+                onChangeText={setCustomPrice}
+                selectTextOnFocus
+                placeholder="30"
+                placeholderTextColor={colors.placeholder}
+                keyboardType="decimal-pad"
+                inputMode="decimal"
+                maxLength={9}
+                style={styles.priceInput}
+                accessibilityLabel="Monto de la contraoferta en bolivianos"
+                onSubmitEditing={submitCustomPrice}
+              />
+            </View>
+            {createOffer.isError && (
+              <Text style={styles.priceModalError}>{getApiErrorMessage(createOffer.error)}</Text>
+            )}
+            <View style={styles.priceModalActions}>
+              <TouchableOpacity
+                style={styles.priceModalCancel}
+                onPress={() => setPriceInputFor(null)}
+                disabled={createOffer.isPending}
+                accessibilityRole="button"
+                accessibilityLabel="Cancelar contraoferta">
+                <Text style={styles.priceModalCancelText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.priceModalSubmit,
+                  (!customPriceIsValid || createOffer.isPending) && styles.disabled,
+                ]}
+                onPress={submitCustomPrice}
+                disabled={!customPriceIsValid || createOffer.isPending}
+                accessibilityRole="button"
+                accessibilityLabel="Enviar contraoferta">
+                {createOffer.isPending ? (
+                  <ActivityIndicator color={colors.textOnPrimary} />
+                ) : (
+                  <Text style={styles.priceModalSubmitText}>Enviar</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
 
       <OfferSentOverlay visible={offerSent} onDone={() => setOfferSent(false)} />
     </View>
+  );
+}
+
+function DriverFlowRecovery({
+  error,
+  onRetry,
+}: {
+  error?: string;
+  onRetry?: () => void;
+}) {
+  return (
+    <SafeAreaView style={styles.recovery}>
+      {error ? (
+        <Ionicons name="cloud-offline-outline" size={44} color={colors.textSecondary} />
+      ) : (
+        <ActivityIndicator size="large" color={colors.primary} />
+      )}
+      <Text style={styles.recoveryTitle}>
+        {error ? 'No pudimos verificar tus viajes' : 'Recuperando tu viaje…'}
+      </Text>
+      {error && <Text style={styles.recoveryHint}>{error}</Text>}
+      {onRetry && (
+        <TouchableOpacity
+          style={styles.recoveryButton}
+          onPress={onRetry}
+          accessibilityRole="button"
+          accessibilityLabel="Reintentar recuperación del viaje">
+          <Text style={styles.recoveryButtonText}>Reintentar</Text>
+        </TouchableOpacity>
+      )}
+    </SafeAreaView>
   );
 }
 
@@ -327,7 +472,7 @@ function SearchingState({
                 <View style={styles.statDivider} />
                 <View style={styles.statItem}>
                   <Text style={styles.statValue}>
-                    {earnings ? `Bs ${earnings.totalToday.toFixed(2)}` : '—'}
+                    {earnings ? `Bs ${formatBolivianos(earnings.totalToday)}` : '—'}
                   </Text>
                   <Text style={styles.statCaption}>Ganancias</Text>
                 </View>
@@ -391,6 +536,36 @@ function ToggleButton({
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
+  recovery: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.md,
+    padding: spacing.lg,
+    backgroundColor: colors.background,
+  },
+  recoveryTitle: {
+    color: colors.text,
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.semibold,
+    textAlign: 'center',
+  },
+  recoveryHint: {
+    color: colors.textSecondary,
+    fontSize: fontSize.sm,
+    textAlign: 'center',
+  },
+  recoveryButton: {
+    borderRadius: radius.md,
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
+  recoveryButtonText: {
+    color: colors.textOnPrimary,
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.semibold,
+  },
   scrim: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
 
   // Estado "con solicitudes" — modo lista (sobre el mapa de fondo).
@@ -403,6 +578,34 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.lg,
     marginBottom: spacing.xs,
   },
+  priceModalBackdrop: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: spacing.lg,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  priceModal: { gap: spacing.md, padding: spacing.lg, borderRadius: radius.md, backgroundColor: colors.surface },
+  priceModalTitle: { color: colors.text, fontSize: fontSize.lg, fontWeight: fontWeight.bold },
+  priceModalHint: { color: colors.textSecondary, fontSize: fontSize.sm },
+  priceInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 54,
+    paddingHorizontal: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceMuted,
+  },
+  priceCurrency: { marginRight: spacing.sm, color: colors.textSecondary, fontSize: fontSize.md, fontWeight: fontWeight.semibold },
+  priceInput: { flex: 1, padding: 0, color: colors.text, fontSize: fontSize.lg, fontWeight: fontWeight.semibold },
+  priceModalError: { color: colors.danger, fontSize: fontSize.sm },
+  priceModalActions: { flexDirection: 'row', gap: spacing.sm },
+  priceModalCancel: { flex: 1, height: 48, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md, backgroundColor: colors.surfaceMuted },
+  priceModalCancelText: { color: colors.text, fontSize: fontSize.md, fontWeight: fontWeight.semibold },
+  priceModalSubmit: { flex: 1, height: 48, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md, backgroundColor: colors.primary },
+  priceModalSubmitText: { color: colors.textOnPrimary, fontSize: fontSize.md, fontWeight: fontWeight.semibold },
+  disabled: { opacity: 0.5 },
 
   // Modo mapa.
   mapLayer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },

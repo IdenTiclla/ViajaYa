@@ -10,6 +10,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 import { useDriverEarnings } from '@/features/rides/application/useCloseFlow';
+import { formatBolivianos } from '@/features/rides/domain/money';
 import type { EarningsItem } from '@/features/rides/domain/types';
 
 function formatDate(iso: string | null): string {
@@ -33,7 +34,7 @@ export function GananciasConductorScreen() {
 
             <View style={styles.total}>
               <Text style={styles.totalLabel}>Total de hoy</Text>
-              <Text style={styles.totalValue}>Bs {(data?.totalToday ?? 0).toFixed(2)}</Text>
+              <Text style={styles.totalValue}>Bs {formatBolivianos(data?.totalToday ?? 0)}</Text>
             </View>
 
             <View style={styles.cards}>
@@ -41,7 +42,7 @@ export function GananciasConductorScreen() {
               <Card
                 icon="wallet-outline"
                 label="Histórico"
-                value={`Bs ${(data?.totalAllTime ?? 0).toFixed(0)}`}
+                value={`Bs ${formatBolivianos(data?.totalAllTime ?? 0)}`}
               />
             </View>
 
@@ -94,7 +95,7 @@ function EarningsRow({ item }: { item: EarningsItem }) {
         </Text>
         <Text style={styles.rowDate}>{formatDate(item.completedAt)}</Text>
       </View>
-      <Text style={styles.rowPrice}>Bs {item.price.toFixed(2)}</Text>
+      <Text style={styles.rowPrice}>Bs {formatBolivianos(item.price)}</Text>
     </View>
   );
 }

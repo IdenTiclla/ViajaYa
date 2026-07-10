@@ -3,7 +3,7 @@
  *
  * Avatar + rating del pasajero, precio ofertado y **contraoferta rápida** (pills
  * +Bs que envían una contraoferta al instante) o precio propio (botón lápiz →
- * `KeypadModal`). Ruta Pickup/Drop-off y acciones Decline / Aceptar. Al pulsar
+ * `TextInput` nativo). Ruta Pickup/Drop-off y acciones Decline / Aceptar. Al pulsar
  * Aceptar el botón pasa a "Esperando…" (spinner) mientras se envía. Estado
  * `offered` → banner "Oferta enviada"; `rejected` → reofertar. Se puede
  * **rechazar deslizando** (panel rojo).
@@ -19,6 +19,7 @@ import Animated, { SlideInDown } from 'react-native-reanimated';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 import { useCountdown } from '@/core/hooks/useCountdown';
 import { formatKm, haversineKm, pricePerKm } from '@/features/rides/domain/geo';
+import { formatBolivianos } from '@/features/rides/domain/money';
 import { OfferLifeTimer } from '@/features/rides/presentation/OfferLifeTimer';
 import type { OpenRide } from '@/features/rides/domain/types';
 
@@ -47,7 +48,7 @@ type Props = {
   onAccept: () => void;
   onDismiss: () => void;
   onQuickAdd: (delta: number) => void;
-  onOpenKeypad: () => void;
+  onOpenPriceInput: () => void;
   /** Retira la oferta enviada (solo estado offered). */
   onWithdraw: () => void;
 };
@@ -67,7 +68,7 @@ export function RequestCard({
   onAccept,
   onDismiss,
   onQuickAdd,
-  onOpenKeypad,
+  onOpenPriceInput,
   onWithdraw,
 }: Props) {
   const swipeRef = useRef<SwipeableMethods>(null);
@@ -106,7 +107,7 @@ export function RequestCard({
         activeOpacity={0.9}
         onPress={onPress}
         accessibilityRole="button"
-        accessibilityLabel={`Solicitud de ${rider.fullName}, ${ride.service === 'taxi' ? 'taxi' : 'moto'}, ${offered && offerPrice != null ? `tu oferta Bs ${offerPrice.toFixed(2)}` : `Bs ${ride.fare.toFixed(2)}`}`}
+        accessibilityLabel={`Solicitud de ${rider.fullName}, ${ride.service === 'taxi' ? 'taxi' : 'moto'}, ${offered && offerPrice != null ? `tu oferta Bs ${formatBolivianos(offerPrice)}` : `Bs ${formatBolivianos(ride.fare)}`}`}
         style={styles.card}>
         {offered && (
           <OfferedBanner expiresAt={offerExpiresAt} disabled={disabled} onWithdraw={onWithdraw} />
@@ -167,7 +168,7 @@ export function RequestCard({
             </Text>
           </View>
           <View style={styles.priceCol}>
-            <Text style={styles.fare}>Bs {displayPrice.toFixed(2)}</Text>
+            <Text style={styles.fare}>Bs {formatBolivianos(displayPrice)}</Text>
             {offered && offerPrice != null ? (
               <Text style={styles.perKm}>Tu oferta</Text>
             ) : perKm ? (
@@ -196,7 +197,7 @@ export function RequestCard({
               ))}
               <TouchableOpacity
                 style={[styles.pencilBtn, disabled && styles.disabled]}
-                onPress={onOpenKeypad}
+                onPress={onOpenPriceInput}
                 disabled={disabled}
                 accessibilityRole="button"
                 accessibilityLabel="Contraoferta con precio personalizado">
@@ -235,7 +236,7 @@ export function RequestCard({
               onPress={onAccept}
               disabled={disabled}
               accessibilityRole="button"
-              accessibilityLabel={`Ofertar de nuevo por Bs ${ride.fare.toFixed(2)}`}>
+              accessibilityLabel={`Ofertar de nuevo por Bs ${formatBolivianos(ride.fare)}`}>
               {pendingAccept ? (
                 <ActivityIndicator color={colors.textOnPrimary} size="small" />
               ) : (
@@ -258,7 +259,7 @@ export function RequestCard({
               onPress={onAccept}
               disabled={disabled}
               accessibilityRole="button"
-              accessibilityLabel={`Aceptar por Bs ${ride.fare.toFixed(2)}`}>
+              accessibilityLabel={`Aceptar por Bs ${formatBolivianos(ride.fare)}`}>
               {pendingAccept ? (
                 <View style={styles.acceptWaiting}>
                   <ActivityIndicator color={colors.textOnPrimary} size="small" />

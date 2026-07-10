@@ -20,6 +20,7 @@ import { declutteredMapStyle } from '@/features/booking/presentation/mapStyle';
 import type { Coordinates } from '@/features/booking/domain/types';
 import type { SentOffer } from '@/features/driver/application/useDriverRequests';
 import { formatKm, haversineKm, pricePerKm } from '@/features/rides/domain/geo';
+import { formatBolivianos } from '@/features/rides/domain/money';
 import { OfferLifeTimer } from '@/features/rides/presentation/OfferLifeTimer';
 import { RoutePinMarker } from '@/features/rides/presentation/RoutePinMarker';
 import type { OpenRide } from '@/features/rides/domain/types';
@@ -46,7 +47,7 @@ type Props = {
   onAccept: (ride: OpenRide) => void;
   onDismiss: (ride: OpenRide) => void;
   onQuickAdd: (ride: OpenRide, delta: number) => void;
-  onOpenKeypad: (ride: OpenRide) => void;
+  onOpenPriceInput: (ride: OpenRide) => void;
   onWithdraw: (ride: OpenRide) => void;
 };
 
@@ -65,7 +66,7 @@ export function SolicitudesMapa({
   onAccept,
   onDismiss,
   onQuickAdd,
-  onOpenKeypad,
+  onOpenPriceInput,
   onWithdraw,
 }: Props) {
   const mapRef = useRef<MapView>(null);
@@ -199,7 +200,7 @@ export function SolicitudesMapa({
                 onAccept={() => onAccept(item)}
                 onDismiss={() => onDismiss(item)}
                 onQuickAdd={(delta) => onQuickAdd(item, delta)}
-                onOpenKeypad={() => onOpenKeypad(item)}
+                onOpenPriceInput={() => onOpenPriceInput(item)}
                 onWithdraw={() => onWithdraw(item)}
               />
             </View>
@@ -241,7 +242,7 @@ function MapCard({
   onAccept,
   onDismiss,
   onQuickAdd,
-  onOpenKeypad,
+  onOpenPriceInput,
   onWithdraw,
 }: {
   ride: OpenRide;
@@ -259,7 +260,7 @@ function MapCard({
   onAccept: () => void;
   onDismiss: () => void;
   onQuickAdd: (delta: number) => void;
-  onOpenKeypad: () => void;
+  onOpenPriceInput: () => void;
   onWithdraw: () => void;
 }) {
   const secondsLeft = useCountdown(offerExpiresAt);
@@ -349,7 +350,7 @@ function MapCard({
           </Text>
         </View>
         <View style={styles.priceCol}>
-          <Text style={styles.fare}>Bs {displayPrice.toFixed(2)}</Text>
+          <Text style={styles.fare}>Bs {formatBolivianos(displayPrice)}</Text>
           {offered && offerPrice != null ? (
             <Text style={styles.perKm}>Tu oferta</Text>
           ) : perKm ? (
@@ -374,7 +375,7 @@ function MapCard({
             ))}
             <TouchableOpacity
               style={[styles.keypadBtn, disabled && styles.disabled]}
-              onPress={onOpenKeypad}
+              onPress={onOpenPriceInput}
               disabled={disabled}
               accessibilityRole="button"
               accessibilityLabel="Contraofertar con un monto personalizado">
@@ -405,7 +406,7 @@ function MapCard({
                 onPress={onAccept}
                 disabled={disabled}
                 accessibilityRole="button"
-                accessibilityLabel={`Ofertar de nuevo por Bs ${ride.fare.toFixed(2)}`}>
+                accessibilityLabel={`Ofertar de nuevo por Bs ${formatBolivianos(ride.fare)}`}>
                 {pendingAccept ? (
                   <ActivityIndicator color={colors.textOnPrimary} size="small" />
                 ) : (
@@ -428,7 +429,7 @@ function MapCard({
                 onPress={onAccept}
                 disabled={disabled}
                 accessibilityRole="button"
-                accessibilityLabel={`Aceptar por Bs ${ride.fare.toFixed(2)}`}>
+                accessibilityLabel={`Aceptar por Bs ${formatBolivianos(ride.fare)}`}>
                 {pendingAccept ? (
                   <View style={styles.acceptWaiting}>
                     <ActivityIndicator color={colors.textOnPrimary} size="small" />

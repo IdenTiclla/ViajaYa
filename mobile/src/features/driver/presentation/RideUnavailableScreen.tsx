@@ -12,6 +12,7 @@ import { Animated, Easing, StyleSheet, Text, TouchableOpacity, View } from 'reac
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { formatBolivianos } from '@/features/rides/domain/money';
 
 export function RideUnavailableScreen({
   price,
@@ -59,7 +60,7 @@ export function RideUnavailableScreen({
           <View style={styles.cardHeader}>
             <View>
               <Text style={styles.cardLabel}>{priceLabel}</Text>
-              <Text style={styles.price}>{price != null ? `Bs ${price.toFixed(2)}` : '—'}</Text>
+              <Text style={styles.price}>{price != null ? `Bs ${formatBolivianos(price)}` : '—'}</Text>
             </View>
             {badge ? (
               <View style={styles.badge}>

@@ -45,6 +45,16 @@ type DriverRequestsState = {
     rideId: string,
     offer: { id: string; price: number; etaMin: number | null; expiresAt: string | null },
   ) => void;
+  /** Reemplaza solo las ofertas vivas con el snapshot autoritativo del backend. */
+  reconcileOffered: (
+    offers: {
+      rideId: string;
+      id: string;
+      price: number;
+      etaMin: number | null;
+      expiresAt: string | null;
+    }[],
+  ) => void;
   markRejected: (rideId: string) => void;
   markTaken: (rideId: string) => void;
   markExpired: (rideId: string) => void;
@@ -62,6 +72,7 @@ type DriverRequestsState = {
   getOffer: (rideId: string) => SentOffer | null;
   isDismissed: (rideId: string) => boolean;
   isOffered: (rideId: string) => boolean;
+  reset: () => void;
 };
 
 export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
@@ -99,6 +110,38 @@ export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
         expired,
         paused,
       };
+    }),
+  reconcileOffered: (snapshot) =>
+    set((s) => {
+      const offered: Record<string, SentOffer> = {};
+      const liveRideIds = new Set<string>();
+      const now = Date.now();
+      for (const offer of snapshot) {
+        const expiresAt =
+          offer.expiresAt ?? new Date(now + FALLBACK_TTL_MS).toISOString();
+        if (new Date(expiresAt).getTime() <= now) continue;
+        liveRideIds.add(offer.rideId);
+        offered[offer.rideId] = {
+          offerId: offer.id,
+          price: offer.price,
+          etaMin: offer.etaMin,
+          expiresAt,
+        };
+      }
+
+      // Un estado local terminal contradice una oferta que el servidor confirma
+      // como PENDING. `dismissed` se preserva: es una preferencia local distinta.
+      const rejected = new Set(s.rejected);
+      const taken = new Set(s.taken);
+      const expired = new Set(s.expired);
+      const paused = new Set(s.paused);
+      for (const rideId of liveRideIds) {
+        rejected.delete(rideId);
+        taken.delete(rideId);
+        expired.delete(rideId);
+        paused.delete(rideId);
+      }
+      return { offered, rejected, taken, expired, paused };
     }),
   // Cada desenlace limpia la entrada de `offered` (sin zombies) y crea sets nuevos
   // para que los selectores re-rendericen.
@@ -184,6 +227,15 @@ export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
       !get().paused.has(rideId)
     );
   },
+  reset: () =>
+    set({
+      dismissed: new Set(),
+      offered: {},
+      rejected: new Set(),
+      taken: new Set(),
+      expired: new Set(),
+      paused: new Set(),
+    }),
 }));
 
 /**

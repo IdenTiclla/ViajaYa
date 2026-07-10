@@ -9,11 +9,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { usePreventRemove } from 'expo-router/react-navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -26,12 +30,16 @@ import { useBookingStore } from '@/features/booking/application/useBookingStore'
 import { useRoute } from '@/features/booking/application/useRoute';
 import { ridesRepository } from '@/features/booking/data/ridesRepository';
 import { useEditRide } from '@/features/rides/application/useRideMutations';
-import { useRide } from '@/features/rides/application/useRides';
+import { formatBolivianosInput } from '@/features/rides/domain/money';
+import {
+  PASSENGER_ACTIVE_RIDE_KEY,
+  useRide,
+} from '@/features/rides/application/useRides';
 import type { Coordinates, PaymentMethod, ServiceType } from '@/features/booking/domain/types';
 import { declutteredMapStyle } from '@/features/booking/presentation/mapStyle';
-import { FareKeypad } from '@/features/rides/presentation/FareKeypad';
 import { RoutePinMarker } from '@/features/rides/presentation/RoutePinMarker';
 import { RouteSummary } from '@/features/rides/presentation/RouteSummary';
+import { ConfirmDialog } from '@/shared/components';
 
 const SERVICES: { id: ServiceType; label: string; icon: 'car-sport' | 'bicycle' }[] = [
   { id: 'taxi', label: 'Taxi', icon: 'car-sport' },
@@ -78,13 +86,18 @@ export function ConfigureTripScreen() {
   const [sheetHeight, setSheetHeight] = useState(0);
   // Mostrar/ocultar etiquetas de lugares (el usuario lo controla con el toggle).
   const [showPlaces, setShowPlaces] = useState(true);
-  const [fareKeypadOpen, setFareKeypadOpen] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [allowExit, setAllowExit] = useState(false);
+  const [exitAfterSave, setExitAfterSave] = useState(false);
 
   const createRide = useMutation({
     mutationFn: ridesRepository.create,
     onSuccess: (ride) => {
       // Refresca los recientes (este destino pasa a estar entre ellos).
       void queryClient.invalidateQueries({ queryKey: ['recent-destinations'] });
+      // La creación devuelve un resumen corto; el layout obtiene el Ride completo
+      // y abre el socket único mediante el endpoint de viaje activo.
+      void queryClient.invalidateQueries({ queryKey: PASSENGER_ACTIVE_RIDE_KEY });
       router.push({ pathname: '/booking/offers', params: { rideId: ride.id } });
     },
   });
@@ -101,10 +114,22 @@ export function ConfigureTripScreen() {
     setDestination(existingRide.destination);
     setService(existingRide.service);
     setPayment(existingRide.payment);
-    setFare(String(existingRide.fare));
+    setFare(formatBolivianosInput(existingRide.fare));
     // existingRide viene de la caché; se hidrata una sola vez.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rideId, existingRide]);
+
+  // Intercepta flecha, gesto y back de Android. Una solicitud pausada solo puede
+  // salir de esta pantalla después de volver a publicarse.
+  usePreventRemove(isEditing && !allowExit, () => {
+    if (!editRide.isPending) setConfirmDiscard(true);
+  });
+
+  useEffect(() => {
+    if (allowExit && exitAfterSave && rideId) {
+      router.replace({ pathname: '/booking/offers', params: { rideId } });
+    }
+  }, [allowExit, exitAfterSave, rideId, router]);
 
   const { route, isLoading: routeLoading } = useRoute(origin, destination);
 
@@ -170,7 +195,7 @@ export function ConfigureTripScreen() {
     );
   }
 
-  const fareValue = Number.parseFloat(fare.replace(',', '.'));
+  const fareValue = Number(fare.replace(',', '.'));
   const fareIsValid = Number.isFinite(fareValue) && fareValue > 0;
 
   const searchOffers = () => {
@@ -182,7 +207,35 @@ export function ConfigureTripScreen() {
     if (!rideId || !fareIsValid || editRide.isPending) return;
     editRide.mutate(
       { rideId, input: { origin, destination, service, payment, fare: fareValue } },
-      { onSuccess: () => router.replace({ pathname: '/booking/offers', params: { rideId } }) },
+      {
+        onSuccess: () => {
+          setExitAfterSave(true);
+          setAllowExit(true);
+        },
+      },
+    );
+  };
+
+  const discardEditAndExit = () => {
+    setConfirmDiscard(false);
+    if (!rideId || !existingRide || editRide.isPending) return;
+    editRide.mutate(
+      {
+        rideId,
+        input: {
+          origin: existingRide.origin,
+          destination: existingRide.destination,
+          service: existingRide.service,
+          payment: existingRide.payment,
+          fare: existingRide.fare,
+        },
+      },
+      {
+        onSuccess: () => {
+          setExitAfterSave(true);
+          setAllowExit(true);
+        },
+      },
     );
   };
 
@@ -210,7 +263,8 @@ export function ConfigureTripScreen() {
         <View style={styles.topLeft}>
           <TouchableOpacity
             style={styles.back}
-            onPress={() => router.back()}
+            onPress={() => (isEditing ? setConfirmDiscard(true) : router.back())}
+            disabled={editRide.isPending}
             accessibilityRole="button"
             accessibilityLabel="Volver">
             <Ionicons name="arrow-back" size={24} color={colors.text} />
@@ -240,10 +294,14 @@ export function ConfigureTripScreen() {
         </View>
       </SafeAreaView>
 
-      <SafeAreaView
-        style={styles.sheet}
-        edges={['bottom']}
-        onLayout={(e) => setSheetHeight(e.nativeEvent.layout.height)}>
+      <KeyboardAvoidingView
+        style={styles.sheetAvoider}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        pointerEvents="box-none">
+        <SafeAreaView
+          style={styles.sheet}
+          edges={['bottom']}
+          onLayout={(e) => setSheetHeight(e.nativeEvent.layout.height)}>
         {route && (
           <View style={styles.estimate}>
             <Ionicons name="navigate" size={16} color={colors.primary} />
@@ -304,17 +362,21 @@ export function ConfigureTripScreen() {
         </View>
 
         <Text style={styles.fieldLabel}>Tu oferta</Text>
-        <TouchableOpacity
-          style={styles.fareRow}
-          onPress={() => setFareKeypadOpen(true)}
-          accessibilityRole="button"
-          accessibilityLabel={`Monto de tu oferta: ${fare || '0'} bolivianos. Toca para editarlo.`}>
+        <View style={styles.fareRow}>
           <Text style={styles.fareCurrency}>Bs</Text>
-          <Text style={[styles.fareInput, !fare && styles.farePlaceholder]}>
-            {fare || '0.00'}
-          </Text>
-          <Ionicons name="create-outline" size={18} color={colors.textSecondary} />
-        </TouchableOpacity>
+          <TextInput
+            value={fare}
+            onChangeText={setFare}
+            selectTextOnFocus
+            placeholder="30"
+            placeholderTextColor={colors.placeholder}
+            keyboardType="decimal-pad"
+            inputMode="decimal"
+            maxLength={9}
+            style={styles.fareInput}
+            accessibilityLabel="Monto de tu oferta en bolivianos"
+          />
+        </View>
 
         {createRide.isError && (
           <Text style={styles.error}>{getApiErrorMessage(createRide.error)}</Text>
@@ -338,20 +400,18 @@ export function ConfigureTripScreen() {
             <Text style={styles.ctaText}>{isEditing ? 'Guardar cambios' : 'Buscar Ofertas'}</Text>
           )}
         </TouchableOpacity>
-      </SafeAreaView>
+        </SafeAreaView>
+      </KeyboardAvoidingView>
 
-      <FareKeypad
-        visible={fareKeypadOpen}
-        mode="absolute"
-        subtitle="Tu oferta"
-        initialValue={fare ? Number.parseFloat(fare.replace(',', '.')) : undefined}
-        submitting={createRide.isPending || editRide.isPending}
-        submitLabel="Listo"
-        onCancel={() => setFareKeypadOpen(false)}
-        onSubmit={(amount) => {
-          setFare(String(amount));
-          setFareKeypadOpen(false);
-        }}
+      <ConfirmDialog
+        visible={confirmDiscard}
+        icon="arrow-back-circle-outline"
+        title="¿Descartar los cambios?"
+        message="Restauraremos los datos originales y volveremos a publicar tu solicitud antes de salir."
+        confirmText="Descartar y salir"
+        cancelText="Seguir editando"
+        onConfirm={discardEditAndExit}
+        onCancel={() => setConfirmDiscard(false)}
       />
     </View>
   );
@@ -395,11 +455,16 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 3,
   },
-  sheet: {
+  sheetAvoider: {
     position: 'absolute',
-    left: 0,
+    top: 0,
     right: 0,
     bottom: 0,
+    left: 0,
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    width: '100%',
     padding: spacing.lg,
     gap: spacing.md,
     backgroundColor: colors.background,
@@ -455,7 +520,6 @@ const styles = StyleSheet.create({
   },
   fareCurrency: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.textSecondary },
   fareInput: { flex: 1, fontSize: fontSize.lg, fontWeight: fontWeight.semibold, color: colors.text, padding: 0 },
-  farePlaceholder: { color: colors.placeholder },
 
   cta: {
     height: 56,

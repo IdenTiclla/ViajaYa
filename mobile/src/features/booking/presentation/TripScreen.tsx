@@ -8,6 +8,7 @@
  * Al completarse, lleva a calificar; permite cancelar antes de iniciar.
  */
 import { Ionicons } from '@expo/vector-icons';
+import { useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
@@ -23,9 +24,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
-import { useNegotiationSocket } from '@/features/rides/application/useNegotiationSocket';
 import { useCancelRide } from '@/features/rides/application/useRideMutations';
-import { useRide } from '@/features/rides/application/useRides';
+import {
+  PASSENGER_ACTIVE_RIDE_KEY,
+  useRide,
+} from '@/features/rides/application/useRides';
 import { TripRouteMap } from '@/features/rides/presentation/TripRouteMap';
 import type { Ride, RideStatus } from '@/features/rides/domain/types';
 import { Button, ConfirmDialog } from '@/shared/components';
@@ -56,16 +59,18 @@ const CANCELLABLE: RideStatus[] = ['searching', 'accepted', 'arriving'];
 
 export function TripScreen() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { rideId } = useLocalSearchParams<{ rideId?: string }>();
   const id = rideId ?? null;
-  // Los cambios de estado del viaje (en camino → llegó → en curso → finalizado)
-  // llegan en vivo por WebSocket; el polling queda de respaldo.
-  useNegotiationSocket(id, !!id);
   const { ride, isLoading } = useRide(id);
   const cancelRide = useCancelRide();
   const [confirmCancel, setConfirmCancel] = useState(false);
 
   const goHome = () => router.replace('/(app)/(tabs)');
+  const closeAndGoHome = () => {
+    queryClient.setQueryData(PASSENGER_ACTIVE_RIDE_KEY, null);
+    goHome();
+  };
   const goRate = () => router.replace(`/(app)/booking/rating?rideId=${id}`);
 
   // Al completarse el viaje (aviso en vivo por WS), lleva a calificar tras una
@@ -80,7 +85,19 @@ export function TripScreen() {
     return () => clearTimeout(timer);
   }, [completed, id, router]);
 
-  if (!id || (isLoading && !ride)) {
+  if (!id) {
+    return (
+      <SafeAreaView style={[styles.fallback, styles.center]}>
+        <Ionicons name="alert-circle-outline" size={48} color={colors.textSecondary} />
+        <Text style={styles.hint}>El viaje solicitado no es válido.</Text>
+        <View style={styles.fallbackAction}>
+          <Button title="Volver al inicio" onPress={goHome} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (isLoading && !ride) {
     return (
       <SafeAreaView style={[styles.fallback, styles.center]}>
         <ActivityIndicator size="large" color={colors.primary} />
@@ -149,7 +166,7 @@ export function TripScreen() {
         {isCompleted ? (
           <Button title="Calificar viaje" onPress={goRate} />
         ) : isCancelled ? (
-          <Button title="Volver al inicio" onPress={goHome} />
+          <Button title="Volver al inicio" onPress={closeAndGoHome} />
         ) : canCancel ? (
           <Button
             title="Cancelar viaje"

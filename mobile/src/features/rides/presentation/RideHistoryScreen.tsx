@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 import { useRideHistory } from '@/features/rides/application/useCloseFlow';
+import { formatBolivianos } from '@/features/rides/domain/money';
 import type { RideHistoryItem, RideStatus } from '@/features/rides/domain/types';
 
 const SERVICE_LABELS = { taxi: 'Taxi', moto: 'Moto' } as const;
@@ -99,7 +100,7 @@ function HistoryCard({ item }: { item: RideHistoryItem }) {
         </Text>
       </View>
       <View style={styles.cardRight}>
-        <Text style={styles.cardPrice}>Bs {item.price.toFixed(2)}</Text>
+        <Text style={styles.cardPrice}>Bs {formatBolivianos(item.price)}</Text>
         {item.myRating != null && (
           <View style={styles.rating}>
             <Ionicons name="star" size={12} color={colors.accent} />

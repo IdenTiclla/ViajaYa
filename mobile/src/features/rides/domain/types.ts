@@ -76,11 +76,22 @@ export type RideDriver = {
   vehicleModel: string | null;
 };
 
+/** Datos del pasajero asignado, visibles para el conductor durante el viaje. */
+export type RideRider = {
+  id: string;
+  fullName: string;
+  phone: string | null;
+  rating: number | null;
+};
+
 /** Detalle completo de un viaje (polling de estado para ambos lados). */
 export type Ride = {
   id: string;
   riderId: string;
+  rider: RideRider;
   status: RideStatus;
+  /** La solicitud sigue buscando, pero esta oculta mientras el pasajero la edita. */
+  paused: boolean;
   service: ServiceType;
   payment: PaymentMethod;
   fare: number;

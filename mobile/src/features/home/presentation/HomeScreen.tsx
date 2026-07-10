@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -14,6 +15,7 @@ import {
 import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { getApiErrorMessage } from '@/core/errors/apiError';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
 import { useRecentDestinations } from '@/features/booking/application/useRecentDestinations';
@@ -21,6 +23,12 @@ import { useRegionPlace } from '@/features/booking/application/useRegionPlace';
 import type { Place, ServiceType } from '@/features/booking/domain/types';
 import { CenterPin } from '@/features/booking/presentation/CenterPin';
 import { useCurrentLocation } from '@/features/home/application/useCurrentLocation';
+import {
+  PASSENGER_ACTIVE_RIDE_KEY,
+  usePendingRatingRide,
+  usePassengerActiveRide,
+} from '@/features/rides/application/useRides';
+import type { Ride } from '@/features/rides/domain/types';
 import { useAuthStore } from '@/store/authStore';
 
 const SERVICES: { id: ServiceType; label: string; caption: string; icon: 'car-sport' | 'bicycle' }[] =
@@ -51,8 +59,27 @@ export function HomeScreen() {
   const user = useAuthStore((s) => s.user);
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const {
+    ride: activeRide,
+    isLoading: activeRideLoading,
+    isFetching: activeRideFetching,
+    isError: activeRideError,
+    error: activeRideErrorValue,
+    refetch: refetchActiveRide,
+  } = usePassengerActiveRide();
+  const {
+    ride: pendingRatingRide,
+    isLoading: pendingRatingLoading,
+    isFetching: pendingRatingFetching,
+    isError: pendingRatingError,
+    error: pendingRatingErrorValue,
+    refetch: refetchPendingRating,
+  } = usePendingRatingRide();
   const { status, coordinates, retry } = useCurrentLocation();
   const mapRef = useRef<MapView>(null);
+  const [recoveryReady, setRecoveryReady] = useState(false);
+  const recoveryReadyRef = useRef(false);
 
   const setOrigin = useBookingStore((s) => s.setOrigin);
   const setDestination = useBookingStore((s) => s.setDestination);
@@ -115,6 +142,93 @@ export function HomeScreen() {
     }
   }, [region, handleRegionChange]);
 
+  // Cada entrada a Home confirma primero el estado autoritativo. React Query puede
+  // conservar SEARCHING durante 30 s; navegar antes de este refetch revive viajes
+  // que el pasajero acaba de cancelar.
+  useFocusEffect(
+    useCallback(() => {
+      let focused = true;
+      recoveryReadyRef.current = false;
+      setRecoveryReady(false);
+
+      const recover = async () => {
+        try {
+          const activeResult = await refetchActiveRide();
+          if (activeResult.isSuccess && activeResult.data == null) {
+            await refetchPendingRating();
+          }
+        } finally {
+          if (focused) {
+            recoveryReadyRef.current = true;
+            setRecoveryReady(true);
+          }
+        }
+      };
+
+      void recover();
+      return () => {
+        focused = false;
+        recoveryReadyRef.current = false;
+      };
+    }, [refetchActiveRide, refetchPendingRating]),
+  );
+
+  // Recupera el punto exacto del flujo una vez terminada la verificacion fresca.
+  // El foco evita navegar desde el Home que permanece montado debajo del stack.
+  useFocusEffect(
+    useCallback(() => {
+      if (
+        !recoveryReadyRef.current ||
+        !recoveryReady ||
+        activeRideLoading ||
+        activeRideFetching ||
+        activeRideError
+      ) {
+        return;
+      }
+
+      if (activeRide) {
+        if (activeRide.status === 'cancelled') {
+          queryClient.setQueryData<Ride | null>(PASSENGER_ACTIVE_RIDE_KEY, (current) =>
+            current?.id === activeRide.id ? null : current,
+          );
+        } else if (activeRide.status === 'completed') {
+          router.replace({ pathname: '/booking/rating', params: { rideId: activeRide.id } });
+        } else if (activeRide.paused) {
+          router.replace({ pathname: '/booking/configure', params: { rideId: activeRide.id } });
+        } else if (activeRide.status === 'searching') {
+          router.replace({ pathname: '/booking/offers', params: { rideId: activeRide.id } });
+        } else {
+          router.replace({ pathname: '/booking/trip', params: { rideId: activeRide.id } });
+        }
+        return;
+      }
+
+      // Un pendiente solo puede ganar cuando el endpoint activo confirmó que no
+      // hay viaje vigente. Durante carga/refetch/error se conserva la prioridad.
+      if (pendingRatingLoading || pendingRatingFetching || pendingRatingError) return;
+
+      if (pendingRatingRide) {
+        router.replace({
+          pathname: '/booking/rating',
+          params: { rideId: pendingRatingRide.id },
+        });
+      }
+    }, [
+      activeRide,
+      activeRideError,
+      activeRideFetching,
+      activeRideLoading,
+      pendingRatingError,
+      pendingRatingFetching,
+      pendingRatingLoading,
+      pendingRatingRide,
+      queryClient,
+      recoveryReady,
+      router,
+    ]),
+  );
+
   const recenter = () => {
     if (region) mapRef.current?.animateToRegion(region, 500);
   };
@@ -128,6 +242,41 @@ export function HomeScreen() {
     setDestination(place);
     router.navigate('/booking/configure');
   };
+
+  if (!recoveryReady || activeRideLoading) {
+    return <ActiveRideGate />;
+  }
+
+  if (activeRideError || (!activeRide && pendingRatingError)) {
+    const recoveryError = activeRideError
+      ? activeRideErrorValue
+      : pendingRatingErrorValue;
+    return (
+      <SafeAreaView style={styles.recovery}>
+        <Ionicons name="cloud-offline-outline" size={44} color={colors.textSecondary} />
+        <Text style={styles.recoveryTitle}>No pudimos verificar tus viajes</Text>
+        <Text style={styles.recoveryHint}>{getApiErrorMessage(recoveryError)}</Text>
+        <TouchableOpacity
+          style={styles.retry}
+          onPress={() => {
+            void refetchActiveRide();
+            void refetchPendingRating();
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Reintentar recuperación del viaje">
+          <Text style={styles.retryText}>Reintentar</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
+
+  if (activeRide) {
+    return <ActiveRideGate />;
+  }
+
+  if (pendingRatingLoading || pendingRatingFetching || pendingRatingRide) {
+    return <ActiveRideGate />;
+  }
 
   return (
     <View style={styles.root}>
@@ -239,6 +388,15 @@ export function HomeScreen() {
   );
 }
 
+function ActiveRideGate() {
+  return (
+    <SafeAreaView style={styles.recovery}>
+      <ActivityIndicator size="large" color={colors.primary} />
+      <Text style={styles.recoveryTitle}>Recuperando tu viaje…</Text>
+    </SafeAreaView>
+  );
+}
+
 function TopBarButton({
   icon,
   accessibilityLabel,
@@ -290,6 +448,21 @@ function MapPlaceholder({
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceMuted },
+  recovery: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.md,
+    padding: spacing.lg,
+    backgroundColor: colors.background,
+  },
+  recoveryTitle: {
+    color: colors.text,
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.semibold,
+    textAlign: 'center',
+  },
+  recoveryHint: { color: colors.textSecondary, fontSize: fontSize.sm, textAlign: 'center' },
   placeholder: {
     position: 'absolute',
     top: 0,

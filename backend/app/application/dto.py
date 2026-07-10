@@ -122,10 +122,19 @@ class CreateOfferResult:
 
 
 @dataclass(frozen=True)
+class DriverAvailabilityResult:
+    """Cambio de disponibilidad y ofertas retiradas al quedar offline."""
+
+    driver: User
+    withdrawn_offers: list[Offer]
+
+
+@dataclass(frozen=True)
 class RideDetail:
-    """Viaje enriquecido con el conductor asignado y la oferta aceptada (si existen)."""
+    """Viaje enriquecido con sus participantes y la oferta aceptada (si existe)."""
 
     ride: RideRequest
+    rider: User | None = None
     driver: User | None = None
     accepted_offer: Offer | None = None
 

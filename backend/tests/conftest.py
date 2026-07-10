@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 
 import pytest_asyncio
@@ -9,7 +10,8 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from app.api.deps import get_oauth_verifiers
+from app.api.deps import get_oauth_verifiers, get_session_factory
+from app.api.v1 import presence
 from app.domain.entities import AuthProvider
 from app.infrastructure.db.base import Base
 from app.infrastructure.db.session import get_session
@@ -50,8 +52,25 @@ async def client(session_factory) -> AsyncIterator[AsyncClient]:
 
     app = create_app()
     app.dependency_overrides[get_session] = override_get_session
+    app.dependency_overrides[get_session_factory] = lambda: session_factory
     app.dependency_overrides[get_oauth_verifiers] = override_get_verifiers
 
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        yield ac
+    try:
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            yield ac
+    finally:
+        # Los heartbeats de presencia dejan cierres diferidos. Cada prueba usa
+        # su propia base SQLite: se cancelan antes de desechar ese engine para
+        # que una tarea vieja no opere sobre la base de la prueba siguiente.
+        tasks = set(presence._CANCEL_TASKS)
+        tasks.update(presence._pending_cancels.values())
+        tasks.update(presence._critical_cancels.values())
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        presence._pending_cancels.clear()
+        presence._critical_cancels.clear()
+        presence._CANCEL_TASKS.clear()
+        presence._last_seen.clear()

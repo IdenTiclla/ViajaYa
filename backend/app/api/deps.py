@@ -25,6 +25,8 @@ from app.application.use_cases.delete_saved_place import DeleteSavedPlace
 from app.application.use_cases.edit_ride import EditRide
 from app.application.use_cases.get_driver_active_ride import GetDriverActiveRide
 from app.application.use_cases.get_driver_earnings import GetDriverEarnings
+from app.application.use_cases.get_passenger_active_ride import GetPassengerActiveRide
+from app.application.use_cases.get_pending_rating_ride import GetPendingRatingRide
 from app.application.use_cases.get_ride import GetRide
 from app.application.use_cases.list_offers_for_ride import ListOffersForRide
 from app.application.use_cases.list_open_rides import ListOpenRides
@@ -37,6 +39,7 @@ from app.application.use_cases.refresh_token import RefreshToken
 from app.application.use_cases.register_user import RegisterUser
 from app.application.use_cases.reject_offer import RejectOffer
 from app.application.use_cases.set_driver_online import SetDriverOnline
+from app.application.use_cases.skip_ride_rating import SkipRideRating
 from app.application.use_cases.update_ride_fare import UpdateRideFare
 from app.application.use_cases.update_ride_status import UpdateRideStatus
 from app.application.use_cases.update_saved_place import UpdateSavedPlace
@@ -45,7 +48,9 @@ from app.domain.entities import AuthProvider, User
 from app.domain.exceptions import InvalidTokenError
 from app.domain.repositories import (
     OfferRepository,
+    PendingRatingRepository,
     RatingRepository,
+    RatingSkipRepository,
     RideRequestRepository,
     SavedPlaceRepository,
     UserRepository,
@@ -53,7 +58,9 @@ from app.domain.repositories import (
 from app.infrastructure.config import Settings, get_settings
 from app.infrastructure.db.repositories import (
     SqlAlchemyOfferRepository,
+    SqlAlchemyPendingRatingRepository,
     SqlAlchemyRatingRepository,
+    SqlAlchemyRatingSkipRepository,
     SqlAlchemyRideRequestRepository,
     SqlAlchemySavedPlaceRepository,
     SqlAlchemyUserRepository,
@@ -112,6 +119,26 @@ def get_rating_repository(session: SessionDep) -> RatingRepository:
 
 
 RatingRepositoryDep = Annotated[RatingRepository, Depends(get_rating_repository)]
+
+
+def get_pending_rating_repository(session: SessionDep) -> PendingRatingRepository:
+    return SqlAlchemyPendingRatingRepository(session)
+
+
+PendingRatingRepositoryDep = Annotated[
+    PendingRatingRepository,
+    Depends(get_pending_rating_repository),
+]
+
+
+def get_rating_skip_repository(session: SessionDep) -> RatingSkipRepository:
+    return SqlAlchemyRatingSkipRepository(session)
+
+
+RatingSkipRepositoryDep = Annotated[
+    RatingSkipRepository,
+    Depends(get_rating_skip_repository),
+]
 
 
 @lru_cache
@@ -228,14 +255,34 @@ def get_edit_ride(rides: RideRequestRepositoryDep) -> EditRide:
     return EditRide(rides)
 
 
-def get_set_driver_online(users: UserRepositoryDep) -> SetDriverOnline:
-    return SetDriverOnline(users)
+def get_set_driver_online(
+    users: UserRepositoryDep, offers: OfferRepositoryDep
+) -> SetDriverOnline:
+    return SetDriverOnline(users, offers)
 
 
 def get_driver_active_ride(
-    rides: RideRequestRepositoryDep, offers: OfferRepositoryDep
+    rides: RideRequestRepositoryDep,
+    offers: OfferRepositoryDep,
+    users: UserRepositoryDep,
 ) -> GetDriverActiveRide:
-    return GetDriverActiveRide(rides, offers)
+    return GetDriverActiveRide(rides, offers, users)
+
+
+def get_passenger_active_ride(
+    rides: RideRequestRepositoryDep,
+    offers: OfferRepositoryDep,
+    users: UserRepositoryDep,
+) -> GetPassengerActiveRide:
+    return GetPassengerActiveRide(rides, offers, users)
+
+
+def get_pending_rating_ride(
+    pending_ratings: PendingRatingRepositoryDep,
+    offers: OfferRepositoryDep,
+    users: UserRepositoryDep,
+) -> GetPendingRatingRide:
+    return GetPendingRatingRide(pending_ratings, offers, users)
 
 
 def get_get_ride(
@@ -249,9 +296,15 @@ def get_get_ride(
 def get_rate_ride(
     rides: RideRequestRepositoryDep,
     ratings: RatingRepositoryDep,
-    users: UserRepositoryDep,
 ) -> RateRide:
-    return RateRide(rides, ratings, users)
+    return RateRide(rides, ratings)
+
+
+def get_skip_ride_rating(
+    rides: RideRequestRepositoryDep,
+    skips: RatingSkipRepositoryDep,
+) -> SkipRideRating:
+    return SkipRideRating(rides, skips)
 
 
 def get_list_ride_history(

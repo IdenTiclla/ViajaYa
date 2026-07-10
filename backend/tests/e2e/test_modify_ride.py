@@ -25,6 +25,7 @@ async def _promote_to_driver(session_factory, email: str, vehicle: ServiceType) 
         assert user is not None
         user.role = UserRole.DRIVER
         user.vehicle_type = vehicle
+        user.is_online = True
         await users.update(user)
 
 

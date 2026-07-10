@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import replace
 
 from app.domain.entities import RideRequest, RideStatus, User
 from app.domain.exceptions import (
@@ -42,5 +43,13 @@ class UpdateRideStatus:
                 f"No se puede pasar de {ride.status.value} a {new_status.value}."
             )
 
-        ride.status = new_status
-        return await self._rides.update(ride)
+        updated = await self._rides.update_if_state(
+            replace(ride, status=new_status),
+            ride.status,
+            expected_paused=ride.paused,
+        )
+        if updated is None:
+            raise InvalidRideTransitionError(
+                "El viaje cambió de estado; actualiza la pantalla e inténtalo de nuevo."
+            )
+        return updated

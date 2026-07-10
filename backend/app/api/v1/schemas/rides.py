@@ -142,6 +142,15 @@ class RideDriverSchema(BaseModel):
     vehicle_model: str | None
 
 
+class RideRiderSchema(BaseModel):
+    """Datos del pasajero, visibles para el conductor asignado."""
+
+    id: uuid.UUID
+    full_name: str
+    phone: str | None
+    rating: float | None
+
+
 class RideResponse(BaseModel):
     """Detalle completo de un viaje (polling de estado para ambos lados)."""
 
@@ -153,14 +162,27 @@ class RideResponse(BaseModel):
     payment_method: PaymentMethod
     origin: PointSchema
     destination: PointSchema
+    paused: bool
+    rider: RideRiderSchema
     driver: RideDriverSchema | None
     accepted_price: Decimal | None
     accepted_eta_min: int | None
     created_at: datetime | None
+    completed_at: datetime | None
+    cancelled_at: datetime | None
 
     @classmethod
     def from_detail(cls, detail: RideDetail) -> RideResponse:
         ride = detail.ride
+        if detail.rider is None:
+            raise ValueError("RideDetail requiere el pasajero para responder por API.")
+        r = detail.rider
+        rider_schema = RideRiderSchema(
+            id=r.id,
+            full_name=r.full_name,
+            phone=r.phone,
+            rating=r.rating,
+        )
         driver_schema = None
         if detail.driver is not None:
             d = detail.driver
@@ -183,10 +205,14 @@ class RideResponse(BaseModel):
             payment_method=ride.payment_method,
             origin=PointSchema.from_location(ride.origin),
             destination=PointSchema.from_location(ride.destination),
+            paused=ride.paused,
+            rider=rider_schema,
             driver=driver_schema,
             accepted_price=offer.price if offer else None,
             accepted_eta_min=offer.eta_min if offer else None,
             created_at=ride.created_at,
+            completed_at=ride.completed_at,
+            cancelled_at=ride.cancelled_at,
         )
 
 
@@ -256,5 +282,5 @@ class RideHistoryItemResponse(BaseModel):
                 if cp
                 else None
             ),
-            created_at=ride.created_at,
+            created_at=ride.completed_at or ride.cancelled_at or ride.created_at,
         )

@@ -160,6 +160,8 @@ class RideRequest:
     paused: bool = False
     id: uuid.UUID = field(default_factory=uuid.uuid4)
     created_at: datetime | None = None
+    completed_at: datetime | None = None
+    cancelled_at: datetime | None = None
 
 
 class OfferStatus(enum.StrEnum):
@@ -207,8 +209,8 @@ class RideRating:
 
     Cuando un viaje llega a ``COMPLETED``, el pasajero califica al conductor y el
     conductor al pasajero (``score`` 1–5 + comentario opcional). Solo se admite una
-    calificación por ``(ride_id, rater_id)``. Al calificar a un conductor se
-    recalcula su ``User.rating`` promedio.
+    calificación por ``(ride_id, rater_id)``. Cada voto recalcula el
+    ``User.rating`` promedio de la persona calificada.
     """
 
     ride_id: uuid.UUID
@@ -216,5 +218,15 @@ class RideRating:
     ratee_id: uuid.UUID
     score: int
     comment: str | None = None
+    id: uuid.UUID = field(default_factory=uuid.uuid4)
+    created_at: datetime | None = None
+
+
+@dataclass
+class RideRatingSkip:
+    """Decisión de un participante de cerrar el viaje sin calificarlo."""
+
+    ride_id: uuid.UUID
+    rater_id: uuid.UUID
     id: uuid.UUID = field(default_factory=uuid.uuid4)
     created_at: datetime | None = None

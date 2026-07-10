@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 from app.application.dto import DriverEarnings, EarningsItem
 from app.domain.entities import RideStatus, User
@@ -12,6 +13,11 @@ from app.domain.repositories import OfferRepository, RideRequestRepository
 
 # Cuántos viajes recientes se devuelven en el desglose.
 _RECENT_LIMIT = 10
+_BUSINESS_TIMEZONE = ZoneInfo("America/La_Paz")
+
+
+def _as_utc(moment: datetime) -> datetime:
+    return moment.replace(tzinfo=UTC) if moment.tzinfo is None else moment.astimezone(UTC)
 
 
 class GetDriverEarnings:
@@ -25,8 +31,14 @@ class GetDriverEarnings:
 
         rides = await self._rides.list_by_driver(driver.id)
         completed = [r for r in rides if r.status is RideStatus.COMPLETED]
+        completed.sort(
+            key=lambda ride: _as_utc(ride.completed_at or ride.created_at)
+            if (ride.completed_at or ride.created_at)
+            else datetime.min.replace(tzinfo=UTC),
+            reverse=True,
+        )
 
-        today = datetime.now(UTC).date()
+        today = datetime.now(_BUSINESS_TIMEZONE).date()
         items: list[EarningsItem] = []
         total_today = Decimal("0")
         total_all = Decimal("0")
@@ -41,7 +53,11 @@ class GetDriverEarnings:
                     price = offer.price
 
             total_all += price
-            if ride.created_at is not None and ride.created_at.date() == today:
+            completed_at = ride.completed_at or ride.created_at
+            if (
+                completed_at is not None
+                and _as_utc(completed_at).astimezone(_BUSINESS_TIMEZONE).date() == today
+            ):
                 total_today += price
                 trips_today += 1
 
@@ -50,7 +66,7 @@ class GetDriverEarnings:
                     ride_id=ride.id,
                     destination_name=ride.destination.name,
                     price=price,
-                    completed_at=ride.created_at,
+                    completed_at=completed_at,
                 )
             )
 

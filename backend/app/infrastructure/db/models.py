@@ -12,6 +12,7 @@ from sqlalchemy import (
     Enum,
     Float,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
@@ -19,6 +20,7 @@ from sqlalchemy import (
     UniqueConstraint,
     Uuid,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -39,6 +41,11 @@ def _enum_values(enum_cls: type) -> list[str]:
     nombre. Así la columna coincide con el contrato de la API y con los
     ``server_default`` de las migraciones (p. ej. ``cash``, ``taxi``)."""
     return [member.value for member in enum_cls]
+
+
+_ACTIVE_RIDE_STATUS_PREDICATE = text(
+    "status IN ('searching', 'accepted', 'arriving', 'in_progress')"
+)
 
 
 class UserModel(Base):
@@ -99,6 +106,15 @@ class UserModel(Base):
 
 class RideRequestModel(Base):
     __tablename__ = "ride_requests"
+    __table_args__ = (
+        Index(
+            "uq_ride_requests_active_rider",
+            "rider_id",
+            unique=True,
+            postgresql_where=_ACTIVE_RIDE_STATUS_PREDICATE,
+            sqlite_where=_ACTIVE_RIDE_STATUS_PREDICATE,
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -165,6 +181,8 @@ class RideRequestModel(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class OfferModel(Base):
@@ -198,6 +216,11 @@ class OfferModel(Base):
         default=OfferStatus.PENDING,
         nullable=False,
     )
+    # Columna legada de 0010: se conserva para no destruir datos historicos,
+    # pero ya no participa en el dominio desde que 0011 elimino ese estado.
+    rider_accepted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -229,6 +252,31 @@ class RideRatingModel(Base):
     )
     score: Mapped[int] = mapped_column(Integer, nullable=False)
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class RideRatingSkipModel(Base):
+    __tablename__ = "ride_rating_skips"
+    __table_args__ = (
+        UniqueConstraint("ride_id", "rater_id", name="uq_ride_rating_skips_ride_rater"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    ride_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("ride_requests.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    rater_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

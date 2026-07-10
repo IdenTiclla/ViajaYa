@@ -8,6 +8,7 @@ el pasajero puede subir su oferta para recibir ofertas más rápido. Solo se per
 from __future__ import annotations
 
 import uuid
+from dataclasses import replace
 from decimal import Decimal
 
 from app.domain.entities import RideRequest, RideStatus, User
@@ -35,11 +36,24 @@ class UpdateRideFare:
             raise InvalidRideTransitionError(
                 "Solo puedes aumentar la oferta mientras se buscan conductores."
             )
+        if ride.paused:
+            raise InvalidRideTransitionError(
+                "No puedes aumentar la oferta mientras modificas la solicitud."
+            )
 
         # Valida positividad (regla de dominio) y que sea un aumento real.
         fare = FareOffer(new_fare)
         if fare.amount <= ride.fare:
             raise InvalidFareError("La nueva oferta debe ser mayor que la actual.")
 
-        ride.fare = fare.amount
-        return await self._rides.update(ride)
+        updated = await self._rides.update_if_state(
+            replace(ride, fare=fare.amount),
+            RideStatus.SEARCHING,
+            expected_paused=False,
+            expected_fare=ride.fare,
+        )
+        if updated is None:
+            raise InvalidRideTransitionError(
+                "La oferta cambió; actualiza la pantalla antes de aumentarla de nuevo."
+            )
+        return updated

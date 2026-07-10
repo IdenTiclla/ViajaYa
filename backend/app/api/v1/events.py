@@ -147,13 +147,35 @@ async def publish_offer_expired(offer: Offer) -> None:
     await hub.broadcast(ride_topic(offer.ride_id), _envelope(OFFER_EXPIRED, payload))
 
 
-async def publish_offer_withdrawn_by_driver(offer: Offer) -> None:
+async def publish_offer_withdrawn_by_driver(
+    offer: Offer, *, reason: str | None = None
+) -> None:
     """El conductor retiró (o se negó a confirmar) su oferta: el pasajero deja de verla."""
+    payload = {"driver_id": str(offer.driver_id), "offer_id": str(offer.id)}
+    if reason is not None:
+        payload["reason"] = reason
     await hub.broadcast(
         ride_topic(offer.ride_id),
+        _envelope(OFFER_WITHDRAWN, payload),
+    )
+
+
+async def publish_driver_offline_offers(
+    driver_id: uuid.UUID, offers: list[Offer]
+) -> None:
+    """Retira las ofertas del conductor offline en las pantallas de ambos roles."""
+    if not offers:
+        return
+    for offer in offers:
+        await publish_offer_withdrawn_by_driver(offer, reason="driver_offline")
+    await hub.broadcast(
+        driver_topic(driver_id),
         _envelope(
-            OFFER_WITHDRAWN,
-            {"driver_id": str(offer.driver_id), "offer_id": str(offer.id)},
+            OFFERS_WITHDRAWN,
+            {
+                "ride_ids": [str(offer.ride_id) for offer in offers],
+                "reason": "driver_offline",
+            },
         ),
     )
 

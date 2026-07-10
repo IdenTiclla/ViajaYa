@@ -9,8 +9,8 @@ estado intermedio ``rider_accepted`` (y su ventana de confirmación del conducto
 desaparecen. ``OfferStatus`` es un enum *no nativo* (``String`` con
 ``values_callable``), por lo que quitar el valor de Python **no** requiere un
 ``ALTER TYPE`` en Postgres. La columna física ``rider_accepted_at`` (creada en
-0010) se conserva sin tocar: el ORM deja de mapearla, pero no la eliminamos para
-no perder datos históricos (drop de columna es destructivo).
+0010) se conserva sin tocar y solo se mapea como almacenamiento legado, para no
+perder datos históricos (drop de columna es destructivo).
 
 Como saneamiento, marcamos ``rejected`` cualquier oferta que hubiera quedado en
 ``rider_accepted`` (ya no es un estado aceptable y rompería la negociación).

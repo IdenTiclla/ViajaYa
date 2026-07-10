@@ -15,7 +15,6 @@ from app.domain.exceptions import (
 from app.domain.repositories import (
     RatingRepository,
     RideRequestRepository,
-    UserRepository,
 )
 
 
@@ -24,11 +23,9 @@ class RateRide:
         self,
         rides: RideRequestRepository,
         ratings: RatingRepository,
-        users: UserRepository,
     ) -> None:
         self._rides = rides
         self._ratings = ratings
-        self._users = users
 
     async def execute(
         self, user: User, ride_id: uuid.UUID, score: int, comment: str | None = None
@@ -52,9 +49,6 @@ class RateRide:
         if ratee_id is None:  # pragma: no cover - un viaje completado siempre tiene conductor
             raise RideNotCompletedError("El viaje no tiene conductor asignado.")
 
-        if await self._ratings.get_by_ride_and_rater(ride_id, user.id) is not None:
-            raise AlreadyRatedError("Ya calificaste este viaje.")
-
         rating = RideRating(
             ride_id=ride_id,
             rater_id=user.id,
@@ -62,14 +56,8 @@ class RateRide:
             score=score,
             comment=comment,
         )
-        saved = await self._ratings.add(rating)
-
-        # Si el calificado es conductor, se recalcula su promedio.
-        ratee = await self._users.get_by_id(ratee_id)
-        if ratee is not None and ratee.is_driver:
-            avg = await self._ratings.average_for(ratee_id)
-            if avg is not None:
-                ratee.rating = round(avg, 2)
-                await self._users.update(ratee)
+        saved = await self._ratings.add_and_recompute(rating)
+        if saved is None:
+            raise AlreadyRatedError("Ya calificaste este viaje.")
 
         return saved

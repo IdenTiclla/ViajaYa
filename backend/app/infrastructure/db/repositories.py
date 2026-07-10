@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
+from decimal import Decimal
 
 from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.entities import (
@@ -13,6 +16,7 @@ from app.domain.entities import (
     Offer,
     OfferStatus,
     RideRating,
+    RideRatingSkip,
     RideRequest,
     RideStatus,
     SavedPlace,
@@ -21,10 +25,16 @@ from app.domain.entities import (
     UserRole,
 )
 from app.domain.repositories import (
+    DriverOfflineTransition,
     OfferAcceptance,
+    OfferCreation,
     OfferRepository,
     OpenRideDetail,
+    PendingRatingRepository,
     RatingRepository,
+    RatingSkipRepository,
+    RideAutoCancellation,
+    RideOffersTransition,
     RideRequestRepository,
     RiderSummary,
     SavedPlaceRepository,
@@ -34,6 +44,7 @@ from app.domain.ride_policy import is_offer_expired
 from app.infrastructure.db.models import (
     OfferModel,
     RideRatingModel,
+    RideRatingSkipModel,
     RideRequestModel,
     SavedPlaceModel,
     UserModel,
@@ -46,8 +57,43 @@ _ACTIVE_RIDE_STATUSES = (
     RideStatus.IN_PROGRESS,
 )
 
+_PASSENGER_ACTIVE_RIDE_STATUSES = (
+    RideStatus.SEARCHING,
+    RideStatus.ACCEPTED,
+    RideStatus.ARRIVING,
+    RideStatus.IN_PROGRESS,
+)
+
 # Estado en el que una oferta sigue viva dentro de la negociación.
 _ACTIVE_OFFER_STATUSES = (OfferStatus.PENDING,)
+
+_ACTIVE_RIDER_UNIQUE_INDEX = "uq_ride_requests_active_rider"
+
+
+def _is_active_rider_unique_violation(exc: IntegrityError) -> bool:
+    """Identifica únicamente la colisión del índice de viaje activo.
+
+    Asyncpg expone el nombre de la restricción en la cadena de excepciones;
+    SQLite, usado en los tests, informa las columnas de la clave duplicada.
+    """
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        message = str(current)
+        if _ACTIVE_RIDER_UNIQUE_INDEX in message:
+            return True
+        if "UNIQUE constraint failed: ride_requests.rider_id" in message:
+            return True
+
+        diag = getattr(current, "diag", None)
+        if getattr(diag, "constraint_name", None) == _ACTIVE_RIDER_UNIQUE_INDEX:
+            return True
+        if getattr(current, "constraint_name", None) == _ACTIVE_RIDER_UNIQUE_INDEX:
+            return True
+
+        current = current.__cause__ or current.__context__
+    return False
 
 
 def _to_entity(row: UserModel) -> User:
@@ -131,6 +177,21 @@ class SqlAlchemyUserRepository(UserRepository):
         await self._session.refresh(row)
         return _to_entity(row)
 
+    async def set_online(self, user_id: uuid.UUID, is_online: bool) -> User:
+        result = await self._session.execute(
+            update(UserModel)
+            .where(UserModel.id == user_id)
+            .values(is_online=is_online)
+            .returning(UserModel)
+        )
+        row = result.scalar_one_or_none()
+        if row is None:  # pragma: no cover - el caso de uso valida antes
+            await self._session.rollback()
+            raise ValueError("user not found")
+        await self._session.commit()
+        await self._session.refresh(row)
+        return _to_entity(row)
+
 
 def _ride_to_entity(row: RideRequestModel) -> RideRequest:
     return RideRequest(
@@ -156,6 +217,8 @@ def _ride_to_entity(row: RideRequestModel) -> RideRequest:
         accepted_offer_id=row.accepted_offer_id,
         paused=row.paused,
         created_at=row.created_at,
+        completed_at=row.completed_at,
+        cancelled_at=row.cancelled_at,
     )
 
 
@@ -182,14 +245,47 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
             driver_id=ride.driver_id,
             accepted_offer_id=ride.accepted_offer_id,
             paused=ride.paused,
+            completed_at=ride.completed_at,
+            cancelled_at=ride.cancelled_at,
         )
         self._session.add(row)
         await self._session.commit()
         await self._session.refresh(row)
         return _ride_to_entity(row)
 
+    async def add_if_no_active(self, ride: RideRequest) -> RideRequest | None:
+        # Serializar todas las altas del mismo pasajero sobre una fila que siempre
+        # existe evita el clásico doble INSERT tras dos lecturas "sin activo".
+        await self._session.execute(
+            select(UserModel.id).where(UserModel.id == ride.rider_id).with_for_update()
+        )
+        active = await self.get_active_by_rider(ride.rider_id)
+        if active is not None:
+            await self._session.rollback()
+            return None
+        try:
+            return await self.add(ride)
+        except IntegrityError as exc:
+            await self._session.rollback()
+            if _is_active_rider_unique_violation(exc):
+                return None
+            raise
+
     async def get_by_id(self, ride_id: uuid.UUID) -> RideRequest | None:
         row = await self._session.get(RideRequestModel, ride_id)
+        return _ride_to_entity(row) if row else None
+
+    async def get_active_by_rider(self, rider_id: uuid.UUID) -> RideRequest | None:
+        result = await self._session.execute(
+            select(RideRequestModel)
+            .where(
+                RideRequestModel.rider_id == rider_id,
+                RideRequestModel.status.in_(_PASSENGER_ACTIVE_RIDE_STATUSES),
+            )
+            .order_by(RideRequestModel.created_at.desc())
+            .limit(1)
+        )
+        row = result.scalar_one_or_none()
         return _ride_to_entity(row) if row else None
 
     async def update(self, ride: RideRequest) -> RideRequest:
@@ -211,6 +307,89 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
         row.driver_id = ride.driver_id
         row.accepted_offer_id = ride.accepted_offer_id
         row.paused = ride.paused
+        row.completed_at = ride.completed_at
+        row.cancelled_at = ride.cancelled_at
+        await self._session.commit()
+        await self._session.refresh(row)
+        return _ride_to_entity(row)
+
+    async def update_if_state(
+        self,
+        ride: RideRequest,
+        expected_status: RideStatus,
+        *,
+        expected_paused: bool | None = None,
+        expected_fare: Decimal | None = None,
+    ) -> RideRequest | None:
+        completed_at = ride.completed_at
+        cancelled_at = ride.cancelled_at
+        now = datetime.now(UTC)
+        if ride.status is RideStatus.COMPLETED and completed_at is None:
+            completed_at = now
+        if ride.status is RideStatus.CANCELLED and cancelled_at is None:
+            cancelled_at = now
+
+        conditions = [
+            RideRequestModel.id == ride.id,
+            RideRequestModel.status == expected_status,
+        ]
+        if expected_paused is not None:
+            conditions.append(RideRequestModel.paused.is_(expected_paused))
+        if expected_fare is not None:
+            conditions.append(RideRequestModel.fare == expected_fare)
+
+        result = await self._session.execute(
+            update(RideRequestModel)
+            .where(*conditions)
+            .values(
+                origin_latitude=ride.origin.latitude,
+                origin_longitude=ride.origin.longitude,
+                origin_name=ride.origin.name,
+                origin_address=ride.origin.address,
+                destination_latitude=ride.destination.latitude,
+                destination_longitude=ride.destination.longitude,
+                destination_name=ride.destination.name,
+                destination_address=ride.destination.address,
+                service_type=ride.service_type,
+                fare=ride.fare,
+                payment_method=ride.payment_method,
+                status=ride.status,
+                driver_id=ride.driver_id,
+                accepted_offer_id=ride.accepted_offer_id,
+                paused=ride.paused,
+                completed_at=completed_at,
+                cancelled_at=cancelled_at,
+            )
+            .returning(RideRequestModel.id)
+        )
+        if result.scalar_one_or_none() is None:
+            await self._session.rollback()
+            return None
+
+        await self._session.commit()
+        row = await self._session.get(RideRequestModel, ride.id, populate_existing=True)
+        if row is None:  # pragma: no cover - el UPDATE acaba de devolver este id
+            return None
+        return _ride_to_entity(row)
+
+    async def cancel_if_searching(self, ride_id: uuid.UUID) -> RideRequest | None:
+        row = (
+            await self._session.execute(
+                select(RideRequestModel)
+                .where(RideRequestModel.id == ride_id)
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if (
+            row is None
+            or row.status is not RideStatus.SEARCHING
+            or row.paused
+        ):
+            await self._session.rollback()
+            return None
+
+        row.status = RideStatus.CANCELLED
+        row.cancelled_at = datetime.now(UTC)
         await self._session.commit()
         await self._session.refresh(row)
         return _ride_to_entity(row)
@@ -353,6 +532,56 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
         return [_ride_to_entity(row) for row in result.scalars().all()]
 
 
+class SqlAlchemyPendingRatingRepository(PendingRatingRepository):
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def get_latest_for(
+        self,
+        user_id: uuid.UUID,
+        role: UserRole,
+    ) -> RideRequest | None:
+        participant = (
+            RideRequestModel.driver_id
+            if role is UserRole.DRIVER
+            else RideRequestModel.rider_id
+        )
+        already_rated = (
+            select(RideRatingModel.id)
+            .where(
+                RideRatingModel.ride_id == RideRequestModel.id,
+                RideRatingModel.rater_id == user_id,
+            )
+            .exists()
+        )
+        already_skipped = (
+            select(RideRatingSkipModel.id)
+            .where(
+                RideRatingSkipModel.ride_id == RideRequestModel.id,
+                RideRatingSkipModel.rater_id == user_id,
+            )
+            .exists()
+        )
+        result = await self._session.execute(
+            select(RideRequestModel)
+            .where(
+                participant == user_id,
+                RideRequestModel.status == RideStatus.COMPLETED,
+                ~already_rated,
+                ~already_skipped,
+            )
+            .order_by(
+                func.coalesce(
+                    RideRequestModel.completed_at,
+                    RideRequestModel.created_at,
+                ).desc()
+            )
+            .limit(1)
+        )
+        row = result.scalar_one_or_none()
+        return _ride_to_entity(row) if row else None
+
+
 def _offer_to_entity(row: OfferModel) -> Offer:
     return Offer(
         id=row.id,
@@ -383,6 +612,93 @@ class SqlAlchemyOfferRepository(OfferRepository):
         await self._session.refresh(row)
         return _offer_to_entity(row)
 
+    async def create_or_supersede_atomically(
+        self, offer: Offer, *, expected_ride_fare: Decimal
+    ) -> OfferCreation | None:
+        # Mismo orden que accept_atomically: conductor -> ride -> oferta. El lock
+        # del conductor serializa dos envíos simultáneos del mismo conductor.
+        driver_row = (
+            await self._session.execute(
+                select(UserModel)
+                .where(UserModel.id == offer.driver_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+        ).scalar_one_or_none()
+        if (
+            driver_row is None
+            or driver_row.role is not UserRole.DRIVER
+            or driver_row.vehicle_type is None
+            or not driver_row.is_online
+        ):
+            await self._session.rollback()
+            return None
+
+        ride_row = (
+            await self._session.execute(
+                select(RideRequestModel)
+                .where(RideRequestModel.id == offer.ride_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+        ).scalar_one_or_none()
+        if (
+            ride_row is None
+            or ride_row.status is not RideStatus.SEARCHING
+            or ride_row.paused
+            or ride_row.service_type is not driver_row.vehicle_type
+            or ride_row.fare != expected_ride_fare
+        ):
+            await self._session.rollback()
+            return None
+
+        busy = (
+            await self._session.execute(
+                select(RideRequestModel.id)
+                .where(
+                    RideRequestModel.driver_id == driver_row.id,
+                    RideRequestModel.status.in_(_ACTIVE_RIDE_STATUSES),
+                )
+                .limit(1)
+            )
+        ).first()
+        if busy is not None:
+            await self._session.rollback()
+            return None
+
+        previous_rows = (
+            await self._session.execute(
+                select(OfferModel)
+                .where(
+                    OfferModel.ride_id == offer.ride_id,
+                    OfferModel.driver_id == offer.driver_id,
+                    OfferModel.status.in_(_ACTIVE_OFFER_STATUSES),
+                )
+                .order_by(OfferModel.created_at.desc())
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+        ).scalars().all()
+        superseded_offer_id = previous_rows[0].id if previous_rows else None
+        for previous in previous_rows:
+            previous.status = OfferStatus.REJECTED
+
+        row = OfferModel(
+            id=offer.id,
+            ride_id=offer.ride_id,
+            driver_id=offer.driver_id,
+            price=offer.price,
+            eta_min=offer.eta_min,
+            status=offer.status,
+        )
+        self._session.add(row)
+        await self._session.commit()
+        await self._session.refresh(row)
+        return OfferCreation(
+            offer=_offer_to_entity(row),
+            superseded_offer_id=superseded_offer_id,
+        )
+
     async def get_by_id(self, offer_id: uuid.UUID) -> Offer | None:
         row = await self._session.get(OfferModel, offer_id)
         return _offer_to_entity(row) if row else None
@@ -397,6 +713,23 @@ class SqlAlchemyOfferRepository(OfferRepository):
         await self._session.commit()
         await self._session.refresh(row)
         return _offer_to_entity(row)
+
+    async def reject_if_pending(self, offer_id: uuid.UUID) -> Offer | None:
+        result = await self._session.execute(
+            update(OfferModel)
+            .where(
+                OfferModel.id == offer_id,
+                OfferModel.status == OfferStatus.PENDING,
+            )
+            .values(status=OfferStatus.REJECTED)
+            .returning(OfferModel.id)
+        )
+        if result.scalar_one_or_none() is None:
+            await self._session.rollback()
+            return None
+        await self._session.commit()
+        row = await self._session.get(OfferModel, offer_id, populate_existing=True)
+        return _offer_to_entity(row) if row else None
 
     async def list_by_ride(self, ride_id: uuid.UUID) -> list[Offer]:
         result = await self._session.execute(
@@ -456,42 +789,286 @@ class SqlAlchemyOfferRepository(OfferRepository):
         )
         await self._session.commit()
 
+    async def set_driver_offline_atomically(
+        self, driver_id: uuid.UUID
+    ) -> DriverOfflineTransition | None:
+        # Create/accept toman este mismo lock primero. Si offline gana, ambos ven
+        # ``is_online=False``; si accept gana, el viaje activo impide desconectar.
+        driver_row = (
+            await self._session.execute(
+                select(UserModel)
+                .where(UserModel.id == driver_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+        ).scalar_one_or_none()
+        if (
+            driver_row is None
+            or driver_row.role is not UserRole.DRIVER
+            or driver_row.vehicle_type is None
+        ):
+            await self._session.rollback()
+            return None
+
+        active_ride = (
+            await self._session.execute(
+                select(RideRequestModel.id)
+                .where(
+                    RideRequestModel.driver_id == driver_id,
+                    RideRequestModel.status.in_(_ACTIVE_RIDE_STATUSES),
+                )
+                .limit(1)
+            )
+        ).first()
+        if active_ride is not None:
+            await self._session.rollback()
+            return None
+
+        offer_rows = (
+            await self._session.execute(
+                select(OfferModel)
+                .where(
+                    OfferModel.driver_id == driver_id,
+                    OfferModel.status.in_(_ACTIVE_OFFER_STATUSES),
+                )
+                .order_by(OfferModel.created_at.desc())
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+        ).scalars().all()
+        live_offers = [
+            offer
+            for row in offer_rows
+            if not is_offer_expired(offer := _offer_to_entity(row))
+        ]
+        for row in offer_rows:
+            row.status = OfferStatus.REJECTED
+        driver_row.is_online = False
+        await self._session.commit()
+        await self._session.refresh(driver_row)
+        return DriverOfflineTransition(
+            driver=_to_entity(driver_row),
+            withdrawn_offers=live_offers,
+        )
+
+    async def cancel_ride_atomically(
+        self,
+        ride_id: uuid.UUID,
+        *,
+        expected_status: RideStatus,
+        expected_paused: bool,
+    ) -> RideOffersTransition | None:
+        ride_row = (
+            await self._session.execute(
+                select(RideRequestModel)
+                .where(RideRequestModel.id == ride_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+        ).scalar_one_or_none()
+        if (
+            ride_row is None
+            or ride_row.status is not expected_status
+            or ride_row.paused is not expected_paused
+        ):
+            await self._session.rollback()
+            return None
+
+        offer_rows = (
+            await self._session.execute(
+                select(OfferModel)
+                .where(
+                    OfferModel.ride_id == ride_id,
+                    OfferModel.status.in_(_ACTIVE_OFFER_STATUSES),
+                )
+                .order_by(OfferModel.created_at.desc())
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+        ).scalars().all()
+        live_offers = [
+            offer
+            for row in offer_rows
+            if not is_offer_expired(offer := _offer_to_entity(row))
+        ]
+
+        ride_row.status = RideStatus.CANCELLED
+        ride_row.cancelled_at = datetime.now(UTC)
+        for row in offer_rows:
+            row.status = OfferStatus.REJECTED
+
+        updated_ride = _ride_to_entity(ride_row)
+        await self._session.commit()
+        return RideOffersTransition(
+            ride=updated_ride,
+            affected_offers=live_offers,
+        )
+
+    async def pause_ride_atomically(
+        self,
+        ride_id: uuid.UUID,
+        *,
+        expected_fare: Decimal,
+    ) -> RideOffersTransition | None:
+        ride_row = (
+            await self._session.execute(
+                select(RideRequestModel)
+                .where(RideRequestModel.id == ride_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+        ).scalar_one_or_none()
+        if (
+            ride_row is None
+            or ride_row.status is not RideStatus.SEARCHING
+            or ride_row.paused
+            or ride_row.fare != expected_fare
+        ):
+            await self._session.rollback()
+            return None
+
+        offer_rows = (
+            await self._session.execute(
+                select(OfferModel)
+                .where(
+                    OfferModel.ride_id == ride_id,
+                    OfferModel.status.in_(_ACTIVE_OFFER_STATUSES),
+                )
+                .order_by(OfferModel.created_at.desc())
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+        ).scalars().all()
+        live_offers = [
+            offer
+            for row in offer_rows
+            if not is_offer_expired(offer := _offer_to_entity(row))
+        ]
+
+        ride_row.paused = True
+        for row in offer_rows:
+            row.status = OfferStatus.REJECTED
+
+        updated_ride = _ride_to_entity(ride_row)
+        await self._session.commit()
+        return RideOffersTransition(
+            ride=updated_ride,
+            affected_offers=live_offers,
+        )
+
+    async def cancel_ride_on_disconnect_atomically(
+        self, ride_id: uuid.UUID
+    ) -> RideAutoCancellation | None:
+        # El lock del viaje serializa este cierre contra accept/create/pause/cancel.
+        # Las ofertas se leen y mutan antes del único commit: nunca queda un ride
+        # CANCELLED con ofertas PENDING por una caída entre dos transacciones.
+        ride_row = (
+            await self._session.execute(
+                select(RideRequestModel)
+                .where(RideRequestModel.id == ride_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+        ).scalar_one_or_none()
+        if (
+            ride_row is None
+            or ride_row.status is not RideStatus.SEARCHING
+            or ride_row.paused
+        ):
+            await self._session.rollback()
+            return None
+
+        offer_rows = (
+            await self._session.execute(
+                select(OfferModel)
+                .where(
+                    OfferModel.ride_id == ride_id,
+                    OfferModel.status.in_(_ACTIVE_OFFER_STATUSES),
+                )
+                .order_by(OfferModel.created_at.desc())
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+        ).scalars().all()
+        live_offers = [
+            offer
+            for row in offer_rows
+            if not is_offer_expired(offer := _offer_to_entity(row))
+        ]
+
+        ride_row.status = RideStatus.CANCELLED
+        ride_row.cancelled_at = datetime.now(UTC)
+        for row in offer_rows:
+            row.status = OfferStatus.REJECTED
+
+        await self._session.commit()
+        await self._session.refresh(ride_row)
+        return RideAutoCancellation(
+            ride=_ride_to_entity(ride_row),
+            cancelled_offers=live_offers,
+        )
+
     async def accept_atomically(self, offer_id: uuid.UUID) -> OfferAcceptance | None:
-        # Toda la asignación vive en UNA transacción. Bloqueamos en orden estable
-        # (oferta → conductor → viaje) para evitar interbloqueos; el lock sobre la
+        # Toda la asignación vive en UNA transacción. Una lectura inicial obtiene
+        # los ids inmutables; luego bloqueamos en el mismo orden que create/supersede
+        # (conductor -> viaje -> oferta) para evitar interbloqueos. El lock sobre la
         # fila del viaje (``with_for_update``) serializa dos ``accept`` del pasajero
         # (o un accept contra un cancel): el segundo ve el viaje ya ACCEPTED y
         # aborta (None). En SQLite (tests) ``FOR UPDATE`` es no-op; la garantía es
         # de Postgres.
-        offer_row = (
-            await self._session.execute(
-                select(OfferModel).where(OfferModel.id == offer_id).with_for_update()
-            )
-        ).scalar_one_or_none()
-        if offer_row is None or offer_row.status is not OfferStatus.PENDING:
+        offer_ref = await self._session.get(OfferModel, offer_id)
+        if offer_ref is None:
             await self._session.rollback()
             return None
 
         driver_row = (
             await self._session.execute(
                 select(UserModel)
-                .where(UserModel.id == offer_row.driver_id)
+                .where(UserModel.id == offer_ref.driver_id)
                 .with_for_update()
+                .execution_options(populate_existing=True)
             )
         ).scalar_one_or_none()
-        if driver_row is None:
+        if (
+            driver_row is None
+            or driver_row.role is not UserRole.DRIVER
+            or driver_row.vehicle_type is None
+            or not driver_row.is_online
+        ):
             await self._session.rollback()
             return None
 
         ride_row = (
             await self._session.execute(
                 select(RideRequestModel)
-                .where(RideRequestModel.id == offer_row.ride_id)
+                .where(RideRequestModel.id == offer_ref.ride_id)
                 .with_for_update()
+                .execution_options(populate_existing=True)
             )
         ).scalar_one_or_none()
-        if ride_row is None or ride_row.status is not RideStatus.SEARCHING:
+        if (
+            ride_row is None
+            or ride_row.status is not RideStatus.SEARCHING
+            or ride_row.paused
+            or ride_row.service_type is not driver_row.vehicle_type
+        ):
             await self._session.rollback()
+            return None
+
+        offer_row = (
+            await self._session.execute(
+                select(OfferModel)
+                .where(OfferModel.id == offer_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+        ).scalar_one_or_none()
+        if offer_row is None or offer_row.status is not OfferStatus.PENDING:
+            await self._session.rollback()
+            return None
+        if is_offer_expired(_offer_to_entity(offer_row)):
+            offer_row.status = OfferStatus.EXPIRED
+            await self._session.commit()
             return None
 
         # El conductor debe estar libre: sin ningún viaje activo.
@@ -603,7 +1180,21 @@ class SqlAlchemyRatingRepository(RatingRepository):
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def add(self, rating: RideRating) -> RideRating:
+    async def add_and_recompute(self, rating: RideRating) -> RideRating | None:
+        # Todos los votos hacia una persona toman el mismo bloqueo. En READ
+        # COMMITTED, el segundo promedio ve el commit anterior y no puede dejar
+        # User.rating calculado desde un conjunto incompleto.
+        locked_ratee_id = (
+            await self._session.execute(
+                select(UserModel.id)
+                .where(UserModel.id == rating.ratee_id)
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if locked_ratee_id is None:  # pragma: no cover - protegido por las FK del viaje
+            await self._session.rollback()
+            raise ValueError("ratee not found")
+
         row = RideRatingModel(
             id=rating.id,
             ride_id=rating.ride_id,
@@ -613,9 +1204,34 @@ class SqlAlchemyRatingRepository(RatingRepository):
             comment=rating.comment,
         )
         self._session.add(row)
-        await self._session.commit()
-        await self._session.refresh(row)
-        return _rating_to_entity(row)
+        try:
+            await self._session.flush()
+
+            average = (
+                await self._session.execute(
+                    select(func.avg(RideRatingModel.score)).where(
+                        RideRatingModel.ratee_id == rating.ratee_id
+                    )
+                )
+            ).scalar_one()
+            await self._session.execute(
+                update(UserModel)
+                .where(UserModel.id == rating.ratee_id)
+                .values(rating=round(float(average), 2))
+            )
+            await self._session.refresh(row)
+            saved = _rating_to_entity(row)
+            await self._session.commit()
+            return saved
+        except IntegrityError:
+            await self._session.rollback()
+            duplicate = await self.get_by_ride_and_rater(
+                rating.ride_id,
+                rating.rater_id,
+            )
+            if duplicate is not None:
+                return None
+            raise
 
     async def get_by_ride_and_rater(
         self, ride_id: uuid.UUID, rater_id: uuid.UUID
@@ -645,6 +1261,56 @@ class SqlAlchemyRatingRepository(RatingRepository):
         )
         avg = result.scalar_one_or_none()
         return float(avg) if avg is not None else None
+
+
+def _rating_skip_to_entity(row: RideRatingSkipModel) -> RideRatingSkip:
+    return RideRatingSkip(
+        id=row.id,
+        ride_id=row.ride_id,
+        rater_id=row.rater_id,
+        created_at=row.created_at,
+    )
+
+
+class SqlAlchemyRatingSkipRepository(RatingSkipRepository):
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def get_by_ride_and_rater(
+        self,
+        ride_id: uuid.UUID,
+        rater_id: uuid.UUID,
+    ) -> RideRatingSkip | None:
+        result = await self._session.execute(
+            select(RideRatingSkipModel).where(
+                RideRatingSkipModel.ride_id == ride_id,
+                RideRatingSkipModel.rater_id == rater_id,
+            )
+        )
+        row = result.scalar_one_or_none()
+        return _rating_skip_to_entity(row) if row else None
+
+    async def add_if_absent(self, skip: RideRatingSkip) -> RideRatingSkip:
+        existing = await self.get_by_ride_and_rater(skip.ride_id, skip.rater_id)
+        if existing is not None:
+            return existing
+
+        row = RideRatingSkipModel(
+            id=skip.id,
+            ride_id=skip.ride_id,
+            rater_id=skip.rater_id,
+        )
+        self._session.add(row)
+        try:
+            await self._session.commit()
+        except IntegrityError:
+            await self._session.rollback()
+            existing = await self.get_by_ride_and_rater(skip.ride_id, skip.rater_id)
+            if existing is None:  # pragma: no cover - la restricción fue otra
+                raise
+            return existing
+        await self._session.refresh(row)
+        return _rating_skip_to_entity(row)
 
 
 def _saved_place_to_entity(row: SavedPlaceModel) -> SavedPlace:

@@ -1,16 +1,14 @@
-"""Caso de uso: obtener el detalle de un viaje (polling de estado)."""
+"""Caso de uso: recuperar el viaje vigente del pasajero."""
 
 from __future__ import annotations
 
-import uuid
-
 from app.application.dto import RideDetail
-from app.domain.entities import User
-from app.domain.exceptions import NotAuthorizedActionError, RideNotFoundError
+from app.domain.entities import User, UserRole
+from app.domain.exceptions import NotAuthorizedActionError
 from app.domain.repositories import OfferRepository, RideRequestRepository, UserRepository
 
 
-class GetRide:
+class GetPassengerActiveRide:
     def __init__(
         self,
         rides: RideRequestRepository,
@@ -21,17 +19,14 @@ class GetRide:
         self._offers = offers
         self._users = users
 
-    async def execute(self, user: User, ride_id: uuid.UUID) -> RideDetail:
-        ride = await self._rides.get_by_id(ride_id)
+    async def execute(self, passenger: User) -> RideDetail | None:
+        if passenger.role is not UserRole.PASSENGER:
+            raise NotAuthorizedActionError("Solo los pasajeros tienen solicitudes activas.")
+
+        ride = await self._rides.get_active_by_rider(passenger.id)
         if ride is None:
-            raise RideNotFoundError("La solicitud de viaje no existe.")
+            return None
 
-        is_rider = ride.rider_id == user.id
-        is_driver = ride.driver_id is not None and ride.driver_id == user.id
-        if not (is_rider or is_driver):
-            raise NotAuthorizedActionError("No tienes acceso a este viaje.")
-
-        rider_user = await self._users.get_by_id(ride.rider_id)
         driver = await self._users.get_by_id(ride.driver_id) if ride.driver_id else None
         accepted_offer = (
             await self._offers.get_by_id(ride.accepted_offer_id)
@@ -40,7 +35,7 @@ class GetRide:
         )
         return RideDetail(
             ride=ride,
-            rider=rider_user,
+            rider=passenger,
             driver=driver,
             accepted_offer=accepted_offer,
         )

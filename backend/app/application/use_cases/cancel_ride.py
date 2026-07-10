@@ -5,14 +5,13 @@ from __future__ import annotations
 import uuid
 
 from app.application.dto import CancelRideResult
-from app.domain.entities import OfferStatus, RideStatus, User
+from app.domain.entities import RideStatus, User
 from app.domain.exceptions import (
     InvalidRideTransitionError,
     NotAuthorizedActionError,
     RideNotFoundError,
 )
 from app.domain.repositories import OfferRepository, RideRequestRepository
-from app.domain.ride_policy import is_offer_expired
 
 # Estados desde los que aún se puede cancelar (antes de iniciar el viaje).
 _CANCELLABLE = {RideStatus.SEARCHING, RideStatus.ACCEPTED, RideStatus.ARRIVING}
@@ -36,13 +35,16 @@ class CancelRide:
         if ride.status not in _CANCELLABLE:
             raise InvalidRideTransitionError("El viaje ya no se puede cancelar.")
 
-        ride.status = RideStatus.CANCELLED
-        updated = await self._rides.update(ride)
-        # Ofertas vivas que mueren con la solicitud (para avisar a sus conductores).
-        cancelled = [
-            o
-            for o in await self._offers.list_by_ride(ride_id)
-            if o.status is OfferStatus.PENDING and not is_offer_expired(o)
-        ]
-        await self._offers.reject_pending(ride_id)
-        return CancelRideResult(ride=updated, cancelled_offers=cancelled)
+        transition = await self._offers.cancel_ride_atomically(
+            ride_id,
+            expected_status=ride.status,
+            expected_paused=ride.paused,
+        )
+        if transition is None:
+            raise InvalidRideTransitionError(
+                "El viaje cambió de estado y ya no se puede cancelar."
+            )
+        return CancelRideResult(
+            ride=transition.ride,
+            cancelled_offers=transition.affected_offers,
+        )

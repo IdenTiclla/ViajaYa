@@ -8,6 +8,7 @@ el pool de conductores. Re-valida coordenadas y monto (reglas de dominio).
 from __future__ import annotations
 
 import uuid
+from dataclasses import replace
 
 from app.application.dto import CreateRideRequestInput
 from app.domain.entities import Location, RideRequest, RideStatus, User
@@ -49,20 +50,33 @@ class EditRide:
         destination_point = GeoPoint(data.destination.latitude, data.destination.longitude)
         fare = FareOffer(data.fare)
 
-        ride.origin = Location(
+        origin = Location(
             latitude=origin_point.latitude,
             longitude=origin_point.longitude,
             name=data.origin.name.strip(),
             address=data.origin.address.strip(),
         )
-        ride.destination = Location(
+        destination = Location(
             latitude=destination_point.latitude,
             longitude=destination_point.longitude,
             name=data.destination.name.strip(),
             address=data.destination.address.strip(),
         )
-        ride.service_type = data.service_type
-        ride.fare = fare.amount
-        ride.payment_method = data.payment_method
-        ride.paused = False
-        return await self._rides.update(ride)
+        updated = await self._rides.update_if_state(
+            replace(
+                ride,
+                origin=origin,
+                destination=destination,
+                service_type=data.service_type,
+                fare=fare.amount,
+                payment_method=data.payment_method,
+                paused=False,
+            ),
+            RideStatus.SEARCHING,
+            expected_paused=True,
+        )
+        if updated is None:
+            raise InvalidRideTransitionError(
+                "La solicitud cambió de estado y ya no se puede guardar."
+            )
+        return updated

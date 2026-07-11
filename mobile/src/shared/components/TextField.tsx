@@ -21,22 +21,53 @@ type Props = TextInputProps & {
 };
 
 export const TextField = forwardRef<TextInput, Props>(function TextField(
-  { label, leadingIcon, password = false, error, style, ...rest },
+  {
+    label,
+    leadingIcon,
+    password = false,
+    error,
+    style,
+    onFocus,
+    onBlur,
+    editable = true,
+    accessibilityLabel,
+    placeholder,
+    ...rest
+  },
   ref,
 ) {
   const [hidden, setHidden] = useState(password);
+  const [focused, setFocused] = useState(false);
+  const iconColor = error ? colors.danger : focused ? colors.primary : colors.placeholder;
 
   return (
     <View style={styles.wrapper}>
       {label && <Text style={styles.label}>{label}</Text>}
-      <View style={[styles.field, error ? styles.fieldError : null]}>
+      <View
+        style={[
+          styles.field,
+          focused && styles.fieldFocused,
+          error && styles.fieldError,
+          !editable && styles.fieldDisabled,
+        ]}>
         {leadingIcon && (
-          <Ionicons name={leadingIcon} size={20} color={colors.placeholder} style={styles.lead} />
+          <Ionicons name={leadingIcon} size={20} color={iconColor} style={styles.lead} />
         )}
         <TextInput
           ref={ref}
+          accessibilityLabel={accessibilityLabel ?? label ?? placeholder}
           placeholderTextColor={colors.placeholder}
+          placeholder={placeholder}
           secureTextEntry={hidden}
+          editable={editable}
+          onFocus={(event) => {
+            setFocused(true);
+            onFocus?.(event);
+          }}
+          onBlur={(event) => {
+            setFocused(false);
+            onBlur?.(event);
+          }}
           style={[styles.input, style]}
           {...rest}
         />
@@ -45,16 +76,21 @@ export const TextField = forwardRef<TextInput, Props>(function TextField(
             accessibilityRole="button"
             accessibilityLabel={hidden ? 'Mostrar contraseña' : 'Ocultar contraseña'}
             onPress={() => setHidden((v) => !v)}
-            hitSlop={8}>
+            style={styles.passwordButton}>
             <Ionicons
               name={hidden ? 'eye-outline' : 'eye-off-outline'}
               size={20}
-              color={colors.placeholder}
+              color={iconColor}
             />
           </TouchableOpacity>
         )}
       </View>
-      {error && <Text style={styles.error}>{error}</Text>}
+      {error && (
+        <View style={styles.errorRow} accessibilityLiveRegion="polite">
+          <Ionicons name="alert-circle" size={14} color={colors.danger} />
+          <Text style={styles.error}>{error}</Text>
+        </View>
+      )}
     </View>
   );
 });
@@ -72,8 +108,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     height: 54,
   },
+  fieldFocused: { borderColor: colors.primary, backgroundColor: colors.surface },
   fieldError: { borderColor: colors.danger },
+  fieldDisabled: { opacity: 0.55 },
   lead: { marginRight: spacing.sm },
   input: { flex: 1, fontSize: fontSize.md, color: colors.text },
+  passwordButton: {
+    width: 40,
+    height: 44,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
+  errorRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   error: { fontSize: fontSize.xs, color: colors.danger },
 });

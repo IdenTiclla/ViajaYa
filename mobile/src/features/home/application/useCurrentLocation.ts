@@ -6,6 +6,7 @@
  * efectos manuales con setState.
  */
 import { useQuery } from '@tanstack/react-query';
+import { useCallback } from 'react';
 
 import { type Coordinates, locationService } from '@/features/home/data/locationService';
 
@@ -14,6 +15,7 @@ export type LocationStatus = 'loading' | 'granted' | 'denied' | 'error';
 export type CurrentLocation = {
   status: LocationStatus;
   coordinates: Coordinates | null;
+  canAskAgain: boolean;
   /** Reintenta la solicitud (útil tras denegar o ante un error transitorio). */
   retry: () => void;
 };
@@ -22,7 +24,10 @@ export function useCurrentLocation(): CurrentLocation {
   const query = useQuery({
     queryKey: ['current-location'],
     queryFn: () => locationService.getCurrentLocation(),
-    staleTime: Infinity,
+    // Evita reutilizar durante horas una posición que ya no representa el punto
+    // de partida actual, pero tampoco consulta el GPS en cada render.
+    staleTime: 60_000,
+    refetchOnMount: true,
     retry: false,
   });
 
@@ -35,6 +40,9 @@ export function useCurrentLocation(): CurrentLocation {
         : 'granted';
 
   const coordinates = query.data?.status === 'granted' ? query.data.coordinates : null;
+  const canAskAgain = query.data?.status === 'denied' ? query.data.canAskAgain : true;
+  const { refetch } = query;
+  const retry = useCallback(() => void refetch(), [refetch]);
 
-  return { status, coordinates, retry: () => void query.refetch() };
+  return { status, coordinates, canAskAgain, retry };
 }

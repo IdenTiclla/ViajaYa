@@ -3,6 +3,7 @@
  * Reutiliza `Place`, `ServiceType` y `PaymentMethod` del feature `booking`.
  */
 import type { PaymentMethod, Place, ServiceType } from '@/features/booking/domain/types';
+import type { VehicleType } from '@/features/auth/domain/types';
 
 export type RideStatus =
   | 'searching'
@@ -24,7 +25,7 @@ export type OfferDriver = {
   id: string;
   fullName: string;
   rating: number | null;
-  vehicleType: ServiceType | null;
+  vehicleType: VehicleType | null;
   plate: string | null;
   vehicleModel: string | null;
 };
@@ -71,7 +72,7 @@ export type RideDriver = {
   fullName: string;
   phone: string | null;
   rating: number | null;
-  vehicleType: ServiceType | null;
+  vehicleType: VehicleType | null;
   plate: string | null;
   vehicleModel: string | null;
 };
@@ -113,7 +114,7 @@ export type HistoryCounterpart = {
   id: string;
   fullName: string;
   rating: number | null;
-  vehicleType: ServiceType | null;
+  vehicleType: VehicleType | null;
   vehicleModel: string | null;
   plate: string | null;
 };

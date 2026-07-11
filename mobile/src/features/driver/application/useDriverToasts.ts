@@ -12,7 +12,8 @@ export type DriverToastKind =
   | 'taken'
   | 'cancelled'
   | 'paused'
-  | 'accepted';
+  | 'accepted'
+  | 'connection_error';
 
 export type DriverToast = {
   id: string;

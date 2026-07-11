@@ -25,6 +25,7 @@ import {
   KeyboardAvoidingView,
   Modal,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -78,6 +79,7 @@ export function OfertaEnviadaScreen() {
 
   const createOffer = useCreateOffer();
   const withdrawOffer = useWithdrawOffer();
+  const offerActionBusy = createOffer.isPending || withdrawOffer.isPending;
   const [showCounter, setShowCounter] = useState(false);
   const [counterPrice, setCounterPrice] = useState('');
 
@@ -109,7 +111,7 @@ export function OfertaEnviadaScreen() {
   const backToList = () => router.replace('/(driver)/(tabs)/solicitudes');
 
   const reAcceptAtFare = () => {
-    if (!rideId || createOffer.isPending) return;
+    if (!rideId || offerActionBusy) return;
     createOffer.mutate(
       { rideId, input: { acceptAtFare: true } },
       { onSuccess: (offer) => markOffered(rideId, offer) },
@@ -117,6 +119,7 @@ export function OfertaEnviadaScreen() {
   };
 
   const openCounter = () => {
+    if (offerActionBusy) return;
     createOffer.reset();
     setCounterPrice(formatBolivianosInput(offerPrice ?? openRide?.fare ?? 0));
     setShowCounter(true);
@@ -126,7 +129,7 @@ export function OfertaEnviadaScreen() {
   const counterPriceIsValid = Number.isFinite(parsedCounterPrice) && parsedCounterPrice > 0;
 
   const submitCounter = () => {
-    if (!rideId || !counterPriceIsValid || createOffer.isPending) return;
+    if (!rideId || !counterPriceIsValid || offerActionBusy) return;
     createOffer.mutate(
       { rideId, input: { acceptAtFare: false, price: parsedCounterPrice } },
       {
@@ -299,6 +302,7 @@ export function OfertaEnviadaScreen() {
   }
 
   const retirar = () => {
+    if (offerActionBusy) return;
     Alert.alert(
       'Retirar propuesta',
       'Al retirar tu oferta, otros conductores podrían tomar el viaje.',
@@ -347,6 +351,10 @@ export function OfertaEnviadaScreen() {
       </SafeAreaView>
 
       <SafeAreaView edges={['bottom']} style={styles.sheet}>
+        <ScrollView
+          contentContainerStyle={styles.sheetContent}
+          showsVerticalScrollIndicator={false}
+          bounces={false}>
         <View style={styles.sheetHandle} />
 
         <View style={styles.statusHeader}>
@@ -413,28 +421,41 @@ export function OfertaEnviadaScreen() {
 
         <View style={styles.actions}>
           <TouchableOpacity
-            style={[styles.mejorar, createOffer.isPending && styles.disabled]}
+            style={[styles.mejorar, offerActionBusy && styles.disabled]}
             onPress={openCounter}
-            disabled={createOffer.isPending}
+            disabled={offerActionBusy}
             accessibilityRole="button"
             accessibilityLabel="Mejorar oferta">
-            <Ionicons name="trending-up" size={20} color={colors.primary} />
-            <Text style={styles.mejorarText}>Mejorar oferta</Text>
+            {createOffer.isPending ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <Ionicons name="trending-up" size={20} color={colors.primary} />
+            )}
+            <Text style={styles.mejorarText}>
+              {createOffer.isPending ? 'Enviando…' : 'Mejorar oferta'}
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.retirar, withdrawOffer.isPending && styles.disabled]}
+            style={[styles.retirar, offerActionBusy && styles.disabled]}
             onPress={retirar}
-            disabled={withdrawOffer.isPending}
+            disabled={offerActionBusy}
             accessibilityRole="button"
             accessibilityLabel="Retirar propuesta">
-            <Ionicons name="close" size={20} color={colors.danger} />
-            <Text style={styles.retirarText}>Retirar propuesta</Text>
+            {withdrawOffer.isPending ? (
+              <ActivityIndicator size="small" color={colors.danger} />
+            ) : (
+              <Ionicons name="close" size={20} color={colors.danger} />
+            )}
+            <Text style={styles.retirarText}>
+              {withdrawOffer.isPending ? 'Retirando…' : 'Retirar propuesta'}
+            </Text>
           </TouchableOpacity>
           <Text style={styles.actionsHint}>
             Mejorar tu oferta reemplaza la anterior. Al retirarla, otros conductores podrían
             tomar el viaje.
           </Text>
         </View>
+        </ScrollView>
       </SafeAreaView>
 
       {counterPriceInput}
@@ -686,8 +707,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    padding: spacing.lg,
-    gap: spacing.lg,
+    maxHeight: '82%',
     backgroundColor: colors.background,
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,
@@ -697,6 +717,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: -3 },
     elevation: 12,
   },
+  sheetContent: { padding: spacing.lg, gap: spacing.lg },
   sheetHandle: { width: 40, height: 4, borderRadius: radius.pill, backgroundColor: colors.border, alignSelf: 'center' },
 
   statusHeader: { alignItems: 'center', gap: spacing.xs },

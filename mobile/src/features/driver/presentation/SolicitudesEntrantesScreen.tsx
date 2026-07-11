@@ -4,7 +4,7 @@
  * Tres estados: viaje activo → seguimiento; sin solicitudes → "Buscando viajes"
  * (mapa + radar + hoja con rendimiento del día); con solicitudes → cabecera glass
  * + toggle Lista/Mapa y tarjetas translúcidas. El conductor **oferta** (no
- * asigna): Aceptar deja la tarjeta en "Oferta enviada" y sigue viendo otras.
+ * asigna): Enviar oferta deja la tarjeta en "Oferta enviada" y sigue viendo otras.
  */
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -43,6 +43,8 @@ import {
 } from '@/features/rides/application/useRides';
 import type { DriverEarnings, OpenRide } from '@/features/rides/domain/types';
 import { useAutoExpireOffers, useDriverRequests } from '@/features/driver/application/useDriverRequests';
+import { useDriverToasts } from '@/features/driver/application/useDriverToasts';
+import { FeedbackState } from '@/shared/components';
 import { useAuthStore } from '@/store/authStore';
 
 type ViewMode = 'list' | 'map';
@@ -63,19 +65,28 @@ export function SolicitudesEntrantesScreen() {
         (!pendingRatingRide && pendingRatingQuery.isFetching)));
   const flowError =
     !activeRide && (activeQuery.isError || pendingRatingQuery.isError);
-  const { rides } = useOpenRides(
+  const openRidesEnabled =
     online &&
-      !flowLoading &&
-      !flowError &&
-      !activeRide &&
-      !pendingRatingRide,
-  );
+    !flowLoading &&
+    !flowError &&
+    !activeRide &&
+    !pendingRatingRide;
+  const openRidesQuery = useOpenRides(openRidesEnabled);
+  const rides = openRidesQuery.rides;
   const createOffer = useCreateOffer();
   const toggleOnline = (next: boolean) => {
     setOnlineState(next); // optimista
     setOnline.mutate(next, {
       onSuccess: (value) => setOnlineState(value),
-      onError: () => setOnlineState(!next),
+      onError: (error) => {
+        setOnlineState(!next);
+        useDriverToasts.getState().push({
+          kind: 'connection_error',
+          rideId: 'availability',
+          title: 'No pudimos cambiar tu disponibilidad',
+          message: getApiErrorMessage(error),
+        });
+      },
     });
   };
   const { data: earnings } = useDriverEarnings(online);
@@ -110,7 +121,7 @@ export function SolicitudesEntrantesScreen() {
     [online, rides, dismissed],
   );
 
-  // Ride cuya oferta/aceptación está en curso (para el "Esperando…" de su tarjeta).
+  // Ride cuya oferta está en curso (para el "Enviando…" de su tarjeta).
   // Gate por isPending: `createOffer.variables` persiste tras el onSuccess (React
   // Query no lo limpia), así que sin este gate el botón quedaría en spinner fijo.
   const pendingRideId = createOffer.isPending ? createOffer.variables?.rideId ?? null : null;
@@ -123,6 +134,14 @@ export function SolicitudesEntrantesScreen() {
         onSuccess: (offer) => {
           markOffered(ride.id, offer);
           setOfferSent(true);
+        },
+        onError: (error) => {
+          useDriverToasts.getState().push({
+            kind: 'connection_error',
+            rideId: ride.id,
+            title: 'No pudimos enviar tu oferta',
+            message: getApiErrorMessage(error),
+          });
         },
       },
     );
@@ -137,6 +156,14 @@ export function SolicitudesEntrantesScreen() {
         onSuccess: (offer) => {
           markOffered(ride.id, offer);
           setOfferSent(true);
+        },
+        onError: (error) => {
+          useDriverToasts.getState().push({
+            kind: 'connection_error',
+            rideId: ride.id,
+            title: 'No pudimos enviar tu contraoferta',
+            message: getApiErrorMessage(error),
+          });
         },
       },
     );
@@ -172,6 +199,14 @@ export function SolicitudesEntrantesScreen() {
     if (!offer) return;
     withdrawOffer.mutate(offer.offerId, {
       onSuccess: () => useDriverRequests.getState().clearRide(ride.id),
+      onError: (error) => {
+        useDriverToasts.getState().push({
+          kind: 'connection_error',
+          rideId: ride.id,
+          title: 'No pudimos retirar tu oferta',
+          message: getApiErrorMessage(error),
+        });
+      },
     });
   };
 
@@ -217,6 +252,29 @@ export function SolicitudesEntrantesScreen() {
     return <ViajeEnCursoConductorScreen ride={pendingRatingRide} />;
   }
 
+  if (online && openRidesEnabled && openRidesQuery.isLoading) {
+    return (
+      <DriverRequestsState
+        online={online}
+        pending={setOnline.isPending}
+        onToggle={toggleOnline}
+        loading
+      />
+    );
+  }
+
+  if (online && openRidesEnabled && openRidesQuery.isError && rides.length === 0) {
+    return (
+      <DriverRequestsState
+        online={online}
+        pending={setOnline.isPending}
+        onToggle={toggleOnline}
+        error={getApiErrorMessage(openRidesQuery.error)}
+        onRetry={() => void openRidesQuery.refetch()}
+      />
+    );
+  }
+
   if (visibleRides.length === 0) {
     return (
       <SearchingState
@@ -232,6 +290,17 @@ export function SolicitudesEntrantesScreen() {
   const topBar = (
     <DriverTopBar online={online} pending={setOnline.isPending} onToggle={toggleOnline} />
   );
+  const requestsWarning = openRidesQuery.isError ? (
+    <TouchableOpacity
+      style={styles.requestsWarning}
+      onPress={() => void openRidesQuery.refetch()}
+      accessibilityRole="button"
+      accessibilityLabel="Reintentar actualización de solicitudes">
+      <Ionicons name="cloud-offline-outline" size={18} color={colors.danger} />
+      <Text style={styles.requestsWarningText}>Sin conexión. Toca para actualizar.</Text>
+      <Ionicons name="refresh" size={18} color={colors.primary} />
+    </TouchableOpacity>
+  ) : null;
 
   return (
     <View style={styles.root}>
@@ -262,6 +331,7 @@ export function SolicitudesEntrantesScreen() {
               <Text style={styles.headerText}>Solicitudes ({visibleRides.length})</Text>
               <ViewModeToggle mode={mode} onChange={setMode} />
             </View>
+            {requestsWarning}
           </View>
         </View>
       ) : (
@@ -277,6 +347,7 @@ export function SolicitudesEntrantesScreen() {
               <Text style={styles.headerText}>Solicitudes ({visibleRides.length})</Text>
               <ViewModeToggle mode={mode} onChange={setMode} />
             </View>
+            {requestsWarning}
             {createOffer.isError && (
               <Text style={styles.error}>{getApiErrorMessage(createOffer.error)}</Text>
             )}
@@ -408,6 +479,36 @@ function DriverFlowRecovery({
   );
 }
 
+function DriverRequestsState({
+  online,
+  pending,
+  onToggle,
+  loading = false,
+  error,
+  onRetry,
+}: {
+  online: boolean;
+  pending: boolean;
+  onToggle: (next: boolean) => void;
+  loading?: boolean;
+  error?: string;
+  onRetry?: () => void;
+}) {
+  return (
+    <SafeAreaView style={styles.requestsState} edges={['bottom']}>
+      <DriverTopBar online={online} pending={pending} onToggle={onToggle} />
+      <FeedbackState
+        loading={loading}
+        icon="cloud-offline-outline"
+        title={loading ? 'Cargando solicitudes…' : 'No pudimos cargar las solicitudes'}
+        message={error}
+        actionLabel={onRetry ? 'Reintentar' : undefined}
+        onAction={onRetry}
+      />
+    </SafeAreaView>
+  );
+}
+
 /** Estado "Buscando viajes" (sin solicitudes). */
 function SearchingState({
   online,
@@ -422,6 +523,7 @@ function SearchingState({
   earnings: DriverEarnings | undefined;
   position: WatchedPosition;
 }) {
+  const locationReady = position.status === 'granted' && position.coordinates != null;
   return (
     <View style={styles.root}>
       <DriverSearchMap coordinates={position.coordinates} status={position.status} retry={position.retry} />
@@ -431,12 +533,16 @@ function SearchingState({
         <View style={styles.statusPillWrap} pointerEvents="none">
           <View style={styles.statusPill}>
             <Ionicons
-              name={online ? 'pulse' : 'cloud-offline-outline'}
+              name={online && locationReady ? 'pulse' : 'cloud-offline-outline'}
               size={16}
-              color={online ? colors.success : colors.textSecondary}
+              color={online && locationReady ? colors.success : colors.textSecondary}
             />
             <Text style={styles.statusPillText}>
-              {online ? 'Buscando viajes cercanos…' : 'Estás desconectado'}
+              {online
+                ? locationReady
+                  ? 'Buscando viajes cercanos…'
+                  : 'Ubicación necesaria'
+                : 'Estás desconectado'}
             </Text>
           </View>
         </View>
@@ -452,9 +558,15 @@ function SearchingState({
         <SafeAreaView edges={['bottom']} style={styles.sheetWrap}>
           <View style={styles.sheet}>
             <View style={styles.sheetHandle} />
-            <Text style={styles.sheetTitle}>{online ? 'Buscando viajes' : 'Desconectado'}</Text>
+            <Text style={styles.sheetTitle}>
+              {online ? (locationReady ? 'Buscando viajes' : 'Activa tu ubicación') : 'Desconectado'}
+            </Text>
             <Text style={styles.sheetSubtitle}>
-              {online ? 'Búsqueda activa en curso' : 'Conéctate para recibir solicitudes'}
+              {online
+                ? locationReady
+                  ? 'Búsqueda activa en curso'
+                  : 'La ubicación permite recibir solicitudes cercanas'
+                : 'Conéctate para recibir solicitudes'}
             </Text>
 
             <View style={styles.statsCard}>
@@ -536,6 +648,7 @@ function ToggleButton({
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
+  requestsState: { flex: 1, backgroundColor: colors.background },
   recovery: {
     flex: 1,
     alignItems: 'center',
@@ -635,6 +748,19 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   headerText: { fontSize: fontSize.md, fontWeight: fontWeight.bold, color: colors.text },
+  requestsWarning: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginHorizontal: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: '#FDECEA',
+    borderWidth: 1,
+    borderColor: '#F5C6C2',
+  },
+  requestsWarningText: { flex: 1, color: colors.danger, fontSize: fontSize.sm },
 
   // Toggle Lista/Mapa.
   toggle: {

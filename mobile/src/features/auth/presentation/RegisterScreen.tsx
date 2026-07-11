@@ -130,7 +130,7 @@ export function RegisterScreen() {
               name="acceptTerms"
               render={({ field: { onChange, value } }) => (
                 <Checkbox checked={value} onChange={onChange} error={errors.acceptTerms?.message}>
-                  Acepto los Términos de Servicio y la Política de Privacidad de TaxiGo.
+                  Acepto los Términos de Servicio y la Política de Privacidad de ViajaYa.
                 </Checkbox>
               )}
             />

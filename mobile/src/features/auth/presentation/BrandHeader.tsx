@@ -5,8 +5,8 @@ import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 
 type Props = { title?: string; subtitle?: string };
 
-/** Logo + marca TaxiGo usado en las pantallas de auth (diseño Stitch). */
-export function BrandHeader({ title = 'TaxiGo', subtitle }: Props) {
+/** Logo + marca ViajaYa usado en las pantallas de autenticación. */
+export function BrandHeader({ title = 'ViajaYa', subtitle }: Props) {
   return (
     <View style={styles.wrapper}>
       <View style={styles.logo}>

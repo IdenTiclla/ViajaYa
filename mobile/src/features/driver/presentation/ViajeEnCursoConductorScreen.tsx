@@ -9,13 +9,24 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Linking,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 import { useRoute } from '@/features/booking/application/useRoute';
+import { SERVICE_META } from '@/features/booking/domain/serviceCatalog';
 import { useCancelRide, useUpdateRideStatus } from '@/features/rides/application/useRideMutations';
 import { formatBolivianos } from '@/features/rides/domain/money';
 import {
@@ -27,8 +38,6 @@ import { TripRouteMap } from '@/features/rides/presentation/TripRouteMap';
 import type { Ride, RideStatus } from '@/features/rides/domain/types';
 import { ConfirmDialog } from '@/shared/components';
 
-const SERVICE_LABELS = { taxi: 'Taxi', moto: 'Moto' } as const;
-
 // Siguiente acción según el estado actual del viaje.
 const NEXT: Partial<Record<RideStatus, { label: string; status: RideStatus }>> = {
   accepted: { label: 'He llegado al punto de partida', status: 'arriving' },
@@ -36,8 +45,23 @@ const NEXT: Partial<Record<RideStatus, { label: string; status: RideStatus }>> =
   in_progress: { label: 'Finalizar viaje', status: 'completed' },
 };
 
+const DELIVERY_NEXT: Partial<Record<RideStatus, { label: string; status: RideStatus }>> = {
+  accepted: { label: 'Llegué al punto de recogida', status: 'arriving' },
+  arriving: { label: 'Iniciar entrega', status: 'in_progress' },
+  in_progress: { label: 'Confirmar entrega', status: 'completed' },
+};
+
 // Banner de navegación: a dónde se dirige el conductor en cada estado.
 function navTarget(ride: Ride): { title: string; place: string } {
+  if (ride.service === 'delivery') {
+    if (ride.status === 'in_progress') {
+      return { title: 'Entregar la encomienda en', place: ride.destination.name };
+    }
+    if (ride.status === 'arriving') {
+      return { title: 'Esperando la encomienda en', place: ride.origin.name };
+    }
+    return { title: 'Recoger la encomienda en', place: ride.origin.name };
+  }
   if (ride.status === 'in_progress') {
     return { title: 'Llevando al pasajero a', place: ride.destination.name };
   }
@@ -55,8 +79,10 @@ export function ViajeEnCursoConductorScreen({ ride }: { ride: Ride }) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [confirmComplete, setConfirmComplete] = useState(false);
   const updateStatus = useUpdateRideStatus();
   const cancelRide = useCancelRide();
+  const busy = updateStatus.isPending || cancelRide.isPending;
   const { route } = useRoute(ride.origin, ride.destination);
 
   const clearMatchingRide = (queryKey: readonly string[]) => {
@@ -103,20 +129,38 @@ export function ViajeEnCursoConductorScreen({ ride }: { ride: Ride }) {
   if (ride.status === 'completed') {
     return (
       <SafeAreaView style={styles.ratingRoot}>
-        <RideRatingCard
-          ride={ride}
-          rateeRole="passenger"
-          counterpartName={ride.rider.fullName}
-          onDone={closeRatingRide}
-        />
+        <KeyboardAvoidingView
+          style={styles.ratingRoot}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <ScrollView
+            contentContainerStyle={styles.ratingContent}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            showsVerticalScrollIndicator={false}>
+            <RideRatingCard
+              ride={ride}
+              rateeRole="passenger"
+              counterpartName={ride.rider.fullName}
+              onDone={closeRatingRide}
+            />
+          </ScrollView>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
 
-  const next = NEXT[ride.status];
+  const next = (ride.service === 'delivery' ? DELIVERY_NEXT : NEXT)[ride.status];
   const canCancel = ride.status === 'accepted' || ride.status === 'arriving';
   const target = navTarget(ride);
   const distanceKm = route ? (route.distanceMeters / 1000).toFixed(1) : null;
+  const advance = () => {
+    if (!next || busy) return;
+    if (next.status === 'completed') {
+      setConfirmComplete(true);
+      return;
+    }
+    updateStatus.mutate({ rideId: ride.id, status: next.status });
+  };
 
   return (
     <View style={styles.root}>
@@ -153,11 +197,11 @@ export function ViajeEnCursoConductorScreen({ ride }: { ride: Ride }) {
           <View style={styles.header}>
             <View style={styles.serviceBadge}>
               <Ionicons
-                name={ride.service === 'taxi' ? 'car-sport' : 'bicycle'}
+                name={SERVICE_META[ride.service].icon}
                 size={18}
                 color={colors.primary}
               />
-              <Text style={styles.serviceBadgeText}>{SERVICE_LABELS[ride.service]}</Text>
+              <Text style={styles.serviceBadgeText}>{SERVICE_META[ride.service].shortLabel}</Text>
             </View>
             <Text style={styles.price}>Bs {formatBolivianos(ride.acceptedPrice ?? ride.fare)}</Text>
           </View>
@@ -184,7 +228,9 @@ export function ViajeEnCursoConductorScreen({ ride }: { ride: Ride }) {
                 {ride.rider.fullName}
               </Text>
               <View style={styles.passengerMeta}>
-                <Text style={styles.passengerRole}>Pasajero</Text>
+                <Text style={styles.passengerRole}>
+                  {ride.service === 'delivery' ? 'Remitente' : 'Pasajero'}
+                </Text>
                 {ride.rider.rating !== null && (
                   <>
                     <Ionicons name="star" size={13} color={colors.accent} />
@@ -221,23 +267,31 @@ export function ViajeEnCursoConductorScreen({ ride }: { ride: Ride }) {
 
           {next && (
             <TouchableOpacity
-              style={[styles.primaryBtn, updateStatus.isPending && styles.disabled]}
-              onPress={() => updateStatus.mutate({ rideId: ride.id, status: next.status })}
-              disabled={updateStatus.isPending}
+              style={[styles.primaryBtn, busy && styles.disabled]}
+              onPress={advance}
+              disabled={busy}
               accessibilityRole="button"
               accessibilityLabel={next.label}>
-              <Ionicons name="checkmark-circle" size={20} color={colors.textOnPrimary} />
-              <Text style={styles.primaryText}>{next.label}</Text>
+              {updateStatus.isPending ? (
+                <ActivityIndicator size="small" color={colors.textOnPrimary} />
+              ) : (
+                <Ionicons name="checkmark-circle" size={20} color={colors.textOnPrimary} />
+              )}
+              <Text style={styles.primaryText}>
+                {updateStatus.isPending ? 'Actualizando…' : next.label}
+              </Text>
             </TouchableOpacity>
           )}
           {canCancel && (
             <TouchableOpacity
-              style={[styles.cancelBtn, cancelRide.isPending && styles.disabled]}
+              style={[styles.cancelBtn, busy && styles.disabled]}
               onPress={() => setConfirmCancel(true)}
-              disabled={cancelRide.isPending}
+              disabled={busy}
               accessibilityRole="button"
-              accessibilityLabel="Cancelar viaje">
-              <Text style={styles.cancelText}>Cancelar viaje</Text>
+              accessibilityLabel={ride.service === 'delivery' ? 'Cancelar entrega' : 'Cancelar viaje'}>
+              <Text style={styles.cancelText}>
+                {ride.service === 'delivery' ? 'Cancelar entrega' : 'Cancelar viaje'}
+              </Text>
             </TouchableOpacity>
           )}
         </ScrollView>
@@ -247,8 +301,12 @@ export function ViajeEnCursoConductorScreen({ ride }: { ride: Ride }) {
         visible={confirmCancel}
         icon="warning-outline"
         destructive
-        title="¿Cancelar viaje?"
-        message="El pasajero será notificado y este viaje ya no podrá continuar."
+        title={ride.service === 'delivery' ? '¿Cancelar entrega?' : '¿Cancelar viaje?'}
+        message={
+          ride.service === 'delivery'
+            ? 'El remitente será notificado y la entrega ya no podrá continuar.'
+            : 'El pasajero será notificado y este viaje ya no podrá continuar.'
+        }
         confirmText="Sí, cancelar"
         cancelText="Seguir con el viaje"
         onConfirm={() => {
@@ -256,6 +314,24 @@ export function ViajeEnCursoConductorScreen({ ride }: { ride: Ride }) {
           cancelRide.mutate(ride.id);
         }}
         onCancel={() => setConfirmCancel(false)}
+      />
+
+      <ConfirmDialog
+        visible={confirmComplete}
+        icon="flag-outline"
+        title={ride.service === 'delivery' ? '¿Confirmar la entrega?' : '¿Finalizar el viaje?'}
+        message={
+          ride.service === 'delivery'
+            ? 'Confirma que la encomienda llegó al destino. Después ambos podrán calificar la experiencia.'
+            : 'Confirma que llegaste al destino. Después ambos podrán calificar la experiencia.'
+        }
+        confirmText={ride.service === 'delivery' ? 'Sí, entregada' : 'Sí, finalizar'}
+        cancelText={ride.service === 'delivery' ? 'Seguir entregando' : 'Seguir viajando'}
+        onConfirm={() => {
+          setConfirmComplete(false);
+          updateStatus.mutate({ rideId: ride.id, status: 'completed' });
+        }}
+        onCancel={() => setConfirmComplete(false)}
       />
     </View>
   );
@@ -287,7 +363,8 @@ function Row({
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceMuted },
-  ratingRoot: { flex: 1, backgroundColor: colors.background, padding: spacing.lg },
+  ratingRoot: { flex: 1, backgroundColor: colors.background },
+  ratingContent: { flexGrow: 1, padding: spacing.lg },
 
   cancelledRoot: {
     flex: 1,

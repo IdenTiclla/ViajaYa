@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Animated,
   Easing,
   ScrollView,
@@ -27,6 +28,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage, getApiErrorStatus } from '@/core/errors/apiError';
+import { useBlockHardwareBack } from '@/core/navigation/useBlockHardwareBack';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
 import { ConfirmationOverlay } from '@/features/booking/presentation/ConfirmationOverlay';
@@ -75,6 +77,7 @@ export function OffersScreen() {
   // "Viaje cancelado"). El handler de cancelar ya envía al inicio directamente.
   const assigned = !!ride && ride.status !== 'searching' && ride.status !== 'cancelled';
   const cancelled = ride?.status === 'cancelled';
+  useBlockHardwareBack(Boolean(id) && !cancelled);
   const offersQuery = useRideOffers(id, !assigned && !cancelled);
   const { offers } = offersQuery;
   const acceptOffer = useAcceptOffer();
@@ -109,7 +112,12 @@ export function OffersScreen() {
   // navegue a Trip y desmonte la confirmacion local prematuramente.
   const [acceptIntent, setAcceptIntent] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [offerToReject, setOfferToReject] = useState<Offer | null>(null);
   const confirmationVisible = confirming || (assigned && acceptIntent);
+  const activeOfferToReject =
+    offerToReject && visibleOffers.some((offer) => offer.id === offerToReject.id)
+      ? offerToReject
+      : null;
 
   // Backup: si el viaje queda asignado por otra vía (p. ej. WS), ir al viaje.
   useEffect(() => {
@@ -151,7 +159,8 @@ export function OffersScreen() {
     if (id) router.replace({ pathname: '/booking/trip', params: { rideId: id } });
   };
 
-  const onReject = (offer: Offer) => {
+  const rejectConfirmed = (offer: Offer) => {
+    if (acceptOffer.isPending || rejectOffer.isPending) return;
     setDismissed((prev) => new Set(prev).add(offer.id));
     if (!id) return;
 
@@ -170,7 +179,13 @@ export function OffersScreen() {
   };
 
   const onModify = () => {
-    if (pauseForEdit.isPending || !id) return;
+    if (
+      acceptOffer.isPending ||
+      rejectOffer.isPending ||
+      pauseForEdit.isPending ||
+      cancelRide.isPending ||
+      !id
+    ) return;
     // Pausa la solicitud (la oculta del pool) y abre la edición sin cancelar.
     pauseForEdit.mutate(id, {
       onSuccess: () =>
@@ -180,7 +195,12 @@ export function OffersScreen() {
 
   const onCancel = () => {
     setConfirmCancel(false);
-    if (cancelRide.isPending) return;
+    if (
+      acceptOffer.isPending ||
+      rejectOffer.isPending ||
+      pauseForEdit.isPending ||
+      cancelRide.isPending
+    ) return;
     if (!id) {
       useBookingStore.getState().resetTrip();
       router.replace('/(app)/(tabs)');
@@ -199,6 +219,11 @@ export function OffersScreen() {
   // Oferta cuyo Aceptar está en curso: solo esa tarjeta se bloquea (las demás
   // siguen permitiendo Rechazar, que es ortogonal).
   const acceptingId = acceptOffer.isPending ? acceptOffer.variables ?? null : null;
+  const negotiationBusy =
+    acceptOffer.isPending ||
+    rejectOffer.isPending ||
+    pauseForEdit.isPending ||
+    cancelRide.isPending;
 
   if (assigned && !confirmationVisible) {
     // El viaje quedó asignado: el overlay ya navegó, o este es el respaldo.
@@ -292,8 +317,9 @@ export function OffersScreen() {
               tag={primaryTag(tagsMap[offer.id])}
               now={now}
               acceptingId={acceptingId}
+              decisionsLocked={negotiationBusy}
               onAccept={() => onAccept(offer)}
-              onReject={() => onReject(offer)}
+              onReject={() => setOfferToReject(offer)}
             />
           ))}
           <View style={styles.listBottomSpacer} />
@@ -309,18 +335,18 @@ export function OffersScreen() {
           <Text style={styles.error}>{getApiErrorMessage(cancelRide.error)}</Text>
         )}
         <TouchableOpacity
-          style={[styles.modify, pauseForEdit.isPending && styles.disabled]}
+          style={[styles.modify, negotiationBusy && styles.disabled]}
           onPress={onModify}
-          disabled={pauseForEdit.isPending}
+          disabled={negotiationBusy}
           accessibilityRole="button"
           accessibilityLabel="Modificar solicitud">
           <Ionicons name="create-outline" size={20} color={colors.primary} />
           <Text style={styles.modifyText}>Modificar solicitud</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.cancel, cancelRide.isPending && styles.disabled]}
+          style={[styles.cancel, negotiationBusy && styles.disabled]}
           onPress={() => setConfirmCancel(true)}
-          disabled={cancelRide.isPending}
+          disabled={negotiationBusy}
           accessibilityRole="button"
           accessibilityLabel="Cancelar solicitud">
           <Ionicons name="close" size={18} color={colors.danger} />
@@ -343,6 +369,25 @@ export function OffersScreen() {
         onConfirm={onCancel}
         onCancel={() => setConfirmCancel(false)}
       />
+
+      <ConfirmDialog
+        visible={activeOfferToReject != null}
+        icon="remove-circle-outline"
+        title="¿Descartar esta oferta?"
+        message={
+          activeOfferToReject
+            ? `La oferta de ${activeOfferToReject.driver.fullName} dejará de aparecer en tu negociación.`
+            : undefined
+        }
+        confirmText="Descartar oferta"
+        cancelText="Conservar"
+        onConfirm={() => {
+          const offer = activeOfferToReject;
+          setOfferToReject(null);
+          if (offer) rejectConfirmed(offer);
+        }}
+        onCancel={() => setOfferToReject(null)}
+      />
     </View>
   );
 }
@@ -352,6 +397,7 @@ function OfferCard({
   tag,
   now,
   acceptingId,
+  decisionsLocked,
   onAccept,
   onReject,
 }: {
@@ -361,6 +407,8 @@ function OfferCard({
   now: number;
   /** Oferta cuyo Aceptar está en curso (solo esa se bloquea). */
   acceptingId: string | null;
+  /** Evita decisiones simultáneas mientras se acepta o rechaza una oferta. */
+  decisionsLocked: boolean;
   onAccept: () => void;
   onReject: () => void;
 }) {
@@ -425,19 +473,27 @@ function OfferCard({
 
       <View style={styles.cardActions}>
         <TouchableOpacity
-          style={styles.rejectBtn}
+          style={[styles.rejectBtn, decisionsLocked && styles.disabled]}
           onPress={onReject}
+          disabled={decisionsLocked}
           accessibilityRole="button"
           accessibilityLabel={`Rechazar oferta de ${driver.fullName}`}>
           <Text style={styles.rejectText}>Rechazar</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.acceptBtn, acceptInFlight && styles.disabled]}
+          style={[styles.acceptBtn, decisionsLocked && styles.disabled]}
           onPress={onAccept}
-          disabled={acceptInFlight}
+          disabled={decisionsLocked}
           accessibilityRole="button"
           accessibilityLabel={`Aceptar oferta de ${driver.fullName} por Bs ${formatBolivianos(offer.price)}`}>
-          <Text style={styles.acceptText}>Aceptar</Text>
+          {acceptInFlight ? (
+            <View style={styles.acceptingContent}>
+              <ActivityIndicator size="small" color={colors.textOnPrimary} />
+              <Text style={styles.acceptText}>Aceptando…</Text>
+            </View>
+          ) : (
+            <Text style={styles.acceptText}>Aceptar</Text>
+          )}
         </TouchableOpacity>
       </View>
     </View>
@@ -633,6 +689,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
   },
   acceptText: { fontSize: fontSize.md, fontWeight: fontWeight.bold, color: colors.textOnPrimary },
+  acceptingContent: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   disabled: { opacity: 0.5 },
 
   error: { color: colors.danger, fontSize: fontSize.sm, textAlign: 'center' },

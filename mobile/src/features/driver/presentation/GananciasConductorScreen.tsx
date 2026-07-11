@@ -5,13 +5,15 @@
  * recientes con su importe.
  */
 import { Ionicons } from '@expo/vector-icons';
-import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
+import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { getApiErrorMessage } from '@/core/errors/apiError';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 import { useDriverEarnings } from '@/features/rides/application/useCloseFlow';
 import { formatBolivianos } from '@/features/rides/domain/money';
 import type { EarningsItem } from '@/features/rides/domain/types';
+import { FeedbackState } from '@/shared/components';
 
 function formatDate(iso: string | null): string {
   if (!iso) return '';
@@ -20,47 +22,65 @@ function formatDate(iso: string | null): string {
 }
 
 export function GananciasConductorScreen() {
-  const { data, isPending } = useDriverEarnings();
+  const { data, isPending, isError, error, isRefetching, refetch } = useDriverEarnings();
+  const retry = () => void refetch();
 
   return (
     <SafeAreaView style={styles.root}>
-      <FlatList
-        data={data?.recent ?? []}
-        keyExtractor={(item) => item.rideId}
-        contentContainerStyle={styles.content}
-        ListHeaderComponent={
-          <View style={styles.headerBlock}>
-            <Text style={styles.header}>Ganancias</Text>
+      <Text style={styles.header}>Ganancias</Text>
+      {isPending ? (
+        <FeedbackState loading title="Cargando ganancias…" />
+      ) : isError && !data ? (
+        <FeedbackState
+          icon="cloud-offline-outline"
+          title="No pudimos cargar tus ganancias"
+          message={getApiErrorMessage(error)}
+          actionLabel="Reintentar"
+          onAction={retry}
+        />
+      ) : (
+        <FlatList
+          data={data?.recent ?? []}
+          keyExtractor={(item) => item.rideId}
+          contentContainerStyle={styles.content}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefetching}
+              onRefresh={retry}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
+            />
+          }
+          ListHeaderComponent={
+            <View style={styles.headerBlock}>
+              <View style={styles.total}>
+                <Text style={styles.totalLabel}>Total de hoy</Text>
+                <Text style={styles.totalValue}>Bs {formatBolivianos(data?.totalToday ?? 0)}</Text>
+              </View>
 
-            <View style={styles.total}>
-              <Text style={styles.totalLabel}>Total de hoy</Text>
-              <Text style={styles.totalValue}>Bs {formatBolivianos(data?.totalToday ?? 0)}</Text>
-            </View>
+              <View style={styles.cards}>
+                <Card icon="car-outline" label="Viajes hoy" value={String(data?.tripsToday ?? 0)} />
+                <Card
+                  icon="wallet-outline"
+                  label="Histórico"
+                  value={`Bs ${formatBolivianos(data?.totalAllTime ?? 0)}`}
+                />
+              </View>
 
-            <View style={styles.cards}>
-              <Card icon="car-outline" label="Viajes hoy" value={String(data?.tripsToday ?? 0)} />
-              <Card
-                icon="wallet-outline"
-                label="Histórico"
-                value={`Bs ${formatBolivianos(data?.totalAllTime ?? 0)}`}
-              />
+              <Text style={styles.sectionTitle}>Viajes recientes</Text>
             </View>
-
-            <Text style={styles.sectionTitle}>Viajes recientes</Text>
-          </View>
-        }
-        renderItem={({ item }) => <EarningsRow item={item} />}
-        ListEmptyComponent={
-          isPending ? (
-            <ActivityIndicator color={colors.primary} style={styles.loader} />
-          ) : (
-            <View style={styles.empty}>
-              <Ionicons name="bar-chart-outline" size={40} color={colors.textSecondary} />
-              <Text style={styles.emptyText}>Aún no hay viajes completados.</Text>
-            </View>
-          )
-        }
-      />
+          }
+          renderItem={({ item }) => <EarningsRow item={item} />}
+          ListEmptyComponent={
+            <FeedbackState
+              compact
+              icon="bar-chart-outline"
+              title="Aún no hay viajes completados"
+              message="Tus próximos viajes aparecerán en este resumen."
+            />
+          }
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -102,9 +122,15 @@ function EarningsRow({ item }: { item: EarningsItem }) {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.lg, gap: spacing.sm },
+  content: { flexGrow: 1, padding: spacing.lg, paddingTop: spacing.md, gap: spacing.sm },
   headerBlock: { gap: spacing.md, marginBottom: spacing.sm },
-  header: { fontSize: fontSize.xl, fontWeight: fontWeight.bold, color: colors.text, marginTop: spacing.sm },
+  header: {
+    fontSize: fontSize.xl,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+  },
 
   total: { padding: spacing.lg, borderRadius: radius.lg, backgroundColor: colors.primary, gap: spacing.xs },
   totalLabel: { fontSize: fontSize.sm, color: colors.textOnPrimary, opacity: 0.85 },
@@ -146,7 +172,4 @@ const styles = StyleSheet.create({
   rowDate: { fontSize: fontSize.xs, color: colors.textSecondary },
   rowPrice: { fontSize: fontSize.md, fontWeight: fontWeight.bold, color: colors.primary },
 
-  loader: { marginTop: spacing.xl },
-  empty: { alignItems: 'center', gap: spacing.sm, padding: spacing.xl },
-  emptyText: { fontSize: fontSize.md, color: colors.textSecondary, textAlign: 'center' },
 });

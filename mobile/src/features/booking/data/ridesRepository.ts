@@ -5,7 +5,13 @@
 import { api } from '@/core/http/client';
 import type { PaymentMethod, Place, ServiceType } from '@/features/booking/domain/types';
 
-type PointDto = { latitude: number; longitude: number; name: string; address: string };
+type PointDto = {
+  latitude: number;
+  longitude: number;
+  name: string;
+  address: string;
+  country_code?: string | null;
+};
 
 type RideRequestDto = {
   id: string;
@@ -34,6 +40,7 @@ function toPointDto(place: Place): PointDto {
     longitude: place.coordinates.longitude,
     name: place.name,
     address: place.address,
+    country_code: place.countryCode,
   };
 }
 
@@ -42,6 +49,7 @@ function toPlace(dto: PointDto): Place {
     coordinates: { latitude: dto.latitude, longitude: dto.longitude },
     name: dto.name,
     address: dto.address,
+    countryCode: dto.country_code?.toUpperCase() ?? null,
   };
 }
 

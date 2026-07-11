@@ -14,6 +14,8 @@ export type Place = {
   name: string;
   /** Dirección secundaria legible. */
   address: string;
+  /** Código ISO 3166-1 alpha-2 cuando la fuente puede determinarlo. */
+  countryCode: string | null;
 };
 
 /**
@@ -46,7 +48,7 @@ export type SavedPlace = {
 };
 
 /** Tipo de servicio solicitado. */
-export type ServiceType = 'taxi' | 'moto';
+export type ServiceType = 'taxi' | 'moto' | 'delivery';
 
 /** Forma de pago elegida para el viaje. Por ahora: QR o efectivo. */
 export type PaymentMethod = 'qr' | 'cash';

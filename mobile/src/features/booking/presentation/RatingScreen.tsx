@@ -6,10 +6,19 @@
  */
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
+import { useBlockHardwareBack } from '@/core/navigation/useBlockHardwareBack';
 import { colors, fontSize, spacing } from '@/core/theme';
 import {
   PASSENGER_ACTIVE_RIDE_KEY,
@@ -28,6 +37,7 @@ export function RatingScreen() {
   const { rideId } = useLocalSearchParams<{ rideId?: string }>();
   const id = rideId ?? null;
   const { ride, isLoading, isError, error, refetch } = useRide(id);
+  useBlockHardwareBack(Boolean(id));
 
   const goHome = () => {
     if (id) {
@@ -84,15 +94,23 @@ export function RatingScreen() {
 
   return (
     <SafeAreaView style={styles.root}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <RideRatingCard
-          ride={ride}
-          rateeRole="driver"
-          counterpartName={ride.driver?.fullName ?? null}
-          counterpartVehicle={vehicle}
-          onDone={goHome}
-        />
-      </ScrollView>
+      <KeyboardAvoidingView
+        style={styles.root}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <ScrollView
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          showsVerticalScrollIndicator={false}>
+          <RideRatingCard
+            ride={ride}
+            rateeRole="driver"
+            counterpartName={ride.driver?.fullName ?? null}
+            counterpartVehicle={vehicle}
+            onDone={goHome}
+          />
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

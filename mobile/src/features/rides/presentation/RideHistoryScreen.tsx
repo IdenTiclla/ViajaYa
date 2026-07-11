@@ -7,15 +7,18 @@
  */
 import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { getApiErrorMessage } from '@/core/errors/apiError';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { SERVICE_META } from '@/features/booking/domain/serviceCatalog';
 import { useRideHistory } from '@/features/rides/application/useCloseFlow';
 import { formatBolivianos } from '@/features/rides/domain/money';
 import type { RideHistoryItem, RideStatus } from '@/features/rides/domain/types';
+import { FeedbackState } from '@/shared/components';
 
-const SERVICE_LABELS = { taxi: 'Taxi', moto: 'Moto' } as const;
+const VEHICLE_LABELS = { taxi: 'Taxi', moto: 'Moto' } as const;
 
 const TABS: { key: Extract<RideStatus, 'completed' | 'cancelled'>; label: string }[] = [
   { key: 'completed', label: 'Completados' },
@@ -34,7 +37,8 @@ function formatDate(iso: string | null): string {
 
 export function RideHistoryScreen() {
   const [tab, setTab] = useState<'completed' | 'cancelled'>('completed');
-  const { data, isPending } = useRideHistory(tab);
+  const { data, isPending, isError, error, isRefetching, refetch } = useRideHistory(tab);
+  const retry = () => void refetch();
 
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
@@ -48,7 +52,9 @@ export function RideHistoryScreen() {
               key={t.key}
               style={[styles.tab, active && styles.tabActive]}
               onPress={() => setTab(t.key)}
-            >
+              accessibilityRole="tab"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={`Viajes ${t.label.toLowerCase()}`}>
               <Text style={[styles.tabText, active && styles.tabTextActive]}>{t.label}</Text>
             </Pressable>
           );
@@ -60,16 +66,33 @@ export function RideHistoryScreen() {
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
         renderItem={({ item }) => <HistoryCard item={item} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={!isPending && isRefetching}
+            onRefresh={retry}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
         ListEmptyComponent={
           isPending ? (
-            <ActivityIndicator color={colors.primary} style={styles.loader} />
+            <FeedbackState compact loading title="Cargando viajes…" />
+          ) : isError ? (
+            <FeedbackState
+              compact
+              icon="cloud-offline-outline"
+              title="No pudimos cargar tu historial"
+              message={getApiErrorMessage(error)}
+              actionLabel="Reintentar"
+              onAction={retry}
+            />
           ) : (
-            <View style={styles.empty}>
-              <Ionicons name="time-outline" size={40} color={colors.textSecondary} />
-              <Text style={styles.emptyText}>
-                No tienes viajes {tab === 'completed' ? 'completados' : 'cancelados'}.
-              </Text>
-            </View>
+            <FeedbackState
+              compact
+              icon="time-outline"
+              title={`No tienes viajes ${tab === 'completed' ? 'completados' : 'cancelados'}`}
+              message="Cuando tengas movimientos aparecerán aquí."
+            />
           )
         }
       />
@@ -80,15 +103,15 @@ export function RideHistoryScreen() {
 function HistoryCard({ item }: { item: RideHistoryItem }) {
   const cp = item.counterpart;
   const vehicle = cp
-    ? [cp.vehicleType ? SERVICE_LABELS[cp.vehicleType] : null, cp.vehicleModel]
+    ? [cp.vehicleType ? VEHICLE_LABELS[cp.vehicleType] : null, cp.vehicleModel]
         .filter(Boolean)
         .join(' · ')
-    : SERVICE_LABELS[item.service];
+    : SERVICE_META[item.service].shortLabel;
 
   return (
     <View style={styles.card}>
       <View style={styles.cardIcon}>
-        <Ionicons name="car" size={20} color={colors.primary} />
+        <Ionicons name={SERVICE_META[item.service].icon} size={20} color={colors.primary} />
       </View>
       <View style={styles.cardInfo}>
         <Text style={styles.cardDest} numberOfLines={1}>
@@ -133,7 +156,7 @@ const styles = StyleSheet.create({
   tabText: { fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textSecondary },
   tabTextActive: { color: colors.textOnPrimary },
 
-  list: { padding: spacing.lg, paddingTop: 0, gap: spacing.sm },
+  list: { flexGrow: 1, padding: spacing.lg, paddingTop: 0, gap: spacing.sm },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -159,7 +182,4 @@ const styles = StyleSheet.create({
   rating: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   ratingText: { fontSize: fontSize.xs, color: colors.textSecondary },
 
-  loader: { marginTop: spacing.xl },
-  empty: { alignItems: 'center', gap: spacing.sm, padding: spacing.xl },
-  emptyText: { fontSize: fontSize.md, color: colors.textSecondary, textAlign: 'center' },
 });

@@ -5,7 +5,7 @@
  * inversa. Una guardia con `useRef` descarta resultados obsoletos si el usuario
  * vuelve a mover el mapa antes de que resuelva un geocode anterior.
  */
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import type { Region } from 'react-native-maps';
 
 import type { Coordinates, Place } from '@/features/booking/domain/types';
@@ -15,12 +15,19 @@ const PENDING_ADDRESS = 'Obteniendo dirección…';
 
 export function useRegionPlace(onPlace: (place: Place) => void, pendingName: string) {
   const latest = useRef<Coordinates | null>(null);
+  const [isResolving, setIsResolving] = useState(false);
 
-  return useCallback(
+  const onRegionChangeComplete = useCallback(
     (region: Region) => {
       const coordinates = { latitude: region.latitude, longitude: region.longitude };
       latest.current = coordinates;
-      onPlace({ coordinates, name: pendingName, address: PENDING_ADDRESS });
+      setIsResolving(true);
+      onPlace({
+        coordinates,
+        name: pendingName,
+        address: PENDING_ADDRESS,
+        countryCode: null,
+      });
 
       void locationService.reverseGeocode(coordinates).then((label) => {
         const current = latest.current;
@@ -30,9 +37,12 @@ export function useRegionPlace(onPlace: (place: Place) => void, pendingName: str
           current.longitude === coordinates.longitude
         ) {
           onPlace({ coordinates, ...label });
+          setIsResolving(false);
         }
       });
     },
     [onPlace, pendingName],
   );
+
+  return { onRegionChangeComplete, isResolving };
 }

@@ -30,7 +30,11 @@ export default function AppLayout() {
 
   return (
     <>
-      <Stack screenOptions={{ headerShown: false }} />
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="booking/offers" options={{ gestureEnabled: false }} />
+        <Stack.Screen name="booking/trip" options={{ gestureEnabled: false }} />
+        <Stack.Screen name="booking/rating" options={{ gestureEnabled: false }} />
+      </Stack>
       <PassengerToaster />
     </>
   );

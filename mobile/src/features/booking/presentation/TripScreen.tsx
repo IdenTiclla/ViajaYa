@@ -12,8 +12,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
   Linking,
+  ScrollView,
   Share,
   StyleSheet,
   Text,
@@ -23,6 +23,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
+import { useBlockHardwareBack } from '@/core/navigation/useBlockHardwareBack';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 import { useCancelRide } from '@/features/rides/application/useRideMutations';
 import {
@@ -31,7 +32,7 @@ import {
 } from '@/features/rides/application/useRides';
 import { TripRouteMap } from '@/features/rides/presentation/TripRouteMap';
 import type { Ride, RideStatus } from '@/features/rides/domain/types';
-import { Button, ConfirmDialog } from '@/shared/components';
+import { Button, ConfirmDialog, FeedbackState } from '@/shared/components';
 
 const SERVICE_LABELS = { taxi: 'Taxi', moto: 'Moto' } as const;
 
@@ -55,6 +56,24 @@ const BANNER: Record<RideStatus, Banner> = {
   cancelled: { icon: 'close-circle', title: 'Viaje cancelado', hint: 'Este viaje fue cancelado.' },
 };
 
+const DELIVERY_BANNER: Record<RideStatus, Banner> = {
+  searching: { icon: 'search', title: 'Buscando conductor', hint: 'Esperando ofertas…' },
+  accepted: {
+    icon: 'car-sport',
+    title: 'Van por tu encomienda',
+    hint: 'El conductor se dirige al punto de recogida.',
+  },
+  arriving: {
+    icon: 'notifications',
+    title: 'El conductor llegó',
+    hint: 'Entrega la encomienda en el punto de partida.',
+    accent: true,
+  },
+  in_progress: { icon: 'cube', title: 'Encomienda en camino', hint: 'Se dirige al destino.' },
+  completed: { icon: 'flag', title: 'Entrega finalizada', hint: 'La encomienda llegó a destino.' },
+  cancelled: { icon: 'close-circle', title: 'Entrega cancelada', hint: 'Esta entrega fue cancelada.' },
+};
+
 const CANCELLABLE: RideStatus[] = ['searching', 'accepted', 'arriving'];
 
 export function TripScreen() {
@@ -62,9 +81,10 @@ export function TripScreen() {
   const queryClient = useQueryClient();
   const { rideId } = useLocalSearchParams<{ rideId?: string }>();
   const id = rideId ?? null;
-  const { ride, isLoading } = useRide(id);
+  const { ride, isLoading, isError, error, refetch } = useRide(id);
   const cancelRide = useCancelRide();
   const [confirmCancel, setConfirmCancel] = useState(false);
+  useBlockHardwareBack(Boolean(id) && ride?.status !== 'cancelled' && ride?.status !== 'completed');
 
   const goHome = () => router.replace('/(app)/(tabs)');
   const closeAndGoHome = () => {
@@ -99,25 +119,28 @@ export function TripScreen() {
 
   if (isLoading && !ride) {
     return (
-      <SafeAreaView style={[styles.fallback, styles.center]}>
-        <ActivityIndicator size="large" color={colors.primary} />
+      <SafeAreaView style={styles.fallback}>
+        <FeedbackState loading title="Cargando tu viaje…" />
       </SafeAreaView>
     );
   }
 
   if (!ride) {
     return (
-      <SafeAreaView style={[styles.fallback, styles.center]}>
-        <Ionicons name="alert-circle-outline" size={48} color={colors.textSecondary} />
-        <Text style={styles.hint}>No pudimos cargar el viaje.</Text>
-        <View style={styles.fallbackAction}>
-          <Button title="Volver al inicio" onPress={goHome} />
-        </View>
+      <SafeAreaView style={styles.fallback}>
+        <FeedbackState
+          icon="cloud-offline-outline"
+          title="No pudimos cargar tu viaje"
+          message={isError ? getApiErrorMessage(error) : 'El viaje no está disponible todavía.'}
+          actionLabel="Reintentar"
+          onAction={() => void refetch()}
+        />
       </SafeAreaView>
     );
   }
 
-  const banner = BANNER[ride.status];
+  const isDelivery = ride.service === 'delivery';
+  const banner = (isDelivery ? DELIVERY_BANNER : BANNER)[ride.status];
   const isCompleted = ride.status === 'completed';
   const isCancelled = ride.status === 'cancelled';
   const canCancel = CANCELLABLE.includes(ride.status);
@@ -126,17 +149,25 @@ export function TripScreen() {
     <View style={styles.root}>
       <TripRouteMap origin={ride.origin} destination={ride.destination} bottomPadding={380} />
 
-      <SafeAreaView style={styles.topBar} edges={['top']} pointerEvents="box-none">
-        <TouchableOpacity
-          style={styles.iconBtn}
-          onPress={goHome}
-          accessibilityRole="button"
-          accessibilityLabel="Volver al inicio">
-          <Ionicons name="arrow-back" size={24} color={colors.text} />
-        </TouchableOpacity>
-      </SafeAreaView>
+      {(isCompleted || isCancelled) && (
+        <SafeAreaView style={styles.topBar} edges={['top']} pointerEvents="box-none">
+          <TouchableOpacity
+            style={styles.iconBtn}
+            onPress={isCancelled ? closeAndGoHome : goRate}
+            accessibilityRole="button"
+            accessibilityLabel={
+              isCancelled ? 'Volver al inicio' : isDelivery ? 'Calificar entrega' : 'Calificar viaje'
+            }>
+            <Ionicons name="arrow-back" size={24} color={colors.text} />
+          </TouchableOpacity>
+        </SafeAreaView>
+      )}
 
       <SafeAreaView style={styles.sheet} edges={['bottom']}>
+        <ScrollView
+          contentContainerStyle={styles.sheetContent}
+          showsVerticalScrollIndicator={false}
+          bounces={false}>
         <View style={styles.sheetHandle} />
 
         <View style={[styles.banner, banner.accent && styles.bannerAccent]}>
@@ -164,25 +195,30 @@ export function TripScreen() {
         )}
 
         {isCompleted ? (
-          <Button title="Calificar viaje" onPress={goRate} />
+          <Button title={isDelivery ? 'Calificar entrega' : 'Calificar viaje'} onPress={goRate} />
         ) : isCancelled ? (
           <Button title="Volver al inicio" onPress={closeAndGoHome} />
         ) : canCancel ? (
           <Button
-            title="Cancelar viaje"
+            title={isDelivery ? 'Cancelar entrega' : 'Cancelar viaje'}
             variant="secondary"
             loading={cancelRide.isPending}
             onPress={() => setConfirmCancel(true)}
           />
         ) : null}
+        </ScrollView>
       </SafeAreaView>
 
       <ConfirmDialog
         visible={confirmCancel}
         icon="warning"
         destructive
-        title="¿Cancelar viaje?"
-        message="Tu conductor ya está en camino. Si cancelas ahora, se le notificará que el viaje fue cancelado."
+        title={isDelivery ? '¿Cancelar entrega?' : '¿Cancelar viaje?'}
+        message={
+          isDelivery
+            ? 'Tu conductor ya está en camino. Si cancelas ahora, se le notificará que la entrega fue cancelada.'
+            : 'Tu conductor ya está en camino. Si cancelas ahora, se le notificará que el viaje fue cancelado.'
+        }
         confirmText="Sí, cancelar"
         cancelText="Seguir"
         onConfirm={() => {
@@ -212,7 +248,10 @@ function DriverCard({ ride }: { ride: Ride }) {
   };
   const share = () => {
     void Share.share({
-      message: `Estoy viajando con ViajaYa: ${ride.origin.name} → ${ride.destination.name}. Conductor: ${driver.fullName}.`,
+      message:
+        ride.service === 'delivery'
+          ? `Estoy enviando una encomienda con ViajaYa: ${ride.origin.name} → ${ride.destination.name}. Conductor: ${driver.fullName}.`
+          : `Estoy viajando con ViajaYa: ${ride.origin.name} → ${ride.destination.name}. Conductor: ${driver.fullName}.`,
     });
   };
 
@@ -301,8 +340,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    padding: spacing.lg,
-    gap: spacing.md,
+    maxHeight: '72%',
     backgroundColor: colors.background,
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,
@@ -312,6 +350,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: -3 },
     elevation: 12,
   },
+  sheetContent: { padding: spacing.lg, gap: spacing.md },
   sheetHandle: { width: 40, height: 4, borderRadius: radius.pill, backgroundColor: colors.border, alignSelf: 'center' },
 
   banner: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },

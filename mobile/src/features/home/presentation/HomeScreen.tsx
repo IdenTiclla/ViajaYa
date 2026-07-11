@@ -4,12 +4,14 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Animated,
-  Dimensions,
+  Linking,
   PanResponder,
   StyleSheet,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
@@ -20,7 +22,16 @@ import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
 import { useRecentDestinations } from '@/features/booking/application/useRecentDestinations';
 import { useRegionPlace } from '@/features/booking/application/useRegionPlace';
-import type { Place, ServiceType } from '@/features/booking/domain/types';
+import {
+  BOLIVIA_NORTH_EAST,
+  BOLIVIA_SERVICE_AREA_MESSAGE,
+  BOLIVIA_SOUTH_WEST,
+  getBoliviaPlaceError,
+  isCoordinatesInBolivia,
+  isPlaceInBolivia,
+} from '@/features/booking/domain/bolivia';
+import { SERVICE_OPTIONS } from '@/features/booking/domain/serviceCatalog';
+import type { Place } from '@/features/booking/domain/types';
 import { CenterPin } from '@/features/booking/presentation/CenterPin';
 import { useCurrentLocation } from '@/features/home/application/useCurrentLocation';
 import {
@@ -30,19 +41,6 @@ import {
 } from '@/features/rides/application/useRides';
 import type { Ride } from '@/features/rides/domain/types';
 import { useAuthStore } from '@/store/authStore';
-
-const SERVICES: { id: ServiceType; label: string; caption: string; icon: 'car-sport' | 'bicycle' }[] =
-  [
-    { id: 'taxi', label: 'Taxi', caption: 'Rápido y cómodo', icon: 'car-sport' },
-    { id: 'moto', label: 'Moto', caption: 'Ágil en el tráfico', icon: 'bicycle' },
-  ];
-
-// El bottom sheet se desliza entre dos posiciones: colapsado (deja ver/usar gran
-// parte del mapa) y expandido (muestra todo el contenido).
-const SCREEN_HEIGHT = Dimensions.get('window').height;
-const SHEET_HEIGHT = Math.round(SCREEN_HEIGHT * 0.74); // alto total de la tarjeta
-const SHEET_PEEK = 268; // alto visible cuando está colapsado
-const MAX_TRANSLATE = SHEET_HEIGHT - SHEET_PEEK; // cuánto baja al colapsar
 
 function greeting(): string {
   const hour = new Date().getHours();
@@ -58,6 +56,16 @@ function firstName(fullName: string | undefined): string {
 export function HomeScreen() {
   const user = useAuthStore((s) => s.user);
   const insets = useSafeAreaInsets();
+  const { height: screenHeight } = useWindowDimensions();
+  // Mantiene visibles saludo, busqueda y servicios sin cubrir innecesariamente el mapa.
+  const availableHeight = Math.max(320, screenHeight - insets.top - spacing.md);
+  const sheetHeight = Math.min(
+    Math.max(Math.round(screenHeight * 0.66), 420),
+    570,
+    availableHeight,
+  );
+  const sheetPeek = Math.min(236 + Math.min(insets.bottom, spacing.sm), sheetHeight);
+  const maxTranslate = Math.max(0, sheetHeight - sheetPeek);
   const router = useRouter();
   const queryClient = useQueryClient();
   const {
@@ -76,55 +84,71 @@ export function HomeScreen() {
     error: pendingRatingErrorValue,
     refetch: refetchPendingRating,
   } = usePendingRatingRide();
-  const { status, coordinates, retry } = useCurrentLocation();
+  const { status, coordinates, canAskAgain, retry } = useCurrentLocation();
   const mapRef = useRef<MapView>(null);
+  const lastLocationRefresh = useRef(0);
   const [recoveryReady, setRecoveryReady] = useState(false);
   const recoveryReadyRef = useRef(false);
 
+  const origin = useBookingStore((s) => s.origin);
   const setOrigin = useBookingStore((s) => s.setOrigin);
   const setDestination = useBookingStore((s) => s.setDestination);
+  const service = useBookingStore((s) => s.service);
   const setService = useBookingStore((s) => s.setService);
   const { places: recentPlaces } = useRecentDestinations();
+  const validRecentPlaces = useMemo(
+    () => recentPlaces.filter(isPlaceInBolivia),
+    [recentPlaces],
+  );
   // Al terminar de mover el mapa, el centro pasa a ser el punto de partida.
-  const handleRegionChange = useRegionPlace(setOrigin, 'Punto de partida');
+  const { onRegionChangeComplete: handleRegionChange, isResolving: originResolving } =
+    useRegionPlace(setOrigin, 'Punto de partida');
 
   // Empieza colapsado (mapa visible). translateY: 0 = expandido, MAX = colapsado.
   // `useState` con inicializador perezoso crea valores estables; el offset del
   // arrastre lo lleva el propio Animated.Value (extractOffset/flattenOffset),
   // así no hace falta una ref accedida durante el render.
-  const [translateY] = useState(() => new Animated.Value(MAX_TRANSLATE));
+  const [translateY] = useState(() => new Animated.Value(maxTranslate));
 
-  const [pan] = useState(() =>
-    PanResponder.create({
-      // Solo toma el gesto si es un arrastre vertical claro (deja pasar taps).
-      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 4 && Math.abs(g.dy) > Math.abs(g.dx),
-      // Conserva la posición actual como base del arrastre.
-      onPanResponderGrant: () => translateY.extractOffset(),
-      onPanResponderMove: (_, g) => translateY.setValue(g.dy),
-      onPanResponderRelease: (_, g) => {
-        translateY.flattenOffset();
-        translateY.stopAnimation((value) => {
-          // Snap a la posición más cercana, o según la velocidad del gesto.
-          const target =
-            g.vy > 0.5
-              ? MAX_TRANSLATE
-              : g.vy < -0.5
-                ? 0
-                : value > MAX_TRANSLATE / 2
-                  ? MAX_TRANSLATE
-                  : 0;
-          Animated.spring(translateY, {
-            toValue: target,
-            useNativeDriver: false,
-            bounciness: 2,
-          }).start();
-        });
-      },
-    }),
+  useEffect(() => {
+    translateY.setValue(maxTranslate);
+  }, [maxTranslate, translateY]);
+
+  const pan = useMemo(
+    () =>
+      PanResponder.create({
+        // Solo toma el gesto si es un arrastre vertical claro (deja pasar taps).
+        onMoveShouldSetPanResponder: (_, g) =>
+          Math.abs(g.dy) > 4 && Math.abs(g.dy) > Math.abs(g.dx),
+        // Conserva la posición actual como base del arrastre.
+        onPanResponderGrant: () => translateY.extractOffset(),
+        onPanResponderMove: (_, g) => translateY.setValue(g.dy),
+        onPanResponderRelease: (_, g) => {
+          translateY.flattenOffset();
+          translateY.stopAnimation((value) => {
+            const collapsed = maxTranslate;
+            // Snap a la posición más cercana, o según la velocidad del gesto.
+            const target =
+              g.vy > 0.5
+                ? collapsed
+                : g.vy < -0.5
+                  ? 0
+                  : value > collapsed / 2
+                    ? collapsed
+                    : 0;
+            Animated.spring(translateY, {
+              toValue: target,
+              useNativeDriver: false,
+              bounciness: 2,
+            }).start();
+          });
+        },
+      }),
+    [maxTranslate, translateY],
   );
 
   const region = useMemo<Region | undefined>(() => {
-    if (!coordinates) return undefined;
+    if (!coordinates || !isCoordinatesInBolivia(coordinates)) return undefined;
     return {
       latitude: coordinates.latitude,
       longitude: coordinates.longitude,
@@ -171,6 +195,23 @@ export function HomeScreen() {
         recoveryReadyRef.current = false;
       };
     }, [refetchActiveRide, refetchPendingRating]),
+  );
+
+  // El tab permanece montado: al volver después de un tiempo actualizamos el
+  // GPS para que "centrar" no use una posición antigua. No sobrescribimos el
+  // origen que el pasajero haya ajustado manualmente.
+  useFocusEffect(
+    useCallback(() => {
+      if (status !== 'granted') return;
+      const now = Date.now();
+      if (lastLocationRefresh.current === 0) {
+        lastLocationRefresh.current = now;
+        return;
+      }
+      if (now - lastLocationRefresh.current < 60_000) return;
+      lastLocationRefresh.current = now;
+      retry();
+    }, [retry, status]),
   );
 
   // Recupera el punto exacto del flujo una vez terminada la verificacion fresca.
@@ -233,12 +274,47 @@ export function HomeScreen() {
     if (region) mapRef.current?.animateToRegion(region, 500);
   };
 
-  const openDestinationSearch = (service?: ServiceType) => {
-    if (service) setService(service);
+  const requestValidOrigin = (): boolean => {
+    if (originResolving) {
+      Alert.alert(
+        'Obteniendo tu punto de partida',
+        'Espera un momento mientras confirmamos la dirección.',
+      );
+      return false;
+    }
+    if (origin && isPlaceInBolivia(origin)) return true;
+
+    Alert.alert(
+      'Define un origen en Bolivia',
+      origin
+        ? (getBoliviaPlaceError(origin) ?? BOLIVIA_SERVICE_AREA_MESSAGE)
+        : 'Necesitamos un punto de partida antes de elegir el destino.',
+      [
+        { text: 'Ahora no', style: 'cancel' },
+        {
+          text: 'Elegir en el mapa',
+          onPress: () =>
+            router.push({ pathname: '/booking/pick-on-map', params: { target: 'origin' } }),
+        },
+      ],
+    );
+    return false;
+  };
+
+  const openDestinationSearch = () => {
+    if (!requestValidOrigin()) return;
     router.push('/booking/destination');
   };
 
   const selectRecent = (place: Place) => {
+    if (!isPlaceInBolivia(place)) {
+      Alert.alert(
+        'Destino fuera de cobertura',
+        getBoliviaPlaceError(place) ?? BOLIVIA_SERVICE_AREA_MESSAGE,
+      );
+      return;
+    }
+    if (!requestValidOrigin()) return;
     setDestination(place);
     router.navigate('/booking/configure');
   };
@@ -288,25 +364,35 @@ export function HomeScreen() {
           initialRegion={region}
           showsUserLocation
           showsMyLocationButton={false}
+          onMapReady={() =>
+            mapRef.current?.setMapBoundaries(BOLIVIA_NORTH_EAST, BOLIVIA_SOUTH_WEST)
+          }
           onRegionChangeComplete={handleRegionChange}
         />
       ) : (
-        <MapPlaceholder status={status} onRetry={retry} />
+        <MapPlaceholder
+          status={status}
+          canAskAgain={canAskAgain}
+          outsideArea={status === 'granted' && coordinates != null}
+          onRetry={retry}
+        />
       )}
 
       {status === 'granted' && region && <CenterPin label="Punto de partida" />}
 
       <SafeAreaView style={styles.topBar} edges={['top']} pointerEvents="box-none">
-        <TopBarButton icon="menu" accessibilityLabel="Abrir menú" />
-        <Text style={styles.brand}>TaxiGo</Text>
+        <View style={styles.brandMark} accessibilityElementsHidden>
+          <Ionicons name="car-sport" size={22} color={colors.primary} />
+        </View>
+        <Text style={styles.brand}>ViajaYa</Text>
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>{firstName(user?.fullName).charAt(0).toUpperCase()}</Text>
         </View>
       </SafeAreaView>
 
-      {status === 'granted' && (
+      {status === 'granted' && region && (
         <TouchableOpacity
-          style={styles.recenter}
+          style={[styles.recenter, { bottom: sheetPeek + spacing.md }]}
           onPress={recenter}
           accessibilityRole="button"
           accessibilityLabel="Centrar en mi ubicación">
@@ -318,7 +404,7 @@ export function HomeScreen() {
           punto. Solo captura si hay desplazamiento vertical, así los taps en los
           botones siguen funcionando. */}
       <Animated.View
-        style={[styles.sheet, { height: SHEET_HEIGHT, transform: [{ translateY }] }]}
+        style={[styles.sheet, { height: sheetHeight, transform: [{ translateY }] }]}
         {...pan.panHandlers}>
         <View style={styles.handleArea}>
           <View style={styles.handle} />
@@ -339,32 +425,43 @@ export function HomeScreen() {
           </TouchableOpacity>
 
           <View style={styles.services}>
-            {SERVICES.map((service) => (
-              <TouchableOpacity
-                key={service.id}
-                style={styles.serviceCard}
-                onPress={() => openDestinationSearch(service.id)}
-                accessibilityRole="button"
-                accessibilityLabel={`Pedir ${service.label}`}>
-                <View style={styles.serviceIcon}>
-                  <Ionicons name={service.icon} size={26} color={colors.primaryDark} />
-                </View>
-                <Text style={styles.serviceLabel}>{service.label}</Text>
-                <Text style={styles.serviceCaption}>{service.caption}</Text>
-              </TouchableOpacity>
-            ))}
+            {SERVICE_OPTIONS.map((option) => {
+              const selected = service === option.id;
+              return (
+                <TouchableOpacity
+                  key={option.id}
+                  style={[styles.serviceCard, selected && styles.serviceCardSelected]}
+                  onPress={() => setService(option.id)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: selected }}
+                  accessibilityLabel={option.label}>
+                  <View style={[styles.serviceIcon, selected && styles.serviceIconSelected]}>
+                    <Ionicons
+                      name={option.icon}
+                      size={20}
+                      color={selected ? colors.textOnPrimary : colors.primaryDark}
+                    />
+                  </View>
+                  <Text
+                    style={[styles.serviceLabel, selected && styles.serviceLabelSelected]}
+                    numberOfLines={2}>
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
 
-          {recentPlaces.length > 0 && (
+          {validRecentPlaces.length > 0 && (
             <>
               <View style={styles.recentHeader}>
                 <Text style={styles.sectionTitle}>Destinos recientes</Text>
-                <TouchableOpacity onPress={() => openDestinationSearch()} accessibilityRole="button">
+                <TouchableOpacity onPress={openDestinationSearch} accessibilityRole="button">
                   <Text style={styles.viewAll}>Ver todos</Text>
                 </TouchableOpacity>
               </View>
 
-              {recentPlaces.slice(0, 3).map((place) => (
+              {validRecentPlaces.slice(0, 3).map((place) => (
                 <TouchableOpacity
                   key={`${place.coordinates.latitude},${place.coordinates.longitude}`}
                   style={styles.recentItem}
@@ -397,28 +494,15 @@ function ActiveRideGate() {
   );
 }
 
-function TopBarButton({
-  icon,
-  accessibilityLabel,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  accessibilityLabel: string;
-}) {
-  return (
-    <TouchableOpacity
-      style={styles.topBarButton}
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}>
-      <Ionicons name={icon} size={24} color={colors.text} />
-    </TouchableOpacity>
-  );
-}
-
 function MapPlaceholder({
   status,
+  canAskAgain,
+  outsideArea,
   onRetry,
 }: {
   status: ReturnType<typeof useCurrentLocation>['status'];
+  canAskAgain: boolean;
+  outsideArea: boolean;
   onRetry: () => void;
 }) {
   if (status === 'loading') {
@@ -430,17 +514,25 @@ function MapPlaceholder({
     );
   }
 
-  const message =
-    status === 'denied'
+  const message = outsideArea
+    ? BOLIVIA_SERVICE_AREA_MESSAGE
+    : status === 'denied'
       ? 'Activa el permiso de ubicación para ver tu posición en el mapa.'
       : 'No pudimos obtener tu ubicación. Inténtalo de nuevo.';
+  const needsSettings = status === 'denied' && !canAskAgain;
 
   return (
     <View style={[styles.placeholder, styles.placeholderBg]}>
       <Ionicons name="location-outline" size={40} color={colors.textSecondary} />
       <Text style={styles.placeholderText}>{message}</Text>
-      <TouchableOpacity style={styles.retry} onPress={onRetry} accessibilityRole="button">
-        <Text style={styles.retryText}>Reintentar</Text>
+      <TouchableOpacity
+        style={styles.retry}
+        onPress={needsSettings ? () => void Linking.openSettings() : onRetry}
+        accessibilityRole="button"
+        accessibilityLabel={needsSettings ? 'Abrir configuración' : 'Reintentar ubicación'}>
+        <Text style={styles.retryText}>
+          {needsSettings ? 'Abrir configuración' : 'Reintentar'}
+        </Text>
       </TouchableOpacity>
     </View>
   );
@@ -500,7 +592,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  topBarButton: {
+  brandMark: {
     width: 44,
     height: 44,
     borderRadius: radius.pill,
@@ -527,7 +619,6 @@ const styles = StyleSheet.create({
   recenter: {
     position: 'absolute',
     right: spacing.md,
-    bottom: SHEET_PEEK + spacing.md,
     width: 48,
     height: 48,
     borderRadius: radius.pill,
@@ -557,42 +648,54 @@ const styles = StyleSheet.create({
   },
   handleArea: { alignItems: 'center', paddingTop: spacing.sm, paddingBottom: spacing.xs },
   handle: { width: 44, height: 5, borderRadius: radius.pill, backgroundColor: colors.border },
-  sheetContent: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, gap: spacing.md },
-  greeting: { fontSize: fontSize.xl, fontWeight: fontWeight.bold, color: colors.text },
+  sheetContent: { paddingHorizontal: spacing.md, paddingTop: spacing.xs, gap: spacing.sm },
+  greeting: { fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.text },
   greetingName: { color: colors.primary },
 
   search: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    height: 54,
+    height: 48,
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
     backgroundColor: colors.surfaceMuted,
   },
   searchPlaceholder: { color: colors.placeholder, fontSize: fontSize.md },
 
-  services: { flexDirection: 'row', gap: spacing.md },
+  services: { flexDirection: 'row', gap: spacing.sm },
   serviceCard: {
     flex: 1,
-    padding: spacing.md,
+    minWidth: 0,
+    height: 76,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.sm,
     borderRadius: radius.md,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
-    gap: spacing.xs,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
   },
+  serviceCardSelected: { borderColor: colors.primary, backgroundColor: colors.surfaceMuted },
   serviceIcon: {
-    width: 48,
-    height: 48,
+    width: 34,
+    height: 34,
     borderRadius: radius.sm,
     backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.xs,
   },
-  serviceLabel: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.text },
-  serviceCaption: { fontSize: fontSize.xs, color: colors.textSecondary },
+  serviceIconSelected: { backgroundColor: colors.primary },
+  serviceLabel: {
+    fontSize: fontSize.xs,
+    lineHeight: 15,
+    fontWeight: fontWeight.semibold,
+    color: colors.text,
+    textAlign: 'center',
+  },
+  serviceLabelSelected: { color: colors.primaryDark },
 
   recentHeader: {
     flexDirection: 'row',

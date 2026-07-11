@@ -6,7 +6,13 @@
 import { api } from '@/core/http/client';
 import type { Place, SavedPlace, SavedPlaceCategory } from '@/features/booking/domain/types';
 
-type PointDto = { latitude: number; longitude: number; name: string; address: string };
+type PointDto = {
+  latitude: number;
+  longitude: number;
+  name: string;
+  address: string;
+  country_code?: string | null;
+};
 
 type SavedPlaceDto = {
   id: string;
@@ -21,6 +27,7 @@ function toPointDto(place: Place): PointDto {
     longitude: place.coordinates.longitude,
     name: place.name,
     address: place.address,
+    country_code: place.countryCode,
   };
 }
 
@@ -33,6 +40,7 @@ function toSavedPlace(dto: SavedPlaceDto): SavedPlace {
       coordinates: { latitude: dto.location.latitude, longitude: dto.location.longitude },
       name: dto.location.name,
       address: dto.location.address,
+      countryCode: dto.location.country_code?.toUpperCase() ?? null,
     },
   };
 }

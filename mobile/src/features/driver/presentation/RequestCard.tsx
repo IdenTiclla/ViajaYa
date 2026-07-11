@@ -3,10 +3,10 @@
  *
  * Avatar + rating del pasajero, precio ofertado y **contraoferta rápida** (pills
  * +Bs que envían una contraoferta al instante) o precio propio (botón lápiz →
- * `TextInput` nativo). Ruta Pickup/Drop-off y acciones Decline / Aceptar. Al pulsar
- * Aceptar el botón pasa a "Esperando…" (spinner) mientras se envía. Estado
+ * `TextInput` nativo). Ruta Pickup/Drop-off y acciones Ocultar / Enviar oferta. Al pulsar
+ * el botón pasa a "Enviando…" (spinner) mientras se crea la propuesta. Estado
  * `offered` → banner "Oferta enviada"; `rejected` → reofertar. Se puede
- * **rechazar deslizando** (panel rojo).
+ * **ocultar deslizando** para quitarla solo de la vista del conductor.
  */
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo, useRef } from 'react';
@@ -18,6 +18,7 @@ import Animated, { SlideInDown } from 'react-native-reanimated';
 
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 import { useCountdown } from '@/core/hooks/useCountdown';
+import { SERVICE_META } from '@/features/booking/domain/serviceCatalog';
 import { formatKm, haversineKm, pricePerKm } from '@/features/rides/domain/geo';
 import { formatBolivianos } from '@/features/rides/domain/money';
 import { OfferLifeTimer } from '@/features/rides/presentation/OfferLifeTimer';
@@ -38,7 +39,7 @@ type Props = {
   taken: boolean;
   /** Bloquea toda interacción (hay una mutación en curso). */
   disabled: boolean;
-  /** Esta tarjeta es la que está enviando la oferta/aceptación (botón "Esperando…"). */
+  /** Esta tarjeta es la que está enviando la oferta (botón "Enviando…"). */
   pendingAccept: boolean;
   /** Expiración (ISO) de la oferta enviada; alimenta el contador del banner offered. */
   offerExpiresAt: string | null;
@@ -82,17 +83,19 @@ export function RequestCard({
   const perKm = pricePerKm(displayPrice, tripKm);
 
   const { rider } = ride;
+  const customerNoun = ride.service === 'delivery' ? 'remitente' : 'pasajero';
+  const requestNoun = ride.service === 'delivery' ? 'entrega' : 'viaje';
   const initial = rider.fullName.trim().charAt(0).toUpperCase() || '?';
   const meta = [
-    ride.service === 'taxi' ? 'Taxi' : 'Moto',
+    SERVICE_META[ride.service].shortLabel,
     `${rider.tripsCompleted} ${rider.tripsCompleted === 1 ? 'viaje' : 'viajes'}`,
     PAYMENT_LABELS[ride.payment],
   ].join(' · ');
 
   const renderLeftActions = () => (
     <View style={styles.swipeAction}>
-      <Ionicons name="close-circle" size={26} color={colors.textOnPrimary} />
-      <Text style={styles.swipeActionText}>Rechazar</Text>
+      <Ionicons name="eye-off-outline" size={26} color={colors.textOnPrimary} />
+      <Text style={styles.swipeActionText}>Ocultar</Text>
     </View>
   );
 
@@ -107,7 +110,7 @@ export function RequestCard({
         activeOpacity={0.9}
         onPress={onPress}
         accessibilityRole="button"
-        accessibilityLabel={`Solicitud de ${rider.fullName}, ${ride.service === 'taxi' ? 'taxi' : 'moto'}, ${offered && offerPrice != null ? `tu oferta Bs ${formatBolivianos(offerPrice)}` : `Bs ${formatBolivianos(ride.fare)}`}`}
+        accessibilityLabel={`Solicitud de ${rider.fullName}, ${SERVICE_META[ride.service].label}, ${offered && offerPrice != null ? `tu oferta Bs ${formatBolivianos(offerPrice)}` : `Bs ${formatBolivianos(ride.fare)}`}`}
         style={styles.card}>
         {offered && (
           <OfferedBanner expiresAt={offerExpiresAt} disabled={disabled} onWithdraw={onWithdraw} />
@@ -122,7 +125,7 @@ export function RequestCard({
           <View style={styles.pausedBanner}>
             <Ionicons name="create-outline" size={15} color={colors.textSecondary} />
             <Text style={styles.pausedBannerText}>
-              El pasajero está modificando su solicitud
+              El {customerNoun} está modificando su solicitud
             </Text>
             <TouchableOpacity
               style={styles.dismissBannerBtn}
@@ -136,14 +139,14 @@ export function RequestCard({
         {taken && (
           <View style={styles.takenBanner}>
             <Ionicons name="trophy-outline" size={15} color={colors.textOnPrimary} />
-            <Text style={styles.takenBannerText}>Otro conductor tomó el viaje</Text>
+            <Text style={styles.takenBannerText}>Otro conductor tomó la {requestNoun}</Text>
           </View>
         )}
         {rejected && (
           <View style={styles.rejectedBanner}>
             <Ionicons name="close-circle" size={15} color={colors.textOnPrimary} />
             <Text style={styles.rejectedBannerText}>
-              El pasajero no aceptó tu oferta · vuelve a intentarlo
+              El {customerNoun} no aceptó tu oferta · vuelve a intentarlo
             </Text>
           </View>
         )}
@@ -251,22 +254,22 @@ export function RequestCard({
               onPress={onDismiss}
               disabled={disabled}
               accessibilityRole="button"
-              accessibilityLabel="Rechazar solicitud">
-              <Text style={styles.declineText}>Rechazar</Text>
+              accessibilityLabel="Ocultar solicitud">
+              <Text style={styles.declineText}>Ocultar</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.actionBtn, styles.accept, disabled && styles.disabled]}
               onPress={onAccept}
               disabled={disabled}
               accessibilityRole="button"
-              accessibilityLabel={`Aceptar por Bs ${formatBolivianos(ride.fare)}`}>
+              accessibilityLabel={`Enviar oferta por Bs ${formatBolivianos(ride.fare)}`}>
               {pendingAccept ? (
                 <View style={styles.acceptWaiting}>
                   <ActivityIndicator color={colors.textOnPrimary} size="small" />
-                  <Text style={styles.acceptText}>Esperando…</Text>
+                  <Text style={styles.acceptText}>Enviando…</Text>
                 </View>
               ) : (
-                <Text style={styles.acceptText}>Aceptar</Text>
+                <Text style={styles.acceptText}>Enviar oferta</Text>
               )}
             </TouchableOpacity>
           </View>
@@ -313,7 +316,7 @@ function OfferedBanner({
 const styles = StyleSheet.create({
   swipeAction: {
     width: 96,
-    backgroundColor: colors.danger,
+    backgroundColor: colors.textSecondary,
     borderRadius: radius.md,
     justifyContent: 'center',
     alignItems: 'center',

@@ -23,6 +23,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 import { useDeletePlace, useSavePlace } from '@/features/booking/application/useSavedPlaces';
+import { getBoliviaPlaceError } from '@/features/booking/domain/bolivia';
 import { ConfirmDialog } from '@/shared/components';
 import type { Place, SavedPlaceCategory } from '@/features/booking/domain/types';
 import {
@@ -44,6 +45,8 @@ export function EditPlaceScreen() {
     address?: string;
     label?: string;
     category?: string;
+    countryCode?: string;
+    rideId?: string;
   }>();
 
   const isEditing = Boolean(params.id);
@@ -68,11 +71,17 @@ export function EditPlaceScreen() {
     coordinates: { latitude, longitude },
     name: params.name ?? '',
     address: params.address ?? '',
+    countryCode: params.countryCode?.toUpperCase() ?? null,
   };
 
   const onSave = () => {
     const label = name.trim();
     if (!label || !hasPoint || busy) return;
+    const locationError = getBoliviaPlaceError(place);
+    if (locationError) {
+      Alert.alert('Ubicación fuera de cobertura', locationError);
+      return;
+    }
     savePlace.mutate(
       { id: params.id, input: { label, category, place } },
       {
@@ -101,6 +110,7 @@ export function EditPlaceScreen() {
       params: {
         saveAs: '1',
         category,
+        ...(params.rideId ? { rideId: params.rideId } : {}),
         ...(params.id ? { id: params.id } : {}),
         ...(name.trim() ? { label: name.trim() } : {}),
       },

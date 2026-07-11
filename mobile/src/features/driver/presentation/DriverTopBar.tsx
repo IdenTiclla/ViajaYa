@@ -8,7 +8,7 @@
  * acomoda como cabecera en la vista de lista.
  */
 import { Ionicons } from '@expo/vector-icons';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
@@ -43,15 +43,22 @@ export function DriverTopBar({
           onPress={() => onToggle(!online)}
           disabled={pending}
           accessibilityRole="switch"
-          accessibilityState={{ checked: online }}
+          accessibilityState={{ checked: online, busy: pending, disabled: pending }}
           accessibilityLabel={
             online ? 'En línea. Toca para desconectarte' : 'Desconectado. Toca para conectarte'
           }>
-          <View
-            style={[styles.dot, { backgroundColor: online ? colors.surface : colors.textSecondary }]}
-          />
+          {pending ? (
+            <ActivityIndicator
+              size="small"
+              color={online ? colors.textOnPrimary : colors.primary}
+            />
+          ) : (
+            <View
+              style={[styles.dot, { backgroundColor: online ? colors.surface : colors.textSecondary }]}
+            />
+          )}
           <Text style={[styles.pillText, online ? styles.pillTextOnline : styles.pillTextOffline]}>
-            {online ? 'EN LÍNEA' : 'DESCONECTADO'}
+            {pending ? 'ACTUALIZANDO' : online ? 'EN LÍNEA' : 'DESCONECTADO'}
           </Text>
         </TouchableOpacity>
 

@@ -6,6 +6,7 @@
  * La *creación* de la solicitud sigue viviendo en `booking/data/ridesRepository`.
  */
 import { api } from '@/core/http/client';
+import type { VehicleType } from '@/features/auth/domain/types';
 import type { Place } from '@/features/booking/domain/types';
 import type {
   CreateOfferInput,
@@ -19,13 +20,20 @@ import type {
   RideStatus,
 } from '@/features/rides/domain/types';
 
-type PointDto = { latitude: number; longitude: number; name: string; address: string };
+type PointDto = {
+  latitude: number;
+  longitude: number;
+  name: string;
+  address: string;
+  country_code?: string | null;
+};
 
 function toPlace(dto: PointDto): Place {
   return {
     coordinates: { latitude: dto.latitude, longitude: dto.longitude },
     name: dto.name,
     address: dto.address,
+    countryCode: dto.country_code?.toUpperCase() ?? null,
   };
 }
 
@@ -35,6 +43,7 @@ function toPointDto(place: Place): PointDto {
     longitude: place.coordinates.longitude,
     name: place.name,
     address: place.address,
+    country_code: place.countryCode,
   };
 }
 
@@ -119,7 +128,7 @@ type RideDriverDto = {
   full_name: string;
   phone: string | null;
   rating: number | null;
-  vehicle_type: Ride['service'] | null;
+  vehicle_type: VehicleType | null;
   plate: string | null;
   vehicle_model: string | null;
 };
@@ -184,7 +193,7 @@ type HistoryCounterpartDto = {
   id: string;
   full_name: string;
   rating: number | null;
-  vehicle_type: RideHistoryItem['service'] | null;
+  vehicle_type: VehicleType | null;
   vehicle_model: string | null;
   plate: string | null;
 };

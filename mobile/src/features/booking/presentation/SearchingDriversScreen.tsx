@@ -18,8 +18,10 @@ import { useEffect, useState } from 'react';
 import {
   Animated,
   Easing,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -42,11 +44,11 @@ import { TripRouteMap } from '@/features/rides/presentation/TripRouteMap';
 import { RouteSummary } from '@/features/rides/presentation/RouteSummary';
 import { ConfirmDialog } from '@/shared/components';
 
-/** Incrementos rápidos de la oferta (en Bs) con su etiqueta de prioridad. */
+/** Incrementos rápidos de la oferta (en Bs). */
 const QUICK_INCREMENTS = [
-  { delta: 2, hint: 'Sugerido' },
-  { delta: 5, hint: 'Rápido' },
-  { delta: 10, hint: 'Prioridad' },
+  { delta: 2, hint: 'Menor ajuste' },
+  { delta: 5, hint: 'Ajuste medio' },
+  { delta: 10, hint: 'Ajuste alto' },
 ] as const;
 
 export function SearchingDriversScreen({
@@ -69,6 +71,8 @@ export function SearchingDriversScreen({
   const cancelRide = useCancelRide();
   const updateFare = useUpdateRideFare();
   const pauseForEdit = usePauseForEdit();
+  const negotiationBusy =
+    cancelRide.isPending || updateFare.isPending || pauseForEdit.isPending;
 
   const [customIncrease, setCustomIncrease] = useState('');
   const [confirmCancel, setConfirmCancel] = useState(false);
@@ -76,7 +80,7 @@ export function SearchingDriversScreen({
 
   // La búsqueda no caduca: se sale al modificar (pausa y edita) o cancelar.
   const onModify = () => {
-    if (pauseForEdit.isPending) return;
+    if (negotiationBusy) return;
     if (!rideId) {
       router.replace('/(app)/booking/configure');
       return;
@@ -90,7 +94,7 @@ export function SearchingDriversScreen({
 
   const onCancel = () => {
     setConfirmCancel(false);
-    if (cancelRide.isPending) return;
+    if (negotiationBusy) return;
     if (!rideId) {
       useBookingStore.getState().resetTrip();
       router.replace('/(app)/(tabs)');
@@ -113,7 +117,7 @@ export function SearchingDriversScreen({
     updateFare.mutate({ rideId, fare: next });
   };
 
-  const fareLocked = currentFare == null || updateFare.isPending;
+  const fareLocked = currentFare == null || negotiationBusy;
   const customIncreaseValue = Number(customIncrease.replace(',', '.'));
   const customIncreaseIsValid = Number.isFinite(customIncreaseValue) && customIncreaseValue > 0;
 
@@ -122,7 +126,12 @@ export function SearchingDriversScreen({
     const next = Math.round((currentFare + customIncreaseValue) * 100) / 100;
     updateFare.mutate(
       { rideId, fare: next },
-      { onSuccess: () => setCustomIncrease('') },
+      {
+        onSuccess: () => {
+          setCustomIncrease('');
+          Keyboard.dismiss();
+        },
+      },
     );
   };
 
@@ -156,6 +165,12 @@ export function SearchingDriversScreen({
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           pointerEvents="box-none">
         <SafeAreaView edges={['bottom']} style={styles.sheet}>
+          <ScrollView
+            contentContainerStyle={styles.sheetContent}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            showsVerticalScrollIndicator={false}
+            bounces={false}>
           <View style={styles.sheetHandle} />
 
           {/* Estado de búsqueda */}
@@ -190,7 +205,7 @@ export function SearchingDriversScreen({
           {/* Aumentar oferta */}
           <View style={styles.bidHeader}>
             <Text style={styles.bidTitle}>Aumentar oferta</Text>
-            <Text style={styles.bidHint}>Recibe ofertas más rápido</Text>
+            <Text style={styles.bidHint}>Monto adicional</Text>
           </View>
           {currentFare != null && (
             <Text style={styles.currentFare}>Tu oferta actual: Bs {formatBolivianos(currentFare)}</Text>
@@ -230,6 +245,8 @@ export function SearchingDriversScreen({
                 keyboardType="decimal-pad"
                 inputMode="decimal"
                 maxLength={9}
+                returnKeyType="done"
+                onSubmitEditing={applyCustomIncrease}
                 editable={!fareLocked}
                 style={styles.customAmountInput}
                 accessibilityLabel="Aumentar oferta en bolivianos"
@@ -261,18 +278,18 @@ export function SearchingDriversScreen({
             <Text style={styles.error}>{getApiErrorMessage(pauseForEdit.error)}</Text>
           )}
           <TouchableOpacity
-            style={[styles.modify, pauseForEdit.isPending && styles.disabled]}
+            style={[styles.modify, negotiationBusy && styles.disabled]}
             onPress={onModify}
-            disabled={pauseForEdit.isPending}
+            disabled={negotiationBusy}
             accessibilityRole="button"
             accessibilityLabel="Modificar solicitud">
             <Ionicons name="create-outline" size={20} color={colors.primary} />
             <Text style={styles.modifyText}>Modificar solicitud</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.cancel, cancelRide.isPending && styles.disabled]}
+            style={[styles.cancel, negotiationBusy && styles.disabled]}
             onPress={() => setConfirmCancel(true)}
-            disabled={cancelRide.isPending}
+            disabled={negotiationBusy}
             accessibilityRole="button"
             accessibilityLabel="Cancelar solicitud">
             <Ionicons name="close" size={18} color={colors.danger} />
@@ -280,6 +297,7 @@ export function SearchingDriversScreen({
               {cancelRide.isPending ? 'Cancelando…' : 'Cancelar solicitud'}
             </Text>
           </TouchableOpacity>
+          </ScrollView>
         </SafeAreaView>
         </KeyboardAvoidingView>
       </View>
@@ -441,18 +459,21 @@ const styles = StyleSheet.create({
   },
 
   sheet: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
+    maxHeight: '88%',
     backgroundColor: colors.background,
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,
-    gap: spacing.sm,
     shadowColor: '#000',
     shadowOpacity: 0.12,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: -3 },
     elevation: 12,
+  },
+  sheetContent: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
+    gap: spacing.sm,
   },
   sheetHandle: {
     width: 40,

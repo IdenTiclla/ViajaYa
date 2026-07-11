@@ -18,8 +18,10 @@ from app.domain.entities import (
     RideRequest,
     RideStatus,
     ServiceType,
+    VehicleType,
 )
 from app.domain.repositories import OpenRideDetail
+from app.domain.service_area import bolivia_covers
 
 
 class PointSchema(BaseModel):
@@ -29,6 +31,7 @@ class PointSchema(BaseModel):
     longitude: float = Field(ge=-180, le=180)
     name: str = Field(min_length=1, max_length=255)
     address: str = Field(min_length=1, max_length=512)
+    country_code: str | None = Field(default=None, min_length=2, max_length=2)
 
     @classmethod
     def from_location(cls, location: Location) -> PointSchema:
@@ -37,6 +40,9 @@ class PointSchema(BaseModel):
             longitude=location.longitude,
             name=location.name,
             address=location.address,
+            country_code=(
+                "BO" if bolivia_covers(location.latitude, location.longitude) else None
+            ),
         )
 
 
@@ -137,7 +143,7 @@ class RideDriverSchema(BaseModel):
     full_name: str
     phone: str | None
     rating: float | None
-    vehicle_type: ServiceType | None
+    vehicle_type: VehicleType | None
     plate: str | None
     vehicle_model: str | None
 
@@ -221,6 +227,7 @@ class RecentDestinationResponse(BaseModel):
     longitude: float
     name: str
     address: str
+    country_code: str | None = None
 
     @classmethod
     def from_location(cls, location: Location) -> RecentDestinationResponse:
@@ -229,6 +236,9 @@ class RecentDestinationResponse(BaseModel):
             longitude=location.longitude,
             name=location.name,
             address=location.address,
+            country_code=(
+                "BO" if bolivia_covers(location.latitude, location.longitude) else None
+            ),
         )
 
 
@@ -238,7 +248,7 @@ class HistoryCounterpartSchema(BaseModel):
     id: uuid.UUID
     full_name: str
     rating: float | None = None
-    vehicle_type: ServiceType | None = None
+    vehicle_type: VehicleType | None = None
     vehicle_model: str | None = None
     plate: str | None = None
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.domain.entities import ServiceType, UserRole
+from app.domain.entities import UserRole, VehicleType
 from app.infrastructure.db.repositories import SqlAlchemyUserRepository
 
 REGISTER = "/api/v1/auth/register"
@@ -18,7 +18,7 @@ async def _register(client, email: str) -> tuple[str, str]:
     return body["user"]["id"], body["tokens"]["access_token"]
 
 
-async def _promote_to_driver(session_factory, email: str, vehicle: ServiceType) -> None:
+async def _promote_to_driver(session_factory, email: str, vehicle: VehicleType) -> None:
     async with session_factory() as session:
         users = SqlAlchemyUserRepository(session)
         user = await users.get_by_email(email)
@@ -50,7 +50,7 @@ def _ride_payload(fare: str = "25.00", dest_name: str = "Trabajo") -> dict:
 async def test_pause_edit_and_republish_ride(client, session_factory):
     _, rider_token = await _register(client, "rider@example.com")
     _, drv_token = await _register(client, "driver@example.com")
-    await _promote_to_driver(session_factory, "driver@example.com", ServiceType.TAXI)
+    await _promote_to_driver(session_factory, "driver@example.com", VehicleType.TAXI)
     rider_h, drv_h = _headers(rider_token), _headers(drv_token)
 
     ride_id = (await client.post(RIDES, json=_ride_payload(), headers=rider_h)).json()["id"]
@@ -112,3 +112,33 @@ async def test_edit_without_pause_rejected(client, session_factory):
         headers=rider_h,
     )
     assert edited.status_code == 409
+
+
+async def test_edit_rejects_destination_outside_bolivia_and_keeps_ride_paused(
+    client,
+):
+    _, rider_token = await _register(client, "border-rider@example.com")
+    rider_h = _headers(rider_token)
+    created = await client.post(RIDES, json=_ride_payload(), headers=rider_h)
+    ride_id = created.json()["id"]
+    paused = await client.post(f"{RIDES}/{ride_id}/pause-edit", headers=rider_h)
+    assert paused.status_code == 200, paused.text
+
+    payload = _ride_payload(fare="35.00", dest_name="Fuerte Olimpo")
+    payload["destination"] = {
+        "latitude": -21.041,
+        "longitude": -57.873,
+        "name": "Fuerte Olimpo",
+        "address": "Paraguay",
+        "country_code": "BO",
+    }
+    edited = await client.patch(
+        f"{RIDES}/{ride_id}", json=payload, headers=rider_h
+    )
+
+    assert edited.status_code == 422
+    assert "Bolivia" in edited.json()["detail"]
+    stored = await client.get(f"{RIDES}/{ride_id}", headers=rider_h)
+    assert stored.status_code == 200
+    assert stored.json()["paused"] is True
+    assert stored.json()["destination"]["name"] == "Trabajo"

@@ -10,7 +10,7 @@ from __future__ import annotations
 import uuid
 
 from app.application.dto import CreateOfferInput, CreateOfferResult, OfferDetail
-from app.domain.entities import Offer, RideStatus, User
+from app.domain.entities import Offer, RideStatus, User, vehicle_can_serve
 from app.domain.exceptions import (
     DriverUnavailableError,
     InvalidFareError,
@@ -42,7 +42,7 @@ class CreateOffer:
             raise InvalidRideTransitionError("La solicitud ya no admite ofertas.")
         if ride.paused:
             raise InvalidRideTransitionError("La solicitud está siendo modificada.")
-        if ride.service_type is not driver.vehicle_type:
+        if not vehicle_can_serve(ride.service_type, driver.vehicle_type):
             raise NotAuthorizedActionError(
                 "Tu vehículo no coincide con el servicio solicitado."
             )

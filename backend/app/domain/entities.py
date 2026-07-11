@@ -29,11 +29,34 @@ class UserRole(enum.StrEnum):
     DELIVERY = "delivery"
 
 
-class ServiceType(enum.StrEnum):
-    """Tipo de servicio solicitado en un viaje."""
+class VehicleType(enum.StrEnum):
+    """Tipo fisico de vehiculo registrado por un conductor."""
 
     TAXI = "taxi"
     MOTO = "moto"
+
+
+class ServiceType(enum.StrEnum):
+    """Tipo de servicio solicitado por un pasajero."""
+
+    TAXI = "taxi"
+    MOTO = "moto"
+    DELIVERY = "delivery"
+
+
+def vehicle_can_serve(service_type: ServiceType, vehicle_type: VehicleType) -> bool:
+    """Taxi y moto pueden transportar encomiendas; viajes personales exigen coincidencia."""
+
+    return (
+        service_type is ServiceType.DELIVERY
+        or service_type.value == vehicle_type.value
+    )
+
+
+def services_for_vehicle(vehicle_type: VehicleType) -> tuple[ServiceType, ...]:
+    """Servicios visibles para un conductor según su vehículo."""
+
+    return (ServiceType(vehicle_type.value), ServiceType.DELIVERY)
 
 
 @dataclass
@@ -55,7 +78,7 @@ class User:
     auth_provider: AuthProvider = AuthProvider.LOCAL
     provider_id: str | None = None
     role: UserRole = UserRole.PASSENGER
-    vehicle_type: ServiceType | None = None
+    vehicle_type: VehicleType | None = None
     plate: str | None = None
     vehicle_model: str | None = None
     rating: float | None = None

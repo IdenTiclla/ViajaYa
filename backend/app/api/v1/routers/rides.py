@@ -89,6 +89,7 @@ def _to_location_input(point) -> LocationInput:
         longitude=point.longitude,
         name=point.name,
         address=point.address,
+        country_code=point.country_code,
     )
 
 

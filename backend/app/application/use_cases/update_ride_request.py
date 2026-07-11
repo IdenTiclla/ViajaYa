@@ -12,7 +12,7 @@ from app.domain.exceptions import (
     RideNotFoundError,
 )
 from app.domain.repositories import OfferRepository, RideRequestRepository
-from app.domain.value_objects import FareOffer, GeoPoint
+from app.domain.value_objects import FareOffer, ServiceAreaPoint
 
 
 class UpdateRideRequest:
@@ -34,8 +34,14 @@ class UpdateRideRequest:
             )
 
         previous_service_type = ride.service_type
-        origin_point = GeoPoint(data.origin.latitude, data.origin.longitude)
-        destination_point = GeoPoint(data.destination.latitude, data.destination.longitude)
+        origin_point = ServiceAreaPoint(
+            data.origin.latitude, data.origin.longitude, data.origin.country_code
+        )
+        destination_point = ServiceAreaPoint(
+            data.destination.latitude,
+            data.destination.longitude,
+            data.destination.country_code,
+        )
         fare = FareOffer(data.fare)
 
         from app.domain.entities import Location

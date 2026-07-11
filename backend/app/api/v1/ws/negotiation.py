@@ -24,7 +24,7 @@ from app.application.use_cases.expire_offer import ExpireOffer
 from app.application.use_cases.get_driver_active_ride import GetDriverActiveRide
 from app.application.use_cases.list_offers_for_ride import ListOffersForRide
 from app.application.use_cases.list_open_rides import ListOpenRides
-from app.domain.entities import UserRole
+from app.domain.entities import UserRole, services_for_vehicle
 from app.domain.ride_policy import is_offer_expired
 from app.infrastructure.config import get_settings
 from app.infrastructure.db.repositories import (
@@ -137,7 +137,10 @@ async def driver_ws(
                 await websocket.close(code=_POLICY_VIOLATION)
                 return
 
-            topics = [pool_topic(user.vehicle_type.value), driver_topic(user.id)]
+            topics = [
+                *(pool_topic(service.value) for service in services_for_vehicle(user.vehicle_type)),
+                driver_topic(user.id),
+            ]
             # Suscribir dentro de la barrera cierra la ventana entre leer el estado
             # y empezar a recibir eventos. Un broadcast concurrente espera hasta
             # que los snapshots completos hayan salido.

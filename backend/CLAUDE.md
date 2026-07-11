@@ -12,7 +12,7 @@ La infraestructura implementa interfaces del dominio/aplicación y se cablea en 
 app/
 ├── domain/                  # Núcleo. SIN dependencias de framework.
 │   ├── entities.py            # User, RideRequest, Offer, RideRating, SavedPlace + enums
-│   │                          #   (AuthProvider, UserRole, ServiceType, PaymentMethod,
+│   │                          #   (AuthProvider, UserRole, VehicleType, ServiceType, PaymentMethod,
 │   │                          #    RideStatus, OfferStatus, SavedPlaceCategory)
 │   ├── value_objects.py       # Email, RawPassword, GeoPoint, FareOffer (frozen, slots)
 │   ├── repositories.py        # Interfaces (puertos): User, RideRequest, Offer, Rating, SavedPlace
@@ -139,8 +139,10 @@ Rutas protegidas: usan `CurrentUserDep` (header `Authorization: Bearer <access_t
 
 ## Modelo de negociación (el pasajero decide)
 
-El pasajero crea un `RideRequest` (`SEARCHING`); los conductores cuyo `vehicle_type` coincide
-ofertan (`Offer` `PENDING`). **El pasajero decide**: `POST /offers/{id}/accept` =
+El pasajero crea un `RideRequest` (`SEARCHING`). `VehicleType` representa solo el vehículo
+físico (`taxi`/`moto`) y `ServiceType` el servicio (`taxi`/`moto`/`delivery`): los viajes
+personales exigen coincidencia y ambos vehículos pueden atender encomiendas. Los conductores
+compatibles ofertan (`Offer` `PENDING`). **El pasajero decide**: `POST /offers/{id}/accept` =
 **asignación directa** — `OfferRepository.accept_atomically` usa `SELECT … FOR UPDATE` en
 Postgres: fija `driver_id`/`accepted_offer_id`, rechaza las demás offers del viaje y retira las
 offers vivas del conductor elegido en **otros rides** (`OfferAcceptance.withdrawn_ride_ids` /
@@ -172,8 +174,9 @@ fuera de la URL y los access logs; cierre 1008 si es inválido):
 - **`WS /ws/rides/{ride_id}`** — pasajero dueño. Snapshot inicial `offers_snapshot` + eventos del `ride_topic`.
 - **`WS /ws/driver`** — conductor en línea. Handshake ordenado `open_rides_snapshot` →
   `driver_offers_snapshot` → `driver_active_ride` (si existe); excluye ofertas vencidas y recupera
-  ofertas pendientes/viaje activo al reiniciar. Después recibe eventos de `pool:{vehicle_type}` y
-  `driver:{id}`. Una barrera de entrega evita la ventana ciega entre snapshot y suscripción.
+  ofertas pendientes/viaje activo al reiniciar. Después recibe eventos de su
+  `pool:{vehicle_type}`, de `pool:delivery` y de `driver:{id}`. Una barrera de entrega evita la
+  ventana ciega entre snapshot y suscripción.
 
 **Eventos** (`api/v1/events.py`, publicados vía `hub.broadcast` a `ride_topic`/`driver_topic`/`pool_topic`):
 

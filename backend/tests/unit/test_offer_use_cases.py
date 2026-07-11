@@ -26,6 +26,7 @@ from app.domain.entities import (
     ServiceType,
     User,
     UserRole,
+    VehicleType,
 )
 from app.domain.exceptions import (
     DriverUnavailableError,
@@ -47,7 +48,7 @@ def _passenger() -> User:
     return User(full_name="Pasa", email="pasa@x.com", role=UserRole.PASSENGER)
 
 
-def _driver(vehicle: ServiceType = ServiceType.TAXI) -> User:
+def _driver(vehicle: VehicleType = VehicleType.TAXI) -> User:
     return User(
         full_name="Condu",
         email=f"condu-{uuid.uuid4().hex[:6]}@x.com",
@@ -95,6 +96,30 @@ async def test_create_offer_counteroffer_uses_own_price():
     assert result.detail.offer.price == Decimal("30.00")
 
 
+@pytest.mark.parametrize("vehicle", [VehicleType.TAXI, VehicleType.MOTO])
+async def test_taxi_and_moto_can_offer_and_be_assigned_delivery(
+    vehicle: VehicleType,
+):
+    rides = InMemoryRideRequestRepository()
+    users = InMemoryUserRepository()
+    offers = InMemoryOfferRepository(rides=rides, users=users)
+    rider, driver = _passenger(), _driver(vehicle)
+    await users.add(driver)
+    ride = await rides.add(_ride(rider.id, service=ServiceType.DELIVERY))
+
+    created = await CreateOffer(rides, offers).execute(
+        driver, ride.id, CreateOfferInput(accept_at_fare=True)
+    )
+    accepted = await AcceptOffer(rides, offers).execute(
+        rider, created.detail.offer.id
+    )
+
+    assert accepted.detail.ride.driver_id == driver.id
+    assert accepted.detail.ride.service_type is ServiceType.DELIVERY
+    assert accepted.detail.accepted_offer is not None
+    assert accepted.detail.accepted_offer.price == ride.fare
+
+
 async def test_create_offer_supersedes_previous_pending_offer():
     """Mejorar la oferta: la nueva reemplaza a la anterior del mismo conductor."""
     rides, offers = InMemoryRideRequestRepository(), InMemoryOfferRepository()
@@ -136,7 +161,7 @@ async def test_create_offer_blocked_after_ride_assigned():
 async def test_create_offer_rejects_mismatched_vehicle():
     rides, offers = InMemoryRideRequestRepository(), InMemoryOfferRepository()
     rider = _passenger()
-    moto_driver = _driver(ServiceType.MOTO)
+    moto_driver = _driver(VehicleType.MOTO)
     ride = await rides.add(_ride(rider.id, service=ServiceType.TAXI))
 
     with pytest.raises(NotAuthorizedActionError):
@@ -450,21 +475,30 @@ async def test_set_driver_online_rejects_passenger():
         await SetDriverOnline(users, offers).execute(passenger, True)
 
 
-async def test_list_open_rides_filters_by_vehicle_type():
+@pytest.mark.parametrize(
+    ("vehicle", "expected_services"),
+    [
+        (VehicleType.TAXI, {ServiceType.TAXI, ServiceType.DELIVERY}),
+        (VehicleType.MOTO, {ServiceType.MOTO, ServiceType.DELIVERY}),
+    ],
+)
+async def test_list_open_rides_filters_by_vehicle_type_and_includes_delivery(
+    vehicle: VehicleType,
+    expected_services: set[ServiceType],
+):
     users = InMemoryUserRepository()
     rides = InMemoryRideRequestRepository(users=users)
     rider = _passenger()
     await users.add(rider)
     await rides.add(_ride(rider.id, service=ServiceType.TAXI))
     await rides.add(_ride(rider.id, service=ServiceType.MOTO))
+    await rides.add(_ride(rider.id, service=ServiceType.DELIVERY))
 
-    taxi_driver = _driver(ServiceType.TAXI)
-    open_rides = await ListOpenRides(rides).execute(taxi_driver)
+    open_rides = await ListOpenRides(rides).execute(_driver(vehicle))
 
-    assert len(open_rides) == 1
-    assert open_rides[0].ride.service_type is ServiceType.TAXI
-    assert open_rides[0].rider.full_name == "Pasa"
-    assert open_rides[0].rider.trips_completed == 0
+    assert {detail.ride.service_type for detail in open_rides} == expected_services
+    assert all(detail.rider.full_name == "Pasa" for detail in open_rides)
+    assert all(detail.rider.trips_completed == 0 for detail in open_rides)
 
 
 async def test_list_offers_hides_expired_offers():

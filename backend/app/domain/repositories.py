@@ -20,9 +20,9 @@ from app.domain.entities import (
     RideRequest,
     RideStatus,
     SavedPlace,
-    ServiceType,
     User,
     UserRole,
+    VehicleType,
 )
 
 
@@ -169,12 +169,14 @@ class RideRequestRepository(ABC):
         """Cancela atómicamente solo un ride ``SEARCHING`` y no pausado."""
 
     @abstractmethod
-    async def list_open_for_service(self, service_type: ServiceType) -> list[RideRequest]:
-        """Solicitudes ``SEARCHING`` del tipo de servicio dado, de la más nueva a la más vieja."""
+    async def list_open_for_vehicle(self, vehicle_type: VehicleType) -> list[RideRequest]:
+        """Solicitudes compatibles con el vehiculo, de la mas nueva a la mas vieja."""
 
     @abstractmethod
-    async def list_open_with_rider(self, service_type: ServiceType) -> list[OpenRideDetail]:
-        """Solicitudes ``SEARCHING`` enriquecidas con el resumen del pasajero
+    async def list_open_with_rider_for_vehicle(
+        self, vehicle_type: VehicleType
+    ) -> list[OpenRideDetail]:
+        """Solicitudes compatibles enriquecidas con el resumen del pasajero
         (nombre, rating y viajes completados), en **una sola query** (JOIN +
         conteo, sin N+1). Orden: de la más nueva a la más vieja."""
 

@@ -23,6 +23,7 @@ from app.domain.entities import (
     ServiceType,
     User,
     UserRole,
+    VehicleType,
 )
 from app.domain.ride_policy import OFFER_TTL
 from tests.fakes import (
@@ -44,7 +45,7 @@ def _driver() -> User:
         full_name="Condu",
         email=f"d-{uuid.uuid4().hex[:6]}@x.com",
         role=UserRole.DRIVER,
-        vehicle_type=ServiceType.TAXI,
+        vehicle_type=VehicleType.TAXI,
         is_online=True,
     )
 

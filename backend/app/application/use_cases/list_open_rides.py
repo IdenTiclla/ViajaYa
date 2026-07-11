@@ -21,4 +21,4 @@ class ListOpenRides:
         # Las solicitudes no caducan por tiempo: se listan todas las que siguen
         # buscando conductor para el servicio del conductor, ya enriquecidas con
         # los datos del pasajero (una sola query en el repositorio).
-        return await self._rides.list_open_with_rider(driver.vehicle_type)
+        return await self._rides.list_open_with_rider_for_vehicle(driver.vehicle_type)

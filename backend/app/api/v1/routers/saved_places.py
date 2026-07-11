@@ -33,6 +33,7 @@ def _to_input(body: SaveSavedPlaceRequest) -> SaveSavedPlaceInput:
             longitude=body.location.longitude,
             name=body.location.name,
             address=body.location.address,
+            country_code=body.location.country_code,
         ),
     )
 

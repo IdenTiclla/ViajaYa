@@ -6,7 +6,7 @@ from app.application.dto import CreateRideRequestInput
 from app.domain.entities import Location, RideRequest, User, UserRole
 from app.domain.exceptions import NotAuthorizedActionError, RideAlreadyActiveError
 from app.domain.repositories import RideRequestRepository
-from app.domain.value_objects import FareOffer, GeoPoint
+from app.domain.value_objects import FareOffer, ServiceAreaPoint
 
 
 class CreateRideRequest:
@@ -17,9 +17,15 @@ class CreateRideRequest:
         if rider.role is not UserRole.PASSENGER:
             raise NotAuthorizedActionError("Solo los pasajeros pueden solicitar viajes.")
 
-        # Validan reglas de dominio (rango de coordenadas, oferta positiva).
-        origin_point = GeoPoint(data.origin.latitude, data.origin.longitude)
-        destination_point = GeoPoint(data.destination.latitude, data.destination.longitude)
+        # Valida rango, país operativo y oferta positiva.
+        origin_point = ServiceAreaPoint(
+            data.origin.latitude, data.origin.longitude, data.origin.country_code
+        )
+        destination_point = ServiceAreaPoint(
+            data.destination.latitude,
+            data.destination.longitude,
+            data.destination.country_code,
+        )
         fare = FareOffer(data.fare)
 
         ride = RideRequest(

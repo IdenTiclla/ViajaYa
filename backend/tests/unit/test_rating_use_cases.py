@@ -23,6 +23,7 @@ from app.domain.entities import (
     ServiceType,
     User,
     UserRole,
+    VehicleType,
 )
 from app.domain.exceptions import (
     AlreadyRatedError,
@@ -69,7 +70,7 @@ def _driver() -> User:
         full_name="Con Ductor",
         email="d@x.com",
         role=UserRole.DRIVER,
-        vehicle_type=ServiceType.TAXI,
+        vehicle_type=VehicleType.TAXI,
         rating=None,
     )
 

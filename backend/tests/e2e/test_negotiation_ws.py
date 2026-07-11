@@ -19,7 +19,7 @@ from starlette.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 from app.api.deps import get_session_factory
-from app.domain.entities import OfferStatus, ServiceType, UserRole
+from app.domain.entities import OfferStatus, UserRole, VehicleType
 from app.infrastructure.db.base import Base
 from app.infrastructure.db.models import OfferModel
 from app.infrastructure.db.repositories import (
@@ -34,7 +34,7 @@ REGISTER = "/api/v1/auth/register"
 RIDES = "/api/v1/rides"
 
 
-def _ride_payload() -> dict:
+def _ride_payload(service_type: str = "taxi") -> dict:
     return {
         "origin": {"latitude": -16.5, "longitude": -68.13, "name": "Casa", "address": "Calle 1"},
         "destination": {
@@ -43,7 +43,7 @@ def _ride_payload() -> dict:
             "name": "Trabajo",
             "address": "Av. 2",
         },
-        "service_type": "taxi",
+        "service_type": service_type,
         "fare": "25.00",
     }
 
@@ -131,14 +131,18 @@ def _reset_presence(ws_client: TestClient):
     ws_client.portal.call(reset)
 
 
-def _promote_driver(client: TestClient, email: str) -> None:
+def _promote_driver(
+    client: TestClient,
+    email: str,
+    vehicle: VehicleType = VehicleType.TAXI,
+) -> None:
     async def promote() -> None:
         async with client.factory() as session:  # type: ignore[attr-defined]
             users = SqlAlchemyUserRepository(session)
             user = await users.get_by_email(email)
             assert user is not None
             user.role = UserRole.DRIVER
-            user.vehicle_type = ServiceType.TAXI
+            user.vehicle_type = vehicle
             user.is_online = True
             await users.update(user)
 
@@ -582,6 +586,37 @@ def test_driver_receives_open_ride_event_when_passenger_connects(ws_client: Test
             # El evento llega ya con los datos del pasajero (no solo en el snapshot).
             assert event["data"]["rider"]["full_name"] == "rider"
             assert event["data"]["rider"]["trips_completed"] == 0
+
+
+@pytest.mark.parametrize("vehicle", [VehicleType.TAXI, VehicleType.MOTO])
+def test_taxi_and_moto_driver_sockets_receive_delivery_pool(
+    ws_client: TestClient,
+    vehicle: VehicleType,
+):
+    rider_token = _register(ws_client, f"delivery-rider-{vehicle.value}@x.com")
+    driver_email = f"delivery-driver-{vehicle.value}@x.com"
+    driver_token = _register(ws_client, driver_email)
+    _promote_driver(ws_client, driver_email, vehicle)
+
+    with _websocket_connect(
+        ws_client, f"/api/v1/ws/driver?token={driver_token}"
+    ) as driver_ws:
+        snapshot, _ = _receive_driver_handshake(driver_ws)
+        assert snapshot["data"] == []
+
+        ride = ws_client.post(
+            RIDES,
+            json=_ride_payload("delivery"),
+            headers=_headers(rider_token),
+        ).json()
+        with _websocket_connect(
+            ws_client, f"/api/v1/ws/rides/{ride['id']}?token={rider_token}"
+        ) as rider_ws:
+            assert rider_ws.receive_json()["type"] == "offers_snapshot"
+            event = driver_ws.receive_json()
+            assert event["type"] == "ride_created"
+            assert event["data"]["id"] == ride["id"]
+            assert event["data"]["service_type"] == "delivery"
 
 
 def test_open_rides_endpoint_includes_rider(ws_client: TestClient):

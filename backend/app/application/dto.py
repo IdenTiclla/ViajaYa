@@ -66,6 +66,7 @@ class LocationInput:
     longitude: float
     name: str
     address: str
+    country_code: str | None = None
 
 
 @dataclass(frozen=True)

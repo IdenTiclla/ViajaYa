@@ -18,7 +18,7 @@ from app.domain.exceptions import (
     RideNotFoundError,
 )
 from app.domain.repositories import RideRequestRepository
-from app.domain.value_objects import FareOffer, GeoPoint
+from app.domain.value_objects import FareOffer, ServiceAreaPoint
 
 
 class EditRide:
@@ -45,9 +45,15 @@ class EditRide:
                 "Debes pausar la solicitud antes de editarla."
             )
 
-        # Re-valida reglas de dominio (rango de coordenadas y monto positivo).
-        origin_point = GeoPoint(data.origin.latitude, data.origin.longitude)
-        destination_point = GeoPoint(data.destination.latitude, data.destination.longitude)
+        # Re-valida país operativo, coordenadas y monto positivo.
+        origin_point = ServiceAreaPoint(
+            data.origin.latitude, data.origin.longitude, data.origin.country_code
+        )
+        destination_point = ServiceAreaPoint(
+            data.destination.latitude,
+            data.destination.longitude,
+            data.destination.country_code,
+        )
         fare = FareOffer(data.fare)
 
         origin = Location(

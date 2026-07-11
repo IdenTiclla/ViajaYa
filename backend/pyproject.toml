@@ -34,6 +34,9 @@ build-backend = "setuptools.build_meta"
 where = ["."]
 include = ["app*"]
 
+[tool.setuptools.package-data]
+"app.domain.data" = ["*.geojson"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"

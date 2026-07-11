@@ -24,9 +24,11 @@ from app.domain.entities import (
     RideRequest,
     RideStatus,
     SavedPlace,
-    ServiceType,
     User,
     UserRole,
+    VehicleType,
+    services_for_vehicle,
+    vehicle_can_serve,
 )
 from app.domain.exceptions import InvalidTokenError
 from app.domain.repositories import (
@@ -182,20 +184,22 @@ class InMemoryRideRequestRepository(RideRequestRepository):
             return updated
         return None
 
-    async def list_open_for_service(self, service_type: ServiceType) -> list[RideRequest]:
+    async def list_open_for_vehicle(self, vehicle_type: VehicleType) -> list[RideRequest]:
         return [
             r
             for r in reversed(self.rides)
-            if r.service_type == service_type
+            if r.service_type in services_for_vehicle(vehicle_type)
             and r.status is RideStatus.SEARCHING
             and not r.paused
         ]
 
-    async def list_open_with_rider(self, service_type: ServiceType) -> list[OpenRideDetail]:
+    async def list_open_with_rider_for_vehicle(
+        self, vehicle_type: VehicleType
+    ) -> list[OpenRideDetail]:
         return [
             self._detail_for(r)
             for r in reversed(self.rides)
-            if r.service_type == service_type
+            if r.service_type in services_for_vehicle(vehicle_type)
             and r.status is RideStatus.SEARCHING
             and not r.paused
         ]
@@ -318,8 +322,7 @@ class InMemoryOfferRepository(OfferRepository):
                 or not driver.is_online
                 or (
                     self._rides is not None
-                    and (await self._rides.get_by_id(offer.ride_id)).service_type
-                    is not driver.vehicle_type
+                    and not vehicle_can_serve(ride.service_type, driver.vehicle_type)
                 )
             ):
                 return None
@@ -547,7 +550,7 @@ class InMemoryOfferRepository(OfferRepository):
             ride is None
             or ride.status is not RideStatus.SEARCHING
             or ride.paused
-            or ride.service_type is not driver.vehicle_type
+            or not vehicle_can_serve(ride.service_type, driver.vehicle_type)
         ):
             return None
         if is_offer_expired(offer):

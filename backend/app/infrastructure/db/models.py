@@ -32,6 +32,7 @@ from app.domain.entities import (
     SavedPlaceCategory,
     ServiceType,
     UserRole,
+    VehicleType,
 )
 from app.infrastructure.db.base import Base
 
@@ -82,11 +83,12 @@ class UserModel(Base):
         server_default=UserRole.PASSENGER.value,
         nullable=False,
     )
-    # Campos de conductor (NULL para pasajeros).
-    vehicle_type: Mapped[ServiceType | None] = mapped_column(
+    # Campo fisico del conductor (taxi/moto). Sigue siendo VARCHAR(20), por lo que
+    # separarlo de ServiceType no requiere transformar los valores persistidos.
+    vehicle_type: Mapped[VehicleType | None] = mapped_column(
         Enum(
-            ServiceType,
-            name="service_type",
+            VehicleType,
+            name="vehicle_type",
             native_enum=False,
             length=20,
             values_callable=_enum_values,

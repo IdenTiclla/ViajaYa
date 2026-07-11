@@ -6,7 +6,7 @@ import uuid
 from decimal import Decimal
 from unittest.mock import AsyncMock
 
-from app.domain.entities import Location, RideRequest, ServiceType, UserRole
+from app.domain.entities import Location, RideRequest, ServiceType, UserRole, VehicleType
 from app.infrastructure.db.repositories import (
     SqlAlchemyRideRequestRepository,
     SqlAlchemyUserRepository,
@@ -40,7 +40,7 @@ async def _register(client, email: str) -> tuple[str, str]:
     return body["user"]["id"], body["tokens"]["access_token"]
 
 
-async def _promote_to_driver(session_factory, email: str, vehicle: ServiceType) -> None:
+async def _promote_to_driver(session_factory, email: str, vehicle: VehicleType) -> None:
     async with session_factory() as session:
         users = SqlAlchemyUserRepository(session)
         user = await users.get_by_email(email)
@@ -55,7 +55,7 @@ def _headers(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-def _ride_payload() -> dict:
+def _ride_payload(service_type: str = "taxi") -> dict:
     return {
         "origin": {"latitude": -16.5, "longitude": -68.13, "name": "Casa", "address": "Calle 1"},
         "destination": {
@@ -64,7 +64,7 @@ def _ride_payload() -> dict:
             "name": "Trabajo",
             "address": "Av. 2",
         },
-        "service_type": "taxi",
+        "service_type": service_type,
         "fare": "25.00",
     }
 
@@ -99,8 +99,8 @@ async def test_full_ride_flow(client, session_factory):
     _, rider_token = await _register(client, "rider@example.com")
     _, d1_token = await _register(client, "driver1@example.com")
     _, d2_token = await _register(client, "driver2@example.com")
-    await _promote_to_driver(session_factory, "driver1@example.com", ServiceType.TAXI)
-    await _promote_to_driver(session_factory, "driver2@example.com", ServiceType.TAXI)
+    await _promote_to_driver(session_factory, "driver1@example.com", VehicleType.TAXI)
+    await _promote_to_driver(session_factory, "driver2@example.com", VehicleType.TAXI)
 
     rider_h = _headers(rider_token)
     d1_h = _headers(d1_token)
@@ -179,7 +179,7 @@ async def test_full_ride_flow(client, session_factory):
 async def test_driver_cannot_offer_on_other_service(client, session_factory):
     _, rider_token = await _register(client, "rider2@example.com")
     _, moto_token = await _register(client, "moto@example.com")
-    await _promote_to_driver(session_factory, "moto@example.com", ServiceType.MOTO)
+    await _promote_to_driver(session_factory, "moto@example.com", VehicleType.MOTO)
 
     resp = await client.post(RIDES, json=_ride_payload(), headers=_headers(rider_token))
     ride_id = resp.json()["id"]
@@ -197,11 +197,65 @@ async def test_driver_cannot_offer_on_other_service(client, session_factory):
     assert offer.status_code == 403
 
 
+async def test_taxi_and_moto_drivers_can_serve_delivery(client, session_factory):
+    _, rider_token = await _register(client, "delivery-rider@example.com")
+    _, taxi_token = await _register(client, "delivery-taxi@example.com")
+    _, moto_token = await _register(client, "delivery-moto@example.com")
+    await _promote_to_driver(
+        session_factory, "delivery-taxi@example.com", VehicleType.TAXI
+    )
+    await _promote_to_driver(
+        session_factory, "delivery-moto@example.com", VehicleType.MOTO
+    )
+    rider_h = _headers(rider_token)
+    taxi_h = _headers(taxi_token)
+    moto_h = _headers(moto_token)
+
+    created = await client.post(
+        RIDES, json=_ride_payload("delivery"), headers=rider_h
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["service_type"] == "delivery"
+    ride_id = created.json()["id"]
+    presence = _mark_present(ride_id)
+    try:
+        for driver_h in (taxi_h, moto_h):
+            visible = await client.get(f"{RIDES}/open", headers=driver_h)
+            assert visible.status_code == 200, visible.text
+            assert [ride_id] == [
+                ride["id"]
+                for ride in visible.json()
+                if ride["service_type"] == "delivery"
+            ]
+
+        taxi_offer = await client.post(
+            f"{RIDES}/{ride_id}/offers",
+            json={"accept_at_fare": True},
+            headers=taxi_h,
+        )
+        moto_offer = await client.post(
+            f"{RIDES}/{ride_id}/offers",
+            json={"accept_at_fare": False, "price": "28.00"},
+            headers=moto_h,
+        )
+        assert taxi_offer.status_code == 201, taxi_offer.text
+        assert moto_offer.status_code == 201, moto_offer.text
+
+        accepted = await client.post(
+            f"{RIDES}/offers/{taxi_offer.json()['id']}/accept", headers=rider_h
+        )
+        assert accepted.status_code == 200, accepted.text
+        assert accepted.json()["service_type"] == "delivery"
+        assert accepted.json()["driver"]["vehicle_type"] == "taxi"
+    finally:
+        hub.unsubscribe(ride_topic(uuid.UUID(ride_id)), presence)
+
+
 async def test_passenger_active_ride_and_duplicate_request(client, session_factory):
     """El pasajero recupera su flujo y no puede abrir dos viajes simultáneos."""
     _, rider_token = await _register(client, "active-rider@example.com")
     _, driver_token = await _register(client, "active-driver@example.com")
-    await _promote_to_driver(session_factory, "active-driver@example.com", ServiceType.TAXI)
+    await _promote_to_driver(session_factory, "active-driver@example.com", VehicleType.TAXI)
     rider_h, driver_h = _headers(rider_token), _headers(driver_token)
 
     empty = await client.get(f"{RIDES}/me/active", headers=rider_h)
@@ -308,7 +362,7 @@ async def test_database_constraint_rejects_raced_second_active_ride(
 async def test_close_flow_rating_history_earnings(client, session_factory):
     _, rider_token = await _register(client, "rider3@example.com")
     _, drv_token = await _register(client, "driver3@example.com")
-    await _promote_to_driver(session_factory, "driver3@example.com", ServiceType.TAXI)
+    await _promote_to_driver(session_factory, "driver3@example.com", VehicleType.TAXI)
     rider_h, drv_h = _headers(rider_token), _headers(drv_token)
 
     # viaje completo: crear → ofertar → aceptar → confirmar → avanzar a completado
@@ -378,7 +432,9 @@ async def test_pending_rating_recovers_latest_completed_for_both_roles(
 ):
     _, rider_token = await _register(client, "pending-rider@example.com")
     _, driver_token = await _register(client, "pending-driver@example.com")
-    await _promote_to_driver(session_factory, "pending-driver@example.com", ServiceType.TAXI)
+    await _promote_to_driver(
+        session_factory, "pending-driver@example.com", VehicleType.TAXI
+    )
     rider_h, driver_h = _headers(rider_token), _headers(driver_token)
     endpoint = f"{RIDES}/me/pending-rating"
 
@@ -438,7 +494,7 @@ async def test_skip_rating_is_persistent_for_both_roles(client, session_factory)
     _, rider_token = await _register(client, "skip-rider@example.com")
     _, driver_token = await _register(client, "skip-driver@example.com")
     _, stranger_token = await _register(client, "skip-stranger@example.com")
-    await _promote_to_driver(session_factory, "skip-driver@example.com", ServiceType.TAXI)
+    await _promote_to_driver(session_factory, "skip-driver@example.com", VehicleType.TAXI)
     rider_h = _headers(rider_token)
     driver_h = _headers(driver_token)
     stranger_h = _headers(stranger_token)

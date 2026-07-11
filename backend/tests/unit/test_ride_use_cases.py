@@ -21,6 +21,7 @@ from app.domain.entities import (
     ServiceType,
     User,
     UserRole,
+    VehicleType,
 )
 from app.domain.exceptions import (
     InvalidFareError,
@@ -82,6 +83,29 @@ async def test_create_ride_request_rejects_invalid_coordinates():
         await CreateRideRequest(repo).execute(
             _rider(), _input(destination=LocationInput(200.0, -68.0, "X", "Y"))
         )
+
+
+@pytest.mark.parametrize("country_code", [None, "BO"])
+async def test_create_ride_request_rejects_destination_outside_bolivia(
+    country_code: str | None,
+):
+    repo = InMemoryRideRequestRepository()
+
+    with pytest.raises(InvalidLocationError, match="Bolivia"):
+        await CreateRideRequest(repo).execute(
+            _rider(),
+            _input(
+                destination=LocationInput(
+                    -19.008,
+                    -57.652,
+                    "Corumba",
+                    "Brasil",
+                    country_code,
+                )
+            ),
+        )
+
+    assert repo.rides == []
 
 
 async def test_create_ride_request_rejects_non_positive_fare():
@@ -239,7 +263,7 @@ def _driver() -> User:
         full_name="Condu",
         email="condu@viajaya.com",
         role=UserRole.DRIVER,
-        vehicle_type=ServiceType.TAXI,
+        vehicle_type=VehicleType.TAXI,
         is_online=True,
     )
 
@@ -263,7 +287,7 @@ async def test_pause_ride_hides_from_pool_and_kills_offers():
     assert (await offers.get_by_id(offer.detail.offer.id)).status is OfferStatus.REJECTED
     assert len(result.paused_offers) == 1
     # Y la solicitud ya no aparece en el pool.
-    assert await rides.list_open_for_service(ServiceType.TAXI) == []
+    assert await rides.list_open_for_vehicle(VehicleType.TAXI) == []
 
 
 async def test_pause_ride_does_not_overwrite_concurrent_fare_increase():
@@ -331,7 +355,7 @@ async def test_edit_ride_updates_fields_and_unpauses():
     assert updated.destination.name == "Mercado"
     assert updated.payment_method is PaymentMethod.QR
     # Y vuelve a aparecer en el pool.
-    open_rides = await rides.list_open_for_service(ServiceType.TAXI)
+    open_rides = await rides.list_open_for_vehicle(VehicleType.TAXI)
     assert [r.id for r in open_rides] == [ride.id]
 
 
@@ -342,3 +366,32 @@ async def test_edit_ride_requires_paused():
 
     with pytest.raises(InvalidRideTransitionError):
         await EditRide(rides).execute(rider, ride.id, _input(fare=Decimal("40.00")))
+
+
+async def test_edit_ride_rejects_destination_outside_bolivia_without_mutating_ride():
+    rides = InMemoryRideRequestRepository()
+    rider = _rider()
+    ride = await CreateRideRequest(rides).execute(rider, _input())
+    await PauseRideForEdit(rides, InMemoryOfferRepository(rides=rides)).execute(
+        rider, ride.id
+    )
+
+    with pytest.raises(InvalidLocationError, match="Bolivia"):
+        await EditRide(rides).execute(
+            rider,
+            ride.id,
+            _input(
+                destination=LocationInput(
+                    -22.104,
+                    -65.596,
+                    "La Quiaca",
+                    "Argentina",
+                    "BO",
+                )
+            ),
+        )
+
+    stored = await rides.get_by_id(ride.id)
+    assert stored is not None
+    assert stored.paused is True
+    assert stored.destination.name == "Trabajo"

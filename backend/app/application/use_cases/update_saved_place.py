@@ -8,7 +8,7 @@ from app.application.dto import SaveSavedPlaceInput
 from app.domain.entities import Location, SavedPlace
 from app.domain.exceptions import SavedPlaceNotFoundError
 from app.domain.repositories import SavedPlaceRepository
-from app.domain.value_objects import GeoPoint
+from app.domain.value_objects import ServiceAreaPoint
 
 
 class UpdateSavedPlace:
@@ -22,7 +22,11 @@ class UpdateSavedPlace:
         if existing is None or existing.user_id != user_id:
             raise SavedPlaceNotFoundError("El lugar guardado no existe.")
 
-        point = GeoPoint(data.location.latitude, data.location.longitude)
+        point = ServiceAreaPoint(
+            data.location.latitude,
+            data.location.longitude,
+            data.location.country_code,
+        )
         existing.label = data.label.strip()
         existing.category = data.category
         existing.location = Location(

@@ -20,9 +20,11 @@ from app.domain.entities import (
     RideRequest,
     RideStatus,
     SavedPlace,
-    ServiceType,
     User,
     UserRole,
+    VehicleType,
+    services_for_vehicle,
+    vehicle_can_serve,
 )
 from app.domain.repositories import (
     DriverOfflineTransition,
@@ -394,11 +396,12 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
         await self._session.refresh(row)
         return _ride_to_entity(row)
 
-    async def list_open_for_service(self, service_type: ServiceType) -> list[RideRequest]:
+    async def list_open_for_vehicle(self, vehicle_type: VehicleType) -> list[RideRequest]:
+        compatible_services = services_for_vehicle(vehicle_type)
         result = await self._session.execute(
             select(RideRequestModel)
             .where(
-                RideRequestModel.service_type == service_type,
+                RideRequestModel.service_type.in_(compatible_services),
                 RideRequestModel.status == RideStatus.SEARCHING,
                 RideRequestModel.paused.is_(False),
             )
@@ -406,7 +409,9 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
         )
         return [_ride_to_entity(row) for row in result.scalars().all()]
 
-    async def list_open_with_rider(self, service_type: ServiceType) -> list[OpenRideDetail]:
+    async def list_open_with_rider_for_vehicle(
+        self, vehicle_type: VehicleType
+    ) -> list[OpenRideDetail]:
         # Una sola query: JOIN con el pasajero + subquery correlacionada que cuenta
         # sus viajes completados. Así el pool de solicitudes (alto volumen, refresco
         # por polling + WS) se carga sin N+1. ``correlate(UserModel)`` fija la
@@ -420,11 +425,12 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
             .correlate(UserModel)
             .scalar_subquery()
         )
+        compatible_services = services_for_vehicle(vehicle_type)
         result = await self._session.execute(
             select(RideRequestModel, UserModel, trips_completed)
             .join(UserModel, UserModel.id == RideRequestModel.rider_id)
             .where(
-                RideRequestModel.service_type == service_type,
+                RideRequestModel.service_type.in_(compatible_services),
                 RideRequestModel.status == RideStatus.SEARCHING,
                 RideRequestModel.paused.is_(False),
             )
@@ -646,7 +652,7 @@ class SqlAlchemyOfferRepository(OfferRepository):
             ride_row is None
             or ride_row.status is not RideStatus.SEARCHING
             or ride_row.paused
-            or ride_row.service_type is not driver_row.vehicle_type
+            or not vehicle_can_serve(ride_row.service_type, driver_row.vehicle_type)
             or ride_row.fare != expected_ride_fare
         ):
             await self._session.rollback()
@@ -1050,7 +1056,7 @@ class SqlAlchemyOfferRepository(OfferRepository):
             ride_row is None
             or ride_row.status is not RideStatus.SEARCHING
             or ride_row.paused
-            or ride_row.service_type is not driver_row.vehicle_type
+            or not vehicle_can_serve(ride_row.service_type, driver_row.vehicle_type)
         ):
             await self._session.rollback()
             return None

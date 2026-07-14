@@ -8,6 +8,7 @@ import { StyleSheet } from 'react-native';
 import MapView, { Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 
 import { colors } from '@/core/theme';
+import { getPlaceStreetName } from '@/features/booking/domain/placeLabels';
 import type { Coordinates, Place } from '@/features/booking/domain/types';
 import { useRoute } from '@/features/booking/application/useRoute';
 import { declutteredMapStyle } from '@/features/booking/presentation/mapStyle';
@@ -18,11 +19,14 @@ export function TripRouteMap({
   destination,
   topPadding = 120,
   bottomPadding = 320,
+  showPlaceNamesInTooltip = false,
 }: {
   origin: Place;
   destination: Place;
   topPadding?: number;
   bottomPadding?: number;
+  /** Muestra el nombre de cada lugar dentro del tooltip de sus marcadores. */
+  showPlaceNamesInTooltip?: boolean;
 }) {
   const mapRef = useRef<MapView>(null);
   const { route } = useRoute(origin, destination);
@@ -65,8 +69,16 @@ export function TripRouteMap({
       initialRegion={region}
       customMapStyle={declutteredMapStyle}
       onMapReady={() => fit(false)}>
-      <RoutePinMarker kind="A" coordinate={origin.coordinates} label="Origen" />
-      <RoutePinMarker kind="B" coordinate={destination.coordinates} label="Destino" />
+      <RoutePinMarker
+        kind="A"
+        coordinate={origin.coordinates}
+        label={showPlaceNamesInTooltip ? `Origen: ${getPlaceStreetName(origin)}` : 'Origen'}
+      />
+      <RoutePinMarker
+        kind="B"
+        coordinate={destination.coordinates}
+        label={showPlaceNamesInTooltip ? `Destino: ${getPlaceStreetName(destination)}` : 'Destino'}
+      />
       {polyline.length >= 2 && (
         <>
           <Polyline coordinates={polyline} strokeColor={colors.surface} strokeWidth={9} />

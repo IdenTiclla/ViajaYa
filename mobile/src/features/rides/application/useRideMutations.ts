@@ -126,7 +126,7 @@ export function useCancelRide() {
 }
 
 /**
- * Pasajero: aumenta la oferta de la solicitud en búsqueda. Actualiza la caché
+ * Pasajero: ajusta la oferta de la solicitud en búsqueda. Actualiza la caché
  * del detalle del viaje al instante; los conductores ven el nuevo monto en vivo
  * por WebSocket (el backend reanuncia la solicitud al pool).
  */

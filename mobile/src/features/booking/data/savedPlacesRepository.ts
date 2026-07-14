@@ -4,6 +4,7 @@
  * a/desde los tipos del dominio móvil, igual que `ridesRepository`.
  */
 import { api } from '@/core/http/client';
+import { getPlaceStreetName } from '@/features/booking/domain/placeLabels';
 import type { Place, SavedPlace, SavedPlaceCategory } from '@/features/booking/domain/types';
 
 type PointDto = {
@@ -38,7 +39,7 @@ function toSavedPlace(dto: SavedPlaceDto): SavedPlace {
     category: dto.category,
     place: {
       coordinates: { latitude: dto.location.latitude, longitude: dto.location.longitude },
-      name: dto.location.name,
+      name: getPlaceStreetName(dto.location),
       address: dto.location.address,
       countryCode: dto.location.country_code?.toUpperCase() ?? null,
     },

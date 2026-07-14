@@ -7,6 +7,7 @@
  */
 import { api } from '@/core/http/client';
 import type { VehicleType } from '@/features/auth/domain/types';
+import { getPlaceStreetName } from '@/features/booking/domain/placeLabels';
 import type { Place } from '@/features/booking/domain/types';
 import type {
   CreateOfferInput,
@@ -31,7 +32,7 @@ type PointDto = {
 function toPlace(dto: PointDto): Place {
   return {
     coordinates: { latitude: dto.latitude, longitude: dto.longitude },
-    name: dto.name,
+    name: getPlaceStreetName(dto),
     address: dto.address,
     countryCode: dto.country_code?.toUpperCase() ?? null,
   };

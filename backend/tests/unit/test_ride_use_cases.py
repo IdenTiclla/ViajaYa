@@ -217,7 +217,7 @@ async def test_recent_destinations_isolated_per_rider():
     assert await ListRecentDestinations(repo).execute(rider_b.id) == []
 
 
-async def test_update_ride_fare_raises_offer():
+async def test_update_ride_fare_adjusts_offer():
     repo = InMemoryRideRequestRepository()
     rider = _rider()
     ride = await CreateRideRequest(repo).execute(rider, _input(fare=Decimal("25.00")))
@@ -229,12 +229,22 @@ async def test_update_ride_fare_raises_offer():
     assert updated.pool_version == 2
 
 
-async def test_update_ride_fare_rejects_non_increase():
+async def test_update_ride_fare_allows_lower_offer():
     repo = InMemoryRideRequestRepository()
     rider = _rider()
     ride = await CreateRideRequest(repo).execute(rider, _input(fare=Decimal("25.00")))
 
-    with pytest.raises(InvalidFareError):
+    updated = await UpdateRideFare(repo).execute(rider, ride.id, Decimal("20.00"))
+
+    assert updated.fare == Decimal("20.00")
+
+
+async def test_update_ride_fare_rejects_unchanged_offer():
+    repo = InMemoryRideRequestRepository()
+    rider = _rider()
+    ride = await CreateRideRequest(repo).execute(rider, _input(fare=Decimal("25.00")))
+
+    with pytest.raises(InvalidFareError, match="diferente"):
         await UpdateRideFare(repo).execute(rider, ride.id, Decimal("25.00"))
 
 

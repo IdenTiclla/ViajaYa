@@ -361,7 +361,7 @@ async def update_fare(
     get_ride_use_case: Annotated[GetRide, Depends(get_get_ride)],
     rides_repo: RideRequestRepositoryDep,
 ) -> RideResponse:
-    """El pasajero aumenta su oferta mientras se buscan conductores."""
+    """El pasajero ajusta su oferta mientras se buscan conductores."""
     await use_case.execute(current_user, ride_id, body.fare)
     detail = await get_ride_use_case.execute(current_user, ride_id)
     # Al pasajero (su detalle) y al pool de conductores (ven el nuevo monto).

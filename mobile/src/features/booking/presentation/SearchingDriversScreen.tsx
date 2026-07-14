@@ -1,20 +1,18 @@
 /**
  * Buscando ofertas (pasajero) — diseño Stitch "Searching for Offers".
  *
- * Mapa de fondo con el trayecto y un pulso sobre el origen; arriba el resumen
- * origen→destino; abajo una tarjeta con el estado de búsqueda, los controles
- * para **aumentar la oferta** (recibe ofertas más rápido) y las acciones de
- * modificar/cancelar la solicitud. Se muestra mientras el viaje sigue
+ * Mapa de fondo con el trayecto y un pulso sobre el origen; abajo una tarjeta
+ * con el estado de búsqueda, los controles para **ajustar la oferta** y la acción de
+ * cancelar la solicitud. Se muestra mientras el viaje sigue
  * `searching` y aún no llegan ofertas; al recibir la primera, `OffersScreen`
  * pasa a la lista.
  *
- * La búsqueda no caduca: se sale solo al **modificar** (crea otra solicitud) o
- * **cancelar**. Aumentar la oferta solo sube el monto (nunca lo baja) y lo
- * anuncia a los conductores en vivo.
+ * La búsqueda no caduca. Al ajustar la oferta, el nuevo monto se anuncia a los
+ * conductores en vivo.
  */
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Easing,
@@ -39,17 +37,11 @@ import {
   usePauseForEdit,
   useUpdateRideFare,
 } from '@/features/rides/application/useRideMutations';
-import { formatBolivianos } from '@/features/rides/domain/money';
+import { formatBolivianosInput } from '@/features/rides/domain/money';
 import { TripRouteMap } from '@/features/rides/presentation/TripRouteMap';
-import { RouteSummary } from '@/features/rides/presentation/RouteSummary';
 import { ConfirmDialog } from '@/shared/components';
 
-/** Incrementos rápidos de la oferta (en Bs). */
-const QUICK_INCREMENTS = [
-  { delta: 2, hint: 'Menor ajuste' },
-  { delta: 5, hint: 'Ajuste medio' },
-  { delta: 10, hint: 'Ajuste alto' },
-] as const;
+const PASO_OFERTA = 1;
 
 export function SearchingDriversScreen({
   rideId,
@@ -62,7 +54,7 @@ export function SearchingDriversScreen({
   rideId: string | null;
   origin: Place | null;
   destination: Place | null;
-  /** Oferta vigente del viaje (en vivo); base para los incrementos. */
+  /** Oferta vigente del viaje (en vivo). */
   currentFare: number | null;
   connectionError?: unknown;
   onRetry?: () => void;
@@ -71,10 +63,10 @@ export function SearchingDriversScreen({
   const cancelRide = useCancelRide();
   const updateFare = useUpdateRideFare();
   const pauseForEdit = usePauseForEdit();
-  const negotiationBusy =
-    cancelRide.isPending || updateFare.isPending || pauseForEdit.isPending;
+  const negotiationBusy = cancelRide.isPending || updateFare.isPending || pauseForEdit.isPending;
 
-  const [customIncrease, setCustomIncrease] = useState('');
+  const [fareInput, setFareInput] = useState<string | null>(null);
+  const pendingFareRef = useRef<number | null>(null);
   const [confirmCancel, setConfirmCancel] = useState(false);
   // Algunos Android conservan la altura reducida del KeyboardAvoidingView al
   // ocultar el teclado; al remontarlo, la hoja vuelve a anclarse abajo.
@@ -87,20 +79,6 @@ export function SearchingDriversScreen({
     });
     return () => subscription.remove();
   }, []);
-
-  // La búsqueda no caduca: se sale al modificar (pausa y edita) o cancelar.
-  const onModify = () => {
-    if (negotiationBusy) return;
-    if (!rideId) {
-      router.replace('/(app)/booking/configure');
-      return;
-    }
-    // Pausa la solicitud (la oculta del pool) y abre la edición sin cancelar.
-    pauseForEdit.mutate(rideId, {
-      onSuccess: () =>
-        router.replace({ pathname: '/(app)/booking/configure', params: { rideId } }),
-    });
-  };
 
   const onCancel = () => {
     setConfirmCancel(false);
@@ -119,30 +97,55 @@ export function SearchingDriversScreen({
     });
   };
 
-  // Aumentar la oferta = oferta actual + incremento (redondeado a 2 decimales).
-  // Requiere conocer la oferta vigente; sin ella (ride aún cargando) no aplicamos.
-  const applyIncrease = (delta: number) => {
-    if (!rideId || updateFare.isPending || delta <= 0 || currentFare == null) return;
-    const next = Math.round((currentFare + delta) * 100) / 100;
-    updateFare.mutate({ rideId, fare: next });
-  };
-
   const fareLocked = currentFare == null || negotiationBusy;
-  const customIncreaseValue = Number(customIncrease.replace(',', '.'));
-  const customIncreaseIsValid = Number.isFinite(customIncreaseValue) && customIncreaseValue > 0;
+  const displayedFare = fareInput ?? (currentFare == null ? '' : formatBolivianosInput(currentFare));
+  const typedFare = Number(displayedFare.replace(',', '.'));
+  const typedFareIsValid = Number.isFinite(typedFare) && typedFare > 0;
 
-  const applyCustomIncrease = () => {
-    if (!rideId || fareLocked || !customIncreaseIsValid || currentFare == null) return;
-    const next = Math.round((currentFare + customIncreaseValue) * 100) / 100;
+  const updateCurrentFare = (nextFare: number) => {
+    if (!rideId || fareLocked || !Number.isFinite(nextFare) || nextFare <= 0) return;
+    const normalizedFare = Math.round(nextFare * 100) / 100;
+    if (normalizedFare === currentFare || pendingFareRef.current != null) return;
+    setFareInput(formatBolivianosInput(normalizedFare));
+    pendingFareRef.current = normalizedFare;
     updateFare.mutate(
-      { rideId, fare: next },
+      { rideId, fare: normalizedFare },
       {
-        onSuccess: () => {
-          setCustomIncrease('');
-          Keyboard.dismiss();
+        onSettled: () => {
+          pendingFareRef.current = null;
+          setFareInput(null);
         },
       },
     );
+  };
+
+  const applyTypedFare = () => {
+    if (!typedFareIsValid) {
+      setFareInput(null);
+      return;
+    }
+    if (typedFare === currentFare) setFareInput(null);
+    updateCurrentFare(typedFare);
+    Keyboard.dismiss();
+  };
+
+  const adjustFare = (delta: number) => {
+    const baseFare = typedFareIsValid ? typedFare : currentFare;
+    if (baseFare == null) return;
+    updateCurrentFare(baseFare + delta);
+  };
+
+  const onBack = () => {
+    if (negotiationBusy) return;
+    if (!rideId) {
+      router.replace('/(app)/booking/configure');
+      return;
+    }
+    // Pausa la búsqueda antes de editar: así se oculta del pool sin cancelarla.
+    pauseForEdit.mutate(rideId, {
+      onSuccess: () =>
+        router.replace({ pathname: '/(app)/booking/configure', params: { rideId } }),
+    });
   };
 
   return (
@@ -151,19 +154,23 @@ export function SearchingDriversScreen({
         <TripRouteMap
           origin={origin}
           destination={destination}
-          topPadding={170}
           bottomPadding={440}
+          showPlaceNamesInTooltip
         />
       ) : (
         <View style={styles.mapFallback} />
       )}
 
       <View style={styles.scrim} pointerEvents="box-none">
-        <SafeAreaView edges={['top']} style={styles.topArea} pointerEvents="box-none">
-          <RouteSummary
-            origin={origin ?? { name: 'Tu ubicación' }}
-            destination={destination ?? { name: 'Destino' }}
-          />
+        <SafeAreaView edges={['top']} style={styles.backArea} pointerEvents="box-none">
+          <TouchableOpacity
+            style={[styles.backButton, negotiationBusy && styles.disabled]}
+            onPress={onBack}
+            disabled={negotiationBusy}
+            accessibilityRole="button"
+            accessibilityLabel="Volver">
+            <Ionicons name="arrow-back" size={24} color={colors.text} />
+          </TouchableOpacity>
         </SafeAreaView>
 
         <View style={styles.center} pointerEvents="none">
@@ -213,64 +220,45 @@ export function SearchingDriversScreen({
             </TouchableOpacity>
           </View>
 
-          {/* Aumentar oferta */}
+          {/* Ajuste de oferta */}
           <View style={styles.bidHeader}>
-            <Text style={styles.bidTitle}>Aumentar oferta</Text>
-            <Text style={styles.bidHint}>Monto adicional</Text>
+            <Text style={styles.bidTitle}>Tu oferta</Text>
           </View>
-          {currentFare != null && (
-            <Text style={styles.currentFare}>Tu oferta actual: Bs {formatBolivianos(currentFare)}</Text>
-          )}
-
-          <View style={styles.bidGrid}>
-            {QUICK_INCREMENTS.map((inc, i) => (
-              <TouchableOpacity
-                key={inc.delta}
-                style={[
-                  styles.bidBtn,
-                  i === 0 && styles.bidBtnSuggested,
-                  fareLocked && styles.disabled,
-                ]}
-                onPress={() => applyIncrease(inc.delta)}
-                disabled={fareLocked}
-                accessibilityRole="button"
-                accessibilityLabel={`Aumentar oferta en ${inc.delta} bolivianos`}>
-                <Text style={styles.bidAmount}>+Bs {inc.delta}</Text>
-                <Text style={styles.bidHintSmall}>{inc.hint}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <View style={[styles.customInputRow, fareLocked && styles.disabled]}>
-            <View style={styles.customInputLabel}>
-              <Ionicons name="add-circle-outline" size={18} color={colors.primary} />
-              <Text style={styles.customBtnText}>Monto personalizado</Text>
-            </View>
-            <View style={styles.customInputControls}>
-              <Text style={styles.customCurrency}>Bs</Text>
+          <View style={[styles.fareStepper, fareLocked && styles.disabled]}>
+            <TouchableOpacity
+              style={styles.fareStepButton}
+              onPress={() => adjustFare(-PASO_OFERTA)}
+              disabled={fareLocked || !typedFareIsValid || typedFare <= PASO_OFERTA}
+              accessibilityRole="button"
+              accessibilityLabel="Reducir oferta en un boliviano">
+              <Ionicons name="remove" size={22} color={colors.primary} />
+            </TouchableOpacity>
+            <View style={styles.fareInputWrap}>
+              <Text style={styles.fareCurrency}>Bs</Text>
               <TextInput
-                value={customIncrease}
-                onChangeText={setCustomIncrease}
-                placeholder="5"
+                value={displayedFare}
+                onChangeText={setFareInput}
+                placeholder="0"
                 placeholderTextColor={colors.placeholder}
                 keyboardType="decimal-pad"
                 inputMode="decimal"
                 maxLength={9}
                 returnKeyType="done"
-                onSubmitEditing={applyCustomIncrease}
+                onSubmitEditing={applyTypedFare}
+                onBlur={applyTypedFare}
                 editable={!fareLocked}
-                style={styles.customAmountInput}
-                accessibilityLabel="Aumentar oferta en bolivianos"
+                style={styles.fareAmountInput}
+                accessibilityLabel="Precio de tu oferta en bolivianos"
               />
-              <TouchableOpacity
-                style={[styles.customApply, (!customIncreaseIsValid || fareLocked) && styles.disabled]}
-                onPress={applyCustomIncrease}
-                disabled={!customIncreaseIsValid || fareLocked}
-                accessibilityRole="button"
-                accessibilityLabel="Aplicar aumento personalizado">
-                <Text style={styles.customApplyText}>Aplicar</Text>
-              </TouchableOpacity>
             </View>
+            <TouchableOpacity
+              style={styles.fareStepButton}
+              onPress={() => adjustFare(PASO_OFERTA)}
+              disabled={fareLocked}
+              accessibilityRole="button"
+              accessibilityLabel="Aumentar oferta en un boliviano">
+              <Ionicons name="add" size={22} color={colors.primary} />
+            </TouchableOpacity>
           </View>
 
           {updateFare.isError && (
@@ -288,15 +276,6 @@ export function SearchingDriversScreen({
           {pauseForEdit.isError && (
             <Text style={styles.error}>{getApiErrorMessage(pauseForEdit.error)}</Text>
           )}
-          <TouchableOpacity
-            style={[styles.modify, negotiationBusy && styles.disabled]}
-            onPress={onModify}
-            disabled={negotiationBusy}
-            accessibilityRole="button"
-            accessibilityLabel="Modificar solicitud">
-            <Ionicons name="create-outline" size={20} color={colors.primary} />
-            <Text style={styles.modifyText}>Modificar solicitud</Text>
-          </TouchableOpacity>
           <TouchableOpacity
             style={[styles.cancel, negotiationBusy && styles.disabled]}
             onPress={() => setConfirmCancel(true)}
@@ -440,9 +419,21 @@ const styles = StyleSheet.create({
   mapFallback: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: colors.surfaceMuted },
   scrim: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
 
-  topArea: { paddingHorizontal: spacing.md, paddingTop: spacing.sm },
-
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  backArea: { position: 'absolute', top: 0, left: 0, padding: spacing.md },
+  backButton: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(255,255,255,0.94)',
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 5,
+  },
 
   sheetAvoider: {
     position: 'absolute',
@@ -512,45 +503,40 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  bidHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
+  bidHeader: { alignItems: 'center' },
   bidTitle: { fontSize: fontSize.md, fontWeight: fontWeight.bold, color: colors.text },
-  bidHint: { fontSize: fontSize.xs, color: colors.textSecondary, fontStyle: 'italic' },
-  currentFare: { fontSize: fontSize.sm, color: colors.textSecondary, marginTop: -spacing.xs },
-
-  bidGrid: { flexDirection: 'row', gap: spacing.sm },
-  bidBtn: {
-    flex: 1,
+  fareStepper: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  fareStepButton: {
+    width: 52,
+    height: 52,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: spacing.sm,
     borderRadius: radius.md,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
   },
-  bidBtnSuggested: { backgroundColor: '#FFF7D6', borderColor: colors.accent },
-  bidAmount: { fontSize: fontSize.sm, fontWeight: fontWeight.bold, color: colors.text },
-  bidHintSmall: { fontSize: 10, color: colors.textSecondary, marginTop: 2 },
-
-  customInputRow: {
-    gap: spacing.xs,
-    padding: spacing.sm,
-    borderRadius: radius.md,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  customInputLabel: {
+  fareInputWrap: {
+    flex: 1,
+    height: 52,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.primary,
   },
-  customInputControls: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  customBtnText: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.primary },
-  customCurrency: { fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textSecondary },
-  customAmountInput: { flex: 1, minWidth: 0, color: colors.text, fontSize: fontSize.md, paddingVertical: 0, textAlign: 'right' },
-  customApply: { paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderRadius: radius.sm, backgroundColor: colors.primary },
-  customApplyText: { color: colors.textOnPrimary, fontSize: fontSize.sm, fontWeight: fontWeight.semibold },
+  fareCurrency: { color: colors.textSecondary, fontSize: fontSize.md, fontWeight: fontWeight.semibold },
+  fareAmountInput: {
+    flex: 1,
+    minWidth: 0,
+    paddingVertical: 0,
+    color: colors.text,
+    fontSize: fontSize.lg,
+    fontWeight: fontWeight.bold,
+    textAlign: 'center',
+  },
 
   progressTrack: {
     height: 6,
@@ -569,19 +555,6 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
 
-  modify: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    height: 52,
-    borderRadius: radius.md,
-    borderWidth: 2,
-    borderColor: colors.primary,
-    backgroundColor: colors.surface,
-    marginTop: spacing.xs,
-  },
-  modifyText: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.primary },
   cancel: {
     flexDirection: 'row',
     alignItems: 'center',

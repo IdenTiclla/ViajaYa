@@ -33,6 +33,7 @@ import {
   isCoordinatesInBolivia,
   isPlaceInBolivia,
 } from '@/features/booking/domain/bolivia';
+import { getPlaceStreetName } from '@/features/booking/domain/placeLabels';
 import type { Place } from '@/features/booking/domain/types';
 import { CenterPin } from '@/features/booking/presentation/CenterPin';
 import { useCurrentLocation } from '@/features/home/application/useCurrentLocation';
@@ -213,7 +214,11 @@ export function PickOnMapScreen() {
         }}
         onRegionChangeComplete={handleRegionChange}>
         {isDestination && usableOrigin ? (
-          <RoutePinMarker kind="A" coordinate={usableOrigin.coordinates} label="Origen" />
+          <RoutePinMarker
+            kind="A"
+            coordinate={usableOrigin.coordinates}
+            label={`Origen: ${getPlaceStreetName(usableOrigin)}`}
+          />
         ) : null}
       </MapView>
 
@@ -236,14 +241,16 @@ export function PickOnMapScreen() {
           </View>
         </View>
         {isDestination && usableOrigin ? (
-          <View style={styles.originReference} accessibilityLabel={`Origen A, ${usableOrigin.name}`}>
+          <View
+            style={styles.originReference}
+            accessibilityLabel={`Origen A, ${getPlaceStreetName(usableOrigin)}`}>
             <View style={styles.originBadge}>
               <Text style={styles.originBadgeText}>A</Text>
             </View>
             <View style={styles.originReferenceText}>
               <Text style={styles.originReferenceLabel}>ORIGEN</Text>
               <Text style={styles.originReferenceName} numberOfLines={1}>
-                {usableOrigin.name}
+                {getPlaceStreetName(usableOrigin)}
               </Text>
             </View>
           </View>

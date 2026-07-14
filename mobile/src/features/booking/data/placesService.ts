@@ -103,6 +103,14 @@ type DetailsResponse = {
   addressComponents?: { shortText?: string; types?: string[] }[];
 };
 
+function streetFromAddressComponents(
+  components: DetailsResponse['addressComponents'],
+): string | null {
+  const street = components?.find((component) => component.types?.includes('route'))?.shortText;
+  const number = components?.find((component) => component.types?.includes('street_number'))?.shortText;
+  return [street, number].filter(Boolean).join(' ') || null;
+}
+
 /**
  * Resuelve las coordenadas (y etiquetas finales) de una predicción. Conserva el
  * `name`/`address` ya mostrados si la respuesta no trae uno mejor, para que la
@@ -135,10 +143,11 @@ export async function placeDetails(
       data.addressComponents
         ?.find((component) => component.types?.includes('country'))
         ?.shortText?.toUpperCase() ?? null;
+    const street = streetFromAddressComponents(data.addressComponents);
 
     const place: Place = {
       coordinates: { latitude, longitude },
-      name: suggestion.name || data.displayName?.text || 'Lugar',
+      name: street || suggestion.name || data.displayName?.text || 'Lugar',
       address: suggestion.address || data.formattedAddress || '',
       countryCode,
     };

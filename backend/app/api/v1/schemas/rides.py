@@ -89,7 +89,7 @@ class RideStatusUpdate(BaseModel):
 
 
 class RideFareUpdate(BaseModel):
-    """Nuevo monto ofertado por el pasajero (aumentar oferta en búsqueda)."""
+    """Nuevo monto ofertado por el pasajero mientras busca conductor."""
 
     fare: Decimal = Field(gt=0, max_digits=10, decimal_places=2)
 

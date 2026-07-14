@@ -18,6 +18,7 @@ import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 import { useRoute } from '@/features/booking/application/useRoute';
 import { SERVICE_META } from '@/features/booking/domain/serviceCatalog';
 import { declutteredMapStyle } from '@/features/booking/presentation/mapStyle';
+import { getPlaceStreetName } from '@/features/booking/domain/placeLabels';
 import type { Coordinates } from '@/features/booking/domain/types';
 import type { SentOffer } from '@/features/driver/application/useDriverRequests';
 import { formatKm, haversineKm, pricePerKm } from '@/features/rides/domain/geo';
@@ -149,7 +150,7 @@ export function SolicitudesMapa({
               key={`a-${ride.id}`}
               kind="A"
               coordinate={ride.origin.coordinates}
-              label="Origen"
+              label={`Origen: ${getPlaceStreetName(ride.origin)}`}
               dim={!active}
               onPress={() => select(ride, rides.indexOf(ride))}
             />
@@ -159,7 +160,7 @@ export function SolicitudesMapa({
           <RoutePinMarker
             kind="B"
             coordinate={selectedRide.destination.coordinates}
-            label="Destino"
+            label={`Destino: ${getPlaceStreetName(selectedRide.destination)}`}
           />
         )}
       </MapView>

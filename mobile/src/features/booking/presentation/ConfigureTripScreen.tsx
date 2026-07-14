@@ -14,9 +14,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Keyboard,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -35,6 +32,7 @@ import {
   BOLIVIA_SERVICE_AREA_MESSAGE,
   getBoliviaPlaceError,
 } from '@/features/booking/domain/bolivia';
+import { getPlaceStreetName } from '@/features/booking/domain/placeLabels';
 import { SERVICE_OPTIONS } from '@/features/booking/domain/serviceCatalog';
 import type { Coordinates, PaymentMethod } from '@/features/booking/domain/types';
 import { useCancelRide, useEditRide } from '@/features/rides/application/useRideMutations';
@@ -45,7 +43,6 @@ import {
 } from '@/features/rides/application/useRides';
 import { declutteredMapStyle } from '@/features/booking/presentation/mapStyle';
 import { RoutePinMarker } from '@/features/rides/presentation/RoutePinMarker';
-import { RouteSummary } from '@/features/rides/presentation/RouteSummary';
 import { Button, ConfirmDialog, FeedbackState } from '@/shared/components';
 
 const PAYMENTS: { id: PaymentMethod; label: string; icon: 'qr-code' | 'cash' }[] = [
@@ -58,6 +55,7 @@ const PAYMENTS: { id: PaymentMethod; label: string; icon: 'qr-code' | 'cash' }[]
 // el área visible.
 const FIT_TOP = 170;
 const FIT_SIDES = 60;
+const MIN_KEYBOARD_TRANSLATION = 280;
 
 function formatDistance(meters: number): string {
   return meters >= 1000 ? `${(meters / 1000).toFixed(1)} km` : `${Math.round(meters)} m`;
@@ -82,32 +80,32 @@ export function ConfigureTripScreen() {
   const fare = useBookingStore((s) => s.fare);
   const setFare = useBookingStore((s) => s.setFare);
   const mapRef = useRef<MapView>(null);
-  const sheetScrollRef = useRef<ScrollView>(null);
   const queryClient = useQueryClient();
   const editRide = useEditRide();
   const cancelRecoveryRide = useCancelRide();
   // Alto real del bottom sheet, para encuadrar los puntos por encima de él.
   const [sheetHeight, setSheetHeight] = useState(0);
-  // Al cerrar el teclado en Android, algunos dispositivos conservan la altura
-  // reducida del KeyboardAvoidingView. Remontarlo al finalizar la animación
-  // garantiza que el sheet vuelva a anclarse al borde inferior.
-  const [keyboardAvoiderKey, setKeyboardAvoiderKey] = useState(0);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [keyboardOffset, setKeyboardOffset] = useState(0);
   // Mostrar/ocultar etiquetas de lugares (el usuario lo controla con el toggle).
   const [showPlaces, setShowPlaces] = useState(true);
-  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [confirmExit, setConfirmExit] = useState(false);
   const [allowExit, setAllowExit] = useState(false);
   const [exitAfterSave, setExitAfterSave] = useState(false);
   const [exitHome, setExitHome] = useState(false);
   const [confirmRecoveryCancel, setConfirmRecoveryCancel] = useState(false);
 
   useEffect(() => {
-    const showSubscription = Keyboard.addListener('keyboardDidShow', () => {
-      // Espera a que KeyboardAvoidingView termine de reducir el área visible
-      // antes de llevar el CTA completo por encima del teclado.
-      sheetScrollRef.current?.scrollToEnd({ animated: true });
+    const showSubscription = Keyboard.addListener('keyboardDidShow', (event) => {
+      const height = event.endCoordinates.height;
+      setKeyboardHeight(height);
+      // `screenY` no es estable con adjustResize entre fabricantes. Trasladar
+      // por la altura completa garantiza que la oferta quede sobre el teclado.
+      setKeyboardOffset(Math.max(height, MIN_KEYBOARD_TRANSLATION));
     });
     const hideSubscription = Keyboard.addListener('keyboardDidHide', () => {
-      setKeyboardAvoiderKey((key) => key + 1);
+      setKeyboardHeight(0);
+      setKeyboardOffset(0);
     });
     return () => {
       showSubscription.remove();
@@ -155,12 +153,11 @@ export function ConfigureTripScreen() {
   );
 
   const requestEditExit = () => {
-    if (originalTripIsInvalid) setConfirmRecoveryCancel(true);
-    else setConfirmDiscard(true);
+    setConfirmExit(true);
   };
 
-  // Intercepta flecha, gesto y back de Android. Una solicitud pausada solo puede
-  // salir de esta pantalla después de volver a publicarse.
+  // Intercepta flecha, gesto y back de Android. Una solicitud pausada requiere
+  // confirmar la cancelación antes de salir al inicio.
   usePreventRemove(isEditing && !allowExit, () => {
     if (!editRide.isPending && !cancelRecoveryRide.isPending) requestEditExit();
   });
@@ -174,6 +171,7 @@ export function ConfigureTripScreen() {
   }, [allowExit, exitAfterSave, exitHome, rideId, router]);
 
   const cancelRecoveryAndExit = () => {
+    setConfirmExit(false);
     setConfirmRecoveryCancel(false);
     if (!rideId || cancelRecoveryRide.isPending) return;
     cancelRecoveryRide.mutate(rideId, {
@@ -337,27 +335,20 @@ export function ConfigureTripScreen() {
     );
   };
 
-  const discardEditAndExit = () => {
-    setConfirmDiscard(false);
-    if (!rideId || !existingRide || editRide.isPending) return;
-    editRide.mutate(
-      {
-        rideId,
-        input: {
-          origin: existingRide.origin,
-          destination: existingRide.destination,
-          service: existingRide.service,
-          payment: existingRide.payment,
-          fare: existingRide.fare,
-        },
-      },
-      {
-        onSuccess: () => {
-          setExitAfterSave(true);
-          setAllowExit(true);
-        },
-      },
-    );
+  const editOrigin = () => {
+    if (editRide.isPending) return;
+    router.push({
+      pathname: '/booking/pick-on-map',
+      params: { target: 'origin', ...(rideId ? { rideId } : {}) },
+    });
+  };
+
+  const editDestination = () => {
+    if (editRide.isPending) return;
+    router.push({
+      pathname: '/booking/destination',
+      params: rideId ? { rideId } : {},
+    });
   };
 
   return (
@@ -374,13 +365,17 @@ export function ConfigureTripScreen() {
           key={`origin-${tripMapKey}`}
           kind="A"
           coordinate={origin.coordinates}
-          label="Origen"
+          label={`Origen: ${getPlaceStreetName(origin)}`}
+          showEditControl
+          onPress={editOrigin}
         />
         <RoutePinMarker
           key={`destination-${tripMapKey}`}
           kind="B"
           coordinate={destination.coordinates}
-          label="Destino"
+          label={`Destino: ${getPlaceStreetName(destination)}`}
+          showEditControl
+          onPress={editDestination}
         />
         {polylineCoordinates.length >= 2 && (
           <>
@@ -405,7 +400,14 @@ export function ConfigureTripScreen() {
         <View style={styles.topLeft}>
           <TouchableOpacity
             style={styles.back}
-            onPress={() => (isEditing ? requestEditExit() : router.back())}
+            onPress={() => {
+              if (isEditing) {
+                requestEditExit();
+                return;
+              }
+              useBookingStore.getState().resetTrip();
+              router.replace('/(app)/(tabs)');
+            }}
             disabled={editRide.isPending}
             accessibilityRole="button"
             accessibilityLabel="Volver">
@@ -424,42 +426,21 @@ export function ConfigureTripScreen() {
             />
           </TouchableOpacity>
         </View>
-        <View style={styles.summaryWrap}>
-          <RouteSummary
-            origin={origin}
-            destination={destination}
-            onEditOrigin={() =>
-              router.push({
-                pathname: '/booking/pick-on-map',
-                params: { target: 'origin', ...(rideId ? { rideId } : {}) },
-              })
-            }
-            onEditDestination={() =>
-              router.push({
-                pathname: '/booking/destination',
-                params: rideId ? { rideId } : {},
-              })
-            }
-          />
-        </View>
       </SafeAreaView>
 
-      <KeyboardAvoidingView
-        key={keyboardAvoiderKey}
-        style={styles.sheetAvoider}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      <View
+        style={[
+          styles.sheetAvoider,
+          { transform: [{ translateY: -keyboardOffset }] },
+        ]}
         pointerEvents="box-none">
         <SafeAreaView
-          style={styles.sheet}
+          style={[styles.sheet, keyboardHeight === 0 && styles.sheetResting]}
           edges={['bottom']}
-          onLayout={(e) => setSheetHeight(e.nativeEvent.layout.height)}>
-          <ScrollView
-            ref={sheetScrollRef}
-            contentContainerStyle={styles.sheetContent}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="on-drag"
-            showsVerticalScrollIndicator={false}
-            bounces={false}>
+          onLayout={(e) => {
+            if (keyboardHeight === 0) setSheetHeight(e.nativeEvent.layout.height);
+          }}>
+          <View style={styles.sheetContent}>
             {route && (
               <View style={styles.estimate}>
                 <Ionicons name="navigate" size={16} color={colors.primary} />
@@ -535,6 +516,7 @@ export function ConfigureTripScreen() {
             keyboardType="decimal-pad"
             inputMode="decimal"
             maxLength={9}
+            onBlur={() => setKeyboardOffset(0)}
             style={styles.fareInput}
             accessibilityLabel="Monto de tu oferta en bolivianos"
           />
@@ -584,19 +566,20 @@ export function ConfigureTripScreen() {
             <Text style={styles.ctaText}>{isEditing ? 'Guardar cambios' : 'Buscar Ofertas'}</Text>
           )}
         </TouchableOpacity>
-          </ScrollView>
+          </View>
         </SafeAreaView>
-      </KeyboardAvoidingView>
+      </View>
 
       <ConfirmDialog
-        visible={confirmDiscard}
-        icon="arrow-back-circle-outline"
-        title="¿Descartar los cambios?"
-        message="Restauraremos los datos originales y volveremos a publicar tu solicitud antes de salir."
-        confirmText="Descartar y salir"
-        cancelText="Seguir editando"
-        onConfirm={discardEditAndExit}
-        onCancel={() => setConfirmDiscard(false)}
+        visible={confirmExit}
+        icon="warning-outline"
+        destructive
+        title="¿Cancelar la solicitud?"
+        message="La búsqueda se cancelará y volverás al inicio para definir un nuevo punto de partida."
+        confirmText="Sí, cancelar"
+        cancelText="Seguir configurando"
+        onConfirm={cancelRecoveryAndExit}
+        onCancel={() => setConfirmExit(false)}
       />
       <ConfirmDialog
         visible={confirmRecoveryCancel}
@@ -637,7 +620,6 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   topLeft: { alignItems: 'flex-start', gap: spacing.xs },
-  summaryWrap: { flex: 1 },
   back: {
     width: 44,
     height: 44,
@@ -661,7 +643,6 @@ const styles = StyleSheet.create({
   },
   sheet: {
     width: '100%',
-    maxHeight: '86%',
     backgroundColor: colors.background,
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,
@@ -671,7 +652,12 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: -3 },
     elevation: 12,
   },
-  sheetContent: { padding: spacing.lg, gap: spacing.md },
+  sheetResting: { maxHeight: '48%' },
+  sheetContent: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    gap: spacing.sm,
+  },
 
   estimate: {
     flexDirection: 'row',
@@ -679,11 +665,11 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     alignSelf: 'flex-start',
     paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    paddingVertical: 2,
     borderRadius: radius.pill,
     backgroundColor: colors.surfaceMuted,
   },
-  estimateText: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.text },
+  estimateText: { fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: colors.text },
 
   fieldLabel: { fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.text },
   services: { flexDirection: 'row', gap: spacing.md },
@@ -691,7 +677,7 @@ const styles = StyleSheet.create({
   serviceOption: {
     flex: 1,
     minWidth: 0,
-    height: 62,
+    height: 50,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
@@ -714,7 +700,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
-    height: 48,
+    height: 40,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
@@ -728,7 +714,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    height: 54,
+    height: 44,
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
     borderWidth: 1,
@@ -739,7 +725,7 @@ const styles = StyleSheet.create({
   fareInput: { flex: 1, fontSize: fontSize.lg, fontWeight: fontWeight.semibold, color: colors.text, padding: 0 },
 
   cta: {
-    height: 56,
+    height: 48,
     borderRadius: radius.md,
     backgroundColor: colors.primary,
     alignItems: 'center',

@@ -17,7 +17,21 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert, Animated, Easing, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  Alert,
+  ActivityIndicator,
+  Animated,
+  Easing,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
@@ -33,7 +47,7 @@ import {
 } from '@/features/rides/application/useRideMutations';
 import { useDriverActiveRide, useOpenRides } from '@/features/rides/application/useRides';
 import { formatKm, haversineKm } from '@/features/rides/domain/geo';
-import { FareKeypad } from '@/features/rides/presentation/FareKeypad';
+import { formatBolivianos, formatBolivianosInput } from '@/features/rides/domain/money';
 import { OfferLifeTimer } from '@/features/rides/presentation/OfferLifeTimer';
 import { TripRouteMap } from '@/features/rides/presentation/TripRouteMap';
 
@@ -45,7 +59,8 @@ export function OfertaEnviadaScreen() {
   const router = useRouter();
   const { rideId } = useLocalSearchParams<{ rideId?: string }>();
 
-  const { ride: activeRide } = useDriverActiveRide();
+  const activeRideQuery = useDriverActiveRide();
+  const { ride: activeRide } = activeRideQuery;
   const won = !!activeRide && activeRide.id === rideId;
 
   // Estado en vivo de la oferta (rechazo por WebSocket; oferta en store).
@@ -64,10 +79,13 @@ export function OfertaEnviadaScreen() {
 
   const createOffer = useCreateOffer();
   const withdrawOffer = useWithdrawOffer();
+  const offerActionBusy = createOffer.isPending || withdrawOffer.isPending;
   const [showCounter, setShowCounter] = useState(false);
+  const [counterPrice, setCounterPrice] = useState('');
 
   // La solicitud sigue en la lista abierta mientras nadie la toma.
-  const { rides, isLoading } = useOpenRides(!won);
+  const openRidesQuery = useOpenRides(!won);
+  const { rides, isLoading } = openRidesQuery;
   const openRide = rides.find((r) => r.id === rideId) ?? null;
 
   const origin = openRide?.origin ?? null;
@@ -92,30 +110,159 @@ export function OfertaEnviadaScreen() {
 
   const backToList = () => router.replace('/(driver)/(tabs)/solicitudes');
 
+  // Si el pasajero renovó la solicitud mientras la app estaba en segundo plano,
+  // el snapshot limpia el desenlace de la oferta anterior. Esta pantalla queda
+  // entonces sin oferta activa y debe volver a la tarjeta actualizada, desde
+  // donde el conductor puede enviar una nueva propuesta al monto vigente.
+  useEffect(() => {
+    if (
+      rideId &&
+      openRide &&
+      !isLoading &&
+      !sentOffer &&
+      !wasRejected &&
+      !offerExpired &&
+      !wasTaken &&
+      !isPaused
+    ) {
+      router.replace('/(driver)/(tabs)/solicitudes');
+    }
+  }, [
+    rideId,
+    openRide,
+    isLoading,
+    sentOffer,
+    wasRejected,
+    offerExpired,
+    wasTaken,
+    isPaused,
+    router,
+  ]);
+
   const reAcceptAtFare = () => {
-    if (!rideId || createOffer.isPending) return;
+    if (!rideId || offerActionBusy) return;
     createOffer.mutate(
       { rideId, input: { acceptAtFare: true } },
-      { onSuccess: (offer) => markOffered(rideId, offer) },
+      { onSuccess: (offer) => markOffered(rideId, offer, openRide?.fare) },
     );
   };
 
-  const submitCounter = (price: number) => {
-    if (!rideId) return;
+  const openCounter = () => {
+    if (offerActionBusy) return;
+    createOffer.reset();
+    setCounterPrice(formatBolivianosInput(offerPrice ?? openRide?.fare ?? 0));
+    setShowCounter(true);
+  };
+
+  const parsedCounterPrice = Number(counterPrice.replace(',', '.'));
+  const counterPriceIsValid = Number.isFinite(parsedCounterPrice) && parsedCounterPrice > 0;
+
+  const submitCounter = () => {
+    if (!rideId || !counterPriceIsValid || offerActionBusy) return;
     createOffer.mutate(
-      { rideId, input: { acceptAtFare: false, price } },
+      { rideId, input: { acceptAtFare: false, price: parsedCounterPrice } },
       {
         onSuccess: (offer) => {
-          markOffered(rideId, offer);
+          markOffered(rideId, offer, openRide?.fare);
           setShowCounter(false);
         },
       },
     );
   };
 
+  const counterPriceInput = (
+    <Modal
+      visible={showCounter}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setShowCounter(false)}>
+      <KeyboardAvoidingView
+        style={styles.priceModalBackdrop}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <View style={styles.priceModal}>
+          <Text style={styles.priceModalTitle}>Mejorar oferta</Text>
+          <Text style={styles.priceModalHint}>
+            El pasajero ofrece Bs {formatBolivianos(openRide?.fare ?? 0)}
+          </Text>
+          <View style={styles.priceInputRow}>
+            <Text style={styles.priceCurrency}>Bs</Text>
+            <TextInput
+              autoFocus
+              value={counterPrice}
+              onChangeText={setCounterPrice}
+              selectTextOnFocus
+              placeholder="30"
+              placeholderTextColor={colors.placeholder}
+              keyboardType="decimal-pad"
+              inputMode="decimal"
+              maxLength={9}
+              style={styles.priceInput}
+              accessibilityLabel="Monto de la nueva oferta en bolivianos"
+              onSubmitEditing={submitCounter}
+            />
+          </View>
+          {createOffer.isError && (
+            <Text style={styles.priceModalError}>{getApiErrorMessage(createOffer.error)}</Text>
+          )}
+          <View style={styles.priceModalActions}>
+            <TouchableOpacity
+              style={styles.priceModalCancel}
+              onPress={() => setShowCounter(false)}
+              disabled={createOffer.isPending}
+              accessibilityRole="button"
+              accessibilityLabel="Cancelar mejora de oferta">
+              <Text style={styles.priceModalCancelText}>Cancelar</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.priceModalSubmit,
+                (!counterPriceIsValid || createOffer.isPending) && styles.disabled,
+              ]}
+              onPress={submitCounter}
+              disabled={!counterPriceIsValid || createOffer.isPending}
+              accessibilityRole="button"
+              accessibilityLabel="Enviar oferta mejorada">
+              {createOffer.isPending ? (
+                <ActivityIndicator color={colors.textOnPrimary} />
+              ) : (
+                <Text style={styles.priceModalSubmitText}>Enviar</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+
   // Si confirmé mi oferta y gané la carrera, muestro el viaje en curso aquí mismo.
   if (won && activeRide) {
     return <ViajeEnCursoConductorScreen ride={activeRide} />;
+  }
+
+  if (
+    !sentOffer &&
+    !openRide &&
+    (activeRideQuery.isLoading || openRidesQuery.isLoading)
+  ) {
+    return <OfferRecoveryScreen onBack={backToList} />;
+  }
+
+  if (
+    !openRide &&
+    (activeRideQuery.isError || openRidesQuery.isError)
+  ) {
+    return (
+      <OfferRecoveryScreen
+        error={getApiErrorMessage(
+          activeRideQuery.isError ? activeRideQuery.error : openRidesQuery.error,
+        )}
+        onBack={backToList}
+        onRetry={() => {
+          void activeRideQuery.refetch();
+          void openRidesQuery.refetch();
+        }}
+      />
+    );
   }
 
   // Otro conductor se llevó el viaje (lo confirmó primero): viaje perdido.
@@ -175,22 +322,16 @@ export function OfertaEnviadaScreen() {
           submitting={createOffer.isPending}
           errorMessage={createOffer.isError ? getApiErrorMessage(createOffer.error) : null}
           onReoffer={reAcceptAtFare}
-          onImprove={() => setShowCounter(true)}
+          onImprove={openCounter}
           onBack={backToList}
         />
-        <FareKeypad
-          visible={showCounter}
-          mode="absolute"
-          subtitle={`El pasajero ofrece Bs ${(openRide?.fare ?? 0).toFixed(2)}`}
-          submitting={createOffer.isPending}
-          onCancel={() => setShowCounter(false)}
-          onSubmit={submitCounter}
-        />
+        {counterPriceInput}
       </>
     );
   }
 
   const retirar = () => {
+    if (offerActionBusy) return;
     Alert.alert(
       'Retirar propuesta',
       'Al retirar tu oferta, otros conductores podrían tomar el viaje.',
@@ -202,7 +343,7 @@ export function OfertaEnviadaScreen() {
           onPress: () => {
             if (sentOffer) {
               withdrawOffer.mutate(sentOffer.offerId, {
-                onSettled: () => {
+                onSuccess: () => {
                   if (rideId) clearRide(rideId);
                   backToList();
                 },
@@ -239,6 +380,10 @@ export function OfertaEnviadaScreen() {
       </SafeAreaView>
 
       <SafeAreaView edges={['bottom']} style={styles.sheet}>
+        <ScrollView
+          contentContainerStyle={styles.sheetContent}
+          showsVerticalScrollIndicator={false}
+          bounces={false}>
         <View style={styles.sheetHandle} />
 
         <View style={styles.statusHeader}>
@@ -252,7 +397,7 @@ export function OfertaEnviadaScreen() {
           <View style={styles.offerRow}>
             <Text style={styles.offerLabel}>Tu oferta</Text>
             <Text style={styles.offerPrice}>
-              {offerPrice != null ? `Bs ${offerPrice.toFixed(2)}` : '—'}
+              {offerPrice != null ? `Bs ${formatBolivianos(offerPrice)}` : '—'}
             </Text>
           </View>
           <View style={styles.divider} />
@@ -295,45 +440,100 @@ export function OfertaEnviadaScreen() {
           </View>
         </View>
 
-        {createOffer.isError && (
-          <Text style={styles.inlineError}>{getApiErrorMessage(createOffer.error)}</Text>
+        {(createOffer.isError || withdrawOffer.isError) && (
+          <Text style={styles.inlineError}>
+            {getApiErrorMessage(
+              createOffer.isError ? createOffer.error : withdrawOffer.error,
+            )}
+          </Text>
         )}
 
         <View style={styles.actions}>
           <TouchableOpacity
-            style={[styles.mejorar, createOffer.isPending && styles.disabled]}
-            onPress={() => setShowCounter(true)}
-            disabled={createOffer.isPending}
+            style={[styles.mejorar, offerActionBusy && styles.disabled]}
+            onPress={openCounter}
+            disabled={offerActionBusy}
             accessibilityRole="button"
             accessibilityLabel="Mejorar oferta">
-            <Ionicons name="trending-up" size={20} color={colors.primary} />
-            <Text style={styles.mejorarText}>Mejorar oferta</Text>
+            {createOffer.isPending ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <Ionicons name="trending-up" size={20} color={colors.primary} />
+            )}
+            <Text style={styles.mejorarText}>
+              {createOffer.isPending ? 'Enviando…' : 'Mejorar oferta'}
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.retirar, withdrawOffer.isPending && styles.disabled]}
+            style={[styles.retirar, offerActionBusy && styles.disabled]}
             onPress={retirar}
-            disabled={withdrawOffer.isPending}
+            disabled={offerActionBusy}
             accessibilityRole="button"
             accessibilityLabel="Retirar propuesta">
-            <Ionicons name="close" size={20} color={colors.danger} />
-            <Text style={styles.retirarText}>Retirar propuesta</Text>
+            {withdrawOffer.isPending ? (
+              <ActivityIndicator size="small" color={colors.danger} />
+            ) : (
+              <Ionicons name="close" size={20} color={colors.danger} />
+            )}
+            <Text style={styles.retirarText}>
+              {withdrawOffer.isPending ? 'Retirando…' : 'Retirar propuesta'}
+            </Text>
           </TouchableOpacity>
           <Text style={styles.actionsHint}>
             Mejorar tu oferta reemplaza la anterior. Al retirarla, otros conductores podrían
             tomar el viaje.
           </Text>
         </View>
+        </ScrollView>
       </SafeAreaView>
 
-      <FareKeypad
-        visible={showCounter}
-        mode="absolute"
-        subtitle={`El pasajero ofrece Bs ${(openRide?.fare ?? 0).toFixed(2)}`}
-        submitting={createOffer.isPending}
-        onCancel={() => setShowCounter(false)}
-        onSubmit={submitCounter}
-      />
+      {counterPriceInput}
     </View>
+  );
+}
+
+function OfferRecoveryScreen({
+  error,
+  onBack,
+  onRetry,
+}: {
+  error?: string;
+  onBack: () => void;
+  onRetry?: () => void;
+}) {
+  return (
+    <SafeAreaView style={styles.recoveryRoot}>
+      <View style={styles.recoveryTop}>
+        <TouchableOpacity
+          style={styles.recoveryBack}
+          onPress={onBack}
+          accessibilityRole="button"
+          accessibilityLabel="Volver a solicitudes">
+          <Ionicons name="arrow-back" size={24} color={colors.primary} />
+        </TouchableOpacity>
+      </View>
+      <View style={styles.recoveryBody}>
+        {error ? (
+          <Ionicons name="cloud-offline-outline" size={46} color={colors.textSecondary} />
+        ) : (
+          <ActivityIndicator size="large" color={colors.primary} />
+        )}
+        <Text style={styles.recoveryTitle}>
+          {error ? 'No pudimos verificar tu oferta' : 'Recuperando tu oferta…'}
+        </Text>
+        {error && <Text style={styles.recoveryHint}>{error}</Text>}
+        {onRetry && (
+          <TouchableOpacity
+            style={styles.recoveryRetry}
+            onPress={onRetry}
+            accessibilityRole="button"
+            accessibilityLabel="Reintentar actualización de la oferta">
+            <Ionicons name="refresh" size={19} color={colors.textOnPrimary} />
+            <Text style={styles.recoveryRetryText}>Reintentar</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    </SafeAreaView>
   );
 }
 
@@ -381,7 +581,7 @@ function ReofferScreen({
 
       {(price != null || originName || destName) && (
         <View style={styles.reofferSummary}>
-          {price != null && <Text style={styles.reofferSummaryPrice}>Tu oferta: Bs {price.toFixed(2)}</Text>}
+          {price != null && <Text style={styles.reofferSummaryPrice}>Tu oferta: Bs {formatBolivianos(price)}</Text>}
           {(originName || destName) && (
             <Text style={styles.reofferSummaryRoute} numberOfLines={1}>
               {originName ?? '—'} → {destName ?? '—'}
@@ -398,10 +598,10 @@ function ReofferScreen({
           onPress={onReoffer}
           disabled={submitting}
           accessibilityRole="button"
-          accessibilityLabel={fare != null ? `Ofertar de nuevo por Bs ${fare.toFixed(2)}` : 'Ofertar de nuevo'}>
+          accessibilityLabel={fare != null ? `Ofertar de nuevo por Bs ${formatBolivianos(fare)}` : 'Ofertar de nuevo'}>
           <Ionicons name="send" size={18} color={colors.textOnPrimary} />
           <Text style={styles.reofferPrimaryText}>
-            {fare != null ? `Ofertar de nuevo (Bs ${fare.toFixed(2)})` : 'Ofertar de nuevo'}
+            {fare != null ? `Ofertar de nuevo (Bs ${formatBolivianos(fare)})` : 'Ofertar de nuevo'}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -452,6 +652,56 @@ function SpinnerRing() {
 }
 
 const styles = StyleSheet.create({
+  recoveryRoot: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  recoveryTop: {
+    minHeight: 60,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+  },
+  recoveryBody: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.md,
+    paddingHorizontal: spacing.xl,
+  },
+  recoveryBack: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.pill,
+    backgroundColor: colors.surface,
+  },
+  recoveryTitle: {
+    fontSize: fontSize.lg,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
+    textAlign: 'center',
+  },
+  recoveryHint: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  recoveryRetry: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.md,
+    backgroundColor: colors.primary,
+  },
+  recoveryRetryText: {
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.semibold,
+    color: colors.textOnPrimary,
+  },
   root: { flex: 1, backgroundColor: colors.surfaceMuted },
   mapFallback: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: colors.surfaceMuted },
 
@@ -486,8 +736,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    padding: spacing.lg,
-    gap: spacing.lg,
+    maxHeight: '82%',
     backgroundColor: colors.background,
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,
@@ -497,6 +746,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: -3 },
     elevation: 12,
   },
+  sheetContent: { padding: spacing.lg, gap: spacing.lg },
   sheetHandle: { width: 40, height: 4, borderRadius: radius.pill, backgroundColor: colors.border, alignSelf: 'center' },
 
   statusHeader: { alignItems: 'center', gap: spacing.xs },
@@ -557,6 +807,33 @@ const styles = StyleSheet.create({
   actionsHint: { fontSize: fontSize.sm, color: colors.textSecondary, textAlign: 'center', paddingHorizontal: spacing.md },
   disabled: { opacity: 0.5 },
   inlineError: { color: colors.danger, fontSize: fontSize.sm, textAlign: 'center' },
+  priceModalBackdrop: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: spacing.lg,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  priceModal: { gap: spacing.md, padding: spacing.lg, borderRadius: radius.md, backgroundColor: colors.surface },
+  priceModalTitle: { color: colors.text, fontSize: fontSize.lg, fontWeight: fontWeight.bold },
+  priceModalHint: { color: colors.textSecondary, fontSize: fontSize.sm },
+  priceInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 54,
+    paddingHorizontal: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceMuted,
+  },
+  priceCurrency: { marginRight: spacing.sm, color: colors.textSecondary, fontSize: fontSize.md, fontWeight: fontWeight.semibold },
+  priceInput: { flex: 1, padding: 0, color: colors.text, fontSize: fontSize.lg, fontWeight: fontWeight.semibold },
+  priceModalError: { color: colors.danger, fontSize: fontSize.sm },
+  priceModalActions: { flexDirection: 'row', gap: spacing.sm },
+  priceModalCancel: { flex: 1, height: 48, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md, backgroundColor: colors.surfaceMuted },
+  priceModalCancelText: { color: colors.text, fontSize: fontSize.md, fontWeight: fontWeight.semibold },
+  priceModalSubmit: { flex: 1, height: 48, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md, backgroundColor: colors.primary },
+  priceModalSubmitText: { color: colors.textOnPrimary, fontSize: fontSize.md, fontWeight: fontWeight.semibold },
 
   reofferRoot: {
     flex: 1,

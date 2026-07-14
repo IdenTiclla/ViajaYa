@@ -12,7 +12,8 @@ export type DriverToastKind =
   | 'taken'
   | 'cancelled'
   | 'paused'
-  | 'accepted';
+  | 'accepted'
+  | 'connection_error';
 
 export type DriverToast = {
   id: string;
@@ -26,6 +27,7 @@ type DriverToastsState = {
   toasts: DriverToast[];
   push: (toast: Omit<DriverToast, 'id'>) => void;
   dismiss: (id: string) => void;
+  clear: () => void;
 };
 
 let _seq = 0;
@@ -38,4 +40,5 @@ export const useDriverToasts = create<DriverToastsState>((set) => ({
       toasts: [...s.toasts, { ...toast, id: `${Date.now()}-${_seq++}` }].slice(-3),
     })),
   dismiss: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
+  clear: () => set({ toasts: [] }),
 }));

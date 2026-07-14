@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 REGISTER = "/api/v1/auth/register"
 RIDES = "/api/v1/rides"
 RECENT = "/api/v1/rides/recent-destinations"
@@ -75,6 +77,28 @@ async def test_create_ride_rejects_out_of_range_coordinates(client):
     assert resp.status_code == 422
 
 
+@pytest.mark.parametrize("country_code", [None, "BO"])
+async def test_create_ride_rejects_point_outside_bolivia_even_with_country_hint(
+    client,
+    country_code: str | None,
+):
+    headers = await _auth_header(client)
+    payload = _ride_payload(
+        destination={
+            "latitude": -19.008,
+            "longitude": -57.652,
+            "name": "Corumba",
+            "address": "Brasil",
+            "country_code": country_code,
+        }
+    )
+
+    resp = await client.post(RIDES, json=payload, headers=headers)
+
+    assert resp.status_code == 422
+    assert "Bolivia" in resp.json()["detail"]
+
+
 async def test_recent_destinations_empty_then_populated(client):
     headers = await _auth_header(client)
 
@@ -89,9 +113,10 @@ async def test_recent_destinations_empty_then_populated(client):
     data = populated.json()
     assert len(data) == 1
     assert data[0]["name"] == "Trabajo"
+    assert data[0]["country_code"] == "BO"
 
 
-async def test_update_fare_increases_offer(client):
+async def test_update_fare_adjusts_offer(client):
     headers = await _auth_header(client)
     created = await client.post(RIDES, json=_ride_payload(fare="25.00"), headers=headers)
     ride_id = created.json()["id"]
@@ -104,13 +129,26 @@ async def test_update_fare_increases_offer(client):
     assert resp.json()["fare"] == "32.00"
 
 
-async def test_update_fare_rejects_non_increase(client):
+async def test_update_fare_allows_lower_offer(client):
     headers = await _auth_header(client)
     created = await client.post(RIDES, json=_ride_payload(fare="25.00"), headers=headers)
     ride_id = created.json()["id"]
 
     resp = await client.patch(
         f"{RIDES}/{ride_id}/fare", json={"fare": "20.00"}, headers=headers
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["fare"] == "20.00"
+
+
+async def test_update_fare_rejects_unchanged_offer(client):
+    headers = await _auth_header(client)
+    created = await client.post(RIDES, json=_ride_payload(fare="25.00"), headers=headers)
+    ride_id = created.json()["id"]
+
+    resp = await client.patch(
+        f"{RIDES}/{ride_id}/fare", json={"fare": "25.00"}, headers=headers
     )
 
     assert resp.status_code == 422

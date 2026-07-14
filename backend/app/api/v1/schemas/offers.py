@@ -12,7 +12,7 @@ from decimal import Decimal
 from pydantic import BaseModel, Field, model_validator
 
 from app.application.dto import OfferDetail
-from app.domain.entities import OfferStatus, ServiceType
+from app.domain.entities import OfferStatus, VehicleType
 from app.domain.ride_policy import offer_expires_at
 
 
@@ -40,7 +40,7 @@ class OfferDriverSchema(BaseModel):
     id: uuid.UUID
     full_name: str
     rating: float | None
-    vehicle_type: ServiceType | None
+    vehicle_type: VehicleType | None
     plate: str | None
     vehicle_model: str | None
 

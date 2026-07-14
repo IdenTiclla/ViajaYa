@@ -6,6 +6,8 @@
  * La *creación* de la solicitud sigue viviendo en `booking/data/ridesRepository`.
  */
 import { api } from '@/core/http/client';
+import type { VehicleType } from '@/features/auth/domain/types';
+import { getPlaceStreetName } from '@/features/booking/domain/placeLabels';
 import type { Place } from '@/features/booking/domain/types';
 import type {
   CreateOfferInput,
@@ -19,13 +21,20 @@ import type {
   RideStatus,
 } from '@/features/rides/domain/types';
 
-type PointDto = { latitude: number; longitude: number; name: string; address: string };
+type PointDto = {
+  latitude: number;
+  longitude: number;
+  name: string;
+  address: string;
+  country_code?: string | null;
+};
 
 function toPlace(dto: PointDto): Place {
   return {
     coordinates: { latitude: dto.latitude, longitude: dto.longitude },
-    name: dto.name,
+    name: getPlaceStreetName(dto),
     address: dto.address,
+    countryCode: dto.country_code?.toUpperCase() ?? null,
   };
 }
 
@@ -35,6 +44,7 @@ function toPointDto(place: Place): PointDto {
     longitude: place.coordinates.longitude,
     name: place.name,
     address: place.address,
+    country_code: place.countryCode,
   };
 }
 
@@ -93,6 +103,7 @@ export type OpenRideDto = {
   origin: PointDto;
   destination: PointDto;
   rider: OpenRideRiderDto;
+  pool_version: number;
   created_at: string | null;
 };
 
@@ -110,6 +121,7 @@ export function toOpenRide(dto: OpenRideDto): OpenRide {
       rating: dto.rider.rating,
       tripsCompleted: dto.rider.trips_completed,
     },
+    poolVersion: dto.pool_version,
     createdAt: dto.created_at,
   };
 }
@@ -119,15 +131,24 @@ type RideDriverDto = {
   full_name: string;
   phone: string | null;
   rating: number | null;
-  vehicle_type: Ride['service'] | null;
+  vehicle_type: VehicleType | null;
   plate: string | null;
   vehicle_model: string | null;
+};
+
+type RideRiderDto = {
+  id: string;
+  full_name: string;
+  phone: string | null;
+  rating: number | null;
 };
 
 export type RideDto = {
   id: string;
   rider_id: string;
+  rider: RideRiderDto;
   status: RideStatus;
+  paused: boolean;
   service_type: Ride['service'];
   fare: string;
   payment_method: Ride['payment'];
@@ -142,7 +163,14 @@ export function toRide(dto: RideDto): Ride {
   return {
     id: dto.id,
     riderId: dto.rider_id,
+    rider: {
+      id: dto.rider.id,
+      fullName: dto.rider.full_name,
+      phone: dto.rider.phone,
+      rating: dto.rider.rating,
+    },
     status: dto.status,
+    paused: dto.paused,
     service: dto.service_type,
     fare: Number.parseFloat(dto.fare),
     payment: dto.payment_method,
@@ -168,7 +196,7 @@ type HistoryCounterpartDto = {
   id: string;
   full_name: string;
   rating: number | null;
-  vehicle_type: RideHistoryItem['service'] | null;
+  vehicle_type: VehicleType | null;
   vehicle_model: string | null;
   plate: string | null;
 };
@@ -247,6 +275,10 @@ export const ridesRepository = {
     return data.map(toOpenRide);
   },
 
+  async dismissOpenRide(rideId: string): Promise<void> {
+    await api.post(`/rides/${rideId}/dismiss`);
+  },
+
   async getEarnings(): Promise<DriverEarnings> {
     const { data } = await api.get<DriverEarningsDto>('/drivers/me/earnings');
     return toEarnings(data);
@@ -284,6 +316,17 @@ export const ridesRepository = {
   },
 
   // --- Pasajero ---
+  async getPassengerActiveRide(): Promise<Ride | null> {
+    const { data } = await api.get<RideDto | null>('/rides/me/active');
+    return data ? toRide(data) : null;
+  },
+
+  /** Ambos roles: ultimo viaje completado que el usuario aun no califico. */
+  async getPendingRatingRide(): Promise<Ride | null> {
+    const { data } = await api.get<RideDto | null>('/rides/me/pending-rating');
+    return data ? toRide(data) : null;
+  },
+
   async listOffers(rideId: string): Promise<Offer[]> {
     const { data } = await api.get<OfferDto[]>(`/rides/${rideId}/offers`);
     return data.map(toOffer);
@@ -322,6 +365,10 @@ export const ridesRepository = {
       score: input.score,
       comment: input.comment,
     });
+  },
+
+  async skipRating(rideId: string): Promise<void> {
+    await api.post(`/rides/${rideId}/rating/skip`);
   },
 
   async cancel(rideId: string): Promise<Ride> {

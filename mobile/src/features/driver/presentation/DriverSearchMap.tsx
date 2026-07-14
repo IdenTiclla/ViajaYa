@@ -9,7 +9,7 @@
  */
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useRef } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
@@ -88,10 +88,14 @@ export function DriverSearchMap({ coordinates, status, retry }: Props) {
             </Text>
             <TouchableOpacity
               style={styles.retryBtn}
-              onPress={retry}
+              onPress={status === 'denied' ? () => void Linking.openSettings() : retry}
               accessibilityRole="button"
-              accessibilityLabel="Reintentar obtención de ubicación">
-              <Text style={styles.retryBtnText}>Reintentar</Text>
+              accessibilityLabel={
+                status === 'denied' ? 'Abrir configuración de ubicación' : 'Reintentar ubicación'
+              }>
+              <Text style={styles.retryBtnText}>
+                {status === 'denied' ? 'Abrir configuración' : 'Reintentar'}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>

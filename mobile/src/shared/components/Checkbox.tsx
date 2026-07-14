@@ -9,30 +9,47 @@ type Props = {
   /** Contenido a la derecha (texto o nodos como enlaces). */
   children: React.ReactNode;
   error?: string;
+  disabled?: boolean;
 };
 
-export function Checkbox({ checked, onChange, children, error }: Props) {
+export function Checkbox({ checked, onChange, children, error, disabled = false }: Props) {
   return (
     <View style={styles.wrapper}>
       <Pressable
         accessibilityRole="checkbox"
-        accessibilityState={{ checked }}
+        accessibilityState={{ checked, disabled }}
+        disabled={disabled}
         onPress={() => onChange(!checked)}
-        style={styles.row}
-        hitSlop={6}>
+        style={({ pressed }) => [
+          styles.row,
+          pressed && styles.pressed,
+          disabled && styles.disabled,
+        ]}>
         <View style={[styles.box, checked && styles.boxChecked]}>
           {checked && <Ionicons name="checkmark" size={14} color={colors.textOnPrimary} />}
         </View>
         <Text style={styles.label}>{children}</Text>
       </Pressable>
-      {error && <Text style={styles.error}>{error}</Text>}
+      {error && (
+        <Text style={styles.error} accessibilityLiveRegion="polite">
+          {error}
+        </Text>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   wrapper: { gap: spacing.xs },
-  row: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
+  row: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  pressed: { opacity: 0.72 },
+  disabled: { opacity: 0.5 },
   box: {
     width: 22,
     height: 22,

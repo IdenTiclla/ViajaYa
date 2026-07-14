@@ -3,6 +3,7 @@
  * Reutiliza `Place`, `ServiceType` y `PaymentMethod` del feature `booking`.
  */
 import type { PaymentMethod, Place, ServiceType } from '@/features/booking/domain/types';
+import type { VehicleType } from '@/features/auth/domain/types';
 
 export type RideStatus =
   | 'searching'
@@ -24,7 +25,7 @@ export type OfferDriver = {
   id: string;
   fullName: string;
   rating: number | null;
-  vehicleType: ServiceType | null;
+  vehicleType: VehicleType | null;
   plate: string | null;
   vehicleModel: string | null;
 };
@@ -62,6 +63,8 @@ export type OpenRide = {
   origin: Place;
   destination: Place;
   rider: OpenRideRider;
+  /** Cambia cuando se modifican las condiciones visibles de la solicitud. */
+  poolVersion: number;
   createdAt: string | null;
 };
 
@@ -71,16 +74,27 @@ export type RideDriver = {
   fullName: string;
   phone: string | null;
   rating: number | null;
-  vehicleType: ServiceType | null;
+  vehicleType: VehicleType | null;
   plate: string | null;
   vehicleModel: string | null;
+};
+
+/** Datos del pasajero asignado, visibles para el conductor durante el viaje. */
+export type RideRider = {
+  id: string;
+  fullName: string;
+  phone: string | null;
+  rating: number | null;
 };
 
 /** Detalle completo de un viaje (polling de estado para ambos lados). */
 export type Ride = {
   id: string;
   riderId: string;
+  rider: RideRider;
   status: RideStatus;
+  /** La solicitud sigue buscando, pero esta oculta mientras el pasajero la edita. */
+  paused: boolean;
   service: ServiceType;
   payment: PaymentMethod;
   fare: number;
@@ -102,7 +116,7 @@ export type HistoryCounterpart = {
   id: string;
   fullName: string;
   rating: number | null;
-  vehicleType: ServiceType | null;
+  vehicleType: VehicleType | null;
   vehicleModel: string | null;
   plate: string | null;
 };

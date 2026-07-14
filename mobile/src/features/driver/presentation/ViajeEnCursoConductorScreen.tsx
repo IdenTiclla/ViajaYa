@@ -8,19 +8,35 @@
  */
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useState } from 'react';
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Linking,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 import { useRoute } from '@/features/booking/application/useRoute';
+import { SERVICE_META } from '@/features/booking/domain/serviceCatalog';
 import { useCancelRide, useUpdateRideStatus } from '@/features/rides/application/useRideMutations';
+import { formatBolivianos } from '@/features/rides/domain/money';
+import {
+  DRIVER_ACTIVE_RIDE_KEY,
+  PENDING_RATING_RIDE_KEY,
+} from '@/features/rides/application/useRides';
 import { RideRatingCard } from '@/features/rides/presentation/RideRatingCard';
 import { TripRouteMap } from '@/features/rides/presentation/TripRouteMap';
 import type { Ride, RideStatus } from '@/features/rides/domain/types';
-
-const SERVICE_LABELS = { taxi: 'Taxi', moto: 'Moto' } as const;
+import { ConfirmDialog } from '@/shared/components';
 
 // Siguiente acción según el estado actual del viaje.
 const NEXT: Partial<Record<RideStatus, { label: string; status: RideStatus }>> = {
@@ -29,8 +45,23 @@ const NEXT: Partial<Record<RideStatus, { label: string; status: RideStatus }>> =
   in_progress: { label: 'Finalizar viaje', status: 'completed' },
 };
 
+const DELIVERY_NEXT: Partial<Record<RideStatus, { label: string; status: RideStatus }>> = {
+  accepted: { label: 'Llegué al punto de recogida', status: 'arriving' },
+  arriving: { label: 'Iniciar entrega', status: 'in_progress' },
+  in_progress: { label: 'Confirmar entrega', status: 'completed' },
+};
+
 // Banner de navegación: a dónde se dirige el conductor en cada estado.
 function navTarget(ride: Ride): { title: string; place: string } {
+  if (ride.service === 'delivery') {
+    if (ride.status === 'in_progress') {
+      return { title: 'Entregar la encomienda en', place: ride.destination.name };
+    }
+    if (ride.status === 'arriving') {
+      return { title: 'Esperando la encomienda en', place: ride.origin.name };
+    }
+    return { title: 'Recoger la encomienda en', place: ride.origin.name };
+  }
   if (ride.status === 'in_progress') {
     return { title: 'Llevando al pasajero a', place: ride.destination.name };
   }
@@ -47,17 +78,32 @@ function formatDuration(seconds: number): string {
 export function ViajeEnCursoConductorScreen({ ride }: { ride: Ride }) {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const [confirmComplete, setConfirmComplete] = useState(false);
   const updateStatus = useUpdateRideStatus();
   const cancelRide = useCancelRide();
+  const busy = updateStatus.isPending || cancelRide.isPending;
   const { route } = useRoute(ride.origin, ride.destination);
+
+  const clearMatchingRide = (queryKey: readonly string[]) => {
+    queryClient.setQueryData<Ride | null>(queryKey, (current) =>
+      current?.id === ride.id ? null : current,
+    );
+  };
+
+  const closeCancelledRide = () => {
+    clearMatchingRide(DRIVER_ACTIVE_RIDE_KEY);
+    router.replace('/(driver)/(tabs)/solicitudes');
+  };
+
+  const closeRatingRide = () => {
+    clearMatchingRide(DRIVER_ACTIVE_RIDE_KEY);
+    clearMatchingRide(PENDING_RATING_RIDE_KEY);
+    router.replace('/(driver)/(tabs)/solicitudes');
+  };
 
   // El pasajero (o el propio conductor) canceló: avisar y volver a solicitudes.
   if (ride.status === 'cancelled') {
-    const dismiss = () => {
-      // Despeja el viaje activo de inmediato para volver al flujo de solicitudes.
-      queryClient.setQueryData(['driver-active-ride'], null);
-      router.replace('/(driver)/(tabs)/solicitudes');
-    };
     return (
       <SafeAreaView style={styles.cancelledRoot}>
         <View style={styles.cancelledIcon}>
@@ -69,7 +115,7 @@ export function ViajeEnCursoConductorScreen({ ride }: { ride: Ride }) {
         </Text>
         <TouchableOpacity
           style={styles.cancelledBtn}
-          onPress={dismiss}
+          onPress={closeCancelledRide}
           accessibilityRole="button"
           accessibilityLabel="Volver a solicitudes">
           <Ionicons name="compass" size={20} color={colors.textOnPrimary} />
@@ -83,23 +129,42 @@ export function ViajeEnCursoConductorScreen({ ride }: { ride: Ride }) {
   if (ride.status === 'completed') {
     return (
       <SafeAreaView style={styles.ratingRoot}>
-        <RideRatingCard
-          ride={ride}
-          rateeRole="passenger"
-          onDone={() => router.replace('/(driver)/(tabs)')}
-        />
+        <KeyboardAvoidingView
+          style={styles.ratingRoot}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <ScrollView
+            contentContainerStyle={styles.ratingContent}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            showsVerticalScrollIndicator={false}>
+            <RideRatingCard
+              ride={ride}
+              rateeRole="passenger"
+              counterpartName={ride.rider.fullName}
+              onDone={closeRatingRide}
+            />
+          </ScrollView>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
 
-  const next = NEXT[ride.status];
+  const next = (ride.service === 'delivery' ? DELIVERY_NEXT : NEXT)[ride.status];
   const canCancel = ride.status === 'accepted' || ride.status === 'arriving';
   const target = navTarget(ride);
   const distanceKm = route ? (route.distanceMeters / 1000).toFixed(1) : null;
+  const advance = () => {
+    if (!next || busy) return;
+    if (next.status === 'completed') {
+      setConfirmComplete(true);
+      return;
+    }
+    updateStatus.mutate({ rideId: ride.id, status: next.status });
+  };
 
   return (
     <View style={styles.root}>
-      <TripRouteMap origin={ride.origin} destination={ride.destination} bottomPadding={360} />
+      <TripRouteMap origin={ride.origin} destination={ride.destination} bottomPadding={440} />
 
       <SafeAreaView edges={['top']} style={styles.navBannerWrap} pointerEvents="box-none">
         <View style={styles.navBanner}>
@@ -124,57 +189,150 @@ export function ViajeEnCursoConductorScreen({ ride }: { ride: Ride }) {
       <SafeAreaView style={styles.sheet} edges={['bottom']}>
         <View style={styles.sheetHandle} />
 
-        <View style={styles.header}>
-          <View style={styles.serviceBadge}>
-            <Ionicons
-              name={ride.service === 'taxi' ? 'car-sport' : 'bicycle'}
-              size={18}
-              color={colors.primary}
-            />
-            <Text style={styles.serviceBadgeText}>{SERVICE_LABELS[ride.service]}</Text>
+        <ScrollView
+          style={styles.sheetScroll}
+          contentContainerStyle={styles.sheetContent}
+          showsVerticalScrollIndicator={false}
+          bounces={false}>
+          <View style={styles.header}>
+            <View style={styles.serviceBadge}>
+              <Ionicons
+                name={SERVICE_META[ride.service].icon}
+                size={18}
+                color={colors.primary}
+              />
+              <Text style={styles.serviceBadgeText}>{SERVICE_META[ride.service].shortLabel}</Text>
+            </View>
+            <Text style={styles.price}>Bs {formatBolivianos(ride.acceptedPrice ?? ride.fare)}</Text>
           </View>
-          <Text style={styles.price}>Bs {(ride.acceptedPrice ?? ride.fare).toFixed(2)}</Text>
-        </View>
 
-        <View style={styles.routeCard}>
-          <Row icon="navigate-circle" color={colors.primary} label="Recoger en" value={ride.origin.name} />
-          <Row icon="location" color={colors.danger} label="Destino" value={ride.destination.name} />
-          <Row
-            icon="card"
-            color={colors.textSecondary}
-            label="Pago"
-            value={ride.payment === 'qr' ? 'QR' : 'Efectivo'}
-          />
-        </View>
+          <View style={styles.routeCard}>
+            <Row icon="navigate-circle" color={colors.primary} label="Recoger en" value={ride.origin.name} />
+            <Row icon="location" color={colors.danger} label="Destino" value={ride.destination.name} />
+            <Row
+              icon="card"
+              color={colors.textSecondary}
+              label="Pago"
+              value={ride.payment === 'qr' ? 'QR' : 'Efectivo'}
+            />
+          </View>
 
-        {(updateStatus.isError || cancelRide.isError) && (
-          <Text style={styles.error}>
-            {getApiErrorMessage(updateStatus.error ?? cancelRide.error)}
-          </Text>
-        )}
+          <View style={styles.passengerBlock}>
+            <View style={styles.passengerAvatar}>
+              <Text style={styles.passengerAvatarText}>
+                {ride.rider.fullName.trim().charAt(0).toUpperCase() || 'P'}
+              </Text>
+            </View>
+            <View style={styles.passengerInfo}>
+              <Text style={styles.passengerName} numberOfLines={1}>
+                {ride.rider.fullName}
+              </Text>
+              <View style={styles.passengerMeta}>
+                <Text style={styles.passengerRole}>
+                  {ride.service === 'delivery' ? 'Remitente' : 'Pasajero'}
+                </Text>
+                {ride.rider.rating !== null && (
+                  <>
+                    <Ionicons name="star" size={13} color={colors.accent} />
+                    <Text style={styles.passengerRating}>{ride.rider.rating.toFixed(1)}</Text>
+                  </>
+                )}
+              </View>
+            </View>
+            {ride.rider.phone && (
+              <View style={styles.contactActions}>
+                <TouchableOpacity
+                  style={styles.contactBtn}
+                  onPress={() => void Linking.openURL(`sms:${ride.rider.phone}`)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Enviar SMS a ${ride.rider.fullName}`}>
+                  <Ionicons name="chatbubble-outline" size={20} color={colors.primary} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.contactBtn}
+                  onPress={() => void Linking.openURL(`tel:${ride.rider.phone}`)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Llamar a ${ride.rider.fullName}`}>
+                  <Ionicons name="call-outline" size={20} color={colors.primary} />
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
 
-        {next && (
-          <TouchableOpacity
-            style={[styles.primaryBtn, updateStatus.isPending && styles.disabled]}
-            onPress={() => updateStatus.mutate({ rideId: ride.id, status: next.status })}
-            disabled={updateStatus.isPending}
-            accessibilityRole="button"
-            accessibilityLabel={next.label}>
-            <Ionicons name="checkmark-circle" size={20} color={colors.textOnPrimary} />
-            <Text style={styles.primaryText}>{next.label}</Text>
-          </TouchableOpacity>
-        )}
-        {canCancel && (
-          <TouchableOpacity
-            style={styles.cancelBtn}
-            onPress={() => cancelRide.mutate(ride.id)}
-            disabled={cancelRide.isPending}
-            accessibilityRole="button"
-            accessibilityLabel="Cancelar viaje">
-            <Text style={styles.cancelText}>Cancelar viaje</Text>
-          </TouchableOpacity>
-        )}
+          {(updateStatus.isError || cancelRide.isError) && (
+            <Text style={styles.error}>
+              {getApiErrorMessage(updateStatus.error ?? cancelRide.error)}
+            </Text>
+          )}
+
+          {next && (
+            <TouchableOpacity
+              style={[styles.primaryBtn, busy && styles.disabled]}
+              onPress={advance}
+              disabled={busy}
+              accessibilityRole="button"
+              accessibilityLabel={next.label}>
+              {updateStatus.isPending ? (
+                <ActivityIndicator size="small" color={colors.textOnPrimary} />
+              ) : (
+                <Ionicons name="checkmark-circle" size={20} color={colors.textOnPrimary} />
+              )}
+              <Text style={styles.primaryText}>
+                {updateStatus.isPending ? 'Actualizando…' : next.label}
+              </Text>
+            </TouchableOpacity>
+          )}
+          {canCancel && (
+            <TouchableOpacity
+              style={[styles.cancelBtn, busy && styles.disabled]}
+              onPress={() => setConfirmCancel(true)}
+              disabled={busy}
+              accessibilityRole="button"
+              accessibilityLabel={ride.service === 'delivery' ? 'Cancelar entrega' : 'Cancelar viaje'}>
+              <Text style={styles.cancelText}>
+                {ride.service === 'delivery' ? 'Cancelar entrega' : 'Cancelar viaje'}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </ScrollView>
       </SafeAreaView>
+
+      <ConfirmDialog
+        visible={confirmCancel}
+        icon="warning-outline"
+        destructive
+        title={ride.service === 'delivery' ? '¿Cancelar entrega?' : '¿Cancelar viaje?'}
+        message={
+          ride.service === 'delivery'
+            ? 'El remitente será notificado y la entrega ya no podrá continuar.'
+            : 'El pasajero será notificado y este viaje ya no podrá continuar.'
+        }
+        confirmText="Sí, cancelar"
+        cancelText="Seguir con el viaje"
+        onConfirm={() => {
+          setConfirmCancel(false);
+          cancelRide.mutate(ride.id);
+        }}
+        onCancel={() => setConfirmCancel(false)}
+      />
+
+      <ConfirmDialog
+        visible={confirmComplete}
+        icon="flag-outline"
+        title={ride.service === 'delivery' ? '¿Confirmar la entrega?' : '¿Finalizar el viaje?'}
+        message={
+          ride.service === 'delivery'
+            ? 'Confirma que la encomienda llegó al destino. Después ambos podrán calificar la experiencia.'
+            : 'Confirma que llegaste al destino. Después ambos podrán calificar la experiencia.'
+        }
+        confirmText={ride.service === 'delivery' ? 'Sí, entregada' : 'Sí, finalizar'}
+        cancelText={ride.service === 'delivery' ? 'Seguir entregando' : 'Seguir viajando'}
+        onConfirm={() => {
+          setConfirmComplete(false);
+          updateStatus.mutate({ rideId: ride.id, status: 'completed' });
+        }}
+        onCancel={() => setConfirmComplete(false)}
+      />
     </View>
   );
 }
@@ -205,7 +363,8 @@ function Row({
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceMuted },
-  ratingRoot: { flex: 1, backgroundColor: colors.background, padding: spacing.lg },
+  ratingRoot: { flex: 1, backgroundColor: colors.background },
+  ratingContent: { flexGrow: 1, padding: spacing.lg },
 
   cancelledRoot: {
     flex: 1,
@@ -277,8 +436,9 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    padding: spacing.lg,
-    gap: spacing.md,
+    maxHeight: '72%',
+    paddingTop: spacing.sm,
+    paddingHorizontal: spacing.lg,
     backgroundColor: colors.background,
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,
@@ -288,7 +448,16 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: -3 },
     elevation: 12,
   },
-  sheetHandle: { width: 40, height: 4, borderRadius: radius.pill, backgroundColor: colors.border, alignSelf: 'center' },
+  sheetHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: radius.pill,
+    backgroundColor: colors.border,
+    alignSelf: 'center',
+    marginBottom: spacing.sm,
+  },
+  sheetScroll: { flexShrink: 1 },
+  sheetContent: { gap: spacing.md, paddingBottom: spacing.lg },
 
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   serviceBadge: {
@@ -314,6 +483,44 @@ const styles = StyleSheet.create({
   rowText: { flex: 1 },
   rowLabel: { fontSize: fontSize.xs, color: colors.textSecondary },
   rowValue: { fontSize: fontSize.md, fontWeight: fontWeight.medium, color: colors.text },
+
+  passengerBlock: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceMuted,
+  },
+  passengerAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.pill,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  passengerAvatarText: {
+    color: colors.textOnPrimary,
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.bold,
+  },
+  passengerInfo: { flex: 1, minWidth: 0, gap: 2 },
+  passengerName: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.text },
+  passengerMeta: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  passengerRole: { fontSize: fontSize.xs, color: colors.textSecondary, marginRight: spacing.xs },
+  passengerRating: { fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: colors.text },
+  contactActions: { flexDirection: 'row', gap: spacing.xs },
+  contactBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
   primaryBtn: {
     flexDirection: 'row',

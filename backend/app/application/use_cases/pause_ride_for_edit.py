@@ -11,14 +11,13 @@ from __future__ import annotations
 import uuid
 
 from app.application.dto import RidePausedResult
-from app.domain.entities import Offer, RideStatus, User
+from app.domain.entities import RideStatus, User
 from app.domain.exceptions import (
     InvalidRideTransitionError,
     NotAuthorizedActionError,
     RideNotFoundError,
 )
 from app.domain.repositories import OfferRepository, RideRequestRepository
-from app.domain.ride_policy import is_offer_active
 
 
 class PauseRideForEdit:
@@ -43,13 +42,15 @@ class PauseRideForEdit:
         if ride.paused:
             raise InvalidRideTransitionError("La solicitud ya se está modificando.")
 
-        # Capturamos las ofertas vivas antes de retirarlas, para avisar a esos
-        # conductores y al pasajero que quite las tarjetas de su pantalla.
-        active: list[Offer] = [
-            o for o in await self._offers.list_by_ride(ride_id) if is_offer_active(o)
-        ]
-        await self._offers.reject_pending(ride_id)
-
-        ride.paused = True
-        updated = await self._rides.update(ride)
-        return RidePausedResult(ride=updated, paused_offers=active)
+        transition = await self._offers.pause_ride_atomically(
+            ride_id,
+            expected_fare=ride.fare,
+        )
+        if transition is None:
+            raise InvalidRideTransitionError(
+                "La solicitud cambió de estado y ya no se puede modificar."
+            )
+        return RidePausedResult(
+            ride=transition.ride,
+            paused_offers=transition.affected_offers,
+        )

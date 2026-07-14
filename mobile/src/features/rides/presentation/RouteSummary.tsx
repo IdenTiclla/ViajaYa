@@ -9,8 +9,8 @@
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
-
-type PlaceLite = { name: string };
+import { getPlaceStreetName } from '@/features/booking/domain/placeLabels';
+type PlaceLite = { name: string; address?: string };
 
 type Props = {
   origin: PlaceLite;
@@ -45,7 +45,7 @@ export function RouteSummary({ origin, destination, onEditOrigin, onEditDestinat
             )}
           </View>
           <Text style={styles.value} numberOfLines={1}>
-            {origin.name}
+            {getPlaceStreetName(origin)}
           </Text>
         </View>
         <View style={styles.row}>
@@ -61,7 +61,7 @@ export function RouteSummary({ origin, destination, onEditOrigin, onEditDestinat
             )}
           </View>
           <Text style={styles.value} numberOfLines={1}>
-            {destination.name}
+            {getPlaceStreetName(destination)}
           </Text>
         </View>
       </View>

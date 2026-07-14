@@ -49,6 +49,10 @@ class RideNotFoundError(DomainError):
     """La solicitud de viaje no existe."""
 
 
+class RideAlreadyActiveError(DomainError):
+    """El pasajero ya tiene una solicitud o un viaje activo."""
+
+
 class OfferNotFoundError(DomainError):
     """La oferta no existe o no pertenece a la solicitud indicada."""
 

@@ -60,6 +60,7 @@ class AcceptOffer:
         return AcceptOfferResult(
             detail=RideDetail(
                 ride=acceptance.ride,
+                rider=rider,
                 driver=acceptance.driver,
                 accepted_offer=acceptance.accepted_offer,
             ),

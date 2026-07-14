@@ -13,7 +13,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 
-from app.domain.entities import ServiceType, User, UserRole
+from app.domain.entities import User, UserRole, VehicleType
 from app.infrastructure.db.repositories import SqlAlchemyUserRepository
 from app.infrastructure.db.session import async_session_factory
 from app.infrastructure.security.bcrypt_hasher import BcryptPasswordHasher
@@ -26,7 +26,7 @@ class SeedUser:
     full_name: str
     email: str
     role: UserRole = UserRole.PASSENGER
-    vehicle_type: ServiceType | None = None
+    vehicle_type: VehicleType | None = None
     plate: str | None = None
     vehicle_model: str | None = None
     rating: float | None = None
@@ -39,7 +39,7 @@ SEED_USERS: list[SeedUser] = [
         "Conductor Auto Uno",
         "driver.auto1@viajaya.com",
         role=UserRole.DRIVER,
-        vehicle_type=ServiceType.TAXI,
+        vehicle_type=VehicleType.TAXI,
         plate="1234-ABC",
         vehicle_model="Toyota Corolla",
         rating=4.8,
@@ -48,7 +48,7 @@ SEED_USERS: list[SeedUser] = [
         "Conductor Auto Dos",
         "driver.auto2@viajaya.com",
         role=UserRole.DRIVER,
-        vehicle_type=ServiceType.TAXI,
+        vehicle_type=VehicleType.TAXI,
         plate="5678-DEF",
         vehicle_model="Nissan Versa",
         rating=4.6,
@@ -57,7 +57,7 @@ SEED_USERS: list[SeedUser] = [
         "Conductor Moto Uno",
         "driver.moto1@viajaya.com",
         role=UserRole.DRIVER,
-        vehicle_type=ServiceType.MOTO,
+        vehicle_type=VehicleType.MOTO,
         plate="M-101",
         vehicle_model="Honda CB125",
         rating=4.9,
@@ -66,7 +66,7 @@ SEED_USERS: list[SeedUser] = [
         "Conductor Moto Dos",
         "driver.moto2@viajaya.com",
         role=UserRole.DRIVER,
-        vehicle_type=ServiceType.MOTO,
+        vehicle_type=VehicleType.MOTO,
         plate="M-202",
         vehicle_model="Yamaha YBR125",
         rating=4.7,

@@ -34,14 +34,19 @@ function ToastItem({ toast, onDismiss }: { toast: PassengerToast; onDismiss: () 
       entering={FadeInDown.duration(250)}
       exiting={FadeOutUp.duration(200)}
       layout={LinearTransition.duration(200)}>
-      <Pressable onPress={onDismiss} style={styles.toast} accessibilityRole="alert">
+      <Pressable
+        onPress={onDismiss}
+        style={styles.toast}
+        accessibilityRole="alert"
+        accessibilityHint="Toca para cerrar el aviso">
         <View style={[styles.iconWrap, { backgroundColor: `${meta.color}1A` }]}>
           <Ionicons name={meta.icon} size={18} color={meta.color} />
         </View>
         <View style={styles.body}>
           <Text style={styles.title}>{toast.title}</Text>
-          <Text style={styles.message}>{toast.message}</Text>
+          <Text style={styles.message} numberOfLines={2}>{toast.message}</Text>
         </View>
+        <Ionicons name="close" size={18} color={colors.textSecondary} />
       </Pressable>
     </Animated.View>
   );

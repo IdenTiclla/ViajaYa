@@ -10,46 +10,78 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Linking,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
 import { useRegionPlace } from '@/features/booking/application/useRegionPlace';
+import {
+  BOLIVIA_DEFAULT_COORDINATES,
+  BOLIVIA_NORTH_EAST,
+  BOLIVIA_SOUTH_WEST,
+  distanceMeters,
+  getBoliviaPlaceError,
+  isCoordinatesInBolivia,
+  isPlaceInBolivia,
+} from '@/features/booking/domain/bolivia';
+import { getPlaceStreetName } from '@/features/booking/domain/placeLabels';
 import type { Place } from '@/features/booking/domain/types';
 import { CenterPin } from '@/features/booking/presentation/CenterPin';
 import { useCurrentLocation } from '@/features/home/application/useCurrentLocation';
-import { locationService } from '@/features/home/data/locationService';
+import { RoutePinMarker } from '@/features/rides/presentation/RoutePinMarker';
+
+const MIN_DESTINATION_DISTANCE_METERS = 50;
 
 export function PickOnMapScreen() {
   const router = useRouter();
-  const { target, saveAs, category, id, label } = useLocalSearchParams<{
+  const { target, saveAs, category, id, label, rideId } = useLocalSearchParams<{
     target?: string;
     saveAs?: string;
     category?: string;
     id?: string;
     label?: string;
+    rideId?: string;
   }>();
   // Modo "guardar lugar": el confirmar lleva al formulario de lugar guardado en
   // vez de a configurar el viaje. Conserva categoría/id/label para reenviarlos.
   const isSaveAs = saveAs === '1';
   const isOrigin = target === 'origin';
+  const isDestination = !isSaveAs && !isOrigin;
   const noun = isSaveAs ? 'lugar' : isOrigin ? 'origen' : 'destino';
   const pinColor = isSaveAs || isOrigin ? colors.primary : colors.danger;
 
   const origin = useBookingStore((s) => s.origin);
-  const destination = useBookingStore((s) => s.destination);
   const setOrigin = useBookingStore((s) => s.setOrigin);
   const setDestination = useBookingStore((s) => s.setDestination);
-  const { coordinates } = useCurrentLocation();
+  const {
+    status: locationStatus,
+    coordinates,
+    canAskAgain,
+    retry: retryLocation,
+  } = useCurrentLocation();
   const mapRef = useRef<MapView>(null);
+  const usableOrigin = origin && isPlaceInBolivia(origin) ? origin : null;
+  const usableCoordinates =
+    coordinates && isCoordinatesInBolivia(coordinates) ? coordinates : null;
+  // Solo seguimos al GPS tardío si de verdad no había origen ni GPS al iniciar.
+  const startedWithoutPreferredCenter = useRef(!usableOrigin && !usableCoordinates);
 
-  // Centra el mapa en el punto que se edita si ya existe; si no, en el origen o
-  // en la ubicación actual. Al guardar un lugar, parte del origen/ubicación.
+  // El destino B siempre comienza desde el origen A. Origen y lugares guardados
+  // también priorizan el origen vigente antes de recurrir al GPS.
   const initialRegion = useMemo<Region | undefined>(() => {
-    const existing = isSaveAs ? undefined : isOrigin ? origin : destination;
-    const center = existing?.coordinates ?? origin?.coordinates ?? coordinates;
+    const center =
+      usableOrigin?.coordinates ??
+      usableCoordinates ??
+      (locationStatus === 'loading' ? undefined : BOLIVIA_DEFAULT_COORDINATES);
     if (!center) return undefined;
     return {
       latitude: center.latitude,
@@ -57,10 +89,11 @@ export function PickOnMapScreen() {
       latitudeDelta: 0.01,
       longitudeDelta: 0.01,
     };
-  }, [isSaveAs, isOrigin, origin, destination, coordinates]);
+  }, [usableOrigin, usableCoordinates, locationStatus]);
 
   const [place, setPlace] = useState<Place | null>(null);
-  const handleRegionChange = useRegionPlace(
+  const [destinationMoved, setDestinationMoved] = useState(false);
+  const { onRegionChangeComplete: handleRegionChange, isResolving } = useRegionPlace(
     setPlace,
     isSaveAs ? 'Lugar' : isOrigin ? 'Origen' : 'Destino',
   );
@@ -71,16 +104,64 @@ export function PickOnMapScreen() {
   useEffect(() => {
     if (!initialRegion || seeded.current) return;
     seeded.current = true;
-    const center = { latitude: initialRegion.latitude, longitude: initialRegion.longitude };
-    void locationService.reverseGeocode(center).then((label) => setPlace({ coordinates: center, ...label }));
-  }, [initialRegion]);
+    handleRegionChange(initialRegion);
+  }, [handleRegionChange, initialRegion]);
 
-  const recenter = () => {
-    if (initialRegion) mapRef.current?.animateToRegion(initialRegion, 400);
+  // Si el permiso llega después de mostrar la región de respaldo, centra una
+  // sola vez en la ubicación recién obtenida sin interrumpir ajustes posteriores.
+  useEffect(() => {
+    if (!usableCoordinates || !startedWithoutPreferredCenter.current) return;
+    startedWithoutPreferredCenter.current = false;
+    mapRef.current?.animateToRegion(
+      { ...usableCoordinates, latitudeDelta: 0.01, longitudeDelta: 0.01 },
+      400,
+    );
+  }, [usableCoordinates]);
+
+  const recoverLocation = () => {
+    if (locationStatus === 'denied' && !canAskAgain) {
+      void Linking.openSettings();
+      return;
+    }
+    retryLocation();
   };
 
+  const recenter = () => {
+    if (!usableCoordinates) {
+      recoverLocation();
+      return;
+    }
+    if (isDestination) setDestinationMoved(true);
+    mapRef.current?.animateToRegion(
+      { ...usableCoordinates, latitudeDelta: 0.01, longitudeDelta: 0.01 },
+      400,
+    );
+  };
+
+  const locationUnavailable =
+    !usableCoordinates &&
+    (locationStatus === 'denied' || locationStatus === 'error' || coordinates != null);
+  const placeAreaError = place && !isResolving ? getBoliviaPlaceError(place) : null;
+  const destinationTooClose =
+    isDestination &&
+    usableOrigin != null &&
+    place != null &&
+    distanceMeters(usableOrigin.coordinates, place.coordinates) < MIN_DESTINATION_DISTANCE_METERS;
+  const destinationNeedsMove = isDestination && usableOrigin != null && !destinationMoved;
+  const confirmDisabled =
+    !place ||
+    isResolving ||
+    placeAreaError != null ||
+    destinationNeedsMove ||
+    destinationTooClose;
+  const validationMessage = placeAreaError
+    ? placeAreaError
+    : destinationNeedsMove || destinationTooClose
+      ? 'Mueve el pin B al menos 50 metros desde el origen A.'
+      : null;
+
   const confirm = () => {
-    if (!place) return;
+    if (!place || confirmDisabled) return;
     if (isSaveAs) {
       // Reemplaza el mapa por el formulario para nombrar/categorizar el lugar,
       // reenviando id/label/category (edición) y el punto elegido.
@@ -90,18 +171,21 @@ export function PickOnMapScreen() {
           ...(id ? { id } : {}),
           ...(label ? { label } : {}),
           ...(category ? { category } : {}),
+          ...(rideId ? { rideId } : {}),
           lat: String(place.coordinates.latitude),
           lng: String(place.coordinates.longitude),
           name: place.name,
           address: place.address,
+          ...(place.countryCode ? { countryCode: place.countryCode } : {}),
         },
       });
       return;
     }
     (isOrigin ? setOrigin : setDestination)(place);
-    // `navigate` reutiliza la pantalla de configurar si ya está en la pila
-    // (caso edición), o la abre si venimos del flujo de búsqueda.
-    router.navigate('/booking/configure');
+    router.dismissTo({
+      pathname: '/booking/configure',
+      params: rideId ? { rideId } : {},
+    });
   };
 
   if (!initialRegion) {
@@ -122,33 +206,100 @@ export function PickOnMapScreen() {
         initialRegion={initialRegion}
         showsUserLocation
         showsMyLocationButton={false}
-        onRegionChangeComplete={handleRegionChange}
-      />
+        onMapReady={() =>
+          mapRef.current?.setMapBoundaries(BOLIVIA_NORTH_EAST, BOLIVIA_SOUTH_WEST)
+        }
+        onPanDrag={() => {
+          if (isDestination) setDestinationMoved(true);
+        }}
+        onRegionChangeComplete={handleRegionChange}>
+        {isDestination && usableOrigin ? (
+          <RoutePinMarker
+            kind="A"
+            coordinate={usableOrigin.coordinates}
+            label={`Origen: ${getPlaceStreetName(usableOrigin)}`}
+          />
+        ) : null}
+      </MapView>
 
-      <CenterPin label={`Fijar ${noun}`} color={pinColor} />
+      <CenterPin label={isDestination ? 'Destino B' : `Fijar ${noun}`} color={pinColor} />
 
-      <SafeAreaView style={styles.topBar} edges={['top']} pointerEvents="box-none">
-        <TouchableOpacity
-          style={styles.back}
-          onPress={() => router.back()}
-          accessibilityRole="button"
-          accessibilityLabel="Volver">
-          <Ionicons name="arrow-back" size={24} color={colors.text} />
-        </TouchableOpacity>
-        <View style={styles.addressPill}>
-          <Ionicons name="location" size={18} color={pinColor} />
-          <Text style={styles.addressText} numberOfLines={1}>
-            {place?.address ?? `Mueve el mapa para fijar el ${noun}`}
-          </Text>
+      <SafeAreaView style={styles.topArea} edges={['top']} pointerEvents="box-none">
+        <View style={styles.topBar}>
+          <TouchableOpacity
+            style={styles.back}
+            onPress={() => router.back()}
+            accessibilityRole="button"
+            accessibilityLabel="Volver">
+            <Ionicons name="arrow-back" size={24} color={colors.text} />
+          </TouchableOpacity>
+          <View style={styles.addressPill}>
+            <Ionicons name="location" size={18} color={pinColor} />
+            <Text style={styles.addressText} numberOfLines={1}>
+              {place?.address ?? `Mueve el mapa para fijar el ${noun}`}
+            </Text>
+          </View>
         </View>
+        {isDestination && usableOrigin ? (
+          <View
+            style={styles.originReference}
+            accessibilityLabel={`Origen A, ${getPlaceStreetName(usableOrigin)}`}>
+            <View style={styles.originBadge}>
+              <Text style={styles.originBadgeText}>A</Text>
+            </View>
+            <View style={styles.originReferenceText}>
+              <Text style={styles.originReferenceLabel}>ORIGEN</Text>
+              <Text style={styles.originReferenceName} numberOfLines={1}>
+                {getPlaceStreetName(usableOrigin)}
+              </Text>
+            </View>
+          </View>
+        ) : null}
+        {locationUnavailable && (
+          <TouchableOpacity
+            style={styles.locationWarning}
+            onPress={recoverLocation}
+            accessibilityRole="button"
+            accessibilityLabel={
+              locationStatus === 'denied' && !canAskAgain
+                ? 'Abrir configuración de ubicación'
+                : 'Reintentar ubicación actual'
+            }>
+            <Ionicons name="navigate-circle-outline" size={18} color={colors.textSecondary} />
+            <Text style={styles.locationWarningText} numberOfLines={2}>
+              {locationStatus === 'denied' && !canAskAgain
+                ? 'Activa la ubicación en configuración o mueve el mapa manualmente.'
+                : coordinates && !usableCoordinates
+                  ? 'Tu ubicación está fuera de Bolivia. Mueve el mapa dentro del área disponible.'
+                : 'No pudimos usar tu ubicación. Puedes mover el mapa o reintentar.'}
+            </Text>
+            <Ionicons name="refresh" size={18} color={colors.primary} />
+          </TouchableOpacity>
+        )}
       </SafeAreaView>
 
       <TouchableOpacity
         style={styles.recenter}
         onPress={recenter}
         accessibilityRole="button"
-        accessibilityLabel="Centrar en mi ubicación">
-        <Ionicons name="locate" size={22} color={colors.primary} />
+        accessibilityLabel={
+          usableCoordinates
+            ? 'Centrar en mi ubicación'
+            : locationStatus === 'denied' && !canAskAgain
+              ? 'Abrir configuración de ubicación'
+              : 'Reintentar ubicación'
+        }>
+        <Ionicons
+          name={
+            usableCoordinates
+              ? 'locate'
+              : locationStatus === 'denied' && !canAskAgain
+                ? 'settings-outline'
+                : 'refresh'
+          }
+          size={22}
+          color={colors.primary}
+        />
       </TouchableOpacity>
 
       <SafeAreaView style={styles.bottom} edges={['bottom']}>
@@ -162,17 +313,33 @@ export function PickOnMapScreen() {
           <Text style={styles.cardAddress} numberOfLines={1}>
             {place?.address ?? `para fijar el ${noun}`}
           </Text>
+          {validationMessage ? (
+            <Text style={styles.validationMessage} accessibilityLiveRegion="polite">
+              {validationMessage}
+            </Text>
+          ) : null}
         </View>
         <TouchableOpacity
-          style={[styles.confirm, !place && styles.confirmDisabled]}
-          disabled={!place}
+          style={[styles.confirm, confirmDisabled && styles.confirmDisabled]}
+          disabled={confirmDisabled}
           onPress={confirm}
           accessibilityRole="button"
+          accessibilityState={{ disabled: confirmDisabled, busy: isResolving }}
           accessibilityLabel={isSaveAs ? 'Usar esta ubicación' : 'Confirmar ubicación'}>
           <Text style={styles.confirmText}>
-            {isSaveAs ? 'Usar esta ubicación' : 'Confirmar ubicación'}
+            {isResolving
+              ? 'Obteniendo dirección…'
+              : validationMessage
+                ? 'Elige otro punto'
+                : isSaveAs
+                  ? 'Usar esta ubicación'
+                  : 'Confirmar ubicación'}
           </Text>
-          <Ionicons name="arrow-forward" size={20} color={colors.textOnPrimary} />
+          {isResolving ? (
+            <ActivityIndicator size="small" color={colors.textOnPrimary} />
+          ) : (
+            <Ionicons name="arrow-forward" size={20} color={colors.textOnPrimary} />
+          )}
         </TouchableOpacity>
       </SafeAreaView>
     </View>
@@ -184,16 +351,19 @@ const styles = StyleSheet.create({
   loading: { alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   loadingText: { color: colors.textSecondary, fontSize: fontSize.sm },
 
-  topBar: {
+  topArea: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    gap: spacing.sm,
+  },
+  topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
   },
   back: {
     width: 44,
@@ -224,6 +394,55 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   addressText: { flex: 1, fontSize: fontSize.sm, color: colors.text },
+  originReference: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  originBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+  },
+  originBadgeText: {
+    color: colors.textOnPrimary,
+    fontSize: fontSize.xs,
+    fontWeight: fontWeight.bold,
+  },
+  originReferenceText: { flex: 1 },
+  originReferenceLabel: {
+    color: colors.textSecondary,
+    fontSize: 10,
+    fontWeight: fontWeight.semibold,
+  },
+  originReferenceName: {
+    color: colors.text,
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.semibold,
+  },
+  locationWarning: {
+    minHeight: 46,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  locationWarningText: { flex: 1, color: colors.textSecondary, fontSize: fontSize.xs },
 
   recenter: {
     position: 'absolute',
@@ -267,6 +486,7 @@ const styles = StyleSheet.create({
   },
   cardValue: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.text },
   cardAddress: { fontSize: fontSize.sm, color: colors.textSecondary },
+  validationMessage: { color: colors.danger, fontSize: fontSize.xs },
 
   confirm: {
     flexDirection: 'row',

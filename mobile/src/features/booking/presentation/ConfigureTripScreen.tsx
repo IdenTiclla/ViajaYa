@@ -9,11 +9,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { usePreventRemove } from 'expo-router/react-navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Keyboard,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -25,18 +28,22 @@ import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
 import { useRoute } from '@/features/booking/application/useRoute';
 import { ridesRepository } from '@/features/booking/data/ridesRepository';
-import { useEditRide } from '@/features/rides/application/useRideMutations';
-import { useRide } from '@/features/rides/application/useRides';
-import type { Coordinates, PaymentMethod, ServiceType } from '@/features/booking/domain/types';
+import {
+  BOLIVIA_SERVICE_AREA_MESSAGE,
+  getBoliviaPlaceError,
+} from '@/features/booking/domain/bolivia';
+import { getPlaceStreetName } from '@/features/booking/domain/placeLabels';
+import { SERVICE_OPTIONS } from '@/features/booking/domain/serviceCatalog';
+import type { Coordinates, PaymentMethod } from '@/features/booking/domain/types';
+import { useCancelRide, useEditRide } from '@/features/rides/application/useRideMutations';
+import { formatBolivianosInput } from '@/features/rides/domain/money';
+import {
+  PASSENGER_ACTIVE_RIDE_KEY,
+  useRide,
+} from '@/features/rides/application/useRides';
 import { declutteredMapStyle } from '@/features/booking/presentation/mapStyle';
-import { FareKeypad } from '@/features/rides/presentation/FareKeypad';
 import { RoutePinMarker } from '@/features/rides/presentation/RoutePinMarker';
-import { RouteSummary } from '@/features/rides/presentation/RouteSummary';
-
-const SERVICES: { id: ServiceType; label: string; icon: 'car-sport' | 'bicycle' }[] = [
-  { id: 'taxi', label: 'Taxi', icon: 'car-sport' },
-  { id: 'moto', label: 'Moto', icon: 'bicycle' },
-];
+import { Button, ConfirmDialog, FeedbackState } from '@/shared/components';
 
 const PAYMENTS: { id: PaymentMethod; label: string; icon: 'qr-code' | 'cash' }[] = [
   { id: 'qr', label: 'QR', icon: 'qr-code' },
@@ -48,6 +55,7 @@ const PAYMENTS: { id: PaymentMethod; label: string; icon: 'qr-code' | 'cash' }[]
 // el área visible.
 const FIT_TOP = 170;
 const FIT_SIDES = 60;
+const MIN_KEYBOARD_TRANSLATION = 280;
 
 function formatDistance(meters: number): string {
   return meters >= 1000 ? `${(meters / 1000).toFixed(1)} km` : `${Math.round(meters)} m`;
@@ -74,25 +82,56 @@ export function ConfigureTripScreen() {
   const mapRef = useRef<MapView>(null);
   const queryClient = useQueryClient();
   const editRide = useEditRide();
+  const cancelRecoveryRide = useCancelRide();
   // Alto real del bottom sheet, para encuadrar los puntos por encima de él.
   const [sheetHeight, setSheetHeight] = useState(0);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [keyboardOffset, setKeyboardOffset] = useState(0);
   // Mostrar/ocultar etiquetas de lugares (el usuario lo controla con el toggle).
   const [showPlaces, setShowPlaces] = useState(true);
-  const [fareKeypadOpen, setFareKeypadOpen] = useState(false);
+  const [confirmExit, setConfirmExit] = useState(false);
+  const [allowExit, setAllowExit] = useState(false);
+  const [exitAfterSave, setExitAfterSave] = useState(false);
+  const [exitHome, setExitHome] = useState(false);
+  const [confirmRecoveryCancel, setConfirmRecoveryCancel] = useState(false);
+
+  useEffect(() => {
+    const showSubscription = Keyboard.addListener('keyboardDidShow', (event) => {
+      const height = event.endCoordinates.height;
+      setKeyboardHeight(height);
+      // `screenY` no es estable con adjustResize entre fabricantes. Trasladar
+      // por la altura completa garantiza que la oferta quede sobre el teclado.
+      setKeyboardOffset(Math.max(height, MIN_KEYBOARD_TRANSLATION));
+    });
+    const hideSubscription = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardHeight(0);
+      setKeyboardOffset(0);
+    });
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
 
   const createRide = useMutation({
     mutationFn: ridesRepository.create,
     onSuccess: (ride) => {
       // Refresca los recientes (este destino pasa a estar entre ellos).
       void queryClient.invalidateQueries({ queryKey: ['recent-destinations'] });
-      router.push({ pathname: '/booking/offers', params: { rideId: ride.id } });
+      // La creación devuelve un resumen corto; el layout obtiene el Ride completo
+      // y abre el socket único mediante el endpoint de viaje activo.
+      void queryClient.invalidateQueries({ queryKey: PASSENGER_ACTIVE_RIDE_KEY });
+      // No dejamos el formulario de creación debajo de una negociación activa:
+      // el regreso solo se hace mediante Modificar o Cancelar.
+      router.replace({ pathname: '/booking/offers', params: { rideId: ride.id } });
     },
   });
 
   // Modo edición (Modificar solicitud): el llamador (Offers/Searching) ya pausó
   // la solicitud antes de navegar; aquí solo hidratamos el formulario con los
   // datos del viaje. La caché ['ride', id] la pobló usePauseForEdit.onSuccess.
-  const { ride: existingRide } = useRide(rideId ?? null);
+  const editQuery = useRide(rideId ?? null);
+  const existingRide = editQuery.ride;
   const didInitEdit = useRef(false);
   useEffect(() => {
     if (!rideId || didInitEdit.current || !existingRide) return;
@@ -101,12 +140,61 @@ export function ConfigureTripScreen() {
     setDestination(existingRide.destination);
     setService(existingRide.service);
     setPayment(existingRide.payment);
-    setFare(String(existingRide.fare));
+    setFare(formatBolivianosInput(existingRide.fare));
     // existingRide viene de la caché; se hidrata una sola vez.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rideId, existingRide]);
 
-  const { route, isLoading: routeLoading } = useRoute(origin, destination);
+  const originalTripIsInvalid = Boolean(
+    isEditing &&
+      existingRide &&
+      (getBoliviaPlaceError(existingRide.origin) != null ||
+        getBoliviaPlaceError(existingRide.destination) != null),
+  );
+
+  const requestEditExit = () => {
+    setConfirmExit(true);
+  };
+
+  // Intercepta flecha, gesto y back de Android. Una solicitud pausada requiere
+  // confirmar la cancelación antes de salir al inicio.
+  usePreventRemove(isEditing && !allowExit, () => {
+    if (!editRide.isPending && !cancelRecoveryRide.isPending) requestEditExit();
+  });
+
+  useEffect(() => {
+    if (allowExit && exitHome) {
+      router.replace('/(app)/(tabs)');
+    } else if (allowExit && exitAfterSave && rideId) {
+      router.replace({ pathname: '/booking/offers', params: { rideId } });
+    }
+  }, [allowExit, exitAfterSave, exitHome, rideId, router]);
+
+  const cancelRecoveryAndExit = () => {
+    setConfirmExit(false);
+    setConfirmRecoveryCancel(false);
+    if (!rideId || cancelRecoveryRide.isPending) return;
+    cancelRecoveryRide.mutate(rideId, {
+      onSuccess: () => {
+        queryClient.setQueryData(PASSENGER_ACTIVE_RIDE_KEY, null);
+        useBookingStore.getState().resetTrip();
+        setExitHome(true);
+        setAllowExit(true);
+      },
+    });
+  };
+
+  const serviceAreaError = origin
+    ? getBoliviaPlaceError(origin)
+    : BOLIVIA_SERVICE_AREA_MESSAGE;
+  const destinationAreaError = destination
+    ? getBoliviaPlaceError(destination)
+    : BOLIVIA_SERVICE_AREA_MESSAGE;
+  const tripInServiceArea = serviceAreaError == null && destinationAreaError == null;
+  const { route, isLoading: routeLoading } = useRoute(
+    tripInServiceArea ? origin : null,
+    tripInServiceArea ? destination : null,
+  );
 
   const region = useMemo<Region | undefined>(() => {
     if (!origin || !destination) return undefined;
@@ -123,20 +211,27 @@ export function ConfigureTripScreen() {
   // Para encuadrar la cámara: el trayecto real si existe, si no la recta entre
   // ambos puntos (así el mapa enmarca el viaje desde el primer instante).
   const fitCoordinates = useMemo<Coordinates[]>(() => {
-    if (route?.coordinates.length) return route.coordinates;
+    if (!routeLoading && route?.coordinates.length) return route.coordinates;
     if (origin && destination) return [origin.coordinates, destination.coordinates];
     return [];
-  }, [route, origin, destination]);
+  }, [route, routeLoading, origin, destination]);
 
   // Para dibujar: la recta solo aparece como fallback cuando el cálculo del
   // trayecto terminó sin ruta; mientras carga no se dibuja, para evitar el
   // "salto" visual de recta → trayecto por calles.
   const polylineCoordinates = useMemo<Coordinates[]>(() => {
-    if (route?.coordinates.length) return route.coordinates;
     if (routeLoading) return [];
+    if (route?.coordinates.length) return route.coordinates;
     if (origin && destination) return [origin.coordinates, destination.coordinates];
     return [];
   }, [route, routeLoading, origin, destination]);
+
+  // react-native-maps conserva internamente overlays nativos. Una clave basada
+  // en ambos puntos fuerza a reemplazarlos al editar origen o destino, evitando
+  // que se vea la ruta o los pins del trayecto anterior.
+  const tripMapKey = origin && destination
+    ? `${origin.coordinates.latitude},${origin.coordinates.longitude}:${destination.coordinates.latitude},${destination.coordinates.longitude}`
+    : '';
 
   // Encuadra origen + destino dejando libre el área que tapa el bottom sheet.
   const fitToTrip = useCallback(
@@ -155,6 +250,50 @@ export function ConfigureTripScreen() {
     fitToTrip(true);
   }, [fitToTrip]);
 
+  if (isEditing && editQuery.isLoading && !existingRide) {
+    return (
+      <SafeAreaView style={styles.root}>
+        <FeedbackState loading title="Cargando tu solicitud…" />
+      </SafeAreaView>
+    );
+  }
+
+  if (isEditing && editQuery.isError && !existingRide) {
+    return (
+      <SafeAreaView style={styles.root}>
+        <FeedbackState
+          icon="cloud-offline-outline"
+          title="No pudimos cargar tu solicitud"
+          message={getApiErrorMessage(editQuery.error)}
+          actionLabel="Reintentar"
+          onAction={() => void editQuery.refetch()}
+        />
+        {cancelRecoveryRide.isError && (
+          <Text style={styles.error}>{getApiErrorMessage(cancelRecoveryRide.error)}</Text>
+        )}
+        <View style={styles.recoveryAction}>
+          <Button
+            title="Cancelar solicitud y salir"
+            variant="secondary"
+            loading={cancelRecoveryRide.isPending}
+            onPress={() => setConfirmRecoveryCancel(true)}
+          />
+        </View>
+        <ConfirmDialog
+          visible={confirmRecoveryCancel}
+          icon="warning-outline"
+          destructive
+          title="¿Cancelar la solicitud?"
+          message="La búsqueda se cerrará y volverás al inicio."
+          confirmText="Sí, cancelar"
+          cancelText="Seguir aquí"
+          onConfirm={cancelRecoveryAndExit}
+          onCancel={() => setConfirmRecoveryCancel(false)}
+        />
+      </SafeAreaView>
+    );
+  }
+
   if (!origin || !destination || !region) {
     return (
       <SafeAreaView style={[styles.root, styles.fallback]}>
@@ -162,7 +301,12 @@ export function ConfigureTripScreen() {
         <Text style={styles.fallbackText}>Define el origen y el destino para continuar.</Text>
         <TouchableOpacity
           style={styles.fallbackButton}
-          onPress={() => router.replace('/booking/destination')}
+          onPress={() =>
+            router.replace({
+              pathname: '/booking/destination',
+              params: rideId ? { rideId } : {},
+            })
+          }
           accessibilityRole="button">
           <Text style={styles.fallbackButtonText}>Elegir destino</Text>
         </TouchableOpacity>
@@ -170,38 +314,84 @@ export function ConfigureTripScreen() {
     );
   }
 
-  const fareValue = Number.parseFloat(fare.replace(',', '.'));
+  const fareValue = Number(fare.replace(',', '.'));
   const fareIsValid = Number.isFinite(fareValue) && fareValue > 0;
 
   const searchOffers = () => {
-    if (!fareIsValid || createRide.isPending) return;
+    if (!tripInServiceArea || !fareIsValid || createRide.isPending) return;
     createRide.mutate({ origin, destination, service, payment, fare: fareValue });
   };
 
   const saveEdit = () => {
-    if (!rideId || !fareIsValid || editRide.isPending) return;
+    if (!rideId || !tripInServiceArea || !fareIsValid || editRide.isPending) return;
     editRide.mutate(
       { rideId, input: { origin, destination, service, payment, fare: fareValue } },
-      { onSuccess: () => router.replace({ pathname: '/booking/offers', params: { rideId } }) },
+      {
+        onSuccess: () => {
+          setExitAfterSave(true);
+          setAllowExit(true);
+        },
+      },
     );
+  };
+
+  const editOrigin = () => {
+    if (editRide.isPending) return;
+    router.push({
+      pathname: '/booking/pick-on-map',
+      params: { target: 'origin', ...(rideId ? { rideId } : {}) },
+    });
+  };
+
+  const editDestination = () => {
+    if (editRide.isPending) return;
+    router.push({
+      pathname: '/booking/destination',
+      params: rideId ? { rideId } : {},
+    });
   };
 
   return (
     <View style={styles.root}>
       <MapView
+        key={tripMapKey}
         ref={mapRef}
         provider={PROVIDER_GOOGLE}
         style={StyleSheet.absoluteFill}
         initialRegion={region}
         customMapStyle={showPlaces ? [] : declutteredMapStyle}
         onMapReady={() => fitToTrip(false)}>
-        <RoutePinMarker kind="A" coordinate={origin.coordinates} label="Origen" />
-        <RoutePinMarker kind="B" coordinate={destination.coordinates} label="Destino" />
+        <RoutePinMarker
+          key={`origin-${tripMapKey}`}
+          kind="A"
+          coordinate={origin.coordinates}
+          label={`Origen: ${getPlaceStreetName(origin)}`}
+          showEditControl
+          onPress={editOrigin}
+        />
+        <RoutePinMarker
+          key={`destination-${tripMapKey}`}
+          kind="B"
+          coordinate={destination.coordinates}
+          label={`Destino: ${getPlaceStreetName(destination)}`}
+          showEditControl
+          onPress={editDestination}
+        />
         {polylineCoordinates.length >= 2 && (
           <>
             {/* Contorno blanco para que la ruta resalte sobre calles y etiquetas. */}
-            <Polyline coordinates={polylineCoordinates} strokeColor={colors.surface} strokeWidth={9} />
-            <Polyline coordinates={polylineCoordinates} strokeColor={colors.primary} strokeWidth={5} />
+            <Polyline
+              key={`route-outline-${tripMapKey}`}
+              coordinates={polylineCoordinates}
+              strokeColor={colors.surface}
+              strokeWidth={9}
+            />
+            <Polyline
+              key={`route-${tripMapKey}`}
+              coordinates={polylineCoordinates}
+              strokeColor={colors.primary}
+              strokeWidth={5}
+            />
           </>
         )}
       </MapView>
@@ -210,7 +400,15 @@ export function ConfigureTripScreen() {
         <View style={styles.topLeft}>
           <TouchableOpacity
             style={styles.back}
-            onPress={() => router.back()}
+            onPress={() => {
+              if (isEditing) {
+                requestEditExit();
+                return;
+              }
+              useBookingStore.getState().resetTrip();
+              router.replace('/(app)/(tabs)');
+            }}
+            disabled={editRide.isPending}
             accessibilityRole="button"
             accessibilityLabel="Volver">
             <Ionicons name="arrow-back" size={24} color={colors.text} />
@@ -228,50 +426,54 @@ export function ConfigureTripScreen() {
             />
           </TouchableOpacity>
         </View>
-        <View style={styles.summaryWrap}>
-          <RouteSummary
-            origin={origin}
-            destination={destination}
-            onEditOrigin={() =>
-              router.push({ pathname: '/booking/pick-on-map', params: { target: 'origin' } })
-            }
-            onEditDestination={() => router.push('/booking/destination')}
-          />
-        </View>
       </SafeAreaView>
 
-      <SafeAreaView
-        style={styles.sheet}
-        edges={['bottom']}
-        onLayout={(e) => setSheetHeight(e.nativeEvent.layout.height)}>
-        {route && (
-          <View style={styles.estimate}>
-            <Ionicons name="navigate" size={16} color={colors.primary} />
-            <Text style={styles.estimateText}>
-              {formatDistance(route.distanceMeters)} · {formatDuration(route.durationSeconds)}
-            </Text>
-          </View>
-        )}
+      <View
+        style={[
+          styles.sheetAvoider,
+          { transform: [{ translateY: -keyboardOffset }] },
+        ]}
+        pointerEvents="box-none">
+        <SafeAreaView
+          style={[styles.sheet, keyboardHeight === 0 && styles.sheetResting]}
+          edges={['bottom']}
+          onLayout={(e) => {
+            if (keyboardHeight === 0) setSheetHeight(e.nativeEvent.layout.height);
+          }}>
+          <View style={styles.sheetContent}>
+            {route && (
+              <View style={styles.estimate}>
+                <Ionicons name="navigate" size={16} color={colors.primary} />
+                <Text style={styles.estimateText}>
+                  {formatDistance(route.distanceMeters)} · {formatDuration(route.durationSeconds)}
+                </Text>
+              </View>
+            )}
 
         <Text style={styles.fieldLabel}>Tipo de servicio</Text>
-        <View style={styles.services}>
-          {SERVICES.map((s) => {
+        <View style={styles.serviceOptions}>
+          {SERVICE_OPTIONS.map((s) => {
             const active = service === s.id;
             return (
               <TouchableOpacity
                 key={s.id}
-                style={[styles.serviceChip, active && styles.serviceChipActive]}
+                style={[styles.serviceOption, active && styles.serviceChipActive]}
                 onPress={() => setService(s.id)}
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: active }}
                 accessibilityLabel={s.label}>
                 <Ionicons
                   name={s.icon}
                   size={20}
                   color={active ? colors.textOnPrimary : colors.text}
                 />
-                <Text style={[styles.serviceChipText, active && styles.serviceChipTextActive]}>
-                  {s.label}
+                <Text
+                  numberOfLines={2}
+                  style={[
+                    styles.serviceOptionText,
+                    active && styles.serviceChipTextActive,
+                  ]}>
+                  {s.shortLabel}
                 </Text>
               </TouchableOpacity>
             );
@@ -304,17 +506,21 @@ export function ConfigureTripScreen() {
         </View>
 
         <Text style={styles.fieldLabel}>Tu oferta</Text>
-        <TouchableOpacity
-          style={styles.fareRow}
-          onPress={() => setFareKeypadOpen(true)}
-          accessibilityRole="button"
-          accessibilityLabel={`Monto de tu oferta: ${fare || '0'} bolivianos. Toca para editarlo.`}>
+        <View style={styles.fareRow}>
           <Text style={styles.fareCurrency}>Bs</Text>
-          <Text style={[styles.fareInput, !fare && styles.farePlaceholder]}>
-            {fare || '0.00'}
-          </Text>
-          <Ionicons name="create-outline" size={18} color={colors.textSecondary} />
-        </TouchableOpacity>
+          <TextInput
+            value={fare}
+            onChangeText={setFare}
+            placeholder="30"
+            placeholderTextColor={colors.placeholder}
+            keyboardType="decimal-pad"
+            inputMode="decimal"
+            maxLength={9}
+            onBlur={() => setKeyboardOffset(0)}
+            style={styles.fareInput}
+            accessibilityLabel="Monto de tu oferta en bolivianos"
+          />
+        </View>
 
         {createRide.isError && (
           <Text style={styles.error}>{getApiErrorMessage(createRide.error)}</Text>
@@ -322,13 +528,35 @@ export function ConfigureTripScreen() {
         {editRide.isError && (
           <Text style={styles.error}>{getApiErrorMessage(editRide.error)}</Text>
         )}
+        {!tripInServiceArea && (
+          <Text style={styles.error} accessibilityRole="alert">
+            {serviceAreaError ?? destinationAreaError} Corrige el origen o el destino para continuar.
+          </Text>
+        )}
+        {originalTripIsInvalid && (
+          <Button
+            title="Cancelar solicitud y salir"
+            variant="secondary"
+            loading={cancelRecoveryRide.isPending}
+            onPress={() => setConfirmRecoveryCancel(true)}
+          />
+        )}
+        {cancelRecoveryRide.isError && (
+          <Text style={styles.error}>{getApiErrorMessage(cancelRecoveryRide.error)}</Text>
+        )}
 
         <TouchableOpacity
           style={[
             styles.cta,
-            (!fareIsValid || createRide.isPending || editRide.isPending) && styles.ctaDisabled,
+            (!tripInServiceArea ||
+              !fareIsValid ||
+              createRide.isPending ||
+              editRide.isPending) &&
+              styles.ctaDisabled,
           ]}
-          disabled={!fareIsValid || createRide.isPending || editRide.isPending}
+          disabled={
+            !tripInServiceArea || !fareIsValid || createRide.isPending || editRide.isPending
+          }
           onPress={isEditing ? saveEdit : searchOffers}
           accessibilityRole="button"
           accessibilityLabel={isEditing ? 'Guardar cambios' : 'Buscar ofertas'}>
@@ -338,20 +566,31 @@ export function ConfigureTripScreen() {
             <Text style={styles.ctaText}>{isEditing ? 'Guardar cambios' : 'Buscar Ofertas'}</Text>
           )}
         </TouchableOpacity>
-      </SafeAreaView>
+          </View>
+        </SafeAreaView>
+      </View>
 
-      <FareKeypad
-        visible={fareKeypadOpen}
-        mode="absolute"
-        subtitle="Tu oferta"
-        initialValue={fare ? Number.parseFloat(fare.replace(',', '.')) : undefined}
-        submitting={createRide.isPending || editRide.isPending}
-        submitLabel="Listo"
-        onCancel={() => setFareKeypadOpen(false)}
-        onSubmit={(amount) => {
-          setFare(String(amount));
-          setFareKeypadOpen(false);
-        }}
+      <ConfirmDialog
+        visible={confirmExit}
+        icon="warning-outline"
+        destructive
+        title="¿Cancelar la solicitud?"
+        message="La búsqueda se cancelará y volverás al inicio para definir un nuevo punto de partida."
+        confirmText="Sí, cancelar"
+        cancelText="Seguir configurando"
+        onConfirm={cancelRecoveryAndExit}
+        onCancel={() => setConfirmExit(false)}
+      />
+      <ConfirmDialog
+        visible={confirmRecoveryCancel}
+        icon="warning-outline"
+        destructive
+        title="¿Cancelar la solicitud?"
+        message="Esta solicitud usa una ubicación fuera de cobertura. Puedes corregirla o cancelarla para volver al inicio."
+        confirmText="Sí, cancelar"
+        cancelText="Corregir ubicación"
+        onConfirm={cancelRecoveryAndExit}
+        onCancel={() => setConfirmRecoveryCancel(false)}
       />
     </View>
   );
@@ -381,7 +620,6 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   topLeft: { alignItems: 'flex-start', gap: spacing.xs },
-  summaryWrap: { flex: 1 },
   back: {
     width: 44,
     height: 44,
@@ -395,13 +633,16 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 3,
   },
-  sheet: {
+  sheetAvoider: {
     position: 'absolute',
-    left: 0,
+    top: 0,
     right: 0,
     bottom: 0,
-    padding: spacing.lg,
-    gap: spacing.md,
+    left: 0,
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    width: '100%',
     backgroundColor: colors.background,
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,
@@ -411,6 +652,12 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: -3 },
     elevation: 12,
   },
+  sheetResting: { maxHeight: '48%' },
+  sheetContent: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    gap: spacing.sm,
+  },
 
   estimate: {
     flexDirection: 'row',
@@ -418,21 +665,42 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     alignSelf: 'flex-start',
     paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    paddingVertical: 2,
     borderRadius: radius.pill,
     backgroundColor: colors.surfaceMuted,
   },
-  estimateText: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.text },
+  estimateText: { fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: colors.text },
 
   fieldLabel: { fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.text },
   services: { flexDirection: 'row', gap: spacing.md },
+  serviceOptions: { flexDirection: 'row', gap: spacing.sm },
+  serviceOption: {
+    flex: 1,
+    minWidth: 0,
+    height: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingHorizontal: 2,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  serviceOptionText: {
+    fontSize: fontSize.xs,
+    lineHeight: 15,
+    fontWeight: fontWeight.medium,
+    color: colors.text,
+    textAlign: 'center',
+  },
   serviceChip: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
-    height: 48,
+    height: 40,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
@@ -446,7 +714,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    height: 54,
+    height: 44,
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
     borderWidth: 1,
@@ -455,10 +723,9 @@ const styles = StyleSheet.create({
   },
   fareCurrency: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.textSecondary },
   fareInput: { flex: 1, fontSize: fontSize.lg, fontWeight: fontWeight.semibold, color: colors.text, padding: 0 },
-  farePlaceholder: { color: colors.placeholder },
 
   cta: {
-    height: 56,
+    height: 48,
     borderRadius: radius.md,
     backgroundColor: colors.primary,
     alignItems: 'center',
@@ -467,4 +734,5 @@ const styles = StyleSheet.create({
   ctaDisabled: { opacity: 0.5 },
   ctaText: { color: colors.textOnPrimary, fontSize: fontSize.md, fontWeight: fontWeight.bold },
   error: { color: colors.danger, fontSize: fontSize.sm, textAlign: 'center' },
+  recoveryAction: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg },
 });

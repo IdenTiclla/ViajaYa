@@ -42,14 +42,14 @@ export function SocialButton({ provider, loading = false, disabled, style, ...re
         typeof style === 'function' ? style(state) : style,
       ]}
       {...rest}>
-      {loading ? (
-        <ActivityIndicator color={colors.text} />
-      ) : (
-        <View style={styles.content}>
+      <View style={styles.content}>
+        {loading ? (
+          <ActivityIndicator size="small" color={colors.text} />
+        ) : (
           <FontAwesome name={cfg.icon} size={18} color={cfg.tint} />
-          <Text style={styles.label}>{cfg.label}</Text>
-        </View>
-      )}
+        )}
+        <Text style={styles.label}>{loading ? 'Conectando…' : cfg.label}</Text>
+      </View>
     </Pressable>
   );
 }

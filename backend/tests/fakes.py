@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import replace
 from datetime import UTC, datetime
+from decimal import Decimal
 
 from app.application.dto import SocialProfile
 from app.application.interfaces import (
@@ -18,19 +20,28 @@ from app.domain.entities import (
     Offer,
     OfferStatus,
     RideRating,
+    RideRatingSkip,
     RideRequest,
     RideStatus,
     SavedPlace,
-    ServiceType,
     User,
     UserRole,
+    VehicleType,
+    services_for_vehicle,
+    vehicle_can_serve,
 )
 from app.domain.exceptions import InvalidTokenError
 from app.domain.repositories import (
+    DriverOfflineTransition,
     OfferAcceptance,
+    OfferCreation,
     OfferRepository,
     OpenRideDetail,
+    PendingRatingRepository,
     RatingRepository,
+    RatingSkipRepository,
+    RideAutoCancellation,
+    RideOffersTransition,
     RideRequestRepository,
     RiderSummary,
     SavedPlaceRepository,
@@ -39,6 +50,13 @@ from app.domain.repositories import (
 from app.domain.ride_policy import is_offer_expired
 
 _ACTIVE_RIDE_STATUSES = (
+    RideStatus.ACCEPTED,
+    RideStatus.ARRIVING,
+    RideStatus.IN_PROGRESS,
+)
+
+_PASSENGER_ACTIVE_RIDE_STATUSES = (
+    RideStatus.SEARCHING,
     RideStatus.ACCEPTED,
     RideStatus.ARRIVING,
     RideStatus.IN_PROGRESS,
@@ -73,10 +91,19 @@ class InMemoryUserRepository(UserRepository):
         self.users[user.id] = user
         return user
 
+    async def set_online(self, user_id: uuid.UUID, is_online: bool) -> User:
+        user = self.users.get(user_id)
+        if user is None:
+            raise ValueError("user not found")
+        updated = replace(user, is_online=is_online)
+        self.users[user_id] = updated
+        return updated
+
 
 class InMemoryRideRequestRepository(RideRequestRepository):
     def __init__(self, users: InMemoryUserRepository | None = None) -> None:
         self.rides: list[RideRequest] = []
+        self.dismissals: dict[tuple[uuid.UUID, uuid.UUID], int] = {}
         # Opcional: para construir el resumen del pasajero con sus datos reales.
         self._users = users
 
@@ -84,8 +111,23 @@ class InMemoryRideRequestRepository(RideRequestRepository):
         self.rides.append(ride)
         return ride
 
+    async def add_if_no_active(self, ride: RideRequest) -> RideRequest | None:
+        if await self.get_active_by_rider(ride.rider_id) is not None:
+            return None
+        return await self.add(ride)
+
     async def get_by_id(self, ride_id: uuid.UUID) -> RideRequest | None:
         return next((r for r in self.rides if r.id == ride_id), None)
+
+    async def get_active_by_rider(self, rider_id: uuid.UUID) -> RideRequest | None:
+        return next(
+            (
+                r
+                for r in reversed(self.rides)
+                if r.rider_id == rider_id and r.status in _PASSENGER_ACTIVE_RIDE_STATUSES
+            ),
+            None,
+        )
 
     async def update(self, ride: RideRequest) -> RideRequest:
         for i, existing in enumerate(self.rides):
@@ -94,23 +136,90 @@ class InMemoryRideRequestRepository(RideRequestRepository):
                 return ride
         raise ValueError("ride request not found")
 
-    async def list_open_for_service(self, service_type: ServiceType) -> list[RideRequest]:
+    async def update_if_state(
+        self,
+        ride: RideRequest,
+        expected_status: RideStatus,
+        *,
+        expected_paused: bool | None = None,
+        expected_fare: Decimal | None = None,
+    ) -> RideRequest | None:
+        for i, existing in enumerate(self.rides):
+            if existing.id != ride.id:
+                continue
+            if existing.status is not expected_status:
+                return None
+            if expected_paused is not None and existing.paused is not expected_paused:
+                return None
+            if expected_fare is not None and existing.fare != expected_fare:
+                return None
+
+            completed_at = ride.completed_at
+            cancelled_at = ride.cancelled_at
+            now = datetime.now(UTC)
+            if ride.status is RideStatus.COMPLETED and completed_at is None:
+                completed_at = now
+            if ride.status is RideStatus.CANCELLED and cancelled_at is None:
+                cancelled_at = now
+            updated = replace(
+                ride,
+                completed_at=completed_at,
+                cancelled_at=cancelled_at,
+            )
+            self.rides[i] = updated
+            return updated
+        return None
+
+    async def cancel_if_searching(self, ride_id: uuid.UUID) -> RideRequest | None:
+        for i, existing in enumerate(self.rides):
+            if existing.id != ride_id:
+                continue
+            if existing.status is not RideStatus.SEARCHING or existing.paused:
+                return None
+            updated = replace(
+                existing,
+                status=RideStatus.CANCELLED,
+                cancelled_at=datetime.now(UTC),
+            )
+            self.rides[i] = updated
+            return updated
+        return None
+
+    async def list_open_for_vehicle(self, vehicle_type: VehicleType) -> list[RideRequest]:
         return [
             r
             for r in reversed(self.rides)
-            if r.service_type == service_type
+            if r.service_type in services_for_vehicle(vehicle_type)
             and r.status is RideStatus.SEARCHING
             and not r.paused
         ]
 
-    async def list_open_with_rider(self, service_type: ServiceType) -> list[OpenRideDetail]:
+    async def list_open_with_rider_for_vehicle(
+        self, vehicle_type: VehicleType, *, driver_id: uuid.UUID | None = None
+    ) -> list[OpenRideDetail]:
         return [
             self._detail_for(r)
             for r in reversed(self.rides)
-            if r.service_type == service_type
+            if r.service_type in services_for_vehicle(vehicle_type)
             and r.status is RideStatus.SEARCHING
             and not r.paused
+            and (
+                driver_id is None
+                or self.dismissals.get((driver_id, r.id)) != r.pool_version
+            )
         ]
+
+    async def dismiss_open_ride_for_driver(
+        self, driver_id: uuid.UUID, ride_id: uuid.UUID, pool_version: int
+    ) -> None:
+        self.dismissals[(driver_id, ride_id)] = pool_version
+
+    async def list_paused_with_rider_for_driver(
+        self, driver_id: uuid.UUID
+    ) -> list[OpenRideDetail]:
+        # El fake no persiste ofertas por conductor; este snapshot es exclusivo
+        # de reconexión del WebSocket y no interviene en los casos de uso unitarios.
+        return []
 
     async def rider_summary(self, rider_id: uuid.UUID) -> RiderSummary | None:
         if self._users is None:
@@ -204,6 +313,46 @@ class InMemoryOfferRepository(OfferRepository):
         self.offers.append(offer)
         return offer
 
+    async def create_or_supersede_atomically(
+        self, offer: Offer, *, expected_ride_fare: Decimal
+    ) -> OfferCreation | None:
+        if self._rides is not None:
+            ride = await self._rides.get_by_id(offer.ride_id)
+            if (
+                ride is None
+                or ride.status is not RideStatus.SEARCHING
+                or ride.paused
+                or ride.fare != expected_ride_fare
+                or any(
+                    active.driver_id == offer.driver_id
+                    and active.status in _ACTIVE_RIDE_STATUSES
+                    for active in self._rides.rides
+                )
+            ):
+                return None
+        if self._users is not None:
+            driver = await self._users.get_by_id(offer.driver_id)
+            if (
+                driver is None
+                or not driver.is_driver
+                or driver.vehicle_type is None
+                or not driver.is_online
+                or (
+                    self._rides is not None
+                    and not vehicle_can_serve(ride.service_type, driver.vehicle_type)
+                )
+            ):
+                return None
+
+        previous = await self.get_active_by_driver_and_ride(offer.ride_id, offer.driver_id)
+        if previous is not None:
+            previous.status = OfferStatus.REJECTED
+        created = await self.add(offer)
+        return OfferCreation(
+            offer=created,
+            superseded_offer_id=previous.id if previous else None,
+        )
+
     async def get_by_id(self, offer_id: uuid.UUID) -> Offer | None:
         return next((o for o in self.offers if o.id == offer_id), None)
 
@@ -213,6 +362,13 @@ class InMemoryOfferRepository(OfferRepository):
                 self.offers[i] = offer
                 return offer
         raise ValueError("offer not found")
+
+    async def reject_if_pending(self, offer_id: uuid.UUID) -> Offer | None:
+        offer = await self.get_by_id(offer_id)
+        if offer is None or offer.status is not OfferStatus.PENDING:
+            return None
+        offer.status = OfferStatus.REJECTED
+        return offer
 
     async def list_by_ride(self, ride_id: uuid.UUID) -> list[Offer]:
         return [o for o in reversed(self.offers) if o.ride_id == ride_id]
@@ -252,6 +408,145 @@ class InMemoryOfferRepository(OfferRepository):
             if offer.ride_id == ride_id and offer.status in ACTIVE_OFFER_STATUSES:
                 offer.status = OfferStatus.REJECTED
 
+    async def set_driver_offline_atomically(
+        self, driver_id: uuid.UUID
+    ) -> DriverOfflineTransition | None:
+        assert self._users is not None and self._rides is not None, (
+            "wire rides/users en el fake para cambiar disponibilidad"
+        )
+        driver = await self._users.get_by_id(driver_id)
+        if driver is None or not driver.is_driver or driver.vehicle_type is None:
+            return None
+        if any(
+            ride.driver_id == driver_id and ride.status in _ACTIVE_RIDE_STATUSES
+            for ride in self._rides.rides
+        ):
+            return None
+        live_offers = [
+            replace(offer)
+            for offer in reversed(self.offers)
+            if offer.driver_id == driver_id
+            and offer.status is OfferStatus.PENDING
+            and not is_offer_expired(offer)
+        ]
+        for offer in self.offers:
+            if offer.driver_id == driver_id and offer.status is OfferStatus.PENDING:
+                offer.status = OfferStatus.REJECTED
+        updated = await self._users.set_online(driver_id, False)
+        return DriverOfflineTransition(
+            driver=updated,
+            withdrawn_offers=live_offers,
+        )
+
+    async def cancel_ride_atomically(
+        self,
+        ride_id: uuid.UUID,
+        *,
+        expected_status: RideStatus,
+        expected_paused: bool,
+    ) -> RideOffersTransition | None:
+        assert self._rides is not None, "wire rides en el fake para cancelar"
+        ride_index = next(
+            (i for i, ride in enumerate(self._rides.rides) if ride.id == ride_id),
+            None,
+        )
+        if ride_index is None:
+            return None
+        ride = self._rides.rides[ride_index]
+        if ride.status is not expected_status or ride.paused is not expected_paused:
+            return None
+
+        live_offers = [
+            replace(offer)
+            for offer in reversed(self.offers)
+            if offer.ride_id == ride_id
+            and offer.status is OfferStatus.PENDING
+            and not is_offer_expired(offer)
+        ]
+        updated = replace(
+            ride,
+            status=RideStatus.CANCELLED,
+            cancelled_at=datetime.now(UTC),
+        )
+        self._rides.rides[ride_index] = updated
+        for offer in self.offers:
+            if offer.ride_id == ride_id and offer.status is OfferStatus.PENDING:
+                offer.status = OfferStatus.REJECTED
+        return RideOffersTransition(ride=updated, affected_offers=live_offers)
+
+    async def pause_ride_atomically(
+        self,
+        ride_id: uuid.UUID,
+        *,
+        expected_fare: Decimal,
+    ) -> RideOffersTransition | None:
+        assert self._rides is not None, "wire rides en el fake para pausar"
+        ride_index = next(
+            (i for i, ride in enumerate(self._rides.rides) if ride.id == ride_id),
+            None,
+        )
+        if ride_index is None:
+            return None
+        ride = self._rides.rides[ride_index]
+        if (
+            ride.status is not RideStatus.SEARCHING
+            or ride.paused
+            or ride.fare != expected_fare
+        ):
+            return None
+
+        live_offers = [
+            replace(offer)
+            for offer in reversed(self.offers)
+            if offer.ride_id == ride_id
+            and offer.status is OfferStatus.PENDING
+            and not is_offer_expired(offer)
+        ]
+        updated = replace(ride, paused=True)
+        self._rides.rides[ride_index] = updated
+        for offer in self.offers:
+            if offer.ride_id == ride_id and offer.status is OfferStatus.PENDING:
+                offer.status = OfferStatus.REJECTED
+        return RideOffersTransition(ride=updated, affected_offers=live_offers)
+
+    async def cancel_ride_on_disconnect_atomically(
+        self, ride_id: uuid.UUID
+    ) -> RideAutoCancellation | None:
+        assert self._rides is not None, (
+            "wire rides en el fake para ejercitar la cancelación por desconexión"
+        )
+        ride_index = next(
+            (i for i, ride in enumerate(self._rides.rides) if ride.id == ride_id),
+            None,
+        )
+        if ride_index is None:
+            return None
+        ride = self._rides.rides[ride_index]
+        if ride.status is not RideStatus.SEARCHING or ride.paused:
+            return None
+
+        live_offers = [
+            replace(offer)
+            for offer in reversed(self.offers)
+            if offer.ride_id == ride_id
+            and offer.status is OfferStatus.PENDING
+            and not is_offer_expired(offer)
+        ]
+        updated = replace(
+            ride,
+            status=RideStatus.CANCELLED,
+            cancelled_at=datetime.now(UTC),
+        )
+        self._rides.rides[ride_index] = updated
+        for offer in self.offers:
+            if offer.ride_id == ride_id and offer.status is OfferStatus.PENDING:
+                offer.status = OfferStatus.REJECTED
+
+        return RideAutoCancellation(
+            ride=updated,
+            cancelled_offers=live_offers,
+        )
+
     async def accept_atomically(self, offer_id: uuid.UUID) -> OfferAcceptance | None:
         assert self._rides is not None and self._users is not None, (
             "wire rides/users en el fake para ejercitar accept_atomically"
@@ -260,10 +555,23 @@ class InMemoryOfferRepository(OfferRepository):
         if offer is None or offer.status is not OfferStatus.PENDING:
             return None
         driver = await self._users.get_by_id(offer.driver_id)
-        if driver is None:
+        if (
+            driver is None
+            or not driver.is_driver
+            or driver.vehicle_type is None
+            or not driver.is_online
+        ):
             return None
         ride = await self._rides.get_by_id(offer.ride_id)
-        if ride is None or ride.status is not RideStatus.SEARCHING:
+        if (
+            ride is None
+            or ride.status is not RideStatus.SEARCHING
+            or ride.paused
+            or not vehicle_can_serve(ride.service_type, driver.vehicle_type)
+        ):
+            return None
+        if is_offer_expired(offer):
+            offer.status = OfferStatus.EXPIRED
             return None
         # Conductor ocupado si ya tiene un viaje activo.
         if any(
@@ -320,11 +628,21 @@ class InMemoryOfferRepository(OfferRepository):
 
 
 class InMemoryRatingRepository(RatingRepository):
-    def __init__(self) -> None:
+    def __init__(self, users: InMemoryUserRepository | None = None) -> None:
         self._ratings: dict[uuid.UUID, RideRating] = {}
+        self._users = users
 
-    async def add(self, rating: RideRating) -> RideRating:
+    async def add_and_recompute(self, rating: RideRating) -> RideRating | None:
+        duplicate = await self.get_by_ride_and_rater(rating.ride_id, rating.rater_id)
+        if duplicate is not None:
+            return None
         self._ratings[rating.id] = rating
+
+        if self._users is not None:
+            ratee = self._users.users.get(rating.ratee_id)
+            average = await self.average_for(rating.ratee_id)
+            if ratee is not None and average is not None:
+                self._users.users[ratee.id] = replace(ratee, rating=round(average, 2))
         return rating
 
     async def get_by_ride_and_rater(
@@ -341,6 +659,72 @@ class InMemoryRatingRepository(RatingRepository):
     async def average_for(self, ratee_id: uuid.UUID) -> float | None:
         scores = [r.score for r in self._ratings.values() if r.ratee_id == ratee_id]
         return sum(scores) / len(scores) if scores else None
+
+
+class InMemoryRatingSkipRepository(RatingSkipRepository):
+    def __init__(self) -> None:
+        self._skips: dict[tuple[uuid.UUID, uuid.UUID], RideRatingSkip] = {}
+
+    async def get_by_ride_and_rater(
+        self,
+        ride_id: uuid.UUID,
+        rater_id: uuid.UUID,
+    ) -> RideRatingSkip | None:
+        return self._skips.get((ride_id, rater_id))
+
+    async def add_if_absent(self, skip: RideRatingSkip) -> RideRatingSkip:
+        key = (skip.ride_id, skip.rater_id)
+        existing = self._skips.get(key)
+        if existing is not None:
+            return existing
+        if skip.created_at is None:
+            skip.created_at = datetime.now(UTC)
+        self._skips[key] = skip
+        return skip
+
+
+class InMemoryPendingRatingRepository(PendingRatingRepository):
+    def __init__(
+        self,
+        rides: InMemoryRideRequestRepository,
+        ratings: InMemoryRatingRepository,
+        skips: InMemoryRatingSkipRepository | None = None,
+    ) -> None:
+        self._rides = rides
+        self._ratings = ratings
+        self._skips = skips
+
+    async def get_latest_for(
+        self,
+        user_id: uuid.UUID,
+        role: UserRole,
+    ) -> RideRequest | None:
+        pending: list[tuple[int, RideRequest]] = []
+        for index, ride in enumerate(self._rides.rides):
+            participant_id = ride.driver_id if role is UserRole.DRIVER else ride.rider_id
+            if participant_id != user_id or ride.status is not RideStatus.COMPLETED:
+                continue
+            if await self._ratings.get_by_ride_and_rater(ride.id, user_id) is not None:
+                continue
+            if (
+                self._skips is not None
+                and await self._skips.get_by_ride_and_rater(ride.id, user_id) is not None
+            ):
+                continue
+            pending.append((index, ride))
+        if not pending:
+            return None
+
+        def order(item: tuple[int, RideRequest]) -> tuple[float, int]:
+            index, ride = item
+            timestamp = ride.completed_at or ride.created_at
+            if timestamp is None:
+                return (float("-inf"), index)
+            if timestamp.tzinfo is None:
+                timestamp = timestamp.replace(tzinfo=UTC)
+            return (timestamp.timestamp(), index)
+
+        return max(pending, key=order)[1]
 
 
 class InMemorySavedPlaceRepository(SavedPlaceRepository):

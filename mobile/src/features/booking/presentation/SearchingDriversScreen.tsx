@@ -1,25 +1,28 @@
 /**
  * Buscando ofertas (pasajero) — diseño Stitch "Searching for Offers".
  *
- * Mapa de fondo con el trayecto y un pulso sobre el origen; arriba el resumen
- * origen→destino; abajo una tarjeta con el estado de búsqueda, los controles
- * para **aumentar la oferta** (recibe ofertas más rápido) y las acciones de
- * modificar/cancelar la solicitud. Se muestra mientras el viaje sigue
+ * Mapa de fondo con el trayecto y un pulso sobre el origen; abajo una tarjeta
+ * con el estado de búsqueda, los controles para **ajustar la oferta** y la acción de
+ * cancelar la solicitud. Se muestra mientras el viaje sigue
  * `searching` y aún no llegan ofertas; al recibir la primera, `OffersScreen`
  * pasa a la lista.
  *
- * La búsqueda no caduca: se sale solo al **modificar** (crea otra solicitud) o
- * **cancelar**. Aumentar la oferta solo sube el monto (nunca lo baja) y lo
- * anuncia a los conductores en vivo.
+ * La búsqueda no caduca. Al ajustar la oferta, el nuevo monto se anuncia a los
+ * conductores en vivo.
  */
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Easing,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -34,55 +37,52 @@ import {
   usePauseForEdit,
   useUpdateRideFare,
 } from '@/features/rides/application/useRideMutations';
-import { FareKeypad } from '@/features/rides/presentation/FareKeypad';
+import { formatBolivianosInput } from '@/features/rides/domain/money';
 import { TripRouteMap } from '@/features/rides/presentation/TripRouteMap';
-import { RouteSummary } from '@/features/rides/presentation/RouteSummary';
 import { ConfirmDialog } from '@/shared/components';
 
-/** Incrementos rápidos de la oferta (en Bs) con su etiqueta de prioridad. */
-const QUICK_INCREMENTS = [
-  { delta: 2, hint: 'Sugerido' },
-  { delta: 5, hint: 'Rápido' },
-  { delta: 10, hint: 'Prioridad' },
-] as const;
+const PASO_OFERTA = 1;
 
 export function SearchingDriversScreen({
   rideId,
   origin,
   destination,
   currentFare,
+  connectionError,
+  onRetry,
 }: {
   rideId: string | null;
   origin: Place | null;
   destination: Place | null;
-  /** Oferta vigente del viaje (en vivo); base para los incrementos. */
+  /** Oferta vigente del viaje (en vivo). */
   currentFare: number | null;
+  connectionError?: unknown;
+  onRetry?: () => void;
 }) {
   const router = useRouter();
   const cancelRide = useCancelRide();
   const updateFare = useUpdateRideFare();
   const pauseForEdit = usePauseForEdit();
+  const negotiationBusy = cancelRide.isPending || updateFare.isPending || pauseForEdit.isPending;
 
-  const [customKeypad, setCustomKeypad] = useState(false);
+  const [fareInput, setFareInput] = useState<string | null>(null);
+  const pendingFareRef = useRef<number | null>(null);
   const [confirmCancel, setConfirmCancel] = useState(false);
+  // Algunos Android conservan la altura reducida del KeyboardAvoidingView al
+  // ocultar el teclado; al remontarlo, la hoja vuelve a anclarse abajo.
+  const [keyboardAvoiderKey, setKeyboardAvoiderKey] = useState(0);
+  const hasConnectionError = connectionError != null;
 
-  // La búsqueda no caduca: se sale al modificar (pausa y edita) o cancelar.
-  const onModify = () => {
-    if (pauseForEdit.isPending) return;
-    if (!rideId) {
-      router.replace('/(app)/booking/configure');
-      return;
-    }
-    // Pausa la solicitud (la oculta del pool) y abre la edición sin cancelar.
-    pauseForEdit.mutate(rideId, {
-      onSuccess: () =>
-        router.replace({ pathname: '/(app)/booking/configure', params: { rideId } }),
+  useEffect(() => {
+    const subscription = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardAvoiderKey((key) => key + 1);
     });
-  };
+    return () => subscription.remove();
+  }, []);
 
   const onCancel = () => {
     setConfirmCancel(false);
-    if (cancelRide.isPending) return;
+    if (negotiationBusy) return;
     if (!rideId) {
       useBookingStore.getState().resetTrip();
       router.replace('/(app)/(tabs)');
@@ -97,15 +97,56 @@ export function SearchingDriversScreen({
     });
   };
 
-  // Aumentar la oferta = oferta actual + incremento (redondeado a 2 decimales).
-  // Requiere conocer la oferta vigente; sin ella (ride aún cargando) no aplicamos.
-  const applyIncrease = (delta: number) => {
-    if (!rideId || updateFare.isPending || delta <= 0 || currentFare == null) return;
-    const next = Math.round((currentFare + delta) * 100) / 100;
-    updateFare.mutate({ rideId, fare: next });
+  const fareLocked = currentFare == null || negotiationBusy;
+  const displayedFare = fareInput ?? (currentFare == null ? '' : formatBolivianosInput(currentFare));
+  const typedFare = Number(displayedFare.replace(',', '.'));
+  const typedFareIsValid = Number.isFinite(typedFare) && typedFare > 0;
+
+  const updateCurrentFare = (nextFare: number) => {
+    if (!rideId || fareLocked || !Number.isFinite(nextFare) || nextFare <= 0) return;
+    const normalizedFare = Math.round(nextFare * 100) / 100;
+    if (normalizedFare === currentFare || pendingFareRef.current != null) return;
+    setFareInput(formatBolivianosInput(normalizedFare));
+    pendingFareRef.current = normalizedFare;
+    updateFare.mutate(
+      { rideId, fare: normalizedFare },
+      {
+        onSettled: () => {
+          pendingFareRef.current = null;
+          setFareInput(null);
+        },
+      },
+    );
   };
 
-  const fareLocked = currentFare == null || updateFare.isPending;
+  const applyTypedFare = () => {
+    if (!typedFareIsValid) {
+      setFareInput(null);
+      return;
+    }
+    if (typedFare === currentFare) setFareInput(null);
+    updateCurrentFare(typedFare);
+    Keyboard.dismiss();
+  };
+
+  const adjustFare = (delta: number) => {
+    const baseFare = typedFareIsValid ? typedFare : currentFare;
+    if (baseFare == null) return;
+    updateCurrentFare(baseFare + delta);
+  };
+
+  const onBack = () => {
+    if (negotiationBusy) return;
+    if (!rideId) {
+      router.replace('/(app)/booking/configure');
+      return;
+    }
+    // Pausa la búsqueda antes de editar: así se oculta del pool sin cancelarla.
+    pauseForEdit.mutate(rideId, {
+      onSuccess: () =>
+        router.replace({ pathname: '/(app)/booking/configure', params: { rideId } }),
+    });
+  };
 
   return (
     <View style={styles.root}>
@@ -113,79 +154,112 @@ export function SearchingDriversScreen({
         <TripRouteMap
           origin={origin}
           destination={destination}
-          topPadding={170}
           bottomPadding={440}
+          showPlaceNamesInTooltip
         />
       ) : (
         <View style={styles.mapFallback} />
       )}
 
       <View style={styles.scrim} pointerEvents="box-none">
-        <SafeAreaView edges={['top']} style={styles.topArea} pointerEvents="box-none">
-          <RouteSummary
-            origin={origin ?? { name: 'Tu ubicación' }}
-            destination={destination ?? { name: 'Destino' }}
-          />
+        <SafeAreaView edges={['top']} style={styles.backArea} pointerEvents="box-none">
+          <TouchableOpacity
+            style={[styles.backButton, negotiationBusy && styles.disabled]}
+            onPress={onBack}
+            disabled={negotiationBusy}
+            accessibilityRole="button"
+            accessibilityLabel="Volver">
+            <Ionicons name="arrow-back" size={24} color={colors.text} />
+          </TouchableOpacity>
         </SafeAreaView>
 
         <View style={styles.center} pointerEvents="none">
           <PulseLoader />
         </View>
 
+        <KeyboardAvoidingView
+          key={keyboardAvoiderKey}
+          style={styles.sheetAvoider}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          pointerEvents="box-none">
         <SafeAreaView edges={['bottom']} style={styles.sheet}>
+          <ScrollView
+            contentContainerStyle={styles.sheetContent}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            showsVerticalScrollIndicator={false}
+            bounces={false}>
           <View style={styles.sheetHandle} />
 
           {/* Estado de búsqueda */}
           <View style={styles.statusRow}>
             <View style={styles.statusText}>
               <View style={styles.statusTitleRow}>
-                <View style={styles.liveDot} />
-                <Text style={styles.statusTitle}>Buscando ofertas…</Text>
+                <View style={[styles.liveDot, hasConnectionError && styles.offlineDot]} />
+                <Text style={[styles.statusTitle, hasConnectionError && styles.offlineTitle]}>
+                  {hasConnectionError ? 'Reconectando…' : 'Buscando ofertas…'}
+                </Text>
               </View>
-              <Text style={styles.statusSubtitle}>Conectando con conductores cercanos</Text>
+              <Text style={styles.statusSubtitle} numberOfLines={2}>
+                {hasConnectionError
+                  ? getApiErrorMessage(connectionError)
+                  : 'Conectando con conductores cercanos'}
+              </Text>
             </View>
-            <View style={styles.syncBadge}>
-              <Ionicons name="sync" size={18} color={colors.primary} />
-            </View>
+            <TouchableOpacity
+              style={styles.syncBadge}
+              onPress={onRetry}
+              disabled={!hasConnectionError || !onRetry}
+              accessibilityRole={hasConnectionError ? 'button' : undefined}
+              accessibilityLabel={hasConnectionError ? 'Reintentar conexión' : undefined}>
+              <Ionicons
+                name={hasConnectionError ? 'refresh' : 'sync'}
+                size={18}
+                color={hasConnectionError ? colors.danger : colors.primary}
+              />
+            </TouchableOpacity>
           </View>
 
-          {/* Aumentar oferta */}
+          {/* Ajuste de oferta */}
           <View style={styles.bidHeader}>
-            <Text style={styles.bidTitle}>Aumentar oferta</Text>
-            <Text style={styles.bidHint}>Recibe ofertas más rápido</Text>
+            <Text style={styles.bidTitle}>Tu oferta</Text>
           </View>
-          {currentFare != null && (
-            <Text style={styles.currentFare}>Tu oferta actual: Bs {currentFare.toFixed(2)}</Text>
-          )}
-
-          <View style={styles.bidGrid}>
-            {QUICK_INCREMENTS.map((inc, i) => (
-              <TouchableOpacity
-                key={inc.delta}
-                style={[
-                  styles.bidBtn,
-                  i === 0 && styles.bidBtnSuggested,
-                  fareLocked && styles.disabled,
-                ]}
-                onPress={() => applyIncrease(inc.delta)}
-                disabled={fareLocked}
-                accessibilityRole="button"
-                accessibilityLabel={`Aumentar oferta en ${inc.delta} bolivianos`}>
-                <Text style={styles.bidAmount}>+Bs {inc.delta}</Text>
-                <Text style={styles.bidHintSmall}>{inc.hint}</Text>
-              </TouchableOpacity>
-            ))}
+          <View style={[styles.fareStepper, fareLocked && styles.disabled]}>
+            <TouchableOpacity
+              style={styles.fareStepButton}
+              onPress={() => adjustFare(-PASO_OFERTA)}
+              disabled={fareLocked || !typedFareIsValid || typedFare <= PASO_OFERTA}
+              accessibilityRole="button"
+              accessibilityLabel="Reducir oferta en un boliviano">
+              <Ionicons name="remove" size={22} color={colors.primary} />
+            </TouchableOpacity>
+            <View style={styles.fareInputWrap}>
+              <Text style={styles.fareCurrency}>Bs</Text>
+              <TextInput
+                value={displayedFare}
+                onChangeText={setFareInput}
+                placeholder="0"
+                placeholderTextColor={colors.placeholder}
+                keyboardType="decimal-pad"
+                inputMode="decimal"
+                maxLength={9}
+                returnKeyType="done"
+                onSubmitEditing={applyTypedFare}
+                onBlur={applyTypedFare}
+                editable={!fareLocked}
+                style={styles.fareAmountInput}
+                accessibilityLabel="Precio de tu oferta en bolivianos"
+              />
+            </View>
+            <TouchableOpacity
+              style={styles.fareStepButton}
+              onPress={() => adjustFare(PASO_OFERTA)}
+              disabled={fareLocked}
+              accessibilityRole="button"
+              accessibilityLabel="Aumentar oferta en un boliviano">
+              <Ionicons name="add" size={22} color={colors.primary} />
+            </TouchableOpacity>
           </View>
-
-          <TouchableOpacity
-            style={[styles.customBtn, fareLocked && styles.disabled]}
-            onPress={() => setCustomKeypad(true)}
-            disabled={fareLocked}
-            accessibilityRole="button"
-            accessibilityLabel="Aumentar oferta con un monto personalizado">
-            <Ionicons name="add-circle-outline" size={18} color={colors.primary} />
-            <Text style={styles.customBtnText}>Monto personalizado</Text>
-          </TouchableOpacity>
 
           {updateFare.isError && (
             <Text style={styles.error}>{getApiErrorMessage(updateFare.error)}</Text>
@@ -203,18 +277,9 @@ export function SearchingDriversScreen({
             <Text style={styles.error}>{getApiErrorMessage(pauseForEdit.error)}</Text>
           )}
           <TouchableOpacity
-            style={[styles.modify, pauseForEdit.isPending && styles.disabled]}
-            onPress={onModify}
-            disabled={pauseForEdit.isPending}
-            accessibilityRole="button"
-            accessibilityLabel="Modificar solicitud">
-            <Ionicons name="create-outline" size={20} color={colors.primary} />
-            <Text style={styles.modifyText}>Modificar solicitud</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.cancel, cancelRide.isPending && styles.disabled]}
+            style={[styles.cancel, negotiationBusy && styles.disabled]}
             onPress={() => setConfirmCancel(true)}
-            disabled={cancelRide.isPending}
+            disabled={negotiationBusy}
             accessibilityRole="button"
             accessibilityLabel="Cancelar solicitud">
             <Ionicons name="close" size={18} color={colors.danger} />
@@ -222,7 +287,9 @@ export function SearchingDriversScreen({
               {cancelRide.isPending ? 'Cancelando…' : 'Cancelar solicitud'}
             </Text>
           </TouchableOpacity>
+          </ScrollView>
         </SafeAreaView>
+        </KeyboardAvoidingView>
       </View>
 
       <ConfirmDialog
@@ -237,18 +304,6 @@ export function SearchingDriversScreen({
         onCancel={() => setConfirmCancel(false)}
       />
 
-      <FareKeypad
-        visible={customKeypad}
-        mode="increment"
-        subtitle={currentFare != null ? `Tu oferta actual: Bs ${currentFare.toFixed(2)}` : undefined}
-        submitting={updateFare.isPending}
-        submitLabel="Aplicar"
-        onCancel={() => setCustomKeypad(false)}
-        onSubmit={(delta) => {
-          applyIncrease(delta);
-          setCustomKeypad(false);
-        }}
-      />
     </View>
   );
 }
@@ -364,9 +419,30 @@ const styles = StyleSheet.create({
   mapFallback: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: colors.surfaceMuted },
   scrim: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
 
-  topArea: { paddingHorizontal: spacing.md, paddingTop: spacing.sm },
-
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  backArea: { position: 'absolute', top: 0, left: 0, padding: spacing.md },
+  backButton: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(255,255,255,0.94)',
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 5,
+  },
+
+  sheetAvoider: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    justifyContent: 'flex-end',
+  },
 
   loader: { width: 88, height: 88, alignItems: 'center', justifyContent: 'center' },
   ring: { position: 'absolute', width: 88, height: 88, borderRadius: radius.pill, backgroundColor: colors.primary },
@@ -385,18 +461,21 @@ const styles = StyleSheet.create({
   },
 
   sheet: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
+    maxHeight: '88%',
     backgroundColor: colors.background,
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,
-    gap: spacing.sm,
     shadowColor: '#000',
     shadowOpacity: 0.12,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: -3 },
     elevation: 12,
+  },
+  sheetContent: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
+    gap: spacing.sm,
   },
   sheetHandle: {
     width: 40,
@@ -411,7 +490,9 @@ const styles = StyleSheet.create({
   statusText: { flex: 1 },
   statusTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   liveDot: { width: 8, height: 8, borderRadius: radius.pill, backgroundColor: colors.primary },
+  offlineDot: { backgroundColor: colors.danger },
   statusTitle: { fontSize: fontSize.md, fontWeight: fontWeight.bold, color: colors.primary },
+  offlineTitle: { color: colors.danger },
   statusSubtitle: { fontSize: fontSize.xs, color: colors.textSecondary, marginTop: 2 },
   syncBadge: {
     width: 34,
@@ -422,38 +503,40 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  bidHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
+  bidHeader: { alignItems: 'center' },
   bidTitle: { fontSize: fontSize.md, fontWeight: fontWeight.bold, color: colors.text },
-  bidHint: { fontSize: fontSize.xs, color: colors.textSecondary, fontStyle: 'italic' },
-  currentFare: { fontSize: fontSize.sm, color: colors.textSecondary, marginTop: -spacing.xs },
-
-  bidGrid: { flexDirection: 'row', gap: spacing.sm },
-  bidBtn: {
-    flex: 1,
+  fareStepper: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  fareStepButton: {
+    width: 52,
+    height: 52,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: spacing.sm,
     borderRadius: radius.md,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
   },
-  bidBtnSuggested: { backgroundColor: '#FFF7D6', borderColor: colors.accent },
-  bidAmount: { fontSize: fontSize.sm, fontWeight: fontWeight.bold, color: colors.text },
-  bidHintSmall: { fontSize: 10, color: colors.textSecondary, marginTop: 2 },
-
-  customBtn: {
+  fareInputWrap: {
+    flex: 1,
+    height: 52,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
-    height: 48,
+    paddingHorizontal: spacing.md,
     borderRadius: radius.md,
     backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.primary,
   },
-  customBtnText: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.primary },
+  fareCurrency: { color: colors.textSecondary, fontSize: fontSize.md, fontWeight: fontWeight.semibold },
+  fareAmountInput: {
+    flex: 1,
+    minWidth: 0,
+    paddingVertical: 0,
+    color: colors.text,
+    fontSize: fontSize.lg,
+    fontWeight: fontWeight.bold,
+    textAlign: 'center',
+  },
 
   progressTrack: {
     height: 6,
@@ -472,19 +555,6 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
 
-  modify: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    height: 52,
-    borderRadius: radius.md,
-    borderWidth: 2,
-    borderColor: colors.primary,
-    backgroundColor: colors.surface,
-    marginTop: spacing.xs,
-  },
-  modifyText: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.primary },
   cancel: {
     flexDirection: 'row',
     alignItems: 'center',

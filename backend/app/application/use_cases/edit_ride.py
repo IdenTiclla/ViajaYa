@@ -8,6 +8,7 @@ el pool de conductores. Re-valida coordenadas y monto (reglas de dominio).
 from __future__ import annotations
 
 import uuid
+from dataclasses import replace
 
 from app.application.dto import CreateRideRequestInput
 from app.domain.entities import Location, RideRequest, RideStatus, User
@@ -17,7 +18,7 @@ from app.domain.exceptions import (
     RideNotFoundError,
 )
 from app.domain.repositories import RideRequestRepository
-from app.domain.value_objects import FareOffer, GeoPoint
+from app.domain.value_objects import FareOffer, ServiceAreaPoint
 
 
 class EditRide:
@@ -44,25 +45,52 @@ class EditRide:
                 "Debes pausar la solicitud antes de editarla."
             )
 
-        # Re-valida reglas de dominio (rango de coordenadas y monto positivo).
-        origin_point = GeoPoint(data.origin.latitude, data.origin.longitude)
-        destination_point = GeoPoint(data.destination.latitude, data.destination.longitude)
+        # Re-valida país operativo, coordenadas y monto positivo.
+        origin_point = ServiceAreaPoint(
+            data.origin.latitude, data.origin.longitude, data.origin.country_code
+        )
+        destination_point = ServiceAreaPoint(
+            data.destination.latitude,
+            data.destination.longitude,
+            data.destination.country_code,
+        )
         fare = FareOffer(data.fare)
 
-        ride.origin = Location(
+        origin = Location(
             latitude=origin_point.latitude,
             longitude=origin_point.longitude,
             name=data.origin.name.strip(),
             address=data.origin.address.strip(),
         )
-        ride.destination = Location(
+        destination = Location(
             latitude=destination_point.latitude,
             longitude=destination_point.longitude,
             name=data.destination.name.strip(),
             address=data.destination.address.strip(),
         )
-        ride.service_type = data.service_type
-        ride.fare = fare.amount
-        ride.payment_method = data.payment_method
-        ride.paused = False
-        return await self._rides.update(ride)
+        changed = (
+            origin != ride.origin
+            or destination != ride.destination
+            or data.service_type is not ride.service_type
+            or fare.amount != ride.fare
+            or data.payment_method is not ride.payment_method
+        )
+        updated = await self._rides.update_if_state(
+            replace(
+                ride,
+                origin=origin,
+                destination=destination,
+                service_type=data.service_type,
+                fare=fare.amount,
+                payment_method=data.payment_method,
+                paused=False,
+                pool_version=ride.pool_version + 1 if changed else ride.pool_version,
+            ),
+            RideStatus.SEARCHING,
+            expected_paused=True,
+        )
+        if updated is None:
+            raise InvalidRideTransitionError(
+                "La solicitud cambió de estado y ya no se puede guardar."
+            )
+        return updated

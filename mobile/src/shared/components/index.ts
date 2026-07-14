@@ -5,3 +5,4 @@ export { SocialButton } from './SocialButton';
 export { Checkbox } from './Checkbox';
 export { Placeholder } from './Placeholder';
 export { ConfirmDialog } from './ConfirmDialog';
+export { FeedbackState } from './FeedbackState';

@@ -1,13 +1,13 @@
-"""Caso de uso: el pasajero aumenta la oferta de su solicitud en curso.
+"""Caso de uso: el pasajero ajusta la oferta de su solicitud en curso.
 
 Mientras la solicitud sigue ``SEARCHING`` (buscando conductores indefinidamente),
-el pasajero puede subir su oferta para recibir ofertas más rápido. Solo se permite
-**aumentar** el monto, nunca bajarlo.
+el pasajero puede ajustar el monto que muestra al pool de conductores.
 """
 
 from __future__ import annotations
 
 import uuid
+from dataclasses import replace
 from decimal import Decimal
 
 from app.domain.entities import RideRequest, RideStatus, User
@@ -33,13 +33,26 @@ class UpdateRideFare:
             raise NotAuthorizedActionError("No eres el dueño de esta solicitud.")
         if ride.status is not RideStatus.SEARCHING:
             raise InvalidRideTransitionError(
-                "Solo puedes aumentar la oferta mientras se buscan conductores."
+                "Solo puedes ajustar la oferta mientras se buscan conductores."
+            )
+        if ride.paused:
+            raise InvalidRideTransitionError(
+                "No puedes ajustar la oferta mientras modificas la solicitud."
             )
 
-        # Valida positividad (regla de dominio) y que sea un aumento real.
+        # Valida positividad (regla de dominio) y evita republicaciones sin cambios.
         fare = FareOffer(new_fare)
-        if fare.amount <= ride.fare:
-            raise InvalidFareError("La nueva oferta debe ser mayor que la actual.")
+        if fare.amount == ride.fare:
+            raise InvalidFareError("La nueva oferta debe ser diferente de la actual.")
 
-        ride.fare = fare.amount
-        return await self._rides.update(ride)
+        updated = await self._rides.update_if_state(
+            replace(ride, fare=fare.amount, pool_version=ride.pool_version + 1),
+            RideStatus.SEARCHING,
+            expected_paused=False,
+            expected_fare=ride.fare,
+        )
+        if updated is None:
+            raise InvalidRideTransitionError(
+                "La oferta cambió; actualiza la pantalla antes de ajustarla de nuevo."
+            )
+        return updated

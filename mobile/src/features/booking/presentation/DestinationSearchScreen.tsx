@@ -7,7 +7,7 @@
  * para fijar la ubicación en el mapa y los destinos recientes.
  */
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
   ActivityIndicator,
@@ -20,11 +20,13 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { getApiErrorMessage } from '@/core/errors/apiError';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
 import { usePlaceSearch } from '@/features/booking/application/usePlaceSearch';
 import { useRecentDestinations } from '@/features/booking/application/useRecentDestinations';
 import { findByCategory, useSavedPlaces } from '@/features/booking/application/useSavedPlaces';
+import { getBoliviaPlaceError } from '@/features/booking/domain/bolivia';
 import type {
   Place,
   PlaceSuggestion,
@@ -32,44 +34,83 @@ import type {
   SavedPlaceCategory,
 } from '@/features/booking/domain/types';
 import { CATEGORY_META } from '@/features/booking/presentation/savedPlaceCategory';
+import { FeedbackState } from '@/shared/components';
+
+function placeErrorMessage(error: unknown): string {
+  return error instanceof Error
+    ? error.message
+    : 'No pudimos buscar lugares. Revisa tu conexión e inténtalo de nuevo.';
+}
 
 export function DestinationSearchScreen() {
   const router = useRouter();
+  const { rideId } = useLocalSearchParams<{ rideId?: string }>();
   const origin = useBookingStore((s) => s.origin);
   const setDestination = useBookingStore((s) => s.setDestination);
   const { places, isLoading } = useRecentDestinations();
-  const { places: saved } = useSavedPlaces();
+  const {
+    places: saved,
+    isError: savedPlacesError,
+    error: savedPlacesErrorValue,
+    refetch: refetchSavedPlaces,
+  } = useSavedPlaces();
   const [query, setQuery] = useState('');
   // placeId que se está resolviendo (coordenadas) tras tocar una sugerencia.
   const [resolvingId, setResolvingId] = useState<string | null>(null);
+  const [selectionError, setSelectionError] = useState<string | null>(null);
 
-  const { suggestions, isLoading: isSearching, isActive, resolve } = usePlaceSearch(
-    query,
-    origin?.coordinates,
-  );
+  const {
+    suggestions,
+    isLoading: isSearching,
+    isError: searchError,
+    error,
+    isActive,
+    retry,
+    resolve,
+  } = usePlaceSearch(query, origin?.coordinates);
 
   const goToConfigure = (place: Place) => {
+    const areaError = getBoliviaPlaceError(place);
+    if (areaError) {
+      setSelectionError(areaError);
+      return;
+    }
+    setSelectionError(null);
     setDestination(place);
-    // `navigate` vuelve a la pantalla de configurar si ya está en la pila.
-    router.navigate('/booking/configure');
+    // En edición cierra las pantallas auxiliares hacia el Configure original;
+    // en creación, dismissTo reemplaza la pantalla actual si aún no existe.
+    router.dismissTo({
+      pathname: '/booking/configure',
+      params: rideId ? { rideId } : {},
+    });
   };
 
   const selectSuggestion = async (suggestion: PlaceSuggestion) => {
     if (resolvingId) return;
+    setSelectionError(null);
     setResolvingId(suggestion.placeId);
-    const place = await resolve(suggestion);
-    setResolvingId(null);
-    if (place) goToConfigure(place);
+    try {
+      const place = await resolve(suggestion);
+      if (place) goToConfigure(place);
+    } catch (resolveError) {
+      setSelectionError(placeErrorMessage(resolveError));
+    } finally {
+      setResolvingId(null);
+    }
   };
 
   // Atajo Casa/Trabajo: si ya está guardado, lo usa como destino; si no, abre
   // el flujo para fijarlo (mapa → nombrar/guardar) con la categoría puesta.
   const onShortcut = (category: SavedPlaceCategory) => {
+    if (savedPlacesError) return;
     const existing = findByCategory(saved, category);
     if (existing) {
       goToConfigure(existing.place);
     } else {
-      router.push({ pathname: '/booking/pick-on-map', params: { saveAs: '1', category } });
+      router.push({
+        pathname: '/booking/pick-on-map',
+        params: { saveAs: '1', category, ...(rideId ? { rideId } : {}) },
+      });
     }
   };
 
@@ -90,7 +131,10 @@ export function DestinationSearchScreen() {
             placeholder="Buscar destino"
             placeholderTextColor={colors.placeholder}
             value={query}
-            onChangeText={setQuery}
+            onChangeText={(value) => {
+              setQuery(value);
+              setSelectionError(null);
+            }}
             autoFocus
             returnKeyType="search"
           />
@@ -109,6 +153,9 @@ export function DestinationSearchScreen() {
         <SearchResults
           suggestions={suggestions}
           isLoading={isSearching}
+          error={searchError ? placeErrorMessage(error) : null}
+          selectionError={selectionError}
+          onRetry={retry}
           resolvingId={resolvingId}
           onSelect={selectSuggestion}
         />
@@ -117,9 +164,20 @@ export function DestinationSearchScreen() {
           contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}>
+          {selectionError ? (
+            <View style={styles.selectionError} accessibilityLiveRegion="polite">
+              <Ionicons name="location-outline" size={18} color={colors.danger} />
+              <Text style={styles.selectionErrorText}>{selectionError}</Text>
+            </View>
+          ) : null}
           <TouchableOpacity
             style={styles.wideCard}
-            onPress={() => router.push('/booking/pick-on-map')}
+            onPress={() =>
+              router.push({
+                pathname: '/booking/pick-on-map',
+                params: rideId ? { rideId } : {},
+              })
+            }
             accessibilityRole="button"
             accessibilityLabel="Seleccionar en el mapa, fija la ubicación manualmente">
             <View style={[styles.cardIcon, styles.mapIcon]}>
@@ -132,22 +190,43 @@ export function DestinationSearchScreen() {
             <Ionicons name="chevron-forward" size={20} color={colors.placeholder} />
           </TouchableOpacity>
 
+          {savedPlacesError && (
+            <TouchableOpacity
+              style={styles.savedWarning}
+              onPress={refetchSavedPlaces}
+              accessibilityRole="button"
+              accessibilityLabel="Reintentar lugares guardados">
+              <Ionicons name="cloud-offline-outline" size={18} color={colors.danger} />
+              <Text style={styles.savedWarningText} numberOfLines={2}>
+                {getApiErrorMessage(savedPlacesErrorValue)}
+              </Text>
+              <Ionicons name="refresh" size={18} color={colors.primary} />
+            </TouchableOpacity>
+          )}
+
           <View style={styles.bento}>
             <ShortcutCard
               category="home"
               place={findByCategory(saved, 'home')}
+              disabled={savedPlacesError}
               onPress={() => onShortcut('home')}
             />
             <ShortcutCard
               category="work"
               place={findByCategory(saved, 'work')}
+              disabled={savedPlacesError}
               onPress={() => onShortcut('work')}
             />
           </View>
 
           <TouchableOpacity
             style={styles.wideCard}
-            onPress={() => router.push('/booking/saved-places')}
+            onPress={() =>
+              router.push({
+                pathname: '/booking/saved-places',
+                params: rideId ? { rideId } : {},
+              })
+            }
             accessibilityRole="button"
             accessibilityLabel="Ver lugares guardados">
             <View style={[styles.cardIcon, styles.savedIcon]}>
@@ -174,19 +253,23 @@ export function DestinationSearchScreen() {
 function ShortcutCard({
   category,
   place,
+  disabled,
   onPress,
 }: {
   category: Extract<SavedPlaceCategory, 'home' | 'work'>;
   place: SavedPlace | undefined;
+  disabled: boolean;
   onPress: () => void;
 }) {
   const meta = CATEGORY_META[category];
   const tint = category === 'work' ? colors.accent : colors.primary;
   return (
     <TouchableOpacity
-      style={styles.bentoCard}
+      style={[styles.bentoCard, disabled && styles.disabled]}
       onPress={onPress}
+      disabled={disabled}
       accessibilityRole="button"
+      accessibilityState={{ disabled }}
       accessibilityLabel={place ? `Ir a ${place.label}` : `Fijar ${meta.label.toLowerCase()}`}>
       <View style={[styles.cardIcon, { backgroundColor: `${tint}22` }]}>
         <Ionicons name={meta.icon} size={20} color={tint} />
@@ -202,15 +285,32 @@ function ShortcutCard({
 function SearchResults({
   suggestions,
   isLoading,
+  error,
+  selectionError,
+  onRetry,
   resolvingId,
   onSelect,
 }: {
   suggestions: PlaceSuggestion[];
   isLoading: boolean;
+  error: string | null;
+  selectionError: string | null;
+  onRetry: () => void;
   resolvingId: string | null;
   onSelect: (suggestion: PlaceSuggestion) => void;
 }) {
   if (suggestions.length === 0) {
+    if (error) {
+      return (
+        <FeedbackState
+          icon="cloud-offline-outline"
+          title="No pudimos buscar lugares"
+          message={error}
+          actionLabel="Reintentar"
+          onAction={onRetry}
+        />
+      );
+    }
     return (
       <View style={styles.empty}>
         {isLoading ? (
@@ -230,6 +330,12 @@ function SearchResults({
 
   return (
     <ScrollView contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled">
+      {selectionError ? (
+        <View style={styles.selectionError} accessibilityLiveRegion="polite">
+          <Ionicons name="alert-circle-outline" size={18} color={colors.danger} />
+          <Text style={styles.selectionErrorText}>{selectionError}</Text>
+        </View>
+      ) : null}
       {suggestions.map((suggestion) => {
         const isResolving = resolvingId === suggestion.placeId;
         return (
@@ -369,6 +475,18 @@ const styles = StyleSheet.create({
   mapIcon: { backgroundColor: colors.primary },
   cardTitle: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.text },
   cardSubtitle: { fontSize: fontSize.sm, color: colors.textSecondary },
+  savedWarning: {
+    minHeight: 46,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: '#FDECEA',
+  },
+  savedWarningText: { flex: 1, color: colors.danger, fontSize: fontSize.sm },
+  disabled: { opacity: 0.5 },
 
   sectionTitle: {
     fontSize: fontSize.xs,
@@ -394,6 +512,15 @@ const styles = StyleSheet.create({
   itemText: { flex: 1 },
   itemName: { fontSize: fontSize.md, fontWeight: fontWeight.medium, color: colors.text },
   itemAddress: { fontSize: fontSize.sm, color: colors.textSecondary },
+  selectionError: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: '#FDECEA',
+  },
+  selectionErrorText: { flex: 1, color: colors.danger, fontSize: fontSize.sm },
 
   empty: {
     flex: 1,

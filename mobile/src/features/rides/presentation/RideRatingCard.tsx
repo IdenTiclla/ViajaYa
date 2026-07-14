@@ -3,16 +3,17 @@
  *
  * Muestra el resumen del viaje terminado y permite calificar a la otra parte
  * (1–5 estrellas + comentario). El botón "Finalizar" envía la calificación si se
- * eligieron estrellas; si no, simplemente cierra. Sigue el diseño Stitch
- * "Viaje Finalizado".
+ * eligieron estrellas; si no, registra que el usuario decidió omitirla. Sigue el
+ * diseño Stitch "Viaje Finalizado".
  */
 import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
-import { useRateRide } from '@/features/rides/application/useCloseFlow';
+import { useRateRide, useSkipRating } from '@/features/rides/application/useCloseFlow';
+import { formatBolivianos } from '@/features/rides/domain/money';
 import type { Ride } from '@/features/rides/domain/types';
 import { Button } from '@/shared/components';
 
@@ -38,20 +39,29 @@ export function RideRatingCard({
   const [score, setScore] = useState(0);
   const [comment, setComment] = useState('');
   const rate = useRateRide();
+  const skip = useSkipRating();
 
-  const price = (ride.acceptedPrice ?? ride.fare).toFixed(2);
+  const price = formatBolivianos(ride.acceptedPrice ?? ride.fare);
   const rateeLabel = rateeRole === 'driver' ? 'tu conductor' : 'tu pasajero';
   const initial = (counterpartName?.trim().charAt(0) || '?').toUpperCase();
+  const submitting = rate.isPending || skip.isPending;
 
-  const finish = () => {
-    if (score >= 1) {
-      rate.mutate(
-        { rideId: ride.id, input: { score, comment: comment.trim() || null } },
-        { onSuccess: onDone },
-      );
-    } else {
-      onDone();
-    }
+  const submitRating = () => {
+    if (submitting || score < 1) return;
+    skip.reset();
+    void rate
+      .mutateAsync({
+        rideId: ride.id,
+        input: { score, comment: comment.trim() || null },
+      })
+      .then(onDone)
+      .catch(() => undefined);
+  };
+
+  const skipRating = () => {
+    if (submitting) return;
+    rate.reset();
+    void skip.mutateAsync(ride.id).then(onDone).catch(() => undefined);
   };
 
   return (
@@ -91,32 +101,65 @@ export function RideRatingCard({
       <View style={styles.rateBlock}>
         <Text style={styles.rateTitle}>Califica a {rateeLabel}</Text>
         <Text style={styles.subtitle}>Tu opinión nos ayuda a mejorar.</Text>
-        <View style={styles.stars}>
+        <View style={styles.stars} accessibilityRole="radiogroup">
           {[1, 2, 3, 4, 5].map((n) => (
-            <Ionicons
+            <Pressable
               key={n}
-              name={n <= score ? 'star' : 'star-outline'}
-              size={36}
-              color={n <= score ? colors.accent : colors.border}
-              style={styles.star}
               onPress={() => setScore(n)}
-            />
+              style={({ pressed }) => [styles.starButton, pressed && styles.starPressed]}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: score === n }}
+              accessibilityLabel={`${n} ${n === 1 ? 'estrella' : 'estrellas'}`}>
+              <Ionicons
+                name={n <= score ? 'star' : 'star-outline'}
+                size={34}
+                color={n <= score ? colors.accent : colors.border}
+              />
+            </Pressable>
           ))}
         </View>
+        <Text style={styles.scoreLabel} accessibilityLiveRegion="polite">
+          {score > 0 ? `${score} de 5 estrellas` : 'Selecciona de 1 a 5 estrellas'}
+        </Text>
       </View>
 
       <TextInput
-        style={styles.comment}
-        placeholder="Añade un comentario (opcional)"
+        style={[styles.comment, score === 0 && styles.commentDisabled]}
+        placeholder={
+          score > 0
+            ? 'Añade un comentario (opcional)'
+            : 'Selecciona una calificación para comentar'
+        }
         placeholderTextColor={colors.textSecondary}
         value={comment}
         onChangeText={setComment}
+        editable={score > 0 && !submitting}
+        maxLength={500}
         multiline
+        accessibilityLabel="Comentario de la calificación"
       />
 
-      {rate.isError && <Text style={styles.error}>{getApiErrorMessage(rate.error)}</Text>}
+      {(rate.isError || skip.isError) && (
+        <Text style={styles.error}>{getApiErrorMessage(rate.error ?? skip.error)}</Text>
+      )}
 
-      <Button title="Finalizar" loading={rate.isPending} onPress={finish} />
+      {score > 0 ? (
+        <Button
+          title="Enviar calificación"
+          loadingLabel="Enviando calificación"
+          loading={submitting}
+          leadingIcon="send"
+          onPress={submitRating}
+        />
+      ) : (
+        <Button
+          title="Ahora no"
+          loadingLabel="Cerrando"
+          loading={submitting}
+          variant="secondary"
+          onPress={skipRating}
+        />
+      )}
     </View>
   );
 }
@@ -173,7 +216,15 @@ const styles = StyleSheet.create({
   rateBlock: { alignItems: 'center', gap: spacing.xs },
   rateTitle: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.text },
   stars: { flexDirection: 'row', gap: spacing.xs, marginTop: spacing.xs },
-  star: { padding: 2 },
+  starButton: {
+    width: 48,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.pill,
+  },
+  starPressed: { backgroundColor: colors.surfaceMuted },
+  scoreLabel: { color: colors.textSecondary, fontSize: fontSize.xs },
 
   comment: {
     minHeight: 80,
@@ -185,5 +236,6 @@ const styles = StyleSheet.create({
     fontSize: fontSize.md,
     textAlignVertical: 'top',
   },
+  commentDisabled: { backgroundColor: colors.surfaceMuted, opacity: 0.72 },
   error: { color: colors.danger, fontSize: fontSize.sm, textAlign: 'center' },
 });

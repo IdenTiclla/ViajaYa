@@ -2,26 +2,34 @@
 
 from __future__ import annotations
 
-import uuid
-
 from app.application.dto import CreateRideRequestInput
-from app.domain.entities import Location, RideRequest
+from app.domain.entities import Location, RideRequest, User, UserRole
+from app.domain.exceptions import NotAuthorizedActionError, RideAlreadyActiveError
 from app.domain.repositories import RideRequestRepository
-from app.domain.value_objects import FareOffer, GeoPoint
+from app.domain.value_objects import FareOffer, ServiceAreaPoint
 
 
 class CreateRideRequest:
     def __init__(self, rides: RideRequestRepository) -> None:
         self._rides = rides
 
-    async def execute(self, rider_id: uuid.UUID, data: CreateRideRequestInput) -> RideRequest:
-        # Validan reglas de dominio (rango de coordenadas, oferta positiva).
-        origin_point = GeoPoint(data.origin.latitude, data.origin.longitude)
-        destination_point = GeoPoint(data.destination.latitude, data.destination.longitude)
+    async def execute(self, rider: User, data: CreateRideRequestInput) -> RideRequest:
+        if rider.role is not UserRole.PASSENGER:
+            raise NotAuthorizedActionError("Solo los pasajeros pueden solicitar viajes.")
+
+        # Valida rango, país operativo y oferta positiva.
+        origin_point = ServiceAreaPoint(
+            data.origin.latitude, data.origin.longitude, data.origin.country_code
+        )
+        destination_point = ServiceAreaPoint(
+            data.destination.latitude,
+            data.destination.longitude,
+            data.destination.country_code,
+        )
         fare = FareOffer(data.fare)
 
         ride = RideRequest(
-            rider_id=rider_id,
+            rider_id=rider.id,
             origin=Location(
                 latitude=origin_point.latitude,
                 longitude=origin_point.longitude,
@@ -38,4 +46,7 @@ class CreateRideRequest:
             fare=fare.amount,
             payment_method=data.payment_method,
         )
-        return await self._rides.add(ride)
+        created = await self._rides.add_if_no_active(ride)
+        if created is None:
+            raise RideAlreadyActiveError("Ya tienes una solicitud o un viaje activo.")
+        return created

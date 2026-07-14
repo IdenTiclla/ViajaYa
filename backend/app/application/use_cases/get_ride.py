@@ -31,10 +31,16 @@ class GetRide:
         if not (is_rider or is_driver):
             raise NotAuthorizedActionError("No tienes acceso a este viaje.")
 
+        rider_user = await self._users.get_by_id(ride.rider_id)
         driver = await self._users.get_by_id(ride.driver_id) if ride.driver_id else None
         accepted_offer = (
             await self._offers.get_by_id(ride.accepted_offer_id)
             if ride.accepted_offer_id
             else None
         )
-        return RideDetail(ride=ride, driver=driver, accepted_offer=accepted_offer)
+        return RideDetail(
+            ride=ride,
+            rider=rider_user,
+            driver=driver,
+            accepted_offer=accepted_offer,
+        )

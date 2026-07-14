@@ -9,6 +9,7 @@ el despacho devuelve ``None`` → 409.
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from app.application.dto import CreateOfferInput
@@ -18,10 +19,13 @@ from app.domain.entities import (
     Location,
     OfferStatus,
     RideRequest,
+    RideStatus,
     ServiceType,
     User,
     UserRole,
+    VehicleType,
 )
+from app.domain.ride_policy import OFFER_TTL
 from tests.fakes import (
     InMemoryOfferRepository,
     InMemoryRideRequestRepository,
@@ -41,7 +45,8 @@ def _driver() -> User:
         full_name="Condu",
         email=f"d-{uuid.uuid4().hex[:6]}@x.com",
         role=UserRole.DRIVER,
-        vehicle_type=ServiceType.TAXI,
+        vehicle_type=VehicleType.TAXI,
+        is_online=True,
     )
 
 
@@ -110,3 +115,70 @@ async def test_accept_returns_none_when_ride_already_assigned():
 
     acceptance = await offers.accept_atomically(o2.detail.offer.id)
     assert acceptance is None
+
+
+async def test_accept_revalidates_paused_ride_atomically():
+    rides, users, offers = _wire()
+    rider, driver = _passenger(), _driver()
+    await users.add(driver)
+    ride = await rides.add(_ride(rider.id))
+    created = await CreateOffer(rides, offers).execute(
+        driver, ride.id, CreateOfferInput(accept_at_fare=True)
+    )
+    ride.paused = True
+
+    acceptance = await offers.accept_atomically(created.detail.offer.id)
+
+    assert acceptance is None
+    assert (await offers.get_by_id(created.detail.offer.id)).status is OfferStatus.PENDING
+
+
+async def test_accept_revalidates_driver_online_atomically():
+    rides, users, offers = _wire()
+    rider, driver = _passenger(), _driver()
+    await users.add(driver)
+    ride = await rides.add(_ride(rider.id))
+    created = await CreateOffer(rides, offers).execute(
+        driver, ride.id, CreateOfferInput(accept_at_fare=True)
+    )
+
+    await users.set_online(driver.id, False)
+    acceptance = await offers.accept_atomically(created.detail.offer.id)
+
+    assert acceptance is None
+    assert (await offers.get_by_id(created.detail.offer.id)).status is OfferStatus.PENDING
+    assert ride.status is RideStatus.SEARCHING
+    assert ride.driver_id is None
+
+
+async def test_accept_revalidates_offer_ttl_atomically():
+    rides, users, offers = _wire()
+    rider, driver = _passenger(), _driver()
+    await users.add(driver)
+    ride = await rides.add(_ride(rider.id))
+    created = await CreateOffer(rides, offers).execute(
+        driver, ride.id, CreateOfferInput(accept_at_fare=True)
+    )
+    offer = await offers.get_by_id(created.detail.offer.id)
+    offer.created_at = datetime.now(UTC) - OFFER_TTL - timedelta(seconds=1)
+
+    acceptance = await offers.accept_atomically(offer.id)
+
+    assert acceptance is None
+    assert (await offers.get_by_id(offer.id)).status is OfferStatus.EXPIRED
+
+
+async def test_reject_if_pending_cannot_reject_accepted_offer():
+    rides, users, offers = _wire()
+    rider, driver = _passenger(), _driver()
+    await users.add(driver)
+    ride = await rides.add(_ride(rider.id))
+    created = await CreateOffer(rides, offers).execute(
+        driver, ride.id, CreateOfferInput(accept_at_fare=True)
+    )
+    await offers.accept_atomically(created.detail.offer.id)
+
+    rejected = await offers.reject_if_pending(created.detail.offer.id)
+
+    assert rejected is None
+    assert (await offers.get_by_id(created.detail.offer.id)).status is OfferStatus.ACCEPTED

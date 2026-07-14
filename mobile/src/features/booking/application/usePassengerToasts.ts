@@ -22,6 +22,7 @@ type PassengerToastsState = {
   toasts: PassengerToast[];
   push: (toast: Omit<PassengerToast, 'id'>) => void;
   dismiss: (id: string) => void;
+  clear: () => void;
 };
 
 let _seq = 0;
@@ -34,4 +35,5 @@ export const usePassengerToasts = create<PassengerToastsState>((set) => ({
       toasts: [...s.toasts, { ...toast, id: `${Date.now()}-${_seq++}` }].slice(-3),
     })),
   dismiss: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
+  clear: () => set({ toasts: [] }),
 }));

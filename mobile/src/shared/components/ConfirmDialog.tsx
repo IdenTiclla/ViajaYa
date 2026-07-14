@@ -42,9 +42,13 @@ export function ConfirmDialog({
       statusBarTranslucent
       onRequestClose={onCancel}>
       {/* Fondo: tocar fuera cancela. */}
-      <Pressable style={styles.backdrop} onPress={onCancel} accessibilityLabel="Cerrar diálogo">
+      <Pressable style={styles.backdrop} onPress={onCancel} accessible={false}>
         {/* Tarjeta: detiene la propagación para no cancelar al tocarla. */}
-        <Pressable style={styles.card} onPress={() => {}}>
+        <Pressable
+          style={styles.card}
+          onPress={() => {}}
+          accessible={false}
+          accessibilityViewIsModal>
           {icon && (
             <View style={[styles.iconWrap, { backgroundColor: `${accent}1A` }]}>
               <Ionicons name={icon} size={26} color={accent} />
@@ -59,7 +63,13 @@ export function ConfirmDialog({
               onPress={onCancel}
               accessibilityRole="button"
               accessibilityLabel={cancelText}>
-              <Text style={styles.cancelText}>{cancelText}</Text>
+              <Text
+                style={styles.cancelText}
+                numberOfLines={2}
+                adjustsFontSizeToFit
+                minimumFontScale={0.85}>
+                {cancelText}
+              </Text>
             </Pressable>
             <Pressable
               style={({ pressed }) => [
@@ -70,7 +80,13 @@ export function ConfirmDialog({
               onPress={onConfirm}
               accessibilityRole="button"
               accessibilityLabel={confirmText}>
-              <Text style={styles.confirmText}>{confirmText}</Text>
+              <Text
+                style={styles.confirmText}
+                numberOfLines={2}
+                adjustsFontSizeToFit
+                minimumFontScale={0.85}>
+                {confirmText}
+              </Text>
             </Pressable>
           </View>
         </Pressable>
@@ -129,17 +145,25 @@ const styles = StyleSheet.create({
   },
   button: {
     flex: 1,
-    height: 48,
+    minHeight: 48,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
     borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
   },
   cancel: { backgroundColor: colors.surfaceMuted },
   pressed: { opacity: 0.7 },
-  cancelText: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.text },
+  cancelText: {
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.semibold,
+    color: colors.text,
+    textAlign: 'center',
+  },
   confirmText: {
     fontSize: fontSize.md,
     fontWeight: fontWeight.semibold,
     color: colors.textOnPrimary,
+    textAlign: 'center',
   },
 });

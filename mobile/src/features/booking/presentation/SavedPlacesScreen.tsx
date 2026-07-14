@@ -5,9 +5,10 @@
  * reciente.
  */
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useState } from 'react';
 import {
-  ActivityIndicator,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -16,26 +17,53 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { getApiErrorMessage } from '@/core/errors/apiError';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
 import { useRecentDestinations } from '@/features/booking/application/useRecentDestinations';
 import { useSavedPlaces } from '@/features/booking/application/useSavedPlaces';
+import {
+  getBoliviaPlaceError,
+  isPlaceInBolivia,
+} from '@/features/booking/domain/bolivia';
 import type { Place, SavedPlace } from '@/features/booking/domain/types';
 import { CATEGORY_META } from '@/features/booking/presentation/savedPlaceCategory';
+import { FeedbackState } from '@/shared/components';
 
 export function SavedPlacesScreen() {
   const router = useRouter();
-  const { places: saved, isLoading } = useSavedPlaces();
+  const { rideId } = useLocalSearchParams<{ rideId?: string }>();
+  const {
+    places: saved,
+    isLoading,
+    isRefreshing,
+    isError,
+    error,
+    refetch,
+  } = useSavedPlaces();
   const { places: recents } = useRecentDestinations();
   const setDestination = useBookingStore((s) => s.setDestination);
+  const [areaError, setAreaError] = useState<string | null>(null);
 
   const selectDestination = (place: Place) => {
+    const locationError = getBoliviaPlaceError(place);
+    if (locationError) {
+      setAreaError(locationError);
+      return;
+    }
+    setAreaError(null);
     setDestination(place);
-    router.navigate('/booking/configure');
+    router.dismissTo({
+      pathname: '/booking/configure',
+      params: rideId ? { rideId } : {},
+    });
   };
 
   const addNew = () => {
-    router.push({ pathname: '/booking/pick-on-map', params: { saveAs: '1' } });
+    router.push({
+      pathname: '/booking/pick-on-map',
+      params: { saveAs: '1', ...(rideId ? { rideId } : {}) },
+    });
   };
 
   const edit = (item: SavedPlace) => {
@@ -49,6 +77,8 @@ export function SavedPlacesScreen() {
         lng: String(item.place.coordinates.longitude),
         name: item.place.name,
         address: item.place.address,
+        ...(rideId ? { rideId } : {}),
+        ...(item.place.countryCode ? { countryCode: item.place.countryCode } : {}),
       },
     });
   };
@@ -56,6 +86,12 @@ export function SavedPlacesScreen() {
   // Guarda rápido un destino reciente: ya tiene coordenadas, así que va directo
   // al formulario sin pasar por el mapa.
   const quickSave = (place: Place) => {
+    const locationError = getBoliviaPlaceError(place);
+    if (locationError) {
+      setAreaError(locationError);
+      return;
+    }
+    setAreaError(null);
     router.push({
       pathname: '/booking/edit-place',
       params: {
@@ -64,6 +100,8 @@ export function SavedPlacesScreen() {
         name: place.name,
         address: place.address,
         label: place.name,
+        ...(rideId ? { rideId } : {}),
+        ...(place.countryCode ? { countryCode: place.countryCode } : {}),
       },
     });
   };
@@ -75,6 +113,7 @@ export function SavedPlacesScreen() {
     ),
   );
   const saveableRecents = recents
+    .filter(isPlaceInBolivia)
     .filter(
       (r) =>
         !savedKeys.has(
@@ -97,10 +136,27 @@ export function SavedPlacesScreen() {
         <View style={styles.back} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={!isLoading && isRefreshing}
+            onRefresh={refetch}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }>
         <Text style={styles.subtitle}>
           Administra tus destinos frecuentes para reservar más rápido.
         </Text>
+
+        {areaError ? (
+          <View style={styles.areaWarning} accessibilityLiveRegion="polite">
+            <Ionicons name="location-outline" size={18} color={colors.danger} />
+            <Text style={styles.areaWarningText}>{areaError}</Text>
+          </View>
+        ) : null}
 
         <TouchableOpacity
           style={styles.addButton}
@@ -112,17 +168,23 @@ export function SavedPlacesScreen() {
         </TouchableOpacity>
 
         {isLoading ? (
-          <View style={styles.empty}>
-            <ActivityIndicator size="large" color={colors.primary} />
-          </View>
+          <FeedbackState compact loading title="Cargando tus lugares…" />
+        ) : isError && saved.length === 0 ? (
+          <FeedbackState
+            compact
+            icon="cloud-offline-outline"
+            title="No pudimos cargar tus lugares"
+            message={getApiErrorMessage(error)}
+            actionLabel="Reintentar"
+            onAction={refetch}
+          />
         ) : saved.length === 0 ? (
-          <View style={styles.empty}>
-            <Ionicons name="bookmark-outline" size={56} color={colors.border} />
-            <Text style={styles.emptyTitle}>Aún no tienes lugares guardados</Text>
-            <Text style={styles.emptySubtitle}>
-              Guarda tu casa, trabajo o cualquier destino frecuente.
-            </Text>
-          </View>
+          <FeedbackState
+            compact
+            icon="bookmark-outline"
+            title="Aún no tienes lugares guardados"
+            message="Guarda tu casa, trabajo o cualquier destino frecuente."
+          />
         ) : (
           <View style={styles.list}>
             {saved.map((item) => {
@@ -187,7 +249,6 @@ export function SavedPlacesScreen() {
     </SafeAreaView>
   );
 }
-
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
   header: {
@@ -202,6 +263,16 @@ const styles = StyleSheet.create({
 
   scroll: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xl },
   subtitle: { fontSize: fontSize.sm, color: colors.textSecondary, marginBottom: spacing.md },
+  areaWarning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: '#FDECEA',
+  },
+  areaWarningText: { flex: 1, color: colors.danger, fontSize: fontSize.sm },
 
   addButton: {
     flexDirection: 'row',
@@ -286,17 +357,4 @@ const styles = StyleSheet.create({
   },
   chipText: { fontSize: fontSize.sm, color: colors.primary, fontWeight: fontWeight.medium },
 
-  empty: { alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.xxl, gap: spacing.sm },
-  emptyTitle: {
-    fontSize: fontSize.md,
-    fontWeight: fontWeight.semibold,
-    color: colors.text,
-    textAlign: 'center',
-  },
-  emptySubtitle: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    paddingHorizontal: spacing.lg,
-  },
 });

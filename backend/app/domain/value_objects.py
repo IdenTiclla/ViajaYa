@@ -12,10 +12,10 @@ from app.domain.exceptions import (
     InvalidLocationError,
     WeakPasswordError,
 )
+from app.domain.service_area import bolivia_covers
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _MIN_PASSWORD_LENGTH = 8
-
 
 @dataclass(frozen=True, slots=True)
 class Email:
@@ -62,6 +62,24 @@ class GeoPoint:
             raise InvalidLocationError(f"Latitud fuera de rango: {self.latitude!r}")
         if not -180.0 <= self.longitude <= 180.0:
             raise InvalidLocationError(f"Longitud fuera de rango: {self.longitude!r}")
+
+
+@dataclass(frozen=True, slots=True)
+class ServiceAreaPoint:
+    """Coordenadas válidas dentro del país donde opera ViajaYa."""
+
+    latitude: float
+    longitude: float
+    country_code: str | None = None
+
+    def __post_init__(self) -> None:
+        GeoPoint(self.latitude, self.longitude)
+        if self.country_code and self.country_code.strip().upper() != "BO":
+            raise InvalidLocationError("ViajaYa opera actualmente solo dentro de Bolivia.")
+        # El codigo de pais es solo una pista del cliente. El contorno versionado
+        # es la autoridad, incluso si el cliente lo omite o afirma que es BO.
+        if not bolivia_covers(self.latitude, self.longitude):
+            raise InvalidLocationError("El origen y el destino deben estar dentro de Bolivia.")
 
 
 @dataclass(frozen=True, slots=True)

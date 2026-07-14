@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import uuid
 
-from app.domain.entities import ACTIVE_OFFER_STATUSES, Offer, OfferStatus, User
+from app.domain.entities import ACTIVE_OFFER_STATUSES, Offer, User
 from app.domain.exceptions import (
     InvalidRideTransitionError,
     NotAuthorizedActionError,
@@ -39,5 +39,7 @@ class RejectOffer:
         if offer.status not in ACTIVE_OFFER_STATUSES:
             raise InvalidRideTransitionError("La oferta ya no está disponible.")
 
-        offer.status = OfferStatus.REJECTED
-        return await self._offers.update(offer)
+        rejected = await self._offers.reject_if_pending(offer.id)
+        if rejected is None:
+            raise InvalidRideTransitionError("La oferta ya no está disponible.")
+        return rejected

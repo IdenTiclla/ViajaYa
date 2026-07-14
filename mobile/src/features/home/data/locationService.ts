@@ -8,10 +8,10 @@ export type Coordinates = { latitude: number; longitude: number };
 
 export type LocationResult =
   | { status: 'granted'; coordinates: Coordinates }
-  | { status: 'denied' };
+  | { status: 'denied'; canAskAgain: boolean };
 
 /** Etiqueta legible de un punto: nombre corto + dirección secundaria. */
-export type PlaceLabel = { name: string; address: string };
+export type PlaceLabel = { name: string; address: string; countryCode: string | null };
 
 function formatCoords({ latitude, longitude }: Coordinates): string {
   return `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
@@ -32,9 +32,9 @@ export const locationService = {
    * Si el usuario lo deniega, regresa `{ status: 'denied' }` (sin lanzar).
    */
   async getCurrentLocation(): Promise<LocationResult> {
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== Location.PermissionStatus.GRANTED) {
-      return { status: 'denied' };
+    const permission = await Location.requestForegroundPermissionsAsync();
+    if (permission.status !== Location.PermissionStatus.GRANTED) {
+      return { status: 'denied', canAskAgain: permission.canAskAgain };
     }
 
     const position = await Location.getCurrentPositionAsync({
@@ -88,7 +88,15 @@ export const locationService = {
   async reverseGeocode(coordinates: Coordinates): Promise<PlaceLabel> {
     try {
       const [result] = await Location.reverseGeocodeAsync(coordinates);
-      if (!result) return { name: 'Ubicación seleccionada', address: formatCoords(coordinates) };
+      if (!result) {
+        return {
+          name: 'Ubicación seleccionada',
+          address: formatCoords(coordinates),
+          countryCode: null,
+        };
+      }
+
+      const countryCode = clean(result.isoCountryCode)?.toUpperCase() ?? null;
 
       const street = clean(result.street);
       // Calle + número de casa (si lo hay): "Av. Perú 1500".
@@ -101,15 +109,24 @@ export const locationService = {
         .filter((p, i, all) => all.indexOf(p) === i);
 
       if (ordered.length === 0) {
-        return { name: clean(result.name) ?? 'Ubicación seleccionada', address: formatCoords(coordinates) };
+        return {
+          name: clean(result.name) ?? 'Ubicación seleccionada',
+          address: formatCoords(coordinates),
+          countryCode,
+        };
       }
 
       return {
         name: ordered[0],
         address: ordered.slice(1).join(', ') || formatCoords(coordinates),
+        countryCode,
       };
     } catch {
-      return { name: 'Ubicación seleccionada', address: formatCoords(coordinates) };
+      return {
+        name: 'Ubicación seleccionada',
+        address: formatCoords(coordinates),
+        countryCode: null,
+      };
     }
   },
 };

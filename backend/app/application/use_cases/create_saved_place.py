@@ -7,7 +7,7 @@ import uuid
 from app.application.dto import SaveSavedPlaceInput
 from app.domain.entities import Location, SavedPlace
 from app.domain.repositories import SavedPlaceRepository
-from app.domain.value_objects import GeoPoint
+from app.domain.value_objects import ServiceAreaPoint
 
 
 class CreateSavedPlace:
@@ -16,7 +16,11 @@ class CreateSavedPlace:
 
     async def execute(self, user_id: uuid.UUID, data: SaveSavedPlaceInput) -> SavedPlace:
         # Valida el rango de las coordenadas (regla de dominio).
-        point = GeoPoint(data.location.latitude, data.location.longitude)
+        point = ServiceAreaPoint(
+            data.location.latitude,
+            data.location.longitude,
+            data.location.country_code,
+        )
         place = SavedPlace(
             user_id=user_id,
             label=data.label.strip(),

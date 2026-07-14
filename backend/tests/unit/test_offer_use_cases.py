@@ -26,6 +26,7 @@ from app.domain.entities import (
     ServiceType,
     User,
     UserRole,
+    VehicleType,
 )
 from app.domain.exceptions import (
     DriverUnavailableError,
@@ -47,12 +48,13 @@ def _passenger() -> User:
     return User(full_name="Pasa", email="pasa@x.com", role=UserRole.PASSENGER)
 
 
-def _driver(vehicle: ServiceType = ServiceType.TAXI) -> User:
+def _driver(vehicle: VehicleType = VehicleType.TAXI) -> User:
     return User(
         full_name="Condu",
         email=f"condu-{uuid.uuid4().hex[:6]}@x.com",
         role=UserRole.DRIVER,
         vehicle_type=vehicle,
+        is_online=True,
     )
 
 
@@ -92,6 +94,30 @@ async def test_create_offer_counteroffer_uses_own_price():
     )
 
     assert result.detail.offer.price == Decimal("30.00")
+
+
+@pytest.mark.parametrize("vehicle", [VehicleType.TAXI, VehicleType.MOTO])
+async def test_taxi_and_moto_can_offer_and_be_assigned_delivery(
+    vehicle: VehicleType,
+):
+    rides = InMemoryRideRequestRepository()
+    users = InMemoryUserRepository()
+    offers = InMemoryOfferRepository(rides=rides, users=users)
+    rider, driver = _passenger(), _driver(vehicle)
+    await users.add(driver)
+    ride = await rides.add(_ride(rider.id, service=ServiceType.DELIVERY))
+
+    created = await CreateOffer(rides, offers).execute(
+        driver, ride.id, CreateOfferInput(accept_at_fare=True)
+    )
+    accepted = await AcceptOffer(rides, offers).execute(
+        rider, created.detail.offer.id
+    )
+
+    assert accepted.detail.ride.driver_id == driver.id
+    assert accepted.detail.ride.service_type is ServiceType.DELIVERY
+    assert accepted.detail.accepted_offer is not None
+    assert accepted.detail.accepted_offer.price == ride.fare
 
 
 async def test_create_offer_supersedes_previous_pending_offer():
@@ -135,7 +161,7 @@ async def test_create_offer_blocked_after_ride_assigned():
 async def test_create_offer_rejects_mismatched_vehicle():
     rides, offers = InMemoryRideRequestRepository(), InMemoryOfferRepository()
     rider = _passenger()
-    moto_driver = _driver(ServiceType.MOTO)
+    moto_driver = _driver(VehicleType.MOTO)
     ride = await rides.add(_ride(rider.id, service=ServiceType.TAXI))
 
     with pytest.raises(NotAuthorizedActionError):
@@ -154,6 +180,46 @@ async def test_create_offer_rejects_non_searching_ride():
     with pytest.raises(InvalidRideTransitionError):
         await CreateOffer(rides, offers).execute(
             driver, ride.id, CreateOfferInput(accept_at_fare=True)
+        )
+
+
+async def test_create_offer_rejects_offline_driver():
+    rides, offers = InMemoryRideRequestRepository(), InMemoryOfferRepository()
+    rider, driver = _passenger(), _driver()
+    driver.is_online = False
+    ride = await rides.add(_ride(rider.id))
+
+    with pytest.raises(DriverUnavailableError):
+        await CreateOffer(rides, offers).execute(
+            driver, ride.id, CreateOfferInput(accept_at_fare=True)
+        )
+
+
+async def test_create_offer_rejects_paused_ride():
+    rides, offers = InMemoryRideRequestRepository(), InMemoryOfferRepository()
+    rider, driver = _passenger(), _driver()
+    ride = _ride(rider.id)
+    ride.paused = True
+    await rides.add(ride)
+
+    with pytest.raises(InvalidRideTransitionError):
+        await CreateOffer(rides, offers).execute(
+            driver, ride.id, CreateOfferInput(accept_at_fare=True)
+        )
+
+
+async def test_create_offer_rejects_busy_driver():
+    rides, offers = InMemoryRideRequestRepository(), InMemoryOfferRepository()
+    rider_a, rider_b, driver = _passenger(), _passenger(), _driver()
+    active = _ride(rider_a.id)
+    active.status = RideStatus.ACCEPTED
+    active.driver_id = driver.id
+    await rides.add(active)
+    target = await rides.add(_ride(rider_b.id))
+
+    with pytest.raises(DriverUnavailableError):
+        await CreateOffer(rides, offers).execute(
+            driver, target.id, CreateOfferInput(accept_at_fare=True)
         )
 
 
@@ -313,6 +379,7 @@ async def test_update_ride_status_valid_progression():
     assert updated.status is RideStatus.IN_PROGRESS
     updated = await use_case.execute(driver, ride.id, RideStatus.COMPLETED)
     assert updated.status is RideStatus.COMPLETED
+    assert updated.completed_at is not None
 
 
 async def test_update_ride_status_rejects_invalid_jump():
@@ -341,39 +408,97 @@ async def test_update_ride_status_rejects_other_driver():
 
 async def test_set_driver_online_toggles():
     users = InMemoryUserRepository()
+    rides = InMemoryRideRequestRepository()
+    offers = InMemoryOfferRepository(rides=rides, users=users)
     driver = _driver()
+    driver.rating = 4.75
     await users.add(driver)
 
-    updated = await SetDriverOnline(users).execute(driver, True)
-    assert updated.is_online is True
-    updated = await SetDriverOnline(users).execute(driver, False)
-    assert updated.is_online is False
+    result = await SetDriverOnline(users, offers).execute(driver, True)
+    assert result.driver.is_online is True
+    assert result.driver.rating == 4.75
+    assert result.withdrawn_offers == []
+    result = await SetDriverOnline(users, offers).execute(driver, False)
+    assert result.driver.is_online is False
+    assert result.driver.rating == 4.75
+    assert result.withdrawn_offers == []
+
+
+async def test_set_driver_offline_rejects_pending_offers():
+    users = InMemoryUserRepository()
+    rides = InMemoryRideRequestRepository()
+    offers = InMemoryOfferRepository(rides=rides, users=users)
+    rider, driver = _passenger(), _driver()
+    await users.add(driver)
+    ride = await rides.add(_ride(rider.id))
+    created = await CreateOffer(rides, offers).execute(
+        driver,
+        ride.id,
+        CreateOfferInput(accept_at_fare=False, price=Decimal("30.00")),
+    )
+
+    result = await SetDriverOnline(users, offers).execute(driver, False)
+
+    assert result.driver.is_online is False
+    assert [offer.id for offer in result.withdrawn_offers] == [created.detail.offer.id]
+    stored = await offers.get_by_id(created.detail.offer.id)
+    assert stored is not None
+    assert stored.status is OfferStatus.REJECTED
+
+
+async def test_set_driver_offline_rejects_active_ride():
+    users = InMemoryUserRepository()
+    rides = InMemoryRideRequestRepository()
+    offers = InMemoryOfferRepository(rides=rides, users=users)
+    rider, driver = _passenger(), _driver()
+    await users.add(driver)
+    ride = _ride(rider.id)
+    ride.status = RideStatus.ACCEPTED
+    ride.driver_id = driver.id
+    await rides.add(ride)
+
+    with pytest.raises(DriverUnavailableError):
+        await SetDriverOnline(users, offers).execute(driver, False)
+
+    stored = await users.get_by_id(driver.id)
+    assert stored is not None
+    assert stored.is_online is True
 
 
 async def test_set_driver_online_rejects_passenger():
     users = InMemoryUserRepository()
+    offers = InMemoryOfferRepository()
     passenger = _passenger()
     await users.add(passenger)
 
     with pytest.raises(NotAuthorizedActionError):
-        await SetDriverOnline(users).execute(passenger, True)
+        await SetDriverOnline(users, offers).execute(passenger, True)
 
 
-async def test_list_open_rides_filters_by_vehicle_type():
+@pytest.mark.parametrize(
+    ("vehicle", "expected_services"),
+    [
+        (VehicleType.TAXI, {ServiceType.TAXI, ServiceType.DELIVERY}),
+        (VehicleType.MOTO, {ServiceType.MOTO, ServiceType.DELIVERY}),
+    ],
+)
+async def test_list_open_rides_filters_by_vehicle_type_and_includes_delivery(
+    vehicle: VehicleType,
+    expected_services: set[ServiceType],
+):
     users = InMemoryUserRepository()
     rides = InMemoryRideRequestRepository(users=users)
     rider = _passenger()
     await users.add(rider)
     await rides.add(_ride(rider.id, service=ServiceType.TAXI))
     await rides.add(_ride(rider.id, service=ServiceType.MOTO))
+    await rides.add(_ride(rider.id, service=ServiceType.DELIVERY))
 
-    taxi_driver = _driver(ServiceType.TAXI)
-    open_rides = await ListOpenRides(rides).execute(taxi_driver)
+    open_rides = await ListOpenRides(rides).execute(_driver(vehicle))
 
-    assert len(open_rides) == 1
-    assert open_rides[0].ride.service_type is ServiceType.TAXI
-    assert open_rides[0].rider.full_name == "Pasa"
-    assert open_rides[0].rider.trips_completed == 0
+    assert {detail.ride.service_type for detail in open_rides} == expected_services
+    assert all(detail.rider.full_name == "Pasa" for detail in open_rides)
+    assert all(detail.rider.trips_completed == 0 for detail in open_rides)
 
 
 async def test_list_offers_hides_expired_offers():
@@ -434,10 +559,45 @@ async def test_cancel_ride_kills_active_offers():
         d2, ride.id, CreateOfferInput(accept_at_fare=True)
     )
 
-    await CancelRide(rides, offers).execute(rider, ride.id)
+    result = await CancelRide(rides, offers).execute(rider, ride.id)
 
+    assert result.ride.cancelled_at is not None
     assert (await offers.get_by_id(o1.detail.offer.id)).status is OfferStatus.REJECTED
     assert (await offers.get_by_id(o2.detail.offer.id)).status is OfferStatus.REJECTED
+
+
+async def test_cancel_ride_does_not_reject_offer_when_accept_wins_race():
+    class AcceptWinsBeforeCancel(InMemoryOfferRepository):
+        async def cancel_ride_atomically(
+            self, ride_id, *, expected_status, expected_paused
+        ):
+            current = await rides.get_by_id(ride_id)
+            assert current is not None
+            current.status = RideStatus.ACCEPTED
+            current.driver_id = driver.id
+            self.offers[0].status = OfferStatus.ACCEPTED
+            return await super().cancel_ride_atomically(
+                ride_id,
+                expected_status=expected_status,
+                expected_paused=expected_paused,
+            )
+
+    rides = InMemoryRideRequestRepository()
+    users = InMemoryUserRepository()
+    rider, driver = _passenger(), _driver()
+    await users.add(driver)
+    offers = AcceptWinsBeforeCancel(rides=rides, users=users)
+    ride = await rides.add(_ride(rider.id))
+    created = await CreateOffer(rides, offers).execute(
+        driver, ride.id, CreateOfferInput(accept_at_fare=True)
+    )
+
+    with pytest.raises(InvalidRideTransitionError):
+        await CancelRide(rides, offers).execute(rider, ride.id)
+
+    current = await rides.get_by_id(ride.id)
+    assert current.status is RideStatus.ACCEPTED
+    assert (await offers.get_by_id(created.detail.offer.id)).status is OfferStatus.ACCEPTED
 
 
 async def test_expire_offer_marks_expired_when_past_ttl():

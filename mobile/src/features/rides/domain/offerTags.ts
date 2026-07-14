@@ -2,8 +2,8 @@
  * Tags de oferta derivados client-side (no vienen del backend).
  *
  * A partir de la lista de ofertas vigentes se marcan: la más barata (ECONÓMICO),
- * la de menor ETA (RÁPIDO) y la de mejor calificación (FAVORITO). Una tarjeta
- * puede tener varios tags; al render se prioriza ECONÓMICO > RÁPIDO > FAVORITO.
+ * la de menor ETA (RÁPIDO) y la de mejor calificación (MEJOR VALORADO). Una tarjeta
+ * puede tener varios tags; al render se prioriza precio, llegada y valoración.
  * Los extremos se aplican a todas las ofertas que compartan el valor (empates).
  */
 import type { Offer } from '@/features/rides/domain/types';
@@ -19,7 +19,7 @@ export type OfferTag = {
 const TAG_INFO: Record<OfferTagKind, { label: string; subLabel: string }> = {
   cheapest: { label: 'ECONÓMICO', subLabel: 'Mejor precio' },
   fastest: { label: 'RÁPIDO', subLabel: 'Más rápido' },
-  bestRated: { label: 'FAVORITO', subLabel: 'Mejor calificado' },
+  bestRated: { label: 'MEJOR VALORADO', subLabel: 'Mejor calificado' },
 };
 
 /** Orden de prioridad de display cuando una tarjeta tiene varios tags. */

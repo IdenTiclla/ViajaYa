@@ -1,9 +1,9 @@
 """Prueba de humo del flujo de negociación contra el servidor en vivo.
 
 Simula a un pasajero y un conductor (usuarios del seed) con HTTP + WebSocket:
-crea una solicitud, conecta ambos sockets y verifica que el conductor reciba la
-solicitud (snapshot o ``ride_created``). Al final cancela el viaje para no dejar
-basura. Ejecutar con el backend levantado::
+crea una solicitud, conecta ambos sockets, envía una contraoferta personalizada
+y verifica que el pasajero siga negociando. Al final cancela el viaje para no
+dejar basura. Ejecutar con el backend levantado::
 
     python -m scripts.smoke_ws
 """
@@ -19,6 +19,7 @@ import websockets
 BASE = "http://localhost:8000/api/v1"
 WS_BASE = "ws://localhost:8000/api/v1"
 PASSWORD = "ViajaYa1234#"
+WS_AUTH_PROTOCOL = "viajaya.auth"
 
 
 async def login(client: httpx.AsyncClient, email: str) -> str:
@@ -63,17 +64,23 @@ async def main() -> None:
         ride_id = resp.json()["id"]
         print(f"[ok] viaje creado: {ride_id}")
 
-        rider_url = f"{WS_BASE}/ws/rides/{ride_id}?token={rider_token}"
-        driver_url = f"{WS_BASE}/ws/driver?token={driver_token}"
+        rider_url = f"{WS_BASE}/ws/rides/{ride_id}"
+        driver_url = f"{WS_BASE}/ws/driver"
         try:
             # 1) Pasajero conecta su WS (lo vuelve "presente" en el pool).
-            async with websockets.connect(rider_url) as rider_ws:
+            async with websockets.connect(
+                rider_url,
+                subprotocols=[WS_AUTH_PROTOCOL, rider_token],
+            ) as rider_ws:
                 snapshot = json.loads(await asyncio.wait_for(rider_ws.recv(), 5))
                 assert snapshot["type"] == "offers_snapshot", snapshot
                 print(f"[ok] WS pasajero conectado, snapshot de ofertas: {len(snapshot['data'])}")
 
                 # 2) Conductor conecta su WS y debe ver el viaje en el snapshot.
-                async with websockets.connect(driver_url) as driver_ws:
+                async with websockets.connect(
+                    driver_url,
+                    subprotocols=[WS_AUTH_PROTOCOL, driver_token],
+                ) as driver_ws:
                     pool = json.loads(await asyncio.wait_for(driver_ws.recv(), 5))
                     assert pool["type"] == "open_rides_snapshot", pool
                     ids = [r["id"] for r in pool["data"]]
@@ -87,6 +94,33 @@ async def main() -> None:
                     open_ids = [r["id"] for r in resp.json()]
                     assert ride_id in open_ids, "no aparece en GET /rides/open"
                     print("[ok] GET /rides/open también la devuelve")
+
+                    # 4) Reproducción del flujo reportado: una contraoferta
+                    # personalizada llega en vivo sin cerrar ni asignar el ride.
+                    offer = await client.post(
+                        f"{BASE}/rides/{ride_id}/offers",
+                        json={
+                            "accept_at_fare": False,
+                            "price": "30.00",
+                            "eta_min": 8,
+                        },
+                        headers=driver_h,
+                    )
+                    offer.raise_for_status()
+                    offer_event = json.loads(
+                        await asyncio.wait_for(rider_ws.recv(), 5)
+                    )
+                    assert offer_event["type"] == "offer_created", offer_event
+                    assert offer_event["data"]["price"] == "30.00", offer_event
+
+                    active = await client.get(
+                        f"{BASE}/rides/me/active",
+                        headers=rider_h,
+                    )
+                    active.raise_for_status()
+                    assert active.json()["id"] == ride_id, active.text
+                    assert active.json()["status"] == "searching", active.text
+                    print("[ok] contraoferta personalizada recibida; negociación sigue activa")
         finally:
             await client.post(f"{BASE}/rides/{ride_id}/cancel", headers=rider_h)
             print("[ok] viaje cancelado (limpieza)")

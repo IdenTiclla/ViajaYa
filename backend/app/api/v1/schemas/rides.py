@@ -18,8 +18,10 @@ from app.domain.entities import (
     RideRequest,
     RideStatus,
     ServiceType,
+    VehicleType,
 )
 from app.domain.repositories import OpenRideDetail
+from app.domain.service_area import bolivia_covers
 
 
 class PointSchema(BaseModel):
@@ -29,6 +31,7 @@ class PointSchema(BaseModel):
     longitude: float = Field(ge=-180, le=180)
     name: str = Field(min_length=1, max_length=255)
     address: str = Field(min_length=1, max_length=512)
+    country_code: str | None = Field(default=None, min_length=2, max_length=2)
 
     @classmethod
     def from_location(cls, location: Location) -> PointSchema:
@@ -37,6 +40,9 @@ class PointSchema(BaseModel):
             longitude=location.longitude,
             name=location.name,
             address=location.address,
+            country_code=(
+                "BO" if bolivia_covers(location.latitude, location.longitude) else None
+            ),
         )
 
 
@@ -83,7 +89,7 @@ class RideStatusUpdate(BaseModel):
 
 
 class RideFareUpdate(BaseModel):
-    """Nuevo monto ofertado por el pasajero (aumentar oferta en búsqueda)."""
+    """Nuevo monto ofertado por el pasajero mientras busca conductor."""
 
     fare: Decimal = Field(gt=0, max_digits=10, decimal_places=2)
 
@@ -107,6 +113,7 @@ class OpenRideResponse(BaseModel):
     origin: PointSchema
     destination: PointSchema
     rider: OpenRideRiderResponse
+    pool_version: int
     created_at: datetime | None
 
     @classmethod
@@ -126,6 +133,7 @@ class OpenRideResponse(BaseModel):
                 rating=rider.rating,
                 trips_completed=rider.trips_completed,
             ),
+            pool_version=ride.pool_version,
             created_at=ride.created_at,
         )
 
@@ -137,9 +145,18 @@ class RideDriverSchema(BaseModel):
     full_name: str
     phone: str | None
     rating: float | None
-    vehicle_type: ServiceType | None
+    vehicle_type: VehicleType | None
     plate: str | None
     vehicle_model: str | None
+
+
+class RideRiderSchema(BaseModel):
+    """Datos del pasajero, visibles para el conductor asignado."""
+
+    id: uuid.UUID
+    full_name: str
+    phone: str | None
+    rating: float | None
 
 
 class RideResponse(BaseModel):
@@ -153,14 +170,27 @@ class RideResponse(BaseModel):
     payment_method: PaymentMethod
     origin: PointSchema
     destination: PointSchema
+    paused: bool
+    rider: RideRiderSchema
     driver: RideDriverSchema | None
     accepted_price: Decimal | None
     accepted_eta_min: int | None
     created_at: datetime | None
+    completed_at: datetime | None
+    cancelled_at: datetime | None
 
     @classmethod
     def from_detail(cls, detail: RideDetail) -> RideResponse:
         ride = detail.ride
+        if detail.rider is None:
+            raise ValueError("RideDetail requiere el pasajero para responder por API.")
+        r = detail.rider
+        rider_schema = RideRiderSchema(
+            id=r.id,
+            full_name=r.full_name,
+            phone=r.phone,
+            rating=r.rating,
+        )
         driver_schema = None
         if detail.driver is not None:
             d = detail.driver
@@ -183,10 +213,14 @@ class RideResponse(BaseModel):
             payment_method=ride.payment_method,
             origin=PointSchema.from_location(ride.origin),
             destination=PointSchema.from_location(ride.destination),
+            paused=ride.paused,
+            rider=rider_schema,
             driver=driver_schema,
             accepted_price=offer.price if offer else None,
             accepted_eta_min=offer.eta_min if offer else None,
             created_at=ride.created_at,
+            completed_at=ride.completed_at,
+            cancelled_at=ride.cancelled_at,
         )
 
 
@@ -195,6 +229,7 @@ class RecentDestinationResponse(BaseModel):
     longitude: float
     name: str
     address: str
+    country_code: str | None = None
 
     @classmethod
     def from_location(cls, location: Location) -> RecentDestinationResponse:
@@ -203,6 +238,9 @@ class RecentDestinationResponse(BaseModel):
             longitude=location.longitude,
             name=location.name,
             address=location.address,
+            country_code=(
+                "BO" if bolivia_covers(location.latitude, location.longitude) else None
+            ),
         )
 
 
@@ -212,7 +250,7 @@ class HistoryCounterpartSchema(BaseModel):
     id: uuid.UUID
     full_name: str
     rating: float | None = None
-    vehicle_type: ServiceType | None = None
+    vehicle_type: VehicleType | None = None
     vehicle_model: str | None = None
     plate: str | None = None
 
@@ -256,5 +294,5 @@ class RideHistoryItemResponse(BaseModel):
                 if cp
                 else None
             ),
-            created_at=ride.created_at,
+            created_at=ride.completed_at or ride.cancelled_at or ride.created_at,
         )

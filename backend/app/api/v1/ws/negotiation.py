@@ -4,8 +4,8 @@ Las acciones (crear solicitud/oferta, aceptar, avanzar estado) siguen siendo HTT
 POST; estos sockets solo **empujan eventos** a quien corresponde. Al conectar se
 envía un *snapshot* del estado actual para que no haya ventana ciega.
 
-Auth: access token por query param ``?token=…`` (RN no permite cabeceras en
-``WebSocket``). Token inválido o usuario no autorizado → cierre con código 1008.
+Auth: el access token viaja como subprotocolo, nunca en la URL. Token inválido o
+usuario no autorizado → cierre con código 1008.
 """
 
 from __future__ import annotations
@@ -19,11 +19,12 @@ from app.api.deps import get_session_factory
 from app.api.v1 import events, presence
 from app.api.v1.schemas.offers import OfferResponse
 from app.api.v1.schemas.rides import OpenRideResponse, RideResponse
+from app.application.dto import OfferDetail
 from app.application.use_cases.expire_offer import ExpireOffer
 from app.application.use_cases.get_driver_active_ride import GetDriverActiveRide
 from app.application.use_cases.list_offers_for_ride import ListOffersForRide
 from app.application.use_cases.list_open_rides import ListOpenRides
-from app.domain.entities import UserRole
+from app.domain.entities import UserRole, services_for_vehicle
 from app.domain.ride_policy import is_offer_expired
 from app.infrastructure.config import get_settings
 from app.infrastructure.db.repositories import (
@@ -37,7 +38,11 @@ from app.infrastructure.realtime.hub import (
     pool_topic,
     ride_topic,
 )
-from app.infrastructure.realtime.ws_auth import authenticate_ws
+from app.infrastructure.realtime.ws_auth import (
+    AUTH_SUBPROTOCOL,
+    authenticate_ws,
+    token_from_subprotocol,
+)
 from app.infrastructure.security.jwt_service import JwtTokenService
 
 router = APIRouter(tags=["ws"])
@@ -64,98 +69,142 @@ async def passenger_ws(
     websocket: WebSocket,
     ride_id: uuid.UUID,
     session_factory: SessionFactoryDep,
-    token: str | None = None,
 ) -> None:
     """El pasajero dueño del viaje recibe ofertas y cambios de estado en vivo."""
-    await websocket.accept()
-    async with session_factory() as session:
-        users = SqlAlchemyUserRepository(session)
-        rides = SqlAlchemyRideRequestRepository(session)
-        offers = SqlAlchemyOfferRepository(session)
-        tokens = JwtTokenService(get_settings())
-
-        user = await authenticate_ws(token, users, tokens)
-        if user is None:
-            await websocket.close(code=_POLICY_VIOLATION)
-            return
-        ride = await rides.get_by_id(ride_id)
-        if ride is None or ride.rider_id != user.id:
-            await websocket.close(code=_POLICY_VIOLATION)
-            return
-
-        # Detalle enriquecido con el pasajero: al conectar publicamos el ride al
-        # pool con sus datos (ride_created), no solo en el snapshot del conductor.
-        open_detail = await rides.open_ride_with_rider(ride_id)
-        details = await ListOffersForRide(rides, offers, users).execute(user, ride_id)
-        snapshot = [OfferResponse.from_detail(d).model_dump(mode="json") for d in details]
-
-    await websocket.send_json({"type": "offers_snapshot", "data": snapshot})
-
+    token = token_from_subprotocol(websocket)
+    await websocket.accept(subprotocol=AUTH_SUBPROTOCOL if token else None)
     topic = ride_topic(ride_id)
-    hub.subscribe(topic, websocket)
-    # Presencia: la solicitud aparece en el pool mientras el pasajero esté
-    # presente (conectado o dentro de la ventana de gracia). Minimizar/cambiar de
-    # pantalla no la saca; solo cerrar la app (no reconectar tras la gracia).
-    if open_detail is not None:
-        await presence.on_passenger_connect(open_detail)
+    subscribed = False
     try:
+        async with session_factory() as session:
+            users = SqlAlchemyUserRepository(session)
+            rides = SqlAlchemyRideRequestRepository(session)
+            offers = SqlAlchemyOfferRepository(session)
+            tokens = JwtTokenService(get_settings())
+
+            user = await authenticate_ws(token, users, tokens)
+            if user is None:
+                await websocket.close(code=_POLICY_VIOLATION)
+                return
+            ride = await rides.get_by_id(ride_id)
+            if ride is None or ride.rider_id != user.id:
+                await websocket.close(code=_POLICY_VIOLATION)
+                return
+
+            async with hub.delivery_barrier(websocket):
+                hub.subscribe(topic, websocket)
+                subscribed = True
+                details = await ListOffersForRide(rides, offers, users).execute(
+                    user, ride_id
+                )
+                snapshot = [
+                    OfferResponse.from_detail(detail).model_dump(mode="json")
+                    for detail in details
+                ]
+                await websocket.send_json(
+                    {"type": "offers_snapshot", "data": snapshot}
+                )
+
+        # Presencia: la solicitud aparece en el pool mientras el pasajero esté
+        # presente (conectado o dentro de la ventana de gracia). El ``finally``
+        # también cubre una desconexión durante esta revalidación.
+        await presence.on_passenger_connect(ride_id, session_factory)
         await _drain(websocket)
     finally:
-        hub.unsubscribe(topic, websocket)
-        presence.on_passenger_disconnect(ride)
+        if subscribed:
+            hub.unsubscribe(topic, websocket)
+            presence.on_passenger_disconnect(ride_id, session_factory)
 
 
 @router.websocket("/ws/driver")
 async def driver_ws(
     websocket: WebSocket,
     session_factory: SessionFactoryDep,
-    token: str | None = None,
 ) -> None:
     """El conductor en línea recibe solicitudes nuevas y el aviso de ser elegido."""
-    await websocket.accept()
-    async with session_factory() as session:
-        users = SqlAlchemyUserRepository(session)
-        rides = SqlAlchemyRideRequestRepository(session)
-        offers = SqlAlchemyOfferRepository(session)
-        tokens = JwtTokenService(get_settings())
-
-        user = await authenticate_ws(token, users, tokens)
-        if user is None or user.role is not UserRole.DRIVER or user.vehicle_type is None:
-            await websocket.close(code=_POLICY_VIOLATION)
-            return
-
-        open_rides = presence.present_rides(await ListOpenRides(rides).execute(user))
-        snapshot = [OpenRideResponse.from_open_ride(d).model_dump(mode="json") for d in open_rides]
-
-        # Recuperación de estado al (re)conectar (cierres de WS / reinicio):
-        # 1) vencer ofertas del conductor que ya pasaron su TTL → offer_expired.
-        expired_offers = []
-        for offer in await offers.list_active_by_driver(user.id):
-            if is_offer_expired(offer):
-                done = await ExpireOffer(offers).execute(offer.id)
-                if done is not None:
-                    expired_offers.append(done)
-        # 2) viaje activo (recupera un offer_accepted que se perdió).
-        active_detail = await GetDriverActiveRide(rides, offers).execute(user)
-
-    await websocket.send_json({"type": "open_rides_snapshot", "data": snapshot})
-
-    topics = [pool_topic(user.vehicle_type.value), driver_topic(user.id)]
-    for topic in topics:
-        hub.subscribe(topic, websocket)
-
-    # Se difunde tras suscribir para que el conductor lo reciba como evento vivo.
-    for offer in expired_offers:
-        await events.publish_offer_expired(offer)
-    if active_detail is not None:
-        await websocket.send_json(
-            {
-                "type": "driver_active_ride",
-                "data": RideResponse.from_detail(active_detail).model_dump(mode="json"),
-            }
-        )
-
+    token = token_from_subprotocol(websocket)
+    await websocket.accept(subprotocol=AUTH_SUBPROTOCOL if token else None)
+    topics: list[str] = []
     try:
+        async with session_factory() as session:
+            users = SqlAlchemyUserRepository(session)
+            rides = SqlAlchemyRideRequestRepository(session)
+            offers = SqlAlchemyOfferRepository(session)
+            tokens = JwtTokenService(get_settings())
+
+            user = await authenticate_ws(token, users, tokens)
+            if user is None or user.role is not UserRole.DRIVER or user.vehicle_type is None:
+                await websocket.close(code=_POLICY_VIOLATION)
+                return
+
+            topics = [
+                *(pool_topic(service.value) for service in services_for_vehicle(user.vehicle_type)),
+                driver_topic(user.id),
+            ]
+            # Suscribir dentro de la barrera cierra la ventana entre leer el estado
+            # y empezar a recibir eventos. Un broadcast concurrente espera hasta
+            # que los snapshots completos hayan salido.
+            async with hub.delivery_barrier(websocket):
+                for topic in topics:
+                    hub.subscribe(topic, websocket)
+
+                open_rides = (
+                    presence.present_rides(await ListOpenRides(rides).execute(user))
+                    if user.is_online
+                    else []
+                )
+                snapshot = [
+                    OpenRideResponse.from_open_ride(detail).model_dump(mode="json")
+                    for detail in open_rides
+                ]
+                paused_snapshot = [
+                    OpenRideResponse.from_open_ride(detail).model_dump(mode="json")
+                    for detail in await rides.list_paused_with_rider_for_driver(user.id)
+                ]
+
+                # Recuperación de estado al (re)conectar:
+                # 1) vencer ofertas que pasaron su TTL y excluirlas del snapshot.
+                expired_offers = []
+                active_offers = []
+                for offer in await offers.list_active_by_driver(user.id):
+                    if is_offer_expired(offer):
+                        done = await ExpireOffer(offers).execute(offer.id)
+                        if done is not None:
+                            expired_offers.append(done)
+                    else:
+                        active_offers.append(offer)
+                offer_snapshot = [
+                    OfferResponse.from_detail(
+                        OfferDetail(offer=offer, driver=user)
+                    ).model_dump(mode="json")
+                    for offer in active_offers
+                ]
+                # 2) viaje activo (recupera un offer_accepted que se perdió).
+                active_detail = await GetDriverActiveRide(rides, offers, users).execute(user)
+
+                # Handshake autoritativo, siempre en este orden.
+                await websocket.send_json(
+                    {"type": "open_rides_snapshot", "data": snapshot}
+                )
+                await websocket.send_json(
+                    {"type": "paused_rides_snapshot", "data": paused_snapshot}
+                )
+                await websocket.send_json(
+                    {"type": "driver_offers_snapshot", "data": offer_snapshot}
+                )
+                if active_detail is not None:
+                    await websocket.send_json(
+                        {
+                            "type": "driver_active_ride",
+                            "data": RideResponse.from_detail(active_detail).model_dump(
+                                mode="json"
+                            ),
+                        }
+                    )
+
+        # Se difunde tras el handshake; el mismo socket ya está suscrito.
+        for offer in expired_offers:
+            await events.publish_offer_expired(offer)
         await _drain(websocket)
     finally:
         for topic in topics:

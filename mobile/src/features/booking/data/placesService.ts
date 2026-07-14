@@ -9,13 +9,15 @@
  *     una predicción.
  *
  * Ambos comparten un `sessionToken` para que Google los facture como una sola
- * sesión de autocompletado. Igual que `routesService`, nunca lanzan: ante un
- * fallo (key restringida, sin red…) devuelven `[]` / `null` y la UI lo trata
- * como "sin resultados".
+ * sesión de autocompletado. Los fallos se propagan para que la UI no confunda
+ * un problema de red o configuración con una búsqueda sin resultados.
  */
 import * as Crypto from 'expo-crypto';
 
 import { env } from '@/core/config/env';
+import {
+  getBoliviaPlaceError,
+} from '@/features/booking/domain/bolivia';
 import type { Coordinates, Place, PlaceSuggestion } from '@/features/booking/domain/types';
 
 const AUTOCOMPLETE_ENDPOINT = 'https://places.googleapis.com/v1/places:autocomplete';
@@ -54,7 +56,8 @@ export async function autocomplete(
 ): Promise<PlaceSuggestion[]> {
   const apiKey = env.googleMapsApiKey;
   const input = query.trim();
-  if (!apiKey || !input) return [];
+  if (!input) return [];
+  if (!apiKey) throw new Error('La búsqueda de lugares no está configurada.');
 
   try {
     const response = await fetch(AUTOCOMPLETE_ENDPOINT, {
@@ -67,6 +70,8 @@ export async function autocomplete(
         input,
         sessionToken,
         languageCode: 'es',
+        regionCode: 'BO',
+        includedRegionCodes: ['bo'],
         ...(bias && {
           locationBias: {
             circle: { center: bias, radius: BIAS_RADIUS_METERS },
@@ -74,7 +79,7 @@ export async function autocomplete(
         }),
       }),
     });
-    if (!response.ok) return [];
+    if (!response.ok) throw new Error('No pudimos consultar los lugares en este momento.');
 
     const data: AutocompleteResponse = await response.json();
     return (data.suggestions ?? [])
@@ -85,8 +90,9 @@ export async function autocomplete(
         name: p.structuredFormat?.mainText?.text ?? p.text?.text ?? 'Lugar',
         address: p.structuredFormat?.secondaryText?.text ?? '',
       }));
-  } catch {
-    return [];
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('No pudimos')) throw error;
+    throw new Error('Revisa tu conexión e intenta buscar nuevamente.');
   }
 }
 
@@ -94,7 +100,16 @@ type DetailsResponse = {
   location?: { latitude?: number; longitude?: number };
   displayName?: { text?: string };
   formattedAddress?: string;
+  addressComponents?: { shortText?: string; types?: string[] }[];
 };
+
+function streetFromAddressComponents(
+  components: DetailsResponse['addressComponents'],
+): string | null {
+  const street = components?.find((component) => component.types?.includes('route'))?.shortText;
+  const number = components?.find((component) => component.types?.includes('street_number'))?.shortText;
+  return [street, number].filter(Boolean).join(' ') || null;
+}
 
 /**
  * Resuelve las coordenadas (y etiquetas finales) de una predicción. Conserva el
@@ -106,28 +121,48 @@ export async function placeDetails(
   sessionToken: string,
 ): Promise<Place | null> {
   const apiKey = env.googleMapsApiKey;
-  if (!apiKey) return null;
+  if (!apiKey) throw new Error('La búsqueda de lugares no está configurada.');
 
   try {
-    const url = `${DETAILS_ENDPOINT}/${encodeURIComponent(suggestion.placeId)}?sessionToken=${encodeURIComponent(sessionToken)}&languageCode=es`;
+    const url = `${DETAILS_ENDPOINT}/${encodeURIComponent(suggestion.placeId)}?sessionToken=${encodeURIComponent(sessionToken)}&languageCode=es&regionCode=BO`;
     const response = await fetch(url, {
       headers: {
         'X-Goog-Api-Key': apiKey,
-        'X-Goog-FieldMask': 'location,displayName,formattedAddress',
+        'X-Goog-FieldMask': 'location,displayName,formattedAddress,addressComponents',
       },
     });
-    if (!response.ok) return null;
+    if (!response.ok) throw new Error('No pudimos obtener la ubicación seleccionada.');
 
     const data: DetailsResponse = await response.json();
     const { latitude, longitude } = data.location ?? {};
-    if (typeof latitude !== 'number' || typeof longitude !== 'number') return null;
+    if (typeof latitude !== 'number' || typeof longitude !== 'number') {
+      throw new Error('La ubicación seleccionada no tiene coordenadas disponibles.');
+    }
 
-    return {
+    const countryCode =
+      data.addressComponents
+        ?.find((component) => component.types?.includes('country'))
+        ?.shortText?.toUpperCase() ?? null;
+    const street = streetFromAddressComponents(data.addressComponents);
+
+    const place: Place = {
       coordinates: { latitude, longitude },
-      name: suggestion.name || data.displayName?.text || 'Lugar',
+      name: street || suggestion.name || data.displayName?.text || 'Lugar',
       address: suggestion.address || data.formattedAddress || '',
+      countryCode,
     };
-  } catch {
-    return null;
+    const areaError = getBoliviaPlaceError(place);
+    if (areaError) throw new Error(areaError);
+    return place;
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      (error.message.startsWith('No pudimos') ||
+        error.message.startsWith('La ubicación') ||
+        error.message.startsWith('ViajaYa'))
+    ) {
+      throw error;
+    }
+    throw new Error('Revisa tu conexión e intenta seleccionar el lugar nuevamente.');
   }
 }

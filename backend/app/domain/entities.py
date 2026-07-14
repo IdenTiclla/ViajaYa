@@ -29,11 +29,34 @@ class UserRole(enum.StrEnum):
     DELIVERY = "delivery"
 
 
-class ServiceType(enum.StrEnum):
-    """Tipo de servicio solicitado en un viaje."""
+class VehicleType(enum.StrEnum):
+    """Tipo fisico de vehiculo registrado por un conductor."""
 
     TAXI = "taxi"
     MOTO = "moto"
+
+
+class ServiceType(enum.StrEnum):
+    """Tipo de servicio solicitado por un pasajero."""
+
+    TAXI = "taxi"
+    MOTO = "moto"
+    DELIVERY = "delivery"
+
+
+def vehicle_can_serve(service_type: ServiceType, vehicle_type: VehicleType) -> bool:
+    """Taxi y moto pueden transportar encomiendas; viajes personales exigen coincidencia."""
+
+    return (
+        service_type is ServiceType.DELIVERY
+        or service_type.value == vehicle_type.value
+    )
+
+
+def services_for_vehicle(vehicle_type: VehicleType) -> tuple[ServiceType, ...]:
+    """Servicios visibles para un conductor según su vehículo."""
+
+    return (ServiceType(vehicle_type.value), ServiceType.DELIVERY)
 
 
 @dataclass
@@ -55,7 +78,7 @@ class User:
     auth_provider: AuthProvider = AuthProvider.LOCAL
     provider_id: str | None = None
     role: UserRole = UserRole.PASSENGER
-    vehicle_type: ServiceType | None = None
+    vehicle_type: VehicleType | None = None
     plate: str | None = None
     vehicle_model: str | None = None
     rating: float | None = None
@@ -158,8 +181,13 @@ class RideRequest:
     driver_id: uuid.UUID | None = None
     accepted_offer_id: uuid.UUID | None = None
     paused: bool = False
+    # Versión de los datos que el conductor evalúa antes de ofertar. Un cambio
+    # relevante vuelve a hacer visible una solicitud que había ocultado.
+    pool_version: int = 1
     id: uuid.UUID = field(default_factory=uuid.uuid4)
     created_at: datetime | None = None
+    completed_at: datetime | None = None
+    cancelled_at: datetime | None = None
 
 
 class OfferStatus(enum.StrEnum):
@@ -207,8 +235,8 @@ class RideRating:
 
     Cuando un viaje llega a ``COMPLETED``, el pasajero califica al conductor y el
     conductor al pasajero (``score`` 1–5 + comentario opcional). Solo se admite una
-    calificación por ``(ride_id, rater_id)``. Al calificar a un conductor se
-    recalcula su ``User.rating`` promedio.
+    calificación por ``(ride_id, rater_id)``. Cada voto recalcula el
+    ``User.rating`` promedio de la persona calificada.
     """
 
     ride_id: uuid.UUID
@@ -216,5 +244,15 @@ class RideRating:
     ratee_id: uuid.UUID
     score: int
     comment: str | None = None
+    id: uuid.UUID = field(default_factory=uuid.uuid4)
+    created_at: datetime | None = None
+
+
+@dataclass
+class RideRatingSkip:
+    """Decisión de un participante de cerrar el viaje sin calificarlo."""
+
+    ride_id: uuid.UUID
+    rater_id: uuid.UUID
     id: uuid.UUID = field(default_factory=uuid.uuid4)
     created_at: datetime | None = None

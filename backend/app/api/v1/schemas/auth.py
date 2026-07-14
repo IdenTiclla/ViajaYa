@@ -10,7 +10,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
-from app.domain.entities import AuthProvider, ServiceType, User, UserRole
+from app.domain.entities import AuthProvider, User, UserRole, VehicleType
 
 
 class RegisterRequest(BaseModel):
@@ -50,7 +50,7 @@ class UserResponse(BaseModel):
     phone: str | None
     auth_provider: AuthProvider
     role: UserRole
-    vehicle_type: ServiceType | None
+    vehicle_type: VehicleType | None
     plate: str | None
     vehicle_model: str | None
     rating: float | None

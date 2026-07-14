@@ -2,8 +2,8 @@
  * Lugares guardados del pasajero desde la API (`/saved-places`).
  *
  * Expone la lista (react-query) y las mutaciones para crear/editar/eliminar,
- * que invalidan la consulta para refrescar la UI. Devuelve `[]` mientras carga
- * o ante un error, de modo que la UI muestre su estado vacío sin romperse.
+ * que invalidan la consulta para refrescar la UI. Conserva por separado carga,
+ * error y actualización para no presentar un fallo de red como una lista vacía.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -15,14 +15,28 @@ import type { SavedPlace, SavedPlaceCategory } from '@/features/booking/domain/t
 
 const QUERY_KEY = ['saved-places'];
 
-export function useSavedPlaces(): { places: SavedPlace[]; isLoading: boolean } {
+export function useSavedPlaces(): {
+  places: SavedPlace[];
+  isLoading: boolean;
+  isRefreshing: boolean;
+  isError: boolean;
+  error: unknown;
+  refetch: () => void;
+} {
   const query = useQuery({
     queryKey: QUERY_KEY,
     queryFn: () => savedPlacesRepository.list(),
     staleTime: 60_000,
   });
 
-  return { places: query.data ?? [], isLoading: query.isPending };
+  return {
+    places: query.data ?? [],
+    isLoading: query.isPending,
+    isRefreshing: query.isRefetching,
+    isError: query.isError,
+    error: query.error,
+    refetch: () => void query.refetch(),
+  };
 }
 
 /** Devuelve el lugar guardado más reciente de una categoría (Home/Work), si existe. */

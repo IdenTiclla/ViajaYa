@@ -4,7 +4,7 @@
  * Mapa con los pines **A** (origen) por solicitud y **B** (destino) de la
  * seleccionada, unidos por el trayecto; el mapa encuadra la ruta seleccionada.
  * Abajo, una **tarjeta flotante** con la solicitud activa (avatar, precio,
- * contraoferta rápida +Bs, ruta y Decline/Aceptar) y **dots** de paginación para
+ * contraoferta rápida +Bs, ruta y Rechazar/Enviar oferta) y **dots** de paginación para
  * navegar entre solicitudes. Tocar la tarjeta abre el detalle.
  */
 import { Ionicons } from '@expo/vector-icons';
@@ -16,10 +16,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useCountdown } from '@/core/hooks/useCountdown';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 import { useRoute } from '@/features/booking/application/useRoute';
+import { SERVICE_META } from '@/features/booking/domain/serviceCatalog';
 import { declutteredMapStyle } from '@/features/booking/presentation/mapStyle';
+import { getPlaceStreetName } from '@/features/booking/domain/placeLabels';
 import type { Coordinates } from '@/features/booking/domain/types';
 import type { SentOffer } from '@/features/driver/application/useDriverRequests';
 import { formatKm, haversineKm, pricePerKm } from '@/features/rides/domain/geo';
+import { formatBolivianos } from '@/features/rides/domain/money';
 import { OfferLifeTimer } from '@/features/rides/presentation/OfferLifeTimer';
 import { RoutePinMarker } from '@/features/rides/presentation/RoutePinMarker';
 import type { OpenRide } from '@/features/rides/domain/types';
@@ -46,7 +49,7 @@ type Props = {
   onAccept: (ride: OpenRide) => void;
   onDismiss: (ride: OpenRide) => void;
   onQuickAdd: (ride: OpenRide, delta: number) => void;
-  onOpenKeypad: (ride: OpenRide) => void;
+  onOpenPriceInput: (ride: OpenRide) => void;
   onWithdraw: (ride: OpenRide) => void;
 };
 
@@ -65,7 +68,7 @@ export function SolicitudesMapa({
   onAccept,
   onDismiss,
   onQuickAdd,
-  onOpenKeypad,
+  onOpenPriceInput,
   onWithdraw,
 }: Props) {
   const mapRef = useRef<MapView>(null);
@@ -147,7 +150,7 @@ export function SolicitudesMapa({
               key={`a-${ride.id}`}
               kind="A"
               coordinate={ride.origin.coordinates}
-              label="Origen"
+              label={`Origen: ${getPlaceStreetName(ride.origin)}`}
               dim={!active}
               onPress={() => select(ride, rides.indexOf(ride))}
             />
@@ -157,7 +160,7 @@ export function SolicitudesMapa({
           <RoutePinMarker
             kind="B"
             coordinate={selectedRide.destination.coordinates}
-            label="Destino"
+            label={`Destino: ${getPlaceStreetName(selectedRide.destination)}`}
           />
         )}
       </MapView>
@@ -199,7 +202,7 @@ export function SolicitudesMapa({
                 onAccept={() => onAccept(item)}
                 onDismiss={() => onDismiss(item)}
                 onQuickAdd={(delta) => onQuickAdd(item, delta)}
-                onOpenKeypad={() => onOpenKeypad(item)}
+                onOpenPriceInput={() => onOpenPriceInput(item)}
                 onWithdraw={() => onWithdraw(item)}
               />
             </View>
@@ -241,7 +244,7 @@ function MapCard({
   onAccept,
   onDismiss,
   onQuickAdd,
-  onOpenKeypad,
+  onOpenPriceInput,
   onWithdraw,
 }: {
   ride: OpenRide;
@@ -259,7 +262,7 @@ function MapCard({
   onAccept: () => void;
   onDismiss: () => void;
   onQuickAdd: (delta: number) => void;
-  onOpenKeypad: () => void;
+  onOpenPriceInput: () => void;
   onWithdraw: () => void;
 }) {
   const secondsLeft = useCountdown(offerExpiresAt);
@@ -269,9 +272,11 @@ function MapCard({
   const displayPrice = offered && offerPrice != null ? offerPrice : ride.fare;
   const perKm = pricePerKm(displayPrice, tripKm);
   const { rider } = ride;
+  const customerNoun = ride.service === 'delivery' ? 'remitente' : 'pasajero';
+  const requestNoun = ride.service === 'delivery' ? 'entrega' : 'viaje';
   const initial = rider.fullName.trim().charAt(0).toUpperCase() || '?';
   const meta = [
-    ride.service === 'taxi' ? 'Taxi' : 'Moto',
+    SERVICE_META[ride.service].shortLabel,
     `${rider.tripsCompleted} ${rider.tripsCompleted === 1 ? 'viaje' : 'viajes'}`,
     PAYMENT_LABELS[ride.payment],
   ].join(' · ');
@@ -300,7 +305,9 @@ function MapCard({
       {paused && (
         <View style={styles.pausedBanner}>
           <Ionicons name="create-outline" size={15} color={colors.textSecondary} />
-          <Text style={styles.bannerTextDark}>El pasajero está modificando su solicitud</Text>
+          <Text style={styles.bannerTextDark}>
+            El {customerNoun} está modificando su solicitud
+          </Text>
           <TouchableOpacity
             style={styles.dismissBannerBtn}
             onPress={onDismiss}
@@ -313,7 +320,7 @@ function MapCard({
       {taken && (
         <View style={styles.takenBanner}>
           <Ionicons name="trophy-outline" size={15} color={colors.textOnPrimary} />
-          <Text style={styles.bannerTextOn}>Otro conductor tomó el viaje</Text>
+          <Text style={styles.bannerTextOn}>Otro conductor tomó la {requestNoun}</Text>
         </View>
       )}
       {expired && (
@@ -325,7 +332,9 @@ function MapCard({
       {rejected && (
         <View style={styles.rejectedBanner}>
           <Ionicons name="close-circle" size={15} color={colors.textOnPrimary} />
-          <Text style={styles.bannerTextOn}>El pasajero no aceptó tu oferta · vuelve a intentarlo</Text>
+          <Text style={styles.bannerTextOn}>
+            El {customerNoun} no aceptó tu oferta · vuelve a intentarlo
+          </Text>
         </View>
       )}
 
@@ -349,7 +358,7 @@ function MapCard({
           </Text>
         </View>
         <View style={styles.priceCol}>
-          <Text style={styles.fare}>Bs {displayPrice.toFixed(2)}</Text>
+          <Text style={styles.fare}>Bs {formatBolivianos(displayPrice)}</Text>
           {offered && offerPrice != null ? (
             <Text style={styles.perKm}>Tu oferta</Text>
           ) : perKm ? (
@@ -374,7 +383,7 @@ function MapCard({
             ))}
             <TouchableOpacity
               style={[styles.keypadBtn, disabled && styles.disabled]}
-              onPress={onOpenKeypad}
+              onPress={onOpenPriceInput}
               disabled={disabled}
               accessibilityRole="button"
               accessibilityLabel="Contraofertar con un monto personalizado">
@@ -405,7 +414,7 @@ function MapCard({
                 onPress={onAccept}
                 disabled={disabled}
                 accessibilityRole="button"
-                accessibilityLabel={`Ofertar de nuevo por Bs ${ride.fare.toFixed(2)}`}>
+                accessibilityLabel={`Ofertar de nuevo por Bs ${formatBolivianos(ride.fare)}`}>
                 {pendingAccept ? (
                   <ActivityIndicator color={colors.textOnPrimary} size="small" />
                 ) : (
@@ -428,14 +437,14 @@ function MapCard({
                 onPress={onAccept}
                 disabled={disabled}
                 accessibilityRole="button"
-                accessibilityLabel={`Aceptar por Bs ${ride.fare.toFixed(2)}`}>
+                accessibilityLabel={`Enviar oferta por Bs ${formatBolivianos(ride.fare)}`}>
                 {pendingAccept ? (
                   <View style={styles.acceptWaiting}>
                     <ActivityIndicator color={colors.textOnPrimary} size="small" />
-                    <Text style={styles.acceptText}>Esperando…</Text>
+                    <Text style={styles.acceptText}>Enviando…</Text>
                   </View>
                 ) : (
-                  <Text style={styles.acceptText}>Aceptar</Text>
+                  <Text style={styles.acceptText}>Enviar oferta</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -625,8 +634,8 @@ const styles = StyleSheet.create({
 
   actions: { flexDirection: 'row', gap: spacing.sm },
   actionBtn: { flex: 1, height: 46, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
-  decline: { flex: 1, backgroundColor: colors.surfaceMuted },
-  declineText: { color: colors.textSecondary, fontSize: fontSize.md, fontWeight: fontWeight.bold },
+  decline: { flex: 1, backgroundColor: '#FDECEA', borderWidth: 1, borderColor: '#F5C6C2' },
+  declineText: { color: colors.danger, fontSize: fontSize.md, fontWeight: fontWeight.bold },
   accept: { flex: 1.6, backgroundColor: colors.primary },
   acceptText: { color: colors.textOnPrimary, fontSize: fontSize.md, fontWeight: fontWeight.bold },
   acceptWaiting: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },

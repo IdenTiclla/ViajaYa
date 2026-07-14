@@ -12,6 +12,7 @@ from app.api.deps import (
     get_get_driver_earnings,
     get_set_driver_online,
 )
+from app.api.v1 import events
 from app.api.v1.schemas.auth import UserResponse
 from app.api.v1.schemas.drivers import DriverEarningsResponse, OnlineRequest
 from app.api.v1.schemas.rides import RideResponse
@@ -29,8 +30,11 @@ async def set_online(
     use_case: Annotated[SetDriverOnline, Depends(get_set_driver_online)],
 ) -> UserResponse:
     """Alterna la disponibilidad del conductor (en línea/desconectado)."""
-    user = await use_case.execute(current_user, body.is_online)
-    return UserResponse.from_entity(user)
+    result = await use_case.execute(current_user, body.is_online)
+    await events.publish_driver_offline_offers(
+        result.driver.id, result.withdrawn_offers
+    )
+    return UserResponse.from_entity(result.driver)
 
 
 @router.get("/me/active-ride", response_model=RideResponse | None)

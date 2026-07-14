@@ -3,9 +3,16 @@
  * Mapea el contrato del backend (`/rides`) a/desde los tipos del dominio móvil.
  */
 import { api } from '@/core/http/client';
+import { getPlaceStreetName } from '@/features/booking/domain/placeLabels';
 import type { PaymentMethod, Place, ServiceType } from '@/features/booking/domain/types';
 
-type PointDto = { latitude: number; longitude: number; name: string; address: string };
+type PointDto = {
+  latitude: number;
+  longitude: number;
+  name: string;
+  address: string;
+  country_code?: string | null;
+};
 
 type RideRequestDto = {
   id: string;
@@ -34,14 +41,16 @@ function toPointDto(place: Place): PointDto {
     longitude: place.coordinates.longitude,
     name: place.name,
     address: place.address,
+    country_code: place.countryCode,
   };
 }
 
 function toPlace(dto: PointDto): Place {
   return {
     coordinates: { latitude: dto.latitude, longitude: dto.longitude },
-    name: dto.name,
+    name: getPlaceStreetName(dto),
     address: dto.address,
+    countryCode: dto.country_code?.toUpperCase() ?? null,
   };
 }
 

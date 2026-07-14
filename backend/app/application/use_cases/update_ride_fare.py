@@ -47,7 +47,7 @@ class UpdateRideFare:
             raise InvalidFareError("La nueva oferta debe ser mayor que la actual.")
 
         updated = await self._rides.update_if_state(
-            replace(ride, fare=fare.amount),
+            replace(ride, fare=fare.amount, pool_version=ride.pool_version + 1),
             RideStatus.SEARCHING,
             expected_paused=False,
             expected_fare=ride.fare,

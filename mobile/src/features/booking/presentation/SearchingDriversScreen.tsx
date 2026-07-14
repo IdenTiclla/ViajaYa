@@ -76,7 +76,17 @@ export function SearchingDriversScreen({
 
   const [customIncrease, setCustomIncrease] = useState('');
   const [confirmCancel, setConfirmCancel] = useState(false);
+  // Algunos Android conservan la altura reducida del KeyboardAvoidingView al
+  // ocultar el teclado; al remontarlo, la hoja vuelve a anclarse abajo.
+  const [keyboardAvoiderKey, setKeyboardAvoiderKey] = useState(0);
   const hasConnectionError = connectionError != null;
+
+  useEffect(() => {
+    const subscription = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardAvoiderKey((key) => key + 1);
+    });
+    return () => subscription.remove();
+  }, []);
 
   // La búsqueda no caduca: se sale al modificar (pausa y edita) o cancelar.
   const onModify = () => {
@@ -161,6 +171,7 @@ export function SearchingDriversScreen({
         </View>
 
         <KeyboardAvoidingView
+          key={keyboardAvoiderKey}
           style={styles.sheetAvoider}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           pointerEvents="box-none">

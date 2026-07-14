@@ -63,6 +63,8 @@ export type OpenRide = {
   origin: Place;
   destination: Place;
   rider: OpenRideRider;
+  /** Cambia cuando se modifican las condiciones visibles de la solicitud. */
+  poolVersion: number;
   createdAt: string | null;
 };
 

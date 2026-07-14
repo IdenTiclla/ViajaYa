@@ -13,6 +13,7 @@ import { usePreventRemove } from 'expo-router/react-navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -81,11 +82,16 @@ export function ConfigureTripScreen() {
   const fare = useBookingStore((s) => s.fare);
   const setFare = useBookingStore((s) => s.setFare);
   const mapRef = useRef<MapView>(null);
+  const sheetScrollRef = useRef<ScrollView>(null);
   const queryClient = useQueryClient();
   const editRide = useEditRide();
   const cancelRecoveryRide = useCancelRide();
   // Alto real del bottom sheet, para encuadrar los puntos por encima de él.
   const [sheetHeight, setSheetHeight] = useState(0);
+  // Al cerrar el teclado en Android, algunos dispositivos conservan la altura
+  // reducida del KeyboardAvoidingView. Remontarlo al finalizar la animación
+  // garantiza que el sheet vuelva a anclarse al borde inferior.
+  const [keyboardAvoiderKey, setKeyboardAvoiderKey] = useState(0);
   // Mostrar/ocultar etiquetas de lugares (el usuario lo controla con el toggle).
   const [showPlaces, setShowPlaces] = useState(true);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
@@ -93,6 +99,21 @@ export function ConfigureTripScreen() {
   const [exitAfterSave, setExitAfterSave] = useState(false);
   const [exitHome, setExitHome] = useState(false);
   const [confirmRecoveryCancel, setConfirmRecoveryCancel] = useState(false);
+
+  useEffect(() => {
+    const showSubscription = Keyboard.addListener('keyboardDidShow', () => {
+      // Espera a que KeyboardAvoidingView termine de reducir el área visible
+      // antes de llevar el CTA completo por encima del teclado.
+      sheetScrollRef.current?.scrollToEnd({ animated: true });
+    });
+    const hideSubscription = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardAvoiderKey((key) => key + 1);
+    });
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
 
   const createRide = useMutation({
     mutationFn: ridesRepository.create,
@@ -192,20 +213,27 @@ export function ConfigureTripScreen() {
   // Para encuadrar la cámara: el trayecto real si existe, si no la recta entre
   // ambos puntos (así el mapa enmarca el viaje desde el primer instante).
   const fitCoordinates = useMemo<Coordinates[]>(() => {
-    if (route?.coordinates.length) return route.coordinates;
+    if (!routeLoading && route?.coordinates.length) return route.coordinates;
     if (origin && destination) return [origin.coordinates, destination.coordinates];
     return [];
-  }, [route, origin, destination]);
+  }, [route, routeLoading, origin, destination]);
 
   // Para dibujar: la recta solo aparece como fallback cuando el cálculo del
   // trayecto terminó sin ruta; mientras carga no se dibuja, para evitar el
   // "salto" visual de recta → trayecto por calles.
   const polylineCoordinates = useMemo<Coordinates[]>(() => {
-    if (route?.coordinates.length) return route.coordinates;
     if (routeLoading) return [];
+    if (route?.coordinates.length) return route.coordinates;
     if (origin && destination) return [origin.coordinates, destination.coordinates];
     return [];
   }, [route, routeLoading, origin, destination]);
+
+  // react-native-maps conserva internamente overlays nativos. Una clave basada
+  // en ambos puntos fuerza a reemplazarlos al editar origen o destino, evitando
+  // que se vea la ruta o los pins del trayecto anterior.
+  const tripMapKey = origin && destination
+    ? `${origin.coordinates.latitude},${origin.coordinates.longitude}:${destination.coordinates.latitude},${destination.coordinates.longitude}`
+    : '';
 
   // Encuadra origen + destino dejando libre el área que tapa el bottom sheet.
   const fitToTrip = useCallback(
@@ -335,19 +363,40 @@ export function ConfigureTripScreen() {
   return (
     <View style={styles.root}>
       <MapView
+        key={tripMapKey}
         ref={mapRef}
         provider={PROVIDER_GOOGLE}
         style={StyleSheet.absoluteFill}
         initialRegion={region}
         customMapStyle={showPlaces ? [] : declutteredMapStyle}
         onMapReady={() => fitToTrip(false)}>
-        <RoutePinMarker kind="A" coordinate={origin.coordinates} label="Origen" />
-        <RoutePinMarker kind="B" coordinate={destination.coordinates} label="Destino" />
+        <RoutePinMarker
+          key={`origin-${tripMapKey}`}
+          kind="A"
+          coordinate={origin.coordinates}
+          label="Origen"
+        />
+        <RoutePinMarker
+          key={`destination-${tripMapKey}`}
+          kind="B"
+          coordinate={destination.coordinates}
+          label="Destino"
+        />
         {polylineCoordinates.length >= 2 && (
           <>
             {/* Contorno blanco para que la ruta resalte sobre calles y etiquetas. */}
-            <Polyline coordinates={polylineCoordinates} strokeColor={colors.surface} strokeWidth={9} />
-            <Polyline coordinates={polylineCoordinates} strokeColor={colors.primary} strokeWidth={5} />
+            <Polyline
+              key={`route-outline-${tripMapKey}`}
+              coordinates={polylineCoordinates}
+              strokeColor={colors.surface}
+              strokeWidth={9}
+            />
+            <Polyline
+              key={`route-${tripMapKey}`}
+              coordinates={polylineCoordinates}
+              strokeColor={colors.primary}
+              strokeWidth={5}
+            />
           </>
         )}
       </MapView>
@@ -396,6 +445,7 @@ export function ConfigureTripScreen() {
       </SafeAreaView>
 
       <KeyboardAvoidingView
+        key={keyboardAvoiderKey}
         style={styles.sheetAvoider}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         pointerEvents="box-none">
@@ -404,6 +454,7 @@ export function ConfigureTripScreen() {
           edges={['bottom']}
           onLayout={(e) => setSheetHeight(e.nativeEvent.layout.height)}>
           <ScrollView
+            ref={sheetScrollRef}
             contentContainerStyle={styles.sheetContent}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
@@ -479,7 +530,6 @@ export function ConfigureTripScreen() {
           <TextInput
             value={fare}
             onChangeText={setFare}
-            selectTextOnFocus
             placeholder="30"
             placeholderTextColor={colors.placeholder}
             keyboardType="decimal-pad"

@@ -6,7 +6,7 @@ import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -44,6 +44,7 @@ from app.domain.repositories import (
 )
 from app.domain.ride_policy import is_offer_expired
 from app.infrastructure.db.models import (
+    DriverRideDismissalModel,
     OfferModel,
     RideRatingModel,
     RideRatingSkipModel,
@@ -218,6 +219,7 @@ def _ride_to_entity(row: RideRequestModel) -> RideRequest:
         driver_id=row.driver_id,
         accepted_offer_id=row.accepted_offer_id,
         paused=row.paused,
+        pool_version=row.pool_version,
         created_at=row.created_at,
         completed_at=row.completed_at,
         cancelled_at=row.cancelled_at,
@@ -247,6 +249,7 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
             driver_id=ride.driver_id,
             accepted_offer_id=ride.accepted_offer_id,
             paused=ride.paused,
+            pool_version=ride.pool_version,
             completed_at=ride.completed_at,
             cancelled_at=ride.cancelled_at,
         )
@@ -309,6 +312,7 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
         row.driver_id = ride.driver_id
         row.accepted_offer_id = ride.accepted_offer_id
         row.paused = ride.paused
+        row.pool_version = ride.pool_version
         row.completed_at = ride.completed_at
         row.cancelled_at = ride.cancelled_at
         await self._session.commit()
@@ -359,6 +363,7 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
                 driver_id=ride.driver_id,
                 accepted_offer_id=ride.accepted_offer_id,
                 paused=ride.paused,
+                pool_version=ride.pool_version,
                 completed_at=completed_at,
                 cancelled_at=cancelled_at,
             )
@@ -410,7 +415,7 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
         return [_ride_to_entity(row) for row in result.scalars().all()]
 
     async def list_open_with_rider_for_vehicle(
-        self, vehicle_type: VehicleType
+        self, vehicle_type: VehicleType, *, driver_id: uuid.UUID | None = None
     ) -> list[OpenRideDetail]:
         # Una sola query: JOIN con el pasajero + subquery correlacionada que cuenta
         # sus viajes completados. Así el pool de solicitudes (alto volumen, refresco
@@ -426,7 +431,7 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
             .scalar_subquery()
         )
         compatible_services = services_for_vehicle(vehicle_type)
-        result = await self._session.execute(
+        statement = (
             select(RideRequestModel, UserModel, trips_completed)
             .join(UserModel, UserModel.id == RideRequestModel.rider_id)
             .where(
@@ -436,6 +441,18 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
             )
             .order_by(RideRequestModel.created_at.desc())
         )
+        if driver_id is not None:
+            statement = statement.outerjoin(
+                DriverRideDismissalModel,
+                (DriverRideDismissalModel.driver_id == driver_id)
+                & (DriverRideDismissalModel.ride_id == RideRequestModel.id),
+            ).where(
+                or_(
+                    DriverRideDismissalModel.ride_id.is_(None),
+                    DriverRideDismissalModel.pool_version != RideRequestModel.pool_version,
+                )
+            )
+        result = await self._session.execute(statement)
         details: list[OpenRideDetail] = []
         for ride_row, user_row, trips in result.all():
             details.append(
@@ -448,6 +465,50 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
                     ),
                 )
             )
+        return details
+
+    async def dismiss_open_ride_for_driver(
+        self, driver_id: uuid.UUID, ride_id: uuid.UUID, pool_version: int
+    ) -> None:
+        row = (
+            await self._session.execute(
+                select(DriverRideDismissalModel).where(
+                    DriverRideDismissalModel.driver_id == driver_id,
+                    DriverRideDismissalModel.ride_id == ride_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            self._session.add(
+                DriverRideDismissalModel(
+                    driver_id=driver_id, ride_id=ride_id, pool_version=pool_version
+                )
+            )
+        else:
+            row.pool_version = pool_version
+        await self._session.commit()
+
+    async def list_paused_with_rider_for_driver(
+        self, driver_id: uuid.UUID
+    ) -> list[OpenRideDetail]:
+        # Al pausar una solicitud, las ofertas vivas pasan a REJECTED. La pausa
+        # actual permite distinguirla de un rechazo normal y recuperar el aviso
+        # para este conductor al reconectar.
+        result = await self._session.execute(
+            select(RideRequestModel)
+            .join(OfferModel, OfferModel.ride_id == RideRequestModel.id)
+            .where(
+                OfferModel.driver_id == driver_id,
+                RideRequestModel.status == RideStatus.SEARCHING,
+                RideRequestModel.paused.is_(True),
+            )
+            .order_by(RideRequestModel.created_at.desc())
+        )
+        details: list[OpenRideDetail] = []
+        for ride_row in result.scalars().unique().all():
+            rider = await self.rider_summary(ride_row.rider_id)
+            if rider is not None:
+                details.append(OpenRideDetail(ride=_ride_to_entity(ride_row), rider=rider))
         return details
 
     async def rider_summary(self, rider_id: uuid.UUID) -> RiderSummary | None:

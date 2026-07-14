@@ -157,6 +157,10 @@ async def driver_ws(
                     OpenRideResponse.from_open_ride(detail).model_dump(mode="json")
                     for detail in open_rides
                 ]
+                paused_snapshot = [
+                    OpenRideResponse.from_open_ride(detail).model_dump(mode="json")
+                    for detail in await rides.list_paused_with_rider_for_driver(user.id)
+                ]
 
                 # Recuperación de estado al (re)conectar:
                 # 1) vencer ofertas que pasaron su TTL y excluirlas del snapshot.
@@ -181,6 +185,9 @@ async def driver_ws(
                 # Handshake autoritativo, siempre en este orden.
                 await websocket.send_json(
                     {"type": "open_rides_snapshot", "data": snapshot}
+                )
+                await websocket.send_json(
+                    {"type": "paused_rides_snapshot", "data": paused_snapshot}
                 )
                 await websocket.send_json(
                     {"type": "driver_offers_snapshot", "data": offer_snapshot}

@@ -4,7 +4,7 @@
  * Mapa con los pines **A** (origen) por solicitud y **B** (destino) de la
  * seleccionada, unidos por el trayecto; el mapa encuadra la ruta seleccionada.
  * Abajo, una **tarjeta flotante** con la solicitud activa (avatar, precio,
- * contraoferta rápida +Bs, ruta y Ocultar/Enviar oferta) y **dots** de paginación para
+ * contraoferta rápida +Bs, ruta y Rechazar/Enviar oferta) y **dots** de paginación para
  * navegar entre solicitudes. Tocar la tarjeta abre el detalle.
  */
 import { Ionicons } from '@expo/vector-icons';
@@ -428,8 +428,8 @@ function MapCard({
                 onPress={onDismiss}
                 disabled={disabled}
                 accessibilityRole="button"
-                accessibilityLabel="Ocultar solicitud">
-                <Text style={styles.declineText}>Ocultar</Text>
+                accessibilityLabel="Rechazar solicitud">
+                <Text style={styles.declineText}>Rechazar</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.actionBtn, styles.accept, disabled && styles.disabled]}
@@ -633,8 +633,8 @@ const styles = StyleSheet.create({
 
   actions: { flexDirection: 'row', gap: spacing.sm },
   actionBtn: { flex: 1, height: 46, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
-  decline: { flex: 1, backgroundColor: colors.surfaceMuted },
-  declineText: { color: colors.textSecondary, fontSize: fontSize.md, fontWeight: fontWeight.bold },
+  decline: { flex: 1, backgroundColor: '#FDECEA', borderWidth: 1, borderColor: '#F5C6C2' },
+  declineText: { color: colors.danger, fontSize: fontSize.md, fontWeight: fontWeight.bold },
   accept: { flex: 1.6, backgroundColor: colors.primary },
   acceptText: { color: colors.textOnPrimary, fontSize: fontSize.md, fontWeight: fontWeight.bold },
   acceptWaiting: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },

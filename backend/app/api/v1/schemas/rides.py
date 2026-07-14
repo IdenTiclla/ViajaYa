@@ -113,6 +113,7 @@ class OpenRideResponse(BaseModel):
     origin: PointSchema
     destination: PointSchema
     rider: OpenRideRiderResponse
+    pool_version: int
     created_at: datetime | None
 
     @classmethod
@@ -132,6 +133,7 @@ class OpenRideResponse(BaseModel):
                 rating=rider.rating,
                 trips_completed=rider.trips_completed,
             ),
+            pool_version=ride.pool_version,
             created_at=ride.created_at,
         )
 

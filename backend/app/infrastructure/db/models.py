@@ -180,11 +180,40 @@ class RideRequestModel(Base):
     paused: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="0", nullable=False
     )
+    pool_version: Mapped[int] = mapped_column(
+        Integer, default=1, server_default="1", nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class DriverRideDismissalModel(Base):
+    """Versión de una solicitud que un conductor decidió no volver a ver."""
+
+    __tablename__ = "driver_ride_dismissals"
+    __table_args__ = (
+        UniqueConstraint("driver_id", "ride_id", name="uq_driver_ride_dismissals_driver_ride"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    driver_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    ride_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("ride_requests.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    pool_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    dismissed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
 
 
 class OfferModel(Base):

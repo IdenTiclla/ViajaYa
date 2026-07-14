@@ -201,11 +201,29 @@ export function useDriverPoolSocket(enabled = true): void {
     const handle = openSocket('/ws/driver', async (msg) => {
       switch (msg.type) {
         case 'open_rides_snapshot':
+          // Al volver de segundo plano el conductor puede perder el
+          // `ride_created` que anuncia una renovación de la solicitud. Solo
+          // borramos el aviso de expiración si la tarifa actual es mayor que la
+          // que el pasajero ofrecía cuando el conductor envió esa propuesta.
+          const openRides = (msg.data as OpenRideDto[]).map(toOpenRide);
           await queryClient.cancelQueries({ queryKey: ['open-rides'], exact: true });
-          queryClient.setQueryData(
-            ['open-rides'],
-            (msg.data as OpenRideDto[]).map(toOpenRide),
-          );
+          queryClient.setQueryData(['open-rides'], openRides);
+          const driverRequests = useDriverRequests.getState();
+          for (const ride of openRides) {
+            // Una solicitud presente en el pool ya terminó de editarse. Esto
+            // recupera el `ride_created` que pudo perderse mientras el
+            // conductor estaba en segundo plano.
+            driverRequests.clearPaused(ride.id);
+            // El servidor solo incluye la solicitud si no fue ocultada en
+            // esta versión; al aparecer aquí, cualquier descarte local es de
+            // una versión anterior.
+            driverRequests.clearDismissedBefore(ride.id, ride.poolVersion);
+            const expiredFare = driverRequests.expiredFares[ride.id];
+            if (expiredFare != null && ride.fare > expiredFare) {
+              driverRequests.clearExpired(ride.id);
+              driverRequests.clearRejected(ride.id);
+            }
+          }
           break;
         case 'driver_offers_snapshot': {
           const offers = (msg.data as OfferDto[]).map(toOffer);
@@ -218,6 +236,20 @@ export function useDriverPoolSocket(enabled = true): void {
               expiresAt: offer.expiresAt,
             })),
           );
+          break;
+        }
+        case 'paused_rides_snapshot': {
+          // Recupera el aviso que habría llegado como `ride_paused` si el
+          // conductor estaba fuera de la app durante la edición.
+          const pausedRides = (msg.data as OpenRideDto[]).map(toOpenRide);
+          await queryClient.cancelQueries({ queryKey: ['open-rides'], exact: true });
+          queryClient.setQueryData<OpenRide[]>(['open-rides'], (prev = []) => {
+            const pausedIds = new Set(pausedRides.map((ride) => ride.id));
+            return [...pausedRides, ...prev.filter((ride) => !pausedIds.has(ride.id))];
+          });
+          for (const ride of pausedRides) {
+            useDriverRequests.getState().markPaused(ride.id);
+          }
           break;
         }
         case 'ride_created': {
@@ -241,7 +273,7 @@ export function useDriverPoolSocket(enabled = true): void {
               : [ride, ...prev],
           );
           useDriverRequests.getState().clearPaused(ride.id);
-          useDriverRequests.getState().clearDismissed(ride.id);
+          useDriverRequests.getState().clearDismissedBefore(ride.id, ride.poolVersion);
           useDriverRequests.getState().clearExpired(ride.id);
           useDriverRequests.getState().clearRejected(ride.id);
           break;

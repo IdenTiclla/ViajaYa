@@ -33,7 +33,11 @@ class UpdateRideRequest:
                 "Solo puedes modificar una solicitud que sigue buscando conductor."
             )
 
+        previous_origin = ride.origin
+        previous_destination = ride.destination
         previous_service_type = ride.service_type
+        previous_fare = ride.fare
+        previous_payment_method = ride.payment_method
         origin_point = ServiceAreaPoint(
             data.origin.latitude, data.origin.longitude, data.origin.country_code
         )
@@ -61,6 +65,14 @@ class UpdateRideRequest:
         ride.service_type = data.service_type
         ride.fare = fare.amount
         ride.payment_method = data.payment_method
+        if (
+            ride.origin != previous_origin
+            or ride.destination != previous_destination
+            or ride.service_type is not previous_service_type
+            or ride.fare != previous_fare
+            or ride.payment_method is not previous_payment_method
+        ):
+            ride.pool_version += 1
 
         # Ofertas previas ya no aplican: avisamos a cada conductor antes de rechazarlas.
         rejected_offers = [

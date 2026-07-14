@@ -22,6 +22,7 @@ from app.application.use_cases.create_offer import CreateOffer
 from app.application.use_cases.create_ride_request import CreateRideRequest
 from app.application.use_cases.create_saved_place import CreateSavedPlace
 from app.application.use_cases.delete_saved_place import DeleteSavedPlace
+from app.application.use_cases.dismiss_open_ride import DismissOpenRide
 from app.application.use_cases.edit_ride import EditRide
 from app.application.use_cases.get_driver_active_ride import GetDriverActiveRide
 from app.application.use_cases.get_driver_earnings import GetDriverEarnings
@@ -197,6 +198,10 @@ def get_list_recent_destinations(rides: RideRequestRepositoryDep) -> ListRecentD
 
 def get_list_open_rides(rides: RideRequestRepositoryDep) -> ListOpenRides:
     return ListOpenRides(rides)
+
+
+def get_dismiss_open_ride(rides: RideRequestRepositoryDep) -> DismissOpenRide:
+    return DismissOpenRide(rides)
 
 
 def get_create_offer(

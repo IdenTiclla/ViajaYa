@@ -3,10 +3,10 @@
  *
  * Avatar + rating del pasajero, precio ofertado y **contraoferta rápida** (pills
  * +Bs que envían una contraoferta al instante) o precio propio (botón lápiz →
- * `TextInput` nativo). Ruta Pickup/Drop-off y acciones Ocultar / Enviar oferta. Al pulsar
+ * `TextInput` nativo). Ruta Pickup/Drop-off y acciones Rechazar / Enviar oferta. Al pulsar
  * el botón pasa a "Enviando…" (spinner) mientras se crea la propuesta. Estado
  * `offered` → banner "Oferta enviada"; `rejected` → reofertar. Se puede
- * **ocultar deslizando** para quitarla solo de la vista del conductor.
+ * **rechazar deslizando** para no volver a verla hasta que el pasajero la modifique.
  */
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo, useRef } from 'react';
@@ -94,8 +94,8 @@ export function RequestCard({
 
   const renderLeftActions = () => (
     <View style={styles.swipeAction}>
-      <Ionicons name="eye-off-outline" size={26} color={colors.textOnPrimary} />
-      <Text style={styles.swipeActionText}>Ocultar</Text>
+      <Ionicons name="close-circle-outline" size={26} color={colors.textOnPrimary} />
+      <Text style={styles.swipeActionText}>Rechazar</Text>
     </View>
   );
 
@@ -254,8 +254,8 @@ export function RequestCard({
               onPress={onDismiss}
               disabled={disabled}
               accessibilityRole="button"
-              accessibilityLabel="Ocultar solicitud">
-              <Text style={styles.declineText}>Ocultar</Text>
+              accessibilityLabel="Rechazar solicitud">
+              <Text style={styles.declineText}>Rechazar</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.actionBtn, styles.accept, disabled && styles.disabled]}
@@ -495,8 +495,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  decline: { flex: 1, backgroundColor: colors.surfaceMuted },
-  declineText: { color: colors.textSecondary, fontSize: fontSize.md, fontWeight: fontWeight.bold },
+  decline: { flex: 1, backgroundColor: '#FDECEA', borderWidth: 1, borderColor: '#F5C6C2' },
+  declineText: { color: colors.danger, fontSize: fontSize.md, fontWeight: fontWeight.bold },
   accept: { flex: 1.6, backgroundColor: colors.primary },
   acceptText: { color: colors.textOnPrimary, fontSize: fontSize.md, fontWeight: fontWeight.bold },
   acceptWaiting: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },

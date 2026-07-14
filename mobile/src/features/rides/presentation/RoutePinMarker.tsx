@@ -10,7 +10,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { Marker } from 'react-native-maps';
 
-import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { colors, fontWeight, radius, spacing } from '@/core/theme';
 import type { Coordinates } from '@/features/booking/domain/types';
 
 type Props = {
@@ -23,7 +23,8 @@ type Props = {
   onPress?: () => void;
 };
 
-const PIN_SIZE = 30;
+// Compacto para no tapar la ruta ni otros puntos cercanos en el mapa.
+const PIN_SIZE = 20;
 
 export function RoutePinMarker({ kind, coordinate, label, dim, onPress }: Props) {
   return (
@@ -64,7 +65,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 3,
+    borderWidth: 2,
     borderColor: colors.surface,
     shadowColor: '#000',
     shadowOpacity: 0.25,
@@ -75,5 +76,5 @@ const styles = StyleSheet.create({
   pinA: { backgroundColor: colors.primary },
   pinB: { backgroundColor: colors.danger },
   pinDim: { opacity: 0.5 },
-  pinLabel: { color: colors.textOnPrimary, fontSize: fontSize.sm, fontWeight: fontWeight.bold },
+  pinLabel: { color: colors.textOnPrimary, fontSize: 10, fontWeight: fontWeight.bold },
 });

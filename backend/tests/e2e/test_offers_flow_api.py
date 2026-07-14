@@ -69,6 +69,47 @@ def _ride_payload(service_type: str = "taxi") -> dict:
     }
 
 
+async def test_dismissed_request_persists_for_driver_until_passenger_updates_it(
+    client, session_factory
+):
+    _, rider_token = await _register(client, "dismiss-rider@example.com")
+    _, first_driver_token = await _register(client, "dismiss-first@example.com")
+    _, second_driver_token = await _register(client, "dismiss-second@example.com")
+    await _promote_to_driver(session_factory, "dismiss-first@example.com", VehicleType.TAXI)
+    await _promote_to_driver(session_factory, "dismiss-second@example.com", VehicleType.TAXI)
+
+    rider_h = _headers(rider_token)
+    first_driver_h = _headers(first_driver_token)
+    second_driver_h = _headers(second_driver_token)
+    created = await client.post(RIDES, json=_ride_payload(), headers=rider_h)
+    assert created.status_code == 201, created.text
+    ride_id = created.json()["id"]
+    presence = _mark_present(ride_id)
+
+    assert any(
+        ride["id"] == ride_id
+        for ride in (await client.get(f"{RIDES}/open", headers=first_driver_h)).json()
+    )
+    dismissed = await client.post(f"{RIDES}/{ride_id}/dismiss", headers=first_driver_h)
+    assert dismissed.status_code == 204, dismissed.text
+
+    first_pool = await client.get(f"{RIDES}/open", headers=first_driver_h)
+    second_pool = await client.get(f"{RIDES}/open", headers=second_driver_h)
+    assert all(ride["id"] != ride_id for ride in first_pool.json())
+    assert any(ride["id"] == ride_id for ride in second_pool.json())
+
+    updated = await client.patch(
+        f"{RIDES}/{ride_id}/fare", json={"fare": "30.00"}, headers=rider_h
+    )
+    assert updated.status_code == 200, updated.text
+    renewed_pool = await client.get(f"{RIDES}/open", headers=first_driver_h)
+    renewed = next(ride for ride in renewed_pool.json() if ride["id"] == ride_id)
+    assert renewed["fare"] == "30.00"
+    assert renewed["pool_version"] == 2
+
+    hub.unsubscribe(ride_topic(uuid.UUID(ride_id)), presence)
+
+
 async def _complete_ride(client, rider_h: dict[str, str], driver_h: dict[str, str]) -> str:
     created = await client.post(RIDES, json=_ride_payload(), headers=rider_h)
     assert created.status_code == 201, created.text

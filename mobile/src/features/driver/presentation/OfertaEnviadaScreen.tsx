@@ -110,11 +110,40 @@ export function OfertaEnviadaScreen() {
 
   const backToList = () => router.replace('/(driver)/(tabs)/solicitudes');
 
+  // Si el pasajero renovó la solicitud mientras la app estaba en segundo plano,
+  // el snapshot limpia el desenlace de la oferta anterior. Esta pantalla queda
+  // entonces sin oferta activa y debe volver a la tarjeta actualizada, desde
+  // donde el conductor puede enviar una nueva propuesta al monto vigente.
+  useEffect(() => {
+    if (
+      rideId &&
+      openRide &&
+      !isLoading &&
+      !sentOffer &&
+      !wasRejected &&
+      !offerExpired &&
+      !wasTaken &&
+      !isPaused
+    ) {
+      router.replace('/(driver)/(tabs)/solicitudes');
+    }
+  }, [
+    rideId,
+    openRide,
+    isLoading,
+    sentOffer,
+    wasRejected,
+    offerExpired,
+    wasTaken,
+    isPaused,
+    router,
+  ]);
+
   const reAcceptAtFare = () => {
     if (!rideId || offerActionBusy) return;
     createOffer.mutate(
       { rideId, input: { acceptAtFare: true } },
-      { onSuccess: (offer) => markOffered(rideId, offer) },
+      { onSuccess: (offer) => markOffered(rideId, offer, openRide?.fare) },
     );
   };
 
@@ -134,7 +163,7 @@ export function OfertaEnviadaScreen() {
       { rideId, input: { acceptAtFare: false, price: parsedCounterPrice } },
       {
         onSuccess: (offer) => {
-          markOffered(rideId, offer);
+          markOffered(rideId, offer, openRide?.fare);
           setShowCounter(false);
         },
       },

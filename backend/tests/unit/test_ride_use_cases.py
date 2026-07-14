@@ -226,6 +226,7 @@ async def test_update_ride_fare_raises_offer():
 
     assert updated.fare == Decimal("30.00")
     assert updated.status is RideStatus.SEARCHING
+    assert updated.pool_version == 2
 
 
 async def test_update_ride_fare_rejects_non_increase():
@@ -354,6 +355,7 @@ async def test_edit_ride_updates_fields_and_unpauses():
     assert updated.fare == Decimal("40.00")
     assert updated.destination.name == "Mercado"
     assert updated.payment_method is PaymentMethod.QR
+    assert updated.pool_version == 2
     # Y vuelve a aparecer en el pool.
     open_rides = await rides.list_open_for_vehicle(VehicleType.TAXI)
     assert [r.id for r in open_rides] == [ride.id]

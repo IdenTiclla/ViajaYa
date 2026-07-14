@@ -1,14 +1,14 @@
 /**
  * Solicitudes entrantes (conductor) — diseño Material-You.
  *
- * Tres estados: viaje activo → seguimiento; sin solicitudes → "Buscando viajes"
- * (mapa + radar + hoja con rendimiento del día); con solicitudes → cabecera glass
+ * Tres estados: viaje activo → seguimiento; sin solicitudes → mapa con radar y
+ * estado compacto; con solicitudes → cabecera glass
  * + toggle Lista/Mapa y tarjetas translúcidas. El conductor **oferta** (no
  * asigna): Enviar oferta deja la tarjeta en "Oferta enviada" y sigue viendo otras.
  */
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -26,22 +26,25 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { getApiErrorMessage } from '@/core/errors/apiError';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 import { DriverSearchMap } from '@/features/driver/presentation/DriverSearchMap';
-import { DriverTopBar } from '@/features/driver/presentation/DriverTopBar';
 import { OfferSentOverlay } from '@/features/driver/presentation/OfferSentOverlay';
 import { RadarPulse } from '@/features/driver/presentation/RadarPulse';
 import { RequestCard } from '@/features/driver/presentation/RequestCard';
 import { SolicitudesMapa } from '@/features/driver/presentation/SolicitudesMapa';
 import { ViajeEnCursoConductorScreen } from '@/features/driver/presentation/ViajeEnCursoConductorScreen';
 import { useWatchPosition, type WatchedPosition } from '@/features/home/application/useWatchPosition';
-import { useDriverEarnings } from '@/features/rides/application/useCloseFlow';
-import { useCreateOffer, useSetOnline, useWithdrawOffer } from '@/features/rides/application/useRideMutations';
+import {
+  useCreateOffer,
+  useDismissOpenRide,
+  useSetOnline,
+  useWithdrawOffer,
+} from '@/features/rides/application/useRideMutations';
 import { formatBolivianos, formatBolivianosInput } from '@/features/rides/domain/money';
 import {
   useDriverActiveRide,
   useOpenRides,
   usePendingRatingRide,
 } from '@/features/rides/application/useRides';
-import type { DriverEarnings, OpenRide } from '@/features/rides/domain/types';
+import type { OpenRide } from '@/features/rides/domain/types';
 import { useAutoExpireOffers, useDriverRequests } from '@/features/driver/application/useDriverRequests';
 import { useDriverToasts } from '@/features/driver/application/useDriverToasts';
 import { FeedbackState } from '@/shared/components';
@@ -52,8 +55,38 @@ type ViewMode = 'list' | 'map';
 export function SolicitudesEntrantesScreen() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
-  const setOnline = useSetOnline();
-  const [online, setOnlineState] = useState(user?.isOnline ?? false);
+  const online = user?.isOnline ?? false;
+  const { mutate: setDriverOnline, isPending: isSettingOnline } = useSetOnline();
+  const automaticActivationFor = useRef<string | null>(null);
+  const [availabilityError, setAvailabilityError] = useState<string | null>(null);
+  const activateDriver = useCallback(() => {
+    if (!user) return;
+    setAvailabilityError(null);
+    setDriverOnline(true, {
+      onError: (error) => {
+        const message = getApiErrorMessage(error);
+        setAvailabilityError(message);
+        useDriverToasts.getState().push({
+          kind: 'connection_error',
+          rideId: 'availability',
+          title: 'No pudimos activar la recepción de solicitudes',
+          message,
+        });
+      },
+    });
+  }, [setDriverOnline, user]);
+
+  useEffect(() => {
+    if (!user) {
+      automaticActivationFor.current = null;
+      return;
+    }
+    if (user.isOnline || automaticActivationFor.current === user.id) return;
+
+    automaticActivationFor.current = user.id;
+    activateDriver();
+  }, [activateDriver, user]);
+
   const activeQuery = useDriverActiveRide();
   const pendingRatingQuery = usePendingRatingRide();
   const activeRide = activeQuery.ride;
@@ -74,22 +107,6 @@ export function SolicitudesEntrantesScreen() {
   const openRidesQuery = useOpenRides(openRidesEnabled);
   const rides = openRidesQuery.rides;
   const createOffer = useCreateOffer();
-  const toggleOnline = (next: boolean) => {
-    setOnlineState(next); // optimista
-    setOnline.mutate(next, {
-      onSuccess: (value) => setOnlineState(value),
-      onError: (error) => {
-        setOnlineState(!next);
-        useDriverToasts.getState().push({
-          kind: 'connection_error',
-          rideId: 'availability',
-          title: 'No pudimos cambiar tu disponibilidad',
-          message: getApiErrorMessage(error),
-        });
-      },
-    });
-  };
-  const { data: earnings } = useDriverEarnings(online);
   // Ubicación continua (navegación): el mapa sigue al conductor centrado en el
   // estado de búsqueda y detrás de la lista de solicitudes.
   const position = useWatchPosition();
@@ -107,6 +124,7 @@ export function SolicitudesEntrantesScreen() {
   const dismiss = useDriverRequests((s) => s.dismiss);
   const markOffered = useDriverRequests((s) => s.markOffered);
   const withdrawOffer = useWithdrawOffer();
+  const dismissOpenRide = useDismissOpenRide();
 
   const [mode, setMode] = useState<ViewMode>('list');
   const [priceInputFor, setPriceInputFor] = useState<OpenRide | null>(null);
@@ -132,7 +150,7 @@ export function SolicitudesEntrantesScreen() {
       { rideId: ride.id, input: { acceptAtFare: true } },
       {
         onSuccess: (offer) => {
-          markOffered(ride.id, offer);
+          markOffered(ride.id, offer, ride.fare);
           setOfferSent(true);
         },
         onError: (error) => {
@@ -154,7 +172,7 @@ export function SolicitudesEntrantesScreen() {
       { rideId: ride.id, input: { acceptAtFare: false, price } },
       {
         onSuccess: (offer) => {
-          markOffered(ride.id, offer);
+          markOffered(ride.id, offer, ride.fare);
           setOfferSent(true);
         },
         onError: (error) => {
@@ -185,7 +203,7 @@ export function SolicitudesEntrantesScreen() {
       { rideId: ride.id, input: { acceptAtFare: false, price: parsedCustomPrice } },
       {
         onSuccess: (offer) => {
-          markOffered(ride.id, offer);
+          markOffered(ride.id, offer, ride.fare);
           setPriceInputFor(null);
           setOfferSent(true);
         },
@@ -204,6 +222,20 @@ export function SolicitudesEntrantesScreen() {
           kind: 'connection_error',
           rideId: ride.id,
           title: 'No pudimos retirar tu oferta',
+          message: getApiErrorMessage(error),
+        });
+      },
+    });
+  };
+
+  const dismissRide = (ride: OpenRide) => {
+    dismissOpenRide.mutate(ride.id, {
+      onSuccess: () => dismiss(ride.id, ride.poolVersion),
+      onError: (error) => {
+        useDriverToasts.getState().push({
+          kind: 'connection_error',
+          rideId: ride.id,
+          title: 'No pudimos rechazar la solicitud',
           message: getApiErrorMessage(error),
         });
       },
@@ -252,23 +284,25 @@ export function SolicitudesEntrantesScreen() {
     return <ViajeEnCursoConductorScreen ride={pendingRatingRide} />;
   }
 
-  if (online && openRidesEnabled && openRidesQuery.isLoading) {
+  if (availabilityError) {
     return (
       <DriverRequestsState
-        online={online}
-        pending={setOnline.isPending}
-        onToggle={toggleOnline}
-        loading
+        error={availabilityError}
+        onRetry={() => {
+          automaticActivationFor.current = null;
+          activateDriver();
+        }}
       />
     );
   }
 
-  if (online && openRidesEnabled && openRidesQuery.isError && rides.length === 0) {
+  if (!online || isSettingOnline || (openRidesEnabled && openRidesQuery.isLoading)) {
+    return <DriverRequestsState loading loadingTitle="Preparando tus solicitudes…" />;
+  }
+
+  if (openRidesEnabled && openRidesQuery.isError && rides.length === 0) {
     return (
       <DriverRequestsState
-        online={online}
-        pending={setOnline.isPending}
-        onToggle={toggleOnline}
         error={getApiErrorMessage(openRidesQuery.error)}
         onRetry={() => void openRidesQuery.refetch()}
       />
@@ -276,19 +310,15 @@ export function SolicitudesEntrantesScreen() {
   }
 
   if (visibleRides.length === 0) {
-    return (
-      <SearchingState
-        online={online}
-        pending={setOnline.isPending}
-        onToggle={toggleOnline}
-        earnings={earnings}
-        position={position}
-      />
-    );
+    return <SearchingState position={position} />;
   }
 
-  const topBar = (
-    <DriverTopBar online={online} pending={setOnline.isPending} onToggle={toggleOnline} />
+  const requestsHeader = (
+    <RequestsHeader
+      count={visibleRides.length}
+      mode={mode}
+      onChangeMode={setMode}
+    />
   );
   const requestsWarning = openRidesQuery.isError ? (
     <TouchableOpacity
@@ -309,7 +339,7 @@ export function SolicitudesEntrantesScreen() {
           <SolicitudesMapa
             key={selectedForMap ?? 'default'}
             rides={visibleRides}
-            disabled={createOffer.isPending || withdrawOffer.isPending}
+            disabled={createOffer.isPending || withdrawOffer.isPending || dismissOpenRide.isPending}
             isOffered={isOffered}
             pendingRideId={pendingRideId}
             offeredMap={offeredMap}
@@ -320,17 +350,13 @@ export function SolicitudesEntrantesScreen() {
             initialSelectedId={selectedForMap}
             onOpenDetail={openStatus}
             onAccept={acceptAtFare}
-            onDismiss={(r) => dismiss(r.id)}
+            onDismiss={dismissRide}
             onQuickAdd={quickAdd}
             onOpenPriceInput={openPriceInput}
             onWithdraw={withdraw}
           />
           <View pointerEvents="box-none" style={styles.mapHeader}>
-            {topBar}
-            <View style={styles.headerGlass}>
-              <Text style={styles.headerText}>Solicitudes ({visibleRides.length})</Text>
-              <ViewModeToggle mode={mode} onChange={setMode} />
-            </View>
+            {requestsHeader}
             {requestsWarning}
           </View>
         </View>
@@ -342,11 +368,7 @@ export function SolicitudesEntrantesScreen() {
             retry={position.retry}
           />
           <View style={styles.scrim} pointerEvents="box-none">
-            {topBar}
-            <View style={styles.headerGlass}>
-              <Text style={styles.headerText}>Solicitudes ({visibleRides.length})</Text>
-              <ViewModeToggle mode={mode} onChange={setMode} />
-            </View>
+            {requestsHeader}
             {requestsWarning}
             {createOffer.isError && (
               <Text style={styles.error}>{getApiErrorMessage(createOffer.error)}</Text>
@@ -364,13 +386,13 @@ export function SolicitudesEntrantesScreen() {
                   expired={expired.has(item.id)}
                   paused={paused.has(item.id)}
                   taken={taken.has(item.id)}
-                  disabled={createOffer.isPending || withdrawOffer.isPending}
+                  disabled={createOffer.isPending || withdrawOffer.isPending || dismissOpenRide.isPending}
                   pendingAccept={pendingRideId === item.id}
                   offerExpiresAt={offeredMap[item.id]?.expiresAt ?? null}
                   offerPrice={offeredMap[item.id]?.price ?? null}
                   onPress={() => openInMap(item)}
                   onAccept={() => acceptAtFare(item)}
-                  onDismiss={() => dismiss(item.id)}
+                  onDismiss={() => dismissRide(item)}
                   onQuickAdd={(delta) => quickAdd(item, delta)}
                   onOpenPriceInput={() => openPriceInput(item)}
                   onWithdraw={() => withdraw(item)}
@@ -480,27 +502,23 @@ function DriverFlowRecovery({
 }
 
 function DriverRequestsState({
-  online,
-  pending,
-  onToggle,
   loading = false,
+  loadingTitle,
   error,
   onRetry,
 }: {
-  online: boolean;
-  pending: boolean;
-  onToggle: (next: boolean) => void;
   loading?: boolean;
+  loadingTitle?: string;
   error?: string;
   onRetry?: () => void;
 }) {
   return (
     <SafeAreaView style={styles.requestsState} edges={['bottom']}>
-      <DriverTopBar online={online} pending={pending} onToggle={onToggle} />
+      <RequestsHeader count={0} />
       <FeedbackState
         loading={loading}
         icon="cloud-offline-outline"
-        title={loading ? 'Cargando solicitudes…' : 'No pudimos cargar las solicitudes'}
+        title={loading ? (loadingTitle ?? 'Cargando solicitudes…') : 'No pudimos cargar las solicitudes'}
         message={error}
         actionLabel={onRetry ? 'Reintentar' : undefined}
         onAction={onRetry}
@@ -509,91 +527,58 @@ function DriverRequestsState({
   );
 }
 
-/** Estado "Buscando viajes" (sin solicitudes). */
+/** Estado sin solicitudes: mapa y radar. */
 function SearchingState({
-  online,
-  pending,
-  onToggle,
-  earnings,
   position,
 }: {
-  online: boolean;
-  pending: boolean;
-  onToggle: (next: boolean) => void;
-  earnings: DriverEarnings | undefined;
   position: WatchedPosition;
 }) {
-  const locationReady = position.status === 'granted' && position.coordinates != null;
   return (
     <View style={styles.root}>
       <DriverSearchMap coordinates={position.coordinates} status={position.status} retry={position.retry} />
       <View style={styles.scrim} pointerEvents="box-none">
-        <DriverTopBar online={online} pending={pending} onToggle={onToggle} />
-
-        <View style={styles.statusPillWrap} pointerEvents="none">
-          <View style={styles.statusPill}>
-            <Ionicons
-              name={online && locationReady ? 'pulse' : 'cloud-offline-outline'}
-              size={16}
-              color={online && locationReady ? colors.success : colors.textSecondary}
-            />
-            <Text style={styles.statusPillText}>
-              {online
-                ? locationReady
-                  ? 'Buscando viajes cercanos…'
-                  : 'Ubicación necesaria'
-                : 'Estás desconectado'}
-            </Text>
-          </View>
-        </View>
+        <RequestsHeader count={0} />
 
         {/* Pulso centrado: el mapa sigue al conductor centrado, así que coincide
             con su ubicación. El ícono rota según el rumbo del vehículo. */}
-        {online && position.coordinates && (
+        {position.coordinates && (
           <View style={styles.radarLayer} pointerEvents="none">
             <RadarPulse heading={position.heading} />
           </View>
         )}
-
-        <SafeAreaView edges={['bottom']} style={styles.sheetWrap}>
-          <View style={styles.sheet}>
-            <View style={styles.sheetHandle} />
-            <Text style={styles.sheetTitle}>
-              {online ? (locationReady ? 'Buscando viajes' : 'Activa tu ubicación') : 'Desconectado'}
-            </Text>
-            <Text style={styles.sheetSubtitle}>
-              {online
-                ? locationReady
-                  ? 'Búsqueda activa en curso'
-                  : 'La ubicación permite recibir solicitudes cercanas'
-                : 'Conéctate para recibir solicitudes'}
-            </Text>
-
-            <View style={styles.statsCard}>
-              <View style={styles.statsHeader}>
-                <Text style={styles.statsLabel}>Rendimiento de hoy</Text>
-                <Ionicons name="stats-chart" size={16} color={colors.primary} />
-              </View>
-              <View style={styles.statsRow}>
-                <View style={styles.statItem}>
-                  <Text style={styles.statValue}>
-                    {earnings ? String(earnings.tripsToday) : '—'}
-                  </Text>
-                  <Text style={styles.statCaption}>Viajes completados</Text>
-                </View>
-                <View style={styles.statDivider} />
-                <View style={styles.statItem}>
-                  <Text style={styles.statValue}>
-                    {earnings ? `Bs ${formatBolivianos(earnings.totalToday)}` : '—'}
-                  </Text>
-                  <Text style={styles.statCaption}>Ganancias</Text>
-                </View>
-              </View>
-            </View>
-          </View>
-        </SafeAreaView>
       </View>
     </View>
+  );
+}
+
+function RequestsHeader({
+  count,
+  mode,
+  onChangeMode,
+}: {
+  count: number;
+  mode?: ViewMode;
+  onChangeMode?: (mode: ViewMode) => void;
+}) {
+  const hasModeSwitch = mode != null && onChangeMode != null;
+  return (
+    <SafeAreaView edges={['top']} style={styles.requestsHeaderSafe} pointerEvents="box-none">
+      <View style={styles.requestsHeader}>
+        <View style={styles.requestsHeaderRow}>
+          <View style={styles.requestsHeaderText}>
+            <Text style={styles.requestsTitle}>Solicitudes</Text>
+            <Text style={styles.requestsSubtitle}>
+              {count === 0
+                ? 'Esperando nuevas solicitudes'
+                : count === 1
+                  ? '1 viaje disponible'
+                  : `${count} viajes disponibles`}
+            </Text>
+          </View>
+          {hasModeSwitch && <ViewModeToggle mode={mode} onChange={onChangeMode} />}
+        </View>
+      </View>
+    </SafeAreaView>
   );
 }
 
@@ -605,7 +590,7 @@ function ViewModeToggle({
   onChange: (mode: ViewMode) => void;
 }) {
   return (
-    <View style={styles.toggle}>
+    <View style={styles.toggle} accessibilityRole="tablist">
       <ToggleButton
         icon="list"
         label="Lista"
@@ -637,10 +622,10 @@ function ToggleButton({
     <TouchableOpacity
       style={[styles.toggleBtn, active && styles.toggleBtnActive]}
       onPress={onPress}
-      accessibilityRole="button"
+      accessibilityRole="tab"
       accessibilityState={{ selected: active }}
       accessibilityLabel={`Ver en ${label.toLowerCase()}`}>
-      <Ionicons name={icon} size={14} color={active ? colors.textOnPrimary : colors.textSecondary} />
+      <Ionicons name={icon} size={14} color={active ? colors.primary : colors.textSecondary} />
       <Text style={[styles.toggleText, active && styles.toggleTextActive]}>{label}</Text>
     </TouchableOpacity>
   );
@@ -683,12 +668,12 @@ const styles = StyleSheet.create({
 
   // Estado "con solicitudes" — modo lista (sobre el mapa de fondo).
   list: { flex: 1 },
-  listContent: { paddingHorizontal: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxl },
+  listContent: { paddingHorizontal: spacing.sm, gap: spacing.sm, paddingBottom: spacing.xxl },
   error: {
     color: colors.danger,
     fontSize: fontSize.sm,
     textAlign: 'center',
-    marginHorizontal: spacing.lg,
+    marginHorizontal: spacing.sm,
     marginBottom: spacing.xs,
   },
   priceModalBackdrop: {
@@ -729,32 +714,37 @@ const styles = StyleSheet.create({
     right: 0,
     gap: spacing.xs,
   },
-  headerGlass: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginHorizontal: spacing.md,
+  requestsHeaderSafe: {},
+  requestsHeader: {
+    marginHorizontal: spacing.sm,
     marginTop: spacing.xs,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.sm + 4,
     paddingVertical: spacing.sm,
-    borderRadius: radius.pill,
-    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderRadius: radius.md,
+    backgroundColor: 'rgba(255,255,255,0.94)',
     borderWidth: 1,
     borderColor: 'rgba(226,228,232,0.7)',
     shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 5,
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
   },
-  headerText: { fontSize: fontSize.md, fontWeight: fontWeight.bold, color: colors.text },
-  requestsWarning: {
-    minHeight: 44,
+  requestsHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    marginHorizontal: spacing.md,
-    paddingHorizontal: spacing.md,
+  },
+  requestsHeaderText: { flex: 1 },
+  requestsTitle: { fontSize: fontSize.md, fontWeight: fontWeight.bold, color: colors.text },
+  requestsSubtitle: { marginTop: 2, fontSize: fontSize.xs, color: colors.textSecondary },
+  requestsWarning: {
+    minHeight: 40,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginHorizontal: spacing.sm,
+    paddingHorizontal: spacing.sm + 4,
     borderRadius: radius.md,
     backgroundColor: '#FDECEA',
     borderWidth: 1,
@@ -764,43 +754,32 @@ const styles = StyleSheet.create({
 
   // Toggle Lista/Mapa.
   toggle: {
+    width: 116,
     flexDirection: 'row',
+    minHeight: 38,
     padding: 3,
-    borderRadius: radius.pill,
+    borderRadius: radius.sm,
     backgroundColor: colors.surfaceMuted,
-    gap: 2,
+    gap: spacing.xs,
   },
   toggleBtn: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: spacing.xs,
-    paddingHorizontal: spacing.sm + 2,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.pill,
+    borderRadius: radius.sm,
   },
-  toggleBtnActive: { backgroundColor: colors.primary },
-  toggleText: { fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: colors.textSecondary },
-  toggleTextActive: { color: colors.textOnPrimary },
-
-  // Estado vacío: status pill + radar + hoja.
-  statusPillWrap: { alignItems: 'center', marginTop: spacing.md },
-  statusPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs + 2,
-    borderRadius: radius.pill,
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    borderWidth: 1,
-    borderColor: 'rgba(226,228,232,0.7)',
+  toggleBtnActive: {
+    backgroundColor: colors.surface,
     shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 5,
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
   },
-  statusPillText: { fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.text },
+  toggleText: { fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: colors.textSecondary },
+  toggleTextActive: { color: colors.primary },
 
   radarLayer: {
     position: 'absolute',
@@ -812,61 +791,4 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  sheetWrap: { position: 'absolute', bottom: 0, left: 0, right: 0 },
-  sheet: {
-    marginHorizontal: spacing.md,
-    marginBottom: spacing.md,
-    padding: spacing.lg,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surface,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: -3 },
-    elevation: 12,
-    gap: spacing.xs,
-  },
-  sheetHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: radius.pill,
-    backgroundColor: colors.border,
-    alignSelf: 'center',
-    marginBottom: spacing.xs,
-  },
-  sheetTitle: { fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.text, textAlign: 'center' },
-  sheetSubtitle: {
-    fontSize: fontSize.xs,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: spacing.xs,
-  },
-
-  statsCard: {
-    backgroundColor: 'rgba(22,48,140,0.05)',
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: 'rgba(22,48,140,0.15)',
-    padding: spacing.md,
-    gap: spacing.sm,
-  },
-  statsHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  statsLabel: {
-    fontSize: fontSize.xs,
-    color: colors.textSecondary,
-    fontWeight: fontWeight.semibold,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  statsRow: { flexDirection: 'row', alignItems: 'center' },
-  statItem: { flex: 1 },
-  statValue: { fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.primary },
-  statCaption: { fontSize: fontSize.xs, color: colors.textSecondary, marginTop: 2 },
-  statDivider: { width: 1, alignSelf: 'stretch', backgroundColor: 'rgba(22,48,140,0.12)', marginHorizontal: spacing.md },
 });

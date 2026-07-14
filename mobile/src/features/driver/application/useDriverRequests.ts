@@ -1,8 +1,9 @@
 /**
- * Estado local del conductor sobre las solicitudes abiertas (zustand).
+ * Estado de pantalla del conductor sobre las solicitudes abiertas (zustand).
  *
- * El backend no tiene "rechazo" de solicitud por parte del conductor: descartar
- * es un gesto del cliente para ocultar de su lista las que no le interesan.
+ * Al descartar, el backend guarda la versión de la solicitud para ese conductor.
+ * Este store conserva el reflejo inmediato mientras llega la confirmación y evita
+ * que un evento WebSocket repetido vuelva a mostrarla.
  *
  * `offered` recuerda la oferta enviada a cada solicitud (id, precio, ETA y
  * expiración 30 s) **mientras siga viva**. Los demás conjuntos marcan el
@@ -23,6 +24,8 @@ import { create } from 'zustand';
 export type SentOffer = {
   offerId: string;
   price: number;
+  /** Tarifa del pasajero cuando se envió la oferta; detecta renovaciones. */
+  rideFare: number;
   etaMin: number | null;
   expiresAt: string;
 };
@@ -30,7 +33,8 @@ export type SentOffer = {
 const FALLBACK_TTL_MS = 30_000;
 
 type DriverRequestsState = {
-  dismissed: Set<string>;
+  /** Versión descartada de cada solicitud; evita revivirla por un WS repetido. */
+  dismissed: Map<string, number>;
   offered: Record<string, SentOffer>;
   /** Oferta rechazada por el pasajero, o viaje cancelado (puede reofertar). */
   rejected: Set<string>;
@@ -38,12 +42,15 @@ type DriverRequestsState = {
   taken: Set<string>;
   /** Oferta que venció (30 s) sin respuesta del pasajero. */
   expired: Set<string>;
+  /** Tarifa vigente al expirar cada oferta; persiste el contexto para reconexión. */
+  expiredFares: Record<string, number>;
   /** Solicitud pausada por el pasajero (modificándola). */
   paused: Set<string>;
-  dismiss: (rideId: string) => void;
+  dismiss: (rideId: string, poolVersion: number) => void;
   markOffered: (
     rideId: string,
     offer: { id: string; price: number; etaMin: number | null; expiresAt: string | null },
+    rideFare?: number,
   ) => void;
   /** Reemplaza solo las ofertas vivas con el snapshot autoritativo del backend. */
   reconcileOffered: (
@@ -61,8 +68,8 @@ type DriverRequestsState = {
   markPaused: (rideId: string) => void;
   /** Saca una solicitud del set `paused` sin tocar el resto (al volver al pool). */
   clearPaused: (rideId: string) => void;
-  /** Saca una solicitud del set `dismissed` (al volver renovada al pool). */
-  clearDismissed: (rideId: string) => void;
+  /** Saca el descarte solo si el pasajero publicó una versión más nueva. */
+  clearDismissedBefore: (rideId: string, poolVersion: number) => void;
   /** Saca una solicitud del set `expired` (la oferta previa caducó; el ride se renovó). */
   clearExpired: (rideId: string) => void;
   /** Saca una solicitud del set `rejected` (la oferta previa fue rechazada; el ride se renovó). */
@@ -76,14 +83,16 @@ type DriverRequestsState = {
 };
 
 export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
-  dismissed: new Set(),
+  dismissed: new Map(),
   offered: {},
   rejected: new Set(),
   taken: new Set(),
   expired: new Set(),
+  expiredFares: {},
   paused: new Set(),
-  dismiss: (rideId) => set((s) => ({ dismissed: new Set(s.dismissed).add(rideId) })),
-  markOffered: (rideId, offer) =>
+  dismiss: (rideId, poolVersion) =>
+    set((s) => ({ dismissed: new Map(s.dismissed).set(rideId, poolVersion) })),
+  markOffered: (rideId, offer, rideFare = offer.price) =>
     set((s) => {
       // Volver a ofertar limpia cualquier desenlace previo de esa solicitud.
       const rejected = new Set(s.rejected);
@@ -92,6 +101,8 @@ export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
       taken.delete(rideId);
       const expired = new Set(s.expired);
       expired.delete(rideId);
+      const expiredFares = { ...s.expiredFares };
+      delete expiredFares[rideId];
       const paused = new Set(s.paused);
       paused.delete(rideId);
       return {
@@ -100,6 +111,7 @@ export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
           [rideId]: {
             offerId: offer.id,
             price: offer.price,
+            rideFare,
             etaMin: offer.etaMin,
             // Sin fecha del backend, asumimos la ventana de oferta (30 s) desde ahora.
             expiresAt: offer.expiresAt ?? new Date(Date.now() + FALLBACK_TTL_MS).toISOString(),
@@ -108,6 +120,7 @@ export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
         rejected,
         taken,
         expired,
+        expiredFares,
         paused,
       };
     }),
@@ -124,6 +137,7 @@ export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
         offered[offer.rideId] = {
           offerId: offer.id,
           price: offer.price,
+          rideFare: offer.price,
           etaMin: offer.etaMin,
           expiresAt,
         };
@@ -134,14 +148,16 @@ export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
       const rejected = new Set(s.rejected);
       const taken = new Set(s.taken);
       const expired = new Set(s.expired);
+      const expiredFares = { ...s.expiredFares };
       const paused = new Set(s.paused);
       for (const rideId of liveRideIds) {
         rejected.delete(rideId);
         taken.delete(rideId);
         expired.delete(rideId);
+        delete expiredFares[rideId];
         paused.delete(rideId);
       }
-      return { offered, rejected, taken, expired, paused };
+      return { offered, rejected, taken, expired, expiredFares, paused };
     }),
   // Cada desenlace limpia la entrada de `offered` (sin zombies) y crea sets nuevos
   // para que los selectores re-rendericen.
@@ -160,8 +176,11 @@ export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
   markExpired: (rideId) =>
     set((s) => {
       const offered = { ...s.offered };
+      const rideFare = offered[rideId]?.rideFare;
       delete offered[rideId];
-      return { offered, expired: new Set(s.expired).add(rideId) };
+      const expiredFares = { ...s.expiredFares };
+      if (rideFare != null) expiredFares[rideId] = rideFare;
+      return { offered, expired: new Set(s.expired).add(rideId), expiredFares };
     }),
   markPaused: (rideId) =>
     set((s) => {
@@ -176,19 +195,22 @@ export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
       paused.delete(rideId);
       return { paused };
     }),
-  clearDismissed: (rideId) =>
+  clearDismissedBefore: (rideId, poolVersion) =>
     set((s) => {
-      if (!s.dismissed.has(rideId)) return s;
-      const dismissed = new Set(s.dismissed);
+      const dismissedVersion = s.dismissed.get(rideId);
+      if (dismissedVersion == null || dismissedVersion >= poolVersion) return s;
+      const dismissed = new Map(s.dismissed);
       dismissed.delete(rideId);
       return { dismissed };
     }),
   clearExpired: (rideId) =>
     set((s) => {
-      if (!s.expired.has(rideId)) return s;
+      if (!s.expired.has(rideId) && s.expiredFares[rideId] == null) return s;
       const expired = new Set(s.expired);
       expired.delete(rideId);
-      return { expired };
+      const expiredFares = { ...s.expiredFares };
+      delete expiredFares[rideId];
+      return { expired, expiredFares };
     }),
   clearRejected: (rideId) =>
     set((s) => {
@@ -207,11 +229,13 @@ export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
       taken.delete(rideId);
       const expired = new Set(s.expired);
       expired.delete(rideId);
+      const expiredFares = { ...s.expiredFares };
+      delete expiredFares[rideId];
       const paused = new Set(s.paused);
       paused.delete(rideId);
-      const dismissed = new Set(s.dismissed);
+      const dismissed = new Map(s.dismissed);
       dismissed.delete(rideId);
-      return { offered, rejected, taken, expired, paused, dismissed };
+      return { offered, rejected, taken, expired, expiredFares, paused, dismissed };
     }),
   getOffer: (rideId) => get().offered[rideId] ?? null,
   isDismissed: (rideId) => get().dismissed.has(rideId),
@@ -229,11 +253,12 @@ export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
   },
   reset: () =>
     set({
-      dismissed: new Set(),
+      dismissed: new Map(),
       offered: {},
       rejected: new Set(),
       taken: new Set(),
       expired: new Set(),
+      expiredFares: {},
       paused: new Set(),
     }),
 }));

@@ -73,6 +73,8 @@ def _receive_driver_handshake(ws) -> tuple[dict, dict]:
     """Consume el handshake autoritativo del conductor en su orden contractual."""
     open_rides = ws.receive_json()
     assert open_rides["type"] == "open_rides_snapshot"
+    paused_rides = ws.receive_json()
+    assert paused_rides["type"] == "paused_rides_snapshot"
     offers = ws.receive_json()
     assert offers["type"] == "driver_offers_snapshot"
     return open_rides, offers

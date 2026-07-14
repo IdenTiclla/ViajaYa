@@ -102,6 +102,7 @@ export type OpenRideDto = {
   origin: PointDto;
   destination: PointDto;
   rider: OpenRideRiderDto;
+  pool_version: number;
   created_at: string | null;
 };
 
@@ -119,6 +120,7 @@ export function toOpenRide(dto: OpenRideDto): OpenRide {
       rating: dto.rider.rating,
       tripsCompleted: dto.rider.trips_completed,
     },
+    poolVersion: dto.pool_version,
     createdAt: dto.created_at,
   };
 }
@@ -270,6 +272,10 @@ export const ridesRepository = {
   async getOpenRides(): Promise<OpenRide[]> {
     const { data } = await api.get<OpenRideDto[]>('/rides/open');
     return data.map(toOpenRide);
+  },
+
+  async dismissOpenRide(rideId: string): Promise<void> {
+    await api.post(`/rides/${rideId}/dismiss`);
   },
 
   async getEarnings(): Promise<DriverEarnings> {

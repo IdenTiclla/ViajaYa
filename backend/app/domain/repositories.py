@@ -174,11 +174,24 @@ class RideRequestRepository(ABC):
 
     @abstractmethod
     async def list_open_with_rider_for_vehicle(
-        self, vehicle_type: VehicleType
+        self, vehicle_type: VehicleType, *, driver_id: uuid.UUID | None = None
     ) -> list[OpenRideDetail]:
         """Solicitudes compatibles enriquecidas con el resumen del pasajero
         (nombre, rating y viajes completados), en **una sola query** (JOIN +
-        conteo, sin N+1). Orden: de la más nueva a la más vieja."""
+        conteo, sin N+1). Si se recibe ``driver_id``, excluye las versiones que
+        ese conductor ocultó. Orden: de la más nueva a la más vieja."""
+
+    @abstractmethod
+    async def dismiss_open_ride_for_driver(
+        self, driver_id: uuid.UUID, ride_id: uuid.UUID, pool_version: int
+    ) -> None:
+        """Guarda que el conductor ocultó esta versión de la solicitud."""
+
+    @abstractmethod
+    async def list_paused_with_rider_for_driver(
+        self, driver_id: uuid.UUID
+    ) -> list[OpenRideDetail]:
+        """Solicitudes pausadas sobre las que el conductor ya había ofertado."""
 
     @abstractmethod
     async def rider_summary(self, rider_id: uuid.UUID) -> RiderSummary | None:

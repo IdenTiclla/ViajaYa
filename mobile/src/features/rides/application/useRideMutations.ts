@@ -62,6 +62,13 @@ export function useWithdrawOffer() {
   });
 }
 
+/** Conductor: deja de ver una solicitud hasta que el pasajero la renueve. */
+export function useDismissOpenRide() {
+  return useMutation({
+    mutationFn: (rideId: string) => ridesRepository.dismissOpenRide(rideId),
+  });
+}
+
 /** Pasajero: rechaza una oferta concreta (sin asignar conductor). */
 export function useRejectOffer() {
   const queryClient = useQueryClient();

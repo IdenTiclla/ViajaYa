@@ -18,8 +18,11 @@ export function useRoute(
     queryKey: ['route', o?.latitude, o?.longitude, d?.latitude, d?.longitude],
     queryFn: () => fetchRoute(o!, d!),
     enabled: Boolean(o && d),
+    // Al cambiar alguno de los puntos no reutilizamos visualmente la ruta
+    // previa mientras se obtiene la nueva.
+    placeholderData: undefined,
     staleTime: 5 * 60_000,
   });
 
-  return { route: query.data ?? null, isLoading: query.isPending };
+  return { route: query.data ?? null, isLoading: query.isFetching };
 }

@@ -15,6 +15,7 @@ from app.api.deps import (
     get_cancel_ride,
     get_create_offer,
     get_create_ride_request,
+    get_dismiss_open_ride,
     get_edit_ride,
     get_get_ride,
     get_list_offers_for_ride,
@@ -57,6 +58,7 @@ from app.application.use_cases.accept_offer import AcceptOffer
 from app.application.use_cases.cancel_ride import CancelRide
 from app.application.use_cases.create_offer import CreateOffer
 from app.application.use_cases.create_ride_request import CreateRideRequest
+from app.application.use_cases.dismiss_open_ride import DismissOpenRide
 from app.application.use_cases.edit_ride import EditRide
 from app.application.use_cases.expire_offer import ExpireOffer
 from app.application.use_cases.get_passenger_active_ride import GetPassengerActiveRide
@@ -160,6 +162,17 @@ async def open_rides(
     """
     details = await use_case.execute(current_user)
     return [OpenRideResponse.from_open_ride(detail) for detail in present_rides(details)]
+
+
+@router.post("/{ride_id}/dismiss", status_code=status.HTTP_204_NO_CONTENT)
+async def dismiss_open_ride(
+    ride_id: uuid.UUID,
+    current_user: CurrentUserDep,
+    use_case: Annotated[DismissOpenRide, Depends(get_dismiss_open_ride)],
+) -> Response:
+    """Oculta para este conductor la versión vigente de una solicitud abierta."""
+    await use_case.execute(current_user, ride_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post(

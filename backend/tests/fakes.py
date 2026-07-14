@@ -103,6 +103,7 @@ class InMemoryUserRepository(UserRepository):
 class InMemoryRideRequestRepository(RideRequestRepository):
     def __init__(self, users: InMemoryUserRepository | None = None) -> None:
         self.rides: list[RideRequest] = []
+        self.dismissals: dict[tuple[uuid.UUID, uuid.UUID], int] = {}
         # Opcional: para construir el resumen del pasajero con sus datos reales.
         self._users = users
 
@@ -194,7 +195,7 @@ class InMemoryRideRequestRepository(RideRequestRepository):
         ]
 
     async def list_open_with_rider_for_vehicle(
-        self, vehicle_type: VehicleType
+        self, vehicle_type: VehicleType, *, driver_id: uuid.UUID | None = None
     ) -> list[OpenRideDetail]:
         return [
             self._detail_for(r)
@@ -202,7 +203,23 @@ class InMemoryRideRequestRepository(RideRequestRepository):
             if r.service_type in services_for_vehicle(vehicle_type)
             and r.status is RideStatus.SEARCHING
             and not r.paused
+            and (
+                driver_id is None
+                or self.dismissals.get((driver_id, r.id)) != r.pool_version
+            )
         ]
+
+    async def dismiss_open_ride_for_driver(
+        self, driver_id: uuid.UUID, ride_id: uuid.UUID, pool_version: int
+    ) -> None:
+        self.dismissals[(driver_id, ride_id)] = pool_version
+
+    async def list_paused_with_rider_for_driver(
+        self, driver_id: uuid.UUID
+    ) -> list[OpenRideDetail]:
+        # El fake no persiste ofertas por conductor; este snapshot es exclusivo
+        # de reconexión del WebSocket y no interviene en los casos de uso unitarios.
+        return []
 
     async def rider_summary(self, rider_id: uuid.UUID) -> RiderSummary | None:
         if self._users is None:

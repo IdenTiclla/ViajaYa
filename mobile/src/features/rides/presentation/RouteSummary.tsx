@@ -1,6 +1,6 @@
 /**
  * Resumen de ruta (origen → destino) que se muestra ARRIBA en las pantallas de
- * viaje, separado del bottom sheet. Pin **A** (origen, "Punto de partida") y pin
+ * viaje, separado del bottom sheet. Pin **A** (origen) y pin
  * **B** (destino), con sus nombres; opcionalmente botones "Editar" (p. ej. para
  * que el pasajero ajuste origen/destino al configurar el viaje).
  *
@@ -34,12 +34,12 @@ export function RouteSummary({ origin, destination, onEditOrigin, onEditDestinat
       <View style={styles.texts}>
         <View style={styles.row}>
           <View style={styles.rowHeader}>
-            <Text style={styles.label}>Punto de partida</Text>
+            <Text style={styles.label}>Origen:</Text>
             {onEditOrigin && (
               <TouchableOpacity
                 onPress={onEditOrigin}
                 accessibilityRole="button"
-                accessibilityLabel="Editar punto de partida">
+                accessibilityLabel="Editar origen">
                 <Text style={styles.edit}>Editar</Text>
               </TouchableOpacity>
             )}
@@ -50,7 +50,7 @@ export function RouteSummary({ origin, destination, onEditOrigin, onEditDestinat
         </View>
         <View style={styles.row}>
           <View style={styles.rowHeader}>
-            <Text style={styles.label}>Punto de destino</Text>
+            <Text style={styles.label}>Destino:</Text>
             {onEditDestination && (
               <TouchableOpacity
                 onPress={onEditDestination}

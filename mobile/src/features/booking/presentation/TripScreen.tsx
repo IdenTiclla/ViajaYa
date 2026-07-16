@@ -1,6 +1,6 @@
 /**
  * Viaje en curso (pasajero) — seguimiento con mapa (diseño Stitch
- * "Seguimiento del Viaje" / "Conductor en Punto de Partida").
+ * "Seguimiento del Viaje" / "Conductor en el origen").
  *
  * Muestra el trayecto en el mapa y una tarjeta inferior con el conductor
  * asignado (vehículo, rating, placa) y acciones Mensaje / Llamar / Compartir.

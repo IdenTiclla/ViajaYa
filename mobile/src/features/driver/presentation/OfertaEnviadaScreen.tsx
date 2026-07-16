@@ -409,13 +409,13 @@ export function OfertaEnviadaScreen() {
             </View>
             <View style={styles.routeText}>
               <View>
-                <Text style={styles.routeLabel}>Punto de encuentro</Text>
+                <Text style={styles.routeLabel}>Origen:</Text>
                 <Text style={styles.routeValue} numberOfLines={1}>
                   {openRide?.origin.name ?? '—'}
                 </Text>
               </View>
               <View>
-                <Text style={styles.routeLabel}>Destino</Text>
+                <Text style={styles.routeLabel}>Destino:</Text>
                 <Text style={styles.routeValue} numberOfLines={1}>
                   {openRide?.destination.name ?? '—'}
                 </Text>

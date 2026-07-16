@@ -9,7 +9,7 @@ import { create } from 'zustand';
 import type { PaymentMethod, Place, ServiceType } from '@/features/booking/domain/types';
 
 type BookingState = {
-  /** Punto de partida; lo fija el mapa del Home al mover la cámara. */
+  /** Origen; lo fija el mapa del Home al mover la cámara. */
   origin: Place | null;
   /** Destino; lo fija la lista de recientes o el selector en mapa. */
   destination: Place | null;

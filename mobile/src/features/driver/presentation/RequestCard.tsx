@@ -211,24 +211,17 @@ export function RequestCard({
         )}
 
         <View style={styles.route}>
-          <View style={styles.routeDots}>
-            <View style={styles.dotA} />
-            <View style={styles.trackLine} />
-            <View style={styles.dotB} />
+          <View style={styles.routeStop}>
+            <Text style={styles.routeLabel}>ORIGEN</Text>
+            <Text style={styles.routeText} numberOfLines={1}>
+              {ride.origin.name}
+            </Text>
           </View>
-          <View style={styles.routeTexts}>
-            <View>
-              <Text style={styles.routeLabel}>RECOGIDA</Text>
-              <Text style={styles.routeText} numberOfLines={1}>
-                {ride.origin.name}
-              </Text>
-            </View>
-            <View>
-              <Text style={styles.routeLabel}>DESTINO</Text>
-              <Text style={[styles.routeText, styles.routeDest]} numberOfLines={1}>
-                {ride.destination.name} · {formatKm(tripKm)}
-              </Text>
-            </View>
+          <View style={styles.routeStop}>
+            <Text style={styles.routeLabel}>DESTINO</Text>
+            <Text style={[styles.routeText, styles.routeDestination]} numberOfLines={1}>
+              {ride.destination.name} · {formatKm(tripKm)}
+            </Text>
           </View>
         </View>
 
@@ -477,15 +470,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  route: { flexDirection: 'row', gap: spacing.sm },
-  routeDots: { alignItems: 'center', gap: 3, paddingTop: 3 },
-  dotA: { width: 10, height: 10, borderRadius: radius.pill, backgroundColor: colors.primary },
-  trackLine: { width: 2, height: 16, backgroundColor: colors.border },
-  dotB: { width: 10, height: 10, borderRadius: 2, backgroundColor: colors.danger },
-  routeTexts: { flex: 1, gap: spacing.sm },
-  routeLabel: { fontSize: 10, color: colors.textSecondary, fontWeight: fontWeight.bold, letterSpacing: 0.5, marginBottom: 1 },
+  route: { flexDirection: 'row', gap: spacing.md },
+  routeStop: { flex: 1, minWidth: 0 },
+  routeLabel: {
+    fontSize: 10,
+    color: colors.textSecondary,
+    fontWeight: fontWeight.bold,
+    letterSpacing: 0.5,
+    marginBottom: 1,
+  },
   routeText: { fontSize: fontSize.sm, color: colors.text },
-  routeDest: { fontWeight: fontWeight.semibold },
+  routeDestination: { fontWeight: fontWeight.semibold },
 
   cardActions: { flexDirection: 'row', gap: spacing.sm },
   actionBtn: {

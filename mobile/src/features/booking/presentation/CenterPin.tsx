@@ -17,7 +17,9 @@ export function CenterPin({ label, color = colors.primary }: { label: string; co
     <View style={styles.overlay} pointerEvents="none">
       <View style={styles.block}>
         <View style={styles.callout}>
-          <Text style={styles.calloutText}>{label}</Text>
+          <Text style={styles.calloutText} numberOfLines={1} ellipsizeMode="tail">
+            {label}
+          </Text>
         </View>
         <Ionicons name="location" size={PIN_SIZE} color={color} />
       </View>
@@ -38,6 +40,7 @@ const styles = StyleSheet.create({
   // marginBottom ≈ altura del bloque para que la punta del pin caiga en el centro.
   block: { alignItems: 'center', marginBottom: PIN_SIZE + 28 },
   callout: {
+    maxWidth: 300,
     backgroundColor: colors.text,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
@@ -48,5 +51,6 @@ const styles = StyleSheet.create({
     color: colors.textOnPrimary,
     fontSize: fontSize.xs,
     fontWeight: fontWeight.semibold,
+    textAlign: 'center',
   },
 });

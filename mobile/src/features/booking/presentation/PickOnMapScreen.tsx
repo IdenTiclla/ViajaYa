@@ -19,7 +19,7 @@ import {
   View,
 } from 'react-native';
 import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
@@ -43,6 +43,7 @@ const MIN_DESTINATION_DISTANCE_METERS = 50;
 
 export function PickOnMapScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { target, saveAs, category, id, label, rideId } = useLocalSearchParams<{
     target?: string;
     saveAs?: string;
@@ -97,6 +98,21 @@ export function PickOnMapScreen() {
     setPlace,
     isSaveAs ? 'Lugar' : isOrigin ? 'Origen' : 'Destino',
   );
+  const pointLabel = isSaveAs ? 'Lugar' : isOrigin ? 'Origen' : 'Destino';
+  const currentPointName = isResolving
+    ? 'Obteniendo lugar…'
+    : place
+      ? getPlaceStreetName(place)
+      : 'Mueve el mapa';
+  const centerPinLabel = isResolving
+    ? `${pointLabel}: Obteniendo lugar…`
+    : `${pointLabel}: ${currentPointName}`;
+  const currentPointAddress = isResolving
+    ? 'Estamos ubicando la dirección exacta'
+    : place?.address ?? `Mueve el mapa para fijar el ${noun}`;
+  const originPinLabel = usableOrigin
+    ? `Origen: ${getPlaceStreetName(usableOrigin)}`
+    : 'Origen: Sin definir';
 
   // Siembra la dirección del centro inicial. Solo dispara trabajo asíncrono
   // (el setState ocurre en el `.then`, no de forma síncrona dentro del efecto).
@@ -159,6 +175,12 @@ export function PickOnMapScreen() {
     : destinationNeedsMove || destinationTooClose
       ? 'Mueve el pin B al menos 50 metros desde el origen A.'
       : null;
+  const confirmLabel = isSaveAs
+    ? 'Usar esta ubicación'
+    : isOrigin
+      ? 'Confirmar origen'
+      : 'Confirmar destino';
+  const destinationFloatingBottom = 54 + spacing.md * 2 + spacing.sm + insets.bottom;
 
   const confirm = () => {
     if (!place || confirmDisabled) return;
@@ -217,44 +239,61 @@ export function PickOnMapScreen() {
           <RoutePinMarker
             kind="A"
             coordinate={usableOrigin.coordinates}
-            label={`Origen: ${getPlaceStreetName(usableOrigin)}`}
+            label={originPinLabel}
           />
         ) : null}
       </MapView>
 
-      <CenterPin label={isDestination ? 'Destino B' : `Fijar ${noun}`} color={pinColor} />
+      <CenterPin label={centerPinLabel} color={pinColor} />
 
       <SafeAreaView style={styles.topArea} edges={['top']} pointerEvents="box-none">
         <View style={styles.topBar}>
-          <TouchableOpacity
-            style={styles.back}
-            onPress={() => router.back()}
-            accessibilityRole="button"
-            accessibilityLabel="Volver">
-            <Ionicons name="arrow-back" size={24} color={colors.text} />
-          </TouchableOpacity>
-          <View style={styles.addressPill}>
-            <Ionicons name="location" size={18} color={pinColor} />
-            <Text style={styles.addressText} numberOfLines={1}>
-              {place?.address ?? `Mueve el mapa para fijar el ${noun}`}
-            </Text>
-          </View>
-        </View>
-        {isDestination && usableOrigin ? (
-          <View
-            style={styles.originReference}
-            accessibilityLabel={`Origen A, ${getPlaceStreetName(usableOrigin)}`}>
-            <View style={styles.originBadge}>
-              <Text style={styles.originBadgeText}>A</Text>
-            </View>
-            <View style={styles.originReferenceText}>
-              <Text style={styles.originReferenceLabel}>ORIGEN</Text>
-              <Text style={styles.originReferenceName} numberOfLines={1}>
-                {getPlaceStreetName(usableOrigin)}
+          {!isDestination && (
+            <TouchableOpacity
+              style={[styles.back, !isSaveAs && styles.backWithRoute]}
+              onPress={() => router.back()}
+              accessibilityRole="button"
+              accessibilityLabel="Volver">
+              <Ionicons name="arrow-back" size={24} color={colors.text} />
+            </TouchableOpacity>
+          )}
+          {isSaveAs ? (
+            <View style={styles.contextPill}>
+              <Ionicons name="map-outline" size={18} color={pinColor} />
+              <Text style={styles.contextText} numberOfLines={1}>
+                Ubica el lugar en el mapa
               </Text>
             </View>
-          </View>
-        ) : null}
+          ) : (
+            <View style={styles.routePoints}>
+              <SelectionPointRow
+                kind="A"
+                tooltipLabel={isOrigin ? centerPinLabel : originPinLabel}
+                address={
+                  isOrigin
+                    ? currentPointAddress
+                    : usableOrigin?.address ?? 'Origen confirmado'
+                }
+                active={isOrigin}
+              />
+              {isDestination && (
+                <>
+                  <View style={styles.routeConnection}>
+                    <View style={styles.routeConnectionLine} />
+                    <View style={styles.routeConnectionDivider} />
+                  </View>
+                  <SelectionPointRow
+                    kind="B"
+                    tooltipLabel={centerPinLabel}
+                    address={validationMessage ?? currentPointAddress}
+                    active
+                    error={validationMessage != null}
+                  />
+                </>
+              )}
+            </View>
+          )}
+        </View>
         {locationUnavailable && (
           <TouchableOpacity
             style={styles.locationWarning}
@@ -279,7 +318,10 @@ export function PickOnMapScreen() {
       </SafeAreaView>
 
       <TouchableOpacity
-        style={styles.recenter}
+        style={[
+          styles.recenter,
+          isDestination && { bottom: destinationFloatingBottom },
+        ]}
         onPress={recenter}
         accessibilityRole="button"
         accessibilityLabel={
@@ -302,38 +344,49 @@ export function PickOnMapScreen() {
         />
       </TouchableOpacity>
 
+      {isDestination && (
+        <TouchableOpacity
+          style={[styles.bottomBack, { bottom: destinationFloatingBottom }]}
+          onPress={() => router.back()}
+          accessibilityRole="button"
+          accessibilityLabel="Volver">
+          <Ionicons name="arrow-back" size={20} color={colors.primary} />
+          <Text style={styles.bottomBackText}>Volver</Text>
+        </TouchableOpacity>
+      )}
+
       <SafeAreaView style={styles.bottom} edges={['bottom']}>
-        <View style={styles.card}>
-          <Text style={styles.cardLabel}>
-            {isSaveAs ? 'NUEVO LUGAR' : isOrigin ? 'PUNTO DE PARTIDA' : 'DESTINO'}
-          </Text>
-          <Text style={styles.cardValue} numberOfLines={1}>
-            {place?.name ?? 'Mueve el mapa'}
-          </Text>
-          <Text style={styles.cardAddress} numberOfLines={1}>
-            {place?.address ?? `para fijar el ${noun}`}
-          </Text>
-          {validationMessage ? (
-            <Text style={styles.validationMessage} accessibilityLiveRegion="polite">
-              {validationMessage}
+        {!isDestination && (
+          <View style={styles.card}>
+            <Text style={styles.cardLabel}>
+              {isSaveAs ? 'NUEVO LUGAR' : `${pointLabel.toUpperCase()}:`}
             </Text>
-          ) : null}
-        </View>
+            <Text style={styles.cardValue} numberOfLines={1}>
+              {currentPointName}
+            </Text>
+            <Text style={styles.cardAddress} numberOfLines={1}>
+              {currentPointAddress}
+            </Text>
+            {validationMessage ? (
+              <Text style={styles.validationMessage} accessibilityLiveRegion="polite">
+                {validationMessage}
+              </Text>
+            ) : null}
+          </View>
+        )}
         <TouchableOpacity
           style={[styles.confirm, confirmDisabled && styles.confirmDisabled]}
           disabled={confirmDisabled}
           onPress={confirm}
           accessibilityRole="button"
           accessibilityState={{ disabled: confirmDisabled, busy: isResolving }}
-          accessibilityLabel={isSaveAs ? 'Usar esta ubicación' : 'Confirmar ubicación'}>
+          accessibilityLabel={confirmLabel}>
           <Text style={styles.confirmText}>
             {isResolving
               ? 'Obteniendo dirección…'
               : validationMessage
                 ? 'Elige otro punto'
-                : isSaveAs
-                  ? 'Usar esta ubicación'
-                  : 'Confirmar ubicación'}
+                : confirmLabel}
           </Text>
           {isResolving ? (
             <ActivityIndicator size="small" color={colors.textOnPrimary} />
@@ -342,6 +395,57 @@ export function PickOnMapScreen() {
           )}
         </TouchableOpacity>
       </SafeAreaView>
+    </View>
+  );
+}
+
+function SelectionPointRow({
+  kind,
+  tooltipLabel,
+  address,
+  active,
+  error = false,
+}: {
+  kind: 'A' | 'B';
+  tooltipLabel: string;
+  address: string;
+  active: boolean;
+  error?: boolean;
+}) {
+  return (
+    <View
+      style={[
+        styles.routePoint,
+        active &&
+          (kind === 'A' ? styles.routePointActiveOrigin : styles.routePointActiveDestination),
+      ]}
+      accessible
+      accessibilityLabel={`${tooltipLabel}. ${address}`}
+      accessibilityState={{ selected: active }}>
+      <View
+        style={[
+          styles.routePointBadge,
+          kind === 'A' ? styles.routePointBadgeOrigin : styles.routePointBadgeDestination,
+        ]}>
+        <Text style={styles.routePointBadgeText}>{kind}</Text>
+      </View>
+      <View style={styles.routePointCopy}>
+        <Text style={styles.routePointTitle} numberOfLines={2} ellipsizeMode="tail">
+          {tooltipLabel}
+        </Text>
+        <Text
+          style={[styles.routePointAddress, error && styles.routePointAddressError]}
+          numberOfLines={error ? 2 : 1}
+          ellipsizeMode="tail"
+          accessibilityLiveRegion={error ? 'polite' : 'none'}>
+          {address}
+        </Text>
+      </View>
+      <Ionicons
+        name={active ? 'locate' : 'checkmark-circle'}
+        size={20}
+        color={active ? (kind === 'A' ? colors.primary : colors.danger) : colors.success}
+      />
     </View>
   );
 }
@@ -356,13 +460,13 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.sm,
     paddingTop: spacing.sm,
     gap: spacing.sm,
   },
   topBar: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: spacing.sm,
   },
   back: {
@@ -378,7 +482,8 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 3,
   },
-  addressPill: {
+  backWithRoute: { marginTop: 11 },
+  contextPill: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
@@ -393,42 +498,77 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 3,
   },
-  addressText: { flex: 1, fontSize: fontSize.sm, color: colors.text },
-  originReference: {
-    minHeight: 44,
+  contextText: {
+    flex: 1,
+    color: colors.text,
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.semibold,
+  },
+  routePoints: {
+    flex: 1,
+    minWidth: 0,
+    padding: spacing.xs,
+    borderRadius: radius.md,
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderWidth: 1,
+    borderColor: 'rgba(226,228,232,0.85)',
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 5,
+  },
+  routePoint: {
+    minHeight: 58,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
-    borderRadius: radius.md,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderRadius: radius.sm,
   },
-  originBadge: {
-    width: 26,
-    height: 26,
+  routePointActiveOrigin: { backgroundColor: 'rgba(22,48,140,0.06)' },
+  routePointActiveDestination: { backgroundColor: 'rgba(217,45,32,0.06)' },
+  routePointBadge: {
+    width: 28,
+    height: 28,
     borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.primary,
   },
-  originBadgeText: {
+  routePointBadgeOrigin: { backgroundColor: colors.primary },
+  routePointBadgeDestination: { backgroundColor: colors.danger },
+  routePointBadgeText: {
     color: colors.textOnPrimary,
     fontSize: fontSize.xs,
     fontWeight: fontWeight.bold,
   },
-  originReferenceText: { flex: 1 },
-  originReferenceLabel: {
-    color: colors.textSecondary,
-    fontSize: 10,
-    fontWeight: fontWeight.semibold,
-  },
-  originReferenceName: {
+  routePointCopy: { flex: 1, minWidth: 0, gap: 2 },
+  routePointTitle: {
     color: colors.text,
     fontSize: fontSize.sm,
     fontWeight: fontWeight.semibold,
+    lineHeight: 18,
+  },
+  routePointAddress: { color: colors.textSecondary, fontSize: fontSize.xs, lineHeight: 16 },
+  routePointAddressError: { color: colors.danger, fontWeight: fontWeight.semibold },
+  routeConnection: {
+    height: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: spacing.sm,
+  },
+  routeConnectionLine: {
+    width: 2,
+    height: 12,
+    marginLeft: 13,
+    backgroundColor: colors.border,
+  },
+  routeConnectionDivider: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+    marginLeft: spacing.md + 1,
+    backgroundColor: colors.border,
   },
   locationWarning: {
     minHeight: 46,
@@ -466,7 +606,9 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    padding: spacing.lg,
+    paddingHorizontal: spacing.sm,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.md,
     gap: spacing.md,
     backgroundColor: colors.background,
     borderTopLeftRadius: radius.lg,
@@ -487,6 +629,33 @@ const styles = StyleSheet.create({
   cardValue: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.text },
   cardAddress: { fontSize: fontSize.sm, color: colors.textSecondary },
   validationMessage: { color: colors.danger, fontSize: fontSize.xs },
+
+  bottomBack: {
+    position: 'absolute',
+    left: spacing.sm,
+    zIndex: 13,
+    minWidth: 104,
+    height: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 13,
+  },
+  bottomBackText: {
+    color: colors.primary,
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.semibold,
+  },
 
   confirm: {
     flexDirection: 'row',

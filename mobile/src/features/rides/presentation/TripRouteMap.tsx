@@ -50,8 +50,18 @@ export function TripRouteMap({
 
   const fit = (animated: boolean) => {
     if (polyline.length < 2) return;
+    // `fitToCoordinates` solo considera las coordenadas de los pines, no las
+    // vistas personalizadas de sus tooltips. Reservamos ese espacio para que
+    // los nombres de origen y destino no se recorten contra los bordes.
+    const tooltipTopInset = showPlaceNamesInTooltip ? 44 : 0;
+    const tooltipSideInset = showPlaceNamesInTooltip ? 88 : 50;
     mapRef.current?.fitToCoordinates(polyline, {
-      edgePadding: { top: topPadding, right: 50, bottom: bottomPadding, left: 50 },
+      edgePadding: {
+        top: topPadding + tooltipTopInset,
+        right: tooltipSideInset,
+        bottom: bottomPadding,
+        left: tooltipSideInset,
+      },
       animated,
     });
   };
@@ -68,7 +78,10 @@ export function TripRouteMap({
       style={StyleSheet.absoluteFill}
       initialRegion={region}
       customMapStyle={declutteredMapStyle}
-      onMapReady={() => fit(false)}>
+      onMapReady={() => fit(false)}
+      // En algunos Android el mapa queda listo antes de recibir su tamaño final.
+      // Reencuadrar tras el layout mantiene el trayecto centrado al navegar.
+      onLayout={() => fit(false)}>
       <RoutePinMarker
         kind="A"
         coordinate={origin.coordinates}

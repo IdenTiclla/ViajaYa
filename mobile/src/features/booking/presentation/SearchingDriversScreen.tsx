@@ -68,10 +68,14 @@ export function SearchingDriversScreen({
   const [fareInput, setFareInput] = useState<string | null>(null);
   const pendingFareRef = useRef<number | null>(null);
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [sheetHeight, setSheetHeight] = useState(0);
   // Algunos Android conservan la altura reducida del KeyboardAvoidingView al
   // ocultar el teclado; al remontarlo, la hoja vuelve a anclarse abajo.
   const [keyboardAvoiderKey, setKeyboardAvoiderKey] = useState(0);
   const hasConnectionError = connectionError != null;
+  // La hoja no tiene una altura fija: medirla evita que el trayecto quede
+  // descentrado o cubierto en pantallas pequeñas y grandes.
+  const mapBottomPadding = sheetHeight > 0 ? sheetHeight + spacing.lg : 440;
 
   useEffect(() => {
     const subscription = Keyboard.addListener('keyboardDidHide', () => {
@@ -154,7 +158,8 @@ export function SearchingDriversScreen({
         <TripRouteMap
           origin={origin}
           destination={destination}
-          bottomPadding={440}
+          topPadding={160}
+          bottomPadding={mapBottomPadding}
           showPlaceNamesInTooltip
         />
       ) : (
@@ -182,7 +187,10 @@ export function SearchingDriversScreen({
           style={styles.sheetAvoider}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           pointerEvents="box-none">
-        <SafeAreaView edges={['bottom']} style={styles.sheet}>
+        <SafeAreaView
+          edges={['bottom']}
+          style={styles.sheet}
+          onLayout={(event) => setSheetHeight(event.nativeEvent.layout.height)}>
           <ScrollView
             contentContainerStyle={styles.sheetContent}
             keyboardShouldPersistTaps="handled"

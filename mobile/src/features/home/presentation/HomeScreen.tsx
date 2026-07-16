@@ -30,6 +30,7 @@ import {
   isCoordinatesInBolivia,
   isPlaceInBolivia,
 } from '@/features/booking/domain/bolivia';
+import { getPlaceStreetName } from '@/features/booking/domain/placeLabels';
 import { SERVICE_OPTIONS } from '@/features/booking/domain/serviceCatalog';
 import type { Place } from '@/features/booking/domain/types';
 import { CenterPin } from '@/features/booking/presentation/CenterPin';
@@ -100,9 +101,12 @@ export function HomeScreen() {
     () => recentPlaces.filter(isPlaceInBolivia),
     [recentPlaces],
   );
-  // Al terminar de mover el mapa, el centro pasa a ser el punto de partida.
+  // Al terminar de mover el mapa, el centro pasa a ser el origen.
   const { onRegionChangeComplete: handleRegionChange, isResolving: originResolving } =
-    useRegionPlace(setOrigin, 'Punto de partida');
+    useRegionPlace(setOrigin, 'Origen');
+  const originPinLabel = originResolving
+    ? 'Origen: Obteniendo lugar…'
+    : `Origen: ${origin ? getPlaceStreetName(origin) : 'Mueve el mapa'}`;
 
   // Empieza colapsado (mapa visible). translateY: 0 = expandido, MAX = colapsado.
   // `useState` con inicializador perezoso crea valores estables; el offset del
@@ -378,7 +382,7 @@ export function HomeScreen() {
         />
       )}
 
-      {status === 'granted' && region && <CenterPin label="Punto de partida" />}
+      {status === 'granted' && region && <CenterPin label={originPinLabel} />}
 
       <SafeAreaView style={styles.topBar} edges={['top']} pointerEvents="box-none">
         <View style={styles.brandMark} accessibilityElementsHidden>

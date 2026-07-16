@@ -45,7 +45,6 @@ import { deriveOfferTags, primaryTag, type OfferTagKind } from '@/features/rides
 import type { Offer } from '@/features/rides/domain/types';
 import { OfferLifeTimer } from '@/features/rides/presentation/OfferLifeTimer';
 import { TripRouteMap } from '@/features/rides/presentation/TripRouteMap';
-import { RouteSummary } from '@/features/rides/presentation/RouteSummary';
 import { ConfirmDialog } from '@/shared/components';
 
 const SERVICE_LABELS = { taxi: 'Taxi', moto: 'Moto' } as const;
@@ -255,7 +254,7 @@ export function OffersScreen() {
         <TripRouteMap
           origin={displayOrigin}
           destination={displayDestination}
-          topPadding={170}
+          topPadding={100}
           bottomPadding={170}
         />
       ) : (
@@ -263,14 +262,6 @@ export function OffersScreen() {
       )}
 
       <SafeAreaView edges={['top']} style={styles.overlay} pointerEvents="box-none">
-        {/* Resumen de ruta (informativo) */}
-        <View style={styles.routeWrap} pointerEvents="none">
-          <RouteSummary
-            origin={displayOrigin ?? { name: '—' }}
-            destination={displayDestination ?? { name: '—' }}
-          />
-        </View>
-
         {/* Sección "Ofertas en vivo" — sobre tarjeta glass para que se lea sobre el mapa */}
         <View style={styles.liveHeader} pointerEvents="none">
           <View style={styles.liveTitleRow}>
@@ -536,12 +527,9 @@ const styles = StyleSheet.create({
 
   overlay: { flex: 1 },
 
-  // Contenedor del resumen de ruta.
-  routeWrap: { marginHorizontal: spacing.md, marginTop: spacing.sm, marginBottom: spacing.sm },
-
   // Sección "Ofertas en vivo" sobre tarjeta glass (legible sobre el mapa).
   liveHeader: {
-    marginHorizontal: spacing.md,
+    marginHorizontal: spacing.sm,
     marginBottom: spacing.sm,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
@@ -557,7 +545,7 @@ const styles = StyleSheet.create({
 
   // Lista de tarjetas.
   list: { flex: 1 },
-  listContent: { paddingHorizontal: spacing.md, gap: spacing.md, paddingBottom: spacing.lg },
+  listContent: { paddingHorizontal: spacing.sm, gap: spacing.sm, paddingBottom: spacing.lg },
   connectionWarning: {
     minHeight: 48,
     flexDirection: 'row',
@@ -579,7 +567,7 @@ const styles = StyleSheet.create({
 
   // Contenedor de acciones (sin hoja): bloques grandes directamente sobre el mapa.
   actionsSheet: {
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.sm,
     paddingTop: spacing.sm,
     paddingBottom: spacing.sm,
     gap: spacing.sm,

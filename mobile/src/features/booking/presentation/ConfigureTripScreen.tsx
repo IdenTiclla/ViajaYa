@@ -8,7 +8,7 @@
  */
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
 import { usePreventRemove } from 'expo-router/react-navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -50,12 +50,20 @@ const PAYMENTS: { id: PaymentMethod; label: string; icon: 'qr-code' | 'cash' }[]
   { id: 'cash', label: 'Efectivo', icon: 'cash' },
 ];
 
-// Márgenes del encuadre: arriba deja sitio a la barra superior + resumen de ruta;
+// Márgenes del encuadre: arriba y a los lados dejan sitio a los controles de los pines;
 // abajo es dinámico (alto real del bottom sheet) para que ambos puntos queden en
 // el área visible.
 const FIT_TOP = 170;
 const FIT_SIDES = 60;
+const FIT_CONTROL_CLEARANCE = 100;
 const MIN_KEYBOARD_TRANSLATION = 280;
+const EDIT_BUTTON_WIDTH = 56;
+const EDIT_BUTTON_HEIGHT = 22;
+const EDIT_CONTROLS_HEIGHT = 74;
+const EDIT_CONTROLS_GAP = 12;
+const EDIT_PIN_RADIUS = 9;
+
+type ProjectedPoint = { x: number; y: number };
 
 function formatDistance(meters: number): string {
   return meters >= 1000 ? `${(meters / 1000).toFixed(1)} km` : `${Math.round(meters)} m`;
@@ -67,6 +75,7 @@ function formatDuration(seconds: number): string {
 
 export function ConfigureTripScreen() {
   const router = useRouter();
+  const isFocused = useIsFocused();
   const { rideId } = useLocalSearchParams<{ rideId?: string }>();
   const isEditing = !!rideId;
   const origin = useBookingStore((s) => s.origin);
@@ -80,6 +89,14 @@ export function ConfigureTripScreen() {
   const fare = useBookingStore((s) => s.fare);
   const setFare = useBookingStore((s) => s.setFare);
   const mapRef = useRef<MapView>(null);
+  const projectionRequestRef = useRef(0);
+  const projectionFrameRef = useRef<number | null>(null);
+  const projectionInFlightRef = useRef(false);
+  const projectionQueuedRef = useRef(false);
+  const [projectedPoints, setProjectedPoints] = useState<{
+    origin: ProjectedPoint;
+    destination: ProjectedPoint;
+  } | null>(null);
   const queryClient = useQueryClient();
   const editRide = useEditRide();
   const cancelRecoveryRide = useCancelRide();
@@ -94,6 +111,54 @@ export function ConfigureTripScreen() {
   const [exitAfterSave, setExitAfterSave] = useState(false);
   const [exitHome, setExitHome] = useState(false);
   const [confirmRecoveryCancel, setConfirmRecoveryCancel] = useState(false);
+
+  const syncEditControls = useCallback(async () => {
+    if (projectionInFlightRef.current) {
+      projectionQueuedRef.current = true;
+      return;
+    }
+    projectionInFlightRef.current = true;
+    try {
+      do {
+        projectionQueuedRef.current = false;
+        const map = mapRef.current;
+        if (!map || !origin || !destination) return;
+        const requestId = ++projectionRequestRef.current;
+        try {
+          const [originPoint, destinationPoint] = await Promise.all([
+            map.pointForCoordinate(origin.coordinates),
+            map.pointForCoordinate(destination.coordinates),
+          ]);
+          if (requestId === projectionRequestRef.current) {
+            setProjectedPoints({ origin: originPoint, destination: destinationPoint });
+          }
+        } catch {
+          // Durante un cambio de cámara Android puede rechazar una proyección
+          // intermedia. Conservamos la última posición y reintentamos al frame siguiente.
+        }
+      } while (projectionQueuedRef.current);
+    } finally {
+      projectionInFlightRef.current = false;
+    }
+  }, [destination, origin]);
+
+  const scheduleEditControlsSync = useCallback(() => {
+    if (projectionFrameRef.current != null) return;
+    projectionFrameRef.current = requestAnimationFrame(() => {
+      projectionFrameRef.current = null;
+      void syncEditControls();
+    });
+  }, [syncEditControls]);
+
+  useEffect(() => {
+    if (isFocused) return;
+    projectionRequestRef.current += 1;
+    projectionQueuedRef.current = false;
+    if (projectionFrameRef.current != null) {
+      cancelAnimationFrame(projectionFrameRef.current);
+      projectionFrameRef.current = null;
+    }
+  }, [isFocused]);
 
   useEffect(() => {
     const showSubscription = Keyboard.addListener('keyboardDidShow', (event) => {
@@ -226,6 +291,30 @@ export function ConfigureTripScreen() {
     return [];
   }, [route, routeLoading, origin, destination]);
 
+  // Coloca los controles en el lado vertical opuesto al tramo más cercano.
+  // Si la ruta sale/llega hacia arriba, el control queda debajo del pin.
+  const originEditPlacement = useMemo(() => {
+    const nextPoint = polylineCoordinates[1] ?? destination?.coordinates;
+    if (!nextPoint || !origin) return 'above' as const;
+    const latitudeDelta = nextPoint.latitude - origin.coordinates.latitude;
+    const longitudeDelta = nextPoint.longitude - origin.coordinates.longitude;
+    return Math.abs(latitudeDelta) > Math.abs(longitudeDelta) && latitudeDelta > 0
+      ? 'below'
+      : 'above';
+  }, [destination, origin, polylineCoordinates]);
+  const destinationEditPlacement = useMemo(() => {
+    const previousPoint =
+      polylineCoordinates[polylineCoordinates.length - 2] ?? origin?.coordinates;
+    if (!previousPoint || !destination) return 'above' as const;
+    const latitudeDelta = previousPoint.latitude - destination.coordinates.latitude;
+    const longitudeDelta = previousPoint.longitude - destination.coordinates.longitude;
+    return Math.abs(latitudeDelta) > Math.abs(longitudeDelta) && latitudeDelta > 0
+      ? 'below'
+      : 'above';
+  }, [destination, origin, polylineCoordinates]);
+  const needsBottomControlSpace =
+    originEditPlacement === 'below' || destinationEditPlacement === 'below';
+
   // react-native-maps conserva internamente overlays nativos. Una clave basada
   // en ambos puntos fuerza a reemplazarlos al editar origen o destino, evitando
   // que se vea la ruta o los pins del trayecto anterior.
@@ -238,11 +327,16 @@ export function ConfigureTripScreen() {
     (animated: boolean) => {
       if (fitCoordinates.length < 2) return;
       mapRef.current?.fitToCoordinates(fitCoordinates, {
-        edgePadding: { top: FIT_TOP, right: FIT_SIDES, bottom: sheetHeight + 24, left: FIT_SIDES },
+        edgePadding: {
+          top: FIT_TOP,
+          right: FIT_SIDES,
+          bottom: sheetHeight + 24 + (needsBottomControlSpace ? FIT_CONTROL_CLEARANCE : 0),
+          left: FIT_SIDES,
+        },
         animated,
       });
     },
-    [fitCoordinates, sheetHeight],
+    [fitCoordinates, needsBottomControlSpace, sheetHeight],
   );
 
   // Reajusta la cámara cuando llega/cambia el trayecto o se mide el sheet.
@@ -353,48 +447,76 @@ export function ConfigureTripScreen() {
 
   return (
     <View style={styles.root}>
-      <MapView
-        key={tripMapKey}
-        ref={mapRef}
-        provider={PROVIDER_GOOGLE}
-        style={StyleSheet.absoluteFill}
-        initialRegion={region}
-        customMapStyle={showPlaces ? [] : declutteredMapStyle}
-        onMapReady={() => fitToTrip(false)}>
-        <RoutePinMarker
-          key={`origin-${tripMapKey}`}
-          kind="A"
-          coordinate={origin.coordinates}
-          label={`Origen: ${getPlaceStreetName(origin)}`}
-          showEditControl
-          onPress={editOrigin}
-        />
-        <RoutePinMarker
-          key={`destination-${tripMapKey}`}
-          kind="B"
-          coordinate={destination.coordinates}
-          label={`Destino: ${getPlaceStreetName(destination)}`}
-          showEditControl
-          onPress={editDestination}
-        />
-        {polylineCoordinates.length >= 2 && (
-          <>
-            {/* Contorno blanco para que la ruta resalte sobre calles y etiquetas. */}
-            <Polyline
-              key={`route-outline-${tripMapKey}`}
-              coordinates={polylineCoordinates}
-              strokeColor={colors.surface}
-              strokeWidth={9}
-            />
-            <Polyline
-              key={`route-${tripMapKey}`}
-              coordinates={polylineCoordinates}
-              strokeColor={colors.primary}
-              strokeWidth={5}
-            />
-          </>
-        )}
-      </MapView>
+      {isFocused && (
+        <MapView
+          key={tripMapKey}
+          ref={mapRef}
+          provider={PROVIDER_GOOGLE}
+          style={StyleSheet.absoluteFill}
+          initialRegion={region}
+          customMapStyle={showPlaces ? [] : declutteredMapStyle}
+          onMapReady={() => {
+            fitToTrip(false);
+            scheduleEditControlsSync();
+          }}
+          onRegionChange={scheduleEditControlsSync}
+          onRegionChangeComplete={scheduleEditControlsSync}>
+          <RoutePinMarker
+            key={`origin-${tripMapKey}`}
+            kind="A"
+            coordinate={origin.coordinates}
+            label={`Origen: ${getPlaceStreetName(origin)}`}
+            showEditControl
+            editControlPlacement={originEditPlacement}
+          />
+          <RoutePinMarker
+            key={`destination-${tripMapKey}`}
+            kind="B"
+            coordinate={destination.coordinates}
+            label={`Destino: ${getPlaceStreetName(destination)}`}
+            showEditControl
+            editControlPlacement={destinationEditPlacement}
+          />
+          {polylineCoordinates.length >= 2 && (
+            <>
+              {/* Contorno blanco para que la ruta resalte sobre calles y etiquetas. */}
+              <Polyline
+                key={`route-outline-${tripMapKey}`}
+                coordinates={polylineCoordinates}
+                strokeColor={colors.surface}
+                strokeWidth={9}
+                zIndex={1}
+              />
+              <Polyline
+                key={`route-${tripMapKey}`}
+                coordinates={polylineCoordinates}
+                strokeColor={colors.primary}
+                strokeWidth={5}
+                zIndex={2}
+              />
+            </>
+          )}
+        </MapView>
+      )}
+
+      {isFocused && projectedPoints && (
+        <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+          <PinEditHitTarget
+            kind="A"
+            point={projectedPoints.origin}
+            placement={originEditPlacement}
+            disabled={editRide.isPending}
+            onEdit={editOrigin}
+          />
+          <PinEditHitTarget
+            kind="B"
+            point={projectedPoints.destination}
+            placement={destinationEditPlacement}
+            disabled={editRide.isPending}
+            onEdit={editDestination}
+          />
+        </View>
+      )}
 
       <SafeAreaView style={styles.topBar} edges={['top']} pointerEvents="box-none">
         <View style={styles.topLeft}>
@@ -596,6 +718,38 @@ export function ConfigureTripScreen() {
   );
 }
 
+function PinEditHitTarget({
+  kind,
+  point,
+  placement,
+  disabled,
+  onEdit,
+}: {
+  kind: 'A' | 'B';
+  point: ProjectedPoint;
+  placement: 'above' | 'below';
+  disabled: boolean;
+  onEdit: () => void;
+}) {
+  const left = point.x - EDIT_BUTTON_WIDTH / 2;
+  const top =
+    placement === 'above'
+      ? point.y - EDIT_CONTROLS_HEIGHT - EDIT_CONTROLS_GAP - EDIT_PIN_RADIUS
+      : point.y + EDIT_CONTROLS_GAP + EDIT_PIN_RADIUS;
+
+  return (
+    <TouchableOpacity
+      style={[styles.pinEditHitTarget, { left, top }]}
+      onPress={onEdit}
+      disabled={disabled}
+      activeOpacity={1}
+      hitSlop={4}
+      accessibilityRole="button"
+      accessibilityLabel={`Editar ${kind === 'A' ? 'origen' : 'destino'}`}
+    />
+  );
+}
+
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceMuted },
   fallback: { alignItems: 'center', justifyContent: 'center', gap: spacing.md, padding: spacing.lg },
@@ -632,6 +786,13 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
     elevation: 3,
+  },
+  pinEditHitTarget: {
+    position: 'absolute',
+    width: EDIT_BUTTON_WIDTH,
+    height: EDIT_BUTTON_HEIGHT,
+    borderRadius: radius.pill,
+    backgroundColor: 'transparent',
   },
   sheetAvoider: {
     position: 'absolute',

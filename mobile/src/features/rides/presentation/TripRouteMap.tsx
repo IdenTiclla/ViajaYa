@@ -5,14 +5,14 @@
  */
 import { useEffect, useRef } from 'react';
 import { StyleSheet } from 'react-native';
-import MapView, { Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
+import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 
-import { colors } from '@/core/theme';
 import { getPlaceStreetName } from '@/features/booking/domain/placeLabels';
 import type { Coordinates, Place } from '@/features/booking/domain/types';
 import { useRoute } from '@/features/booking/application/useRoute';
 import { declutteredMapStyle } from '@/features/booking/presentation/mapStyle';
 import { RoutePinMarker } from '@/features/rides/presentation/RoutePinMarker';
+import { RoutePolyline } from '@/features/rides/presentation/RoutePolyline';
 
 export function TripRouteMap({
   origin,
@@ -92,12 +92,7 @@ export function TripRouteMap({
         coordinate={destination.coordinates}
         label={showPlaceNamesInTooltip ? `Destino: ${getPlaceStreetName(destination)}` : 'Destino'}
       />
-      {polyline.length >= 2 && (
-        <>
-          <Polyline coordinates={polyline} strokeColor={colors.surface} strokeWidth={9} />
-          <Polyline coordinates={polyline} strokeColor={colors.primary} strokeWidth={5} />
-        </>
-      )}
+      <RoutePolyline coordinates={polyline} />
     </MapView>
   );
 }

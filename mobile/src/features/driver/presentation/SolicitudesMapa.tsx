@@ -18,7 +18,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import MapView, { Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
+import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useCountdown } from '@/core/hooks/useCountdown';
@@ -33,6 +33,7 @@ import { formatKm, haversineKm, pricePerKm } from '@/features/rides/domain/geo';
 import { formatBolivianos } from '@/features/rides/domain/money';
 import { OfferLifeTimer } from '@/features/rides/presentation/OfferLifeTimer';
 import { RoutePinMarker } from '@/features/rides/presentation/RoutePinMarker';
+import { RoutePolyline } from '@/features/rides/presentation/RoutePolyline';
 import type { OpenRide } from '@/features/rides/domain/types';
 import Animated, { SlideInDown } from 'react-native-reanimated';
 
@@ -157,12 +158,7 @@ export function SolicitudesMapa({
         customMapStyle={declutteredMapStyle}
         onMapReady={() => fitSelected(false)}
         onLayout={() => fitSelected(false)}>
-        {polyline.length >= 2 && (
-          <>
-            <Polyline coordinates={polyline} strokeColor={colors.surface} strokeWidth={9} />
-            <Polyline coordinates={polyline} strokeColor={colors.primary} strokeWidth={5} />
-          </>
-        )}
+        <RoutePolyline coordinates={polyline} />
         {/* Los orígenes alternativos quedan como referencias discretas. El A y
             B activos se renderizan después y con mayor z-index para que nunca
             queden tapados por otro marcador o por la ruta en Google Maps. */}

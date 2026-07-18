@@ -33,6 +33,7 @@ import {
   reducePassengerActiveRide,
   shouldApplyRideStatus,
 } from '@/features/rides/application/rideStatusReducer';
+import { writeRealtimeQueryData } from '@/features/rides/application/realtimeQueryCache';
 import { formatBolivianos } from '@/features/rides/domain/money';
 import {
   type OfferDto,
@@ -59,11 +60,8 @@ export function useNegotiationSocket(rideId: string | null, enabled = true): voi
         case 'offers_snapshot':
           // Un GET iniciado antes del snapshot no puede resolver despues y
           // restaurar una lista anterior.
-          await queryClient.cancelQueries({
-            queryKey: ['ride-offers', rideId],
-            exact: true,
-          });
-          queryClient.setQueryData<Offer[]>(
+          await writeRealtimeQueryData<Offer[]>(
+            queryClient,
             ['ride-offers', rideId],
             reducePassengerOffers([], {
               type: 'snapshot',
@@ -72,24 +70,23 @@ export function useNegotiationSocket(rideId: string | null, enabled = true): voi
           );
           break;
         case 'offer_created': {
-          await queryClient.cancelQueries({
-            queryKey: ['ride-offers', rideId],
-            exact: true,
-          });
           // Nueva oferta o el conductor mejoró la suya: upsert por id.
           const offer = toOffer(msg.data);
-          const currentOffers =
-            queryClient.getQueryData<Offer[]>(['ride-offers', rideId]) ?? [];
-          const reduction = reducePassengerOffers(currentOffers, {
-            type: 'created',
-            offer,
-          });
-          queryClient.setQueryData<Offer[]>(
+          const effect = { received: false };
+          await writeRealtimeQueryData<Offer[]>(
+            queryClient,
             ['ride-offers', rideId],
-            reduction.offers,
+            (currentOffers = []) => {
+              const reduction = reducePassengerOffers(currentOffers, {
+                type: 'created',
+                offer,
+              });
+              effect.received = reduction.notice?.kind === 'received';
+              return reduction.offers;
+            },
           );
           // No repite el aviso si el backend reenvia exactamente la misma oferta.
-          if (reduction.notice?.kind === 'received') {
+          if (effect.received) {
             usePassengerToasts.getState().push({
               kind: 'offer_received',
               rideId,
@@ -117,33 +114,37 @@ export function useNegotiationSocket(rideId: string | null, enabled = true): voi
           // quitamos solo esa tarjeta; si no, todas las del conductor. Una mejora
           // (`superseded`) se procesa de forma atomica al llegar `offer_created`.
           const { driver_id: driverId, offer_id: offerId, reason } = msg.data;
-          await queryClient.cancelQueries({
-            queryKey: ['ride-offers', rideId],
-            exact: true,
-          });
-          const existing =
-            queryClient.getQueryData<Offer[]>(['ride-offers', rideId]) ?? [];
-          const reduction = reducePassengerOffers(existing, {
-            type: 'withdrawn',
-            driverId,
-            offerId,
-            reason:
-              reason === 'superseded' || reason === 'driver_offline'
-                ? reason
-                : undefined,
-          });
-          if (reduction.offers !== existing) {
-            queryClient.setQueryData<Offer[]>(
-              ['ride-offers', rideId],
-              reduction.offers,
-            );
+          if (reason === 'superseded') {
+            await queryClient.cancelQueries({
+              queryKey: ['ride-offers', rideId],
+              exact: true,
+            });
+            break;
           }
-          if (reduction.notice?.kind === 'withdrawn') {
+          const effect: { removed: Offer | null } = { removed: null };
+          await writeRealtimeQueryData<Offer[]>(
+            queryClient,
+            ['ride-offers', rideId],
+            (existing = []) => {
+              const reduction = reducePassengerOffers(existing, {
+                type: 'withdrawn',
+                driverId,
+                offerId,
+                reason: reason === 'driver_offline' ? reason : undefined,
+              });
+              effect.removed =
+                reduction.notice?.kind === 'withdrawn'
+                  ? reduction.notice.offer
+                  : null;
+              return reduction.offers;
+            },
+          );
+          if (effect.removed) {
             usePassengerToasts.getState().push({
               kind: 'offer_withdrawn',
               rideId,
               title: 'Oferta retirada',
-              message: `${reduction.notice.offer.driver.fullName} retiró su oferta.`,
+              message: `${effect.removed.driver.fullName} retiró su oferta.`,
             });
           }
           break;
@@ -152,26 +153,28 @@ export function useNegotiationSocket(rideId: string | null, enabled = true): voi
           // La oferta del conductor venció (30 s) sin respuesta: el backend la
           // emite también al pasajero para retirar la tarjeta en vivo.
           const { offer_id: offerId } = msg.data;
-          await queryClient.cancelQueries({
-            queryKey: ['ride-offers', rideId],
-            exact: true,
-          });
-          const existing =
-            queryClient.getQueryData<Offer[]>(['ride-offers', rideId]) ?? [];
-          const reduction = reducePassengerOffers(existing, {
-            type: 'expired',
-            offerId,
-          });
-          queryClient.setQueryData<Offer[]>(
+          const effect: { expired: Offer | null } = { expired: null };
+          await writeRealtimeQueryData<Offer[]>(
+            queryClient,
             ['ride-offers', rideId],
-            reduction.offers,
+            (existing = []) => {
+              const reduction = reducePassengerOffers(existing, {
+                type: 'expired',
+                offerId,
+              });
+              effect.expired =
+                reduction.notice?.kind === 'expired'
+                  ? reduction.notice.offer
+                  : null;
+              return reduction.offers;
+            },
           );
-          if (reduction.notice?.kind === 'expired') {
+          if (effect.expired) {
             usePassengerToasts.getState().push({
               kind: 'offer_expired',
               rideId,
               title: 'Oferta expirada',
-              message: `La oferta de ${reduction.notice.offer.driver.fullName} expiró.`,
+              message: `La oferta de ${effect.expired.driver.fullName} expiró.`,
             });
           }
           break;
@@ -222,8 +225,8 @@ export function useDriverPoolSocket(enabled = true): void {
           // que el pasajero ofrecía cuando el conductor envió esa propuesta.
           const openRidesPage = toOpenRidePage(msg.data);
           const openRides = openRidesPage.items;
-          await queryClient.cancelQueries({ queryKey: ['open-rides'], exact: true });
-          queryClient.setQueryData<OpenRidesInfiniteData>(
+          await writeRealtimeQueryData<OpenRidesInfiniteData>(
+            queryClient,
             ['open-rides'],
             openRidesSnapshot(openRidesPage),
           );
@@ -279,9 +282,10 @@ export function useDriverPoolSocket(enabled = true): void {
           // Recupera el aviso que habría llegado como `ride_paused` si el
           // conductor estaba fuera de la app durante la edición.
           const pausedRides = msg.data.map(toOpenRide);
-          await queryClient.cancelQueries({ queryKey: ['open-rides'], exact: true });
-          queryClient.setQueryData<OpenRidesInfiniteData>(['open-rides'], (prev) =>
-            prependPausedOpenRides(prev, pausedRides),
+          await writeRealtimeQueryData<OpenRidesInfiniteData>(
+            queryClient,
+            ['open-rides'],
+            (prev) => prependPausedOpenRides(prev, pausedRides),
           );
           for (const ride of pausedRides) {
             useDriverRequests.getState().markPaused(ride.id);
@@ -302,9 +306,10 @@ export function useDriverPoolSocket(enabled = true): void {
           //   / "Tu oferta fue rechazada" sobre un precio que el conductor nunca
           //   ofertó. No se toca `offered` (oferta viva) ni `taken`.
           const ride = toOpenRide(msg.data);
-          await queryClient.cancelQueries({ queryKey: ['open-rides'], exact: true });
-          queryClient.setQueryData<OpenRidesInfiniteData>(['open-rides'], (prev) =>
-            upsertOpenRide(prev, ride),
+          await writeRealtimeQueryData<OpenRidesInfiniteData>(
+            queryClient,
+            ['open-rides'],
+            (prev) => upsertOpenRide(prev, ride),
           );
           useDriverRequests.getState().clearPaused(ride.id);
           useDriverRequests.getState().clearDismissedBefore(ride.id, ride.poolVersion);
@@ -314,9 +319,10 @@ export function useDriverPoolSocket(enabled = true): void {
         }
         case 'ride_closed': {
           const { ride_id: rideId } = msg.data;
-          await queryClient.cancelQueries({ queryKey: ['open-rides'], exact: true });
-          queryClient.setQueryData<OpenRidesInfiniteData>(['open-rides'], (prev) =>
-            removeOpenRide(prev, rideId),
+          await writeRealtimeQueryData<OpenRidesInfiniteData>(
+            queryClient,
+            ['open-rides'],
+            (prev) => removeOpenRide(prev, rideId),
           );
           // La solicitud salió del pool: limpia su estado local (sin zombies).
           useDriverRequests.getState().clearRide(rideId);
@@ -331,9 +337,10 @@ export function useDriverPoolSocket(enabled = true): void {
           // `offer_rejected(ride_paused)` que no traía los datos y, combinado con
           // el ride_closed, hacía desaparecer la tarjeta durante la edición.
           const ride = toOpenRide(msg.data);
-          await queryClient.cancelQueries({ queryKey: ['open-rides'], exact: true });
-          queryClient.setQueryData<OpenRidesInfiniteData>(['open-rides'], (prev) =>
-            prependPausedOpenRides(prev, [ride]),
+          await writeRealtimeQueryData<OpenRidesInfiniteData>(
+            queryClient,
+            ['open-rides'],
+            (prev) => prependPausedOpenRides(prev, [ride]),
           );
           useDriverRequests.getState().markPaused(ride.id);
           useDriverToasts.getState().push({

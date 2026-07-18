@@ -9,6 +9,7 @@ import {
   emptyOpenRides,
   type OpenRidesInfiniteData,
 } from '@/features/rides/application/openRidesCache';
+import { applyRideMutationResult } from '@/features/rides/application/rideStatusReducer';
 import {
   DRIVER_ACTIVE_RIDE_KEY,
   PASSENGER_ACTIVE_RIDE_KEY,
@@ -53,7 +54,7 @@ export function useAcceptOffer() {
   return useMutation({
     mutationFn: (offerId: string) => ridesRepository.acceptOffer(offerId),
     onSuccess: (ride) => {
-      queryClient.setQueryData(['ride', ride.id], ride);
+      if (!applyRideMutationResult(queryClient, ride)) return;
       queryClient.setQueryData(PASSENGER_ACTIVE_RIDE_KEY, ride);
     },
   });
@@ -93,7 +94,7 @@ export function useUpdateRideStatus() {
       ridesRepository.updateStatus(vars.rideId, vars.status),
     onMutate: () => queryClient.cancelQueries({ queryKey: DRIVER_ACTIVE_RIDE_KEY }),
     onSuccess: (ride) => {
-      queryClient.setQueryData(['ride', ride.id], ride);
+      if (!applyRideMutationResult(queryClient, ride)) return;
       queryClient.setQueryData(DRIVER_ACTIVE_RIDE_KEY, ride);
     },
   });
@@ -112,7 +113,7 @@ export function useCancelRide() {
         queryClient.cancelQueries({ queryKey: DRIVER_ACTIVE_RIDE_KEY }),
       ]),
     onSuccess: (ride) => {
-      queryClient.setQueryData(['ride', ride.id], ride);
+      if (!applyRideMutationResult(queryClient, ride)) return;
       if (role === 'passenger') {
         // "Activo" es un contrato no terminal. Limpiarlo antes del refetch evita
         // que Home reutilice un SEARCHING anterior mientras confirma con servidor.
@@ -140,7 +141,7 @@ export function useUpdateRideFare() {
     mutationFn: (vars: { rideId: string; fare: number }) =>
       ridesRepository.updateFare(vars.rideId, vars.fare),
     onSuccess: (ride) => {
-      queryClient.setQueryData(['ride', ride.id], ride);
+      if (!applyRideMutationResult(queryClient, ride)) return;
       queryClient.setQueryData(PASSENGER_ACTIVE_RIDE_KEY, ride);
     },
   });
@@ -173,7 +174,7 @@ export function usePauseForEdit() {
   return useMutation({
     mutationFn: (rideId: string) => ridesRepository.pauseForEdit(rideId),
     onSuccess: (ride) => {
-      queryClient.setQueryData(['ride', ride.id], ride);
+      if (!applyRideMutationResult(queryClient, ride)) return;
       queryClient.setQueryData(PASSENGER_ACTIVE_RIDE_KEY, ride);
       void queryClient.invalidateQueries({ queryKey: ['ride-offers', ride.id] });
     },
@@ -187,7 +188,7 @@ export function useEditRide() {
     mutationFn: (vars: { rideId: string; input: EditRideInput }) =>
       ridesRepository.editRide(vars.rideId, vars.input),
     onSuccess: (ride) => {
-      queryClient.setQueryData(['ride', ride.id], ride);
+      if (!applyRideMutationResult(queryClient, ride)) return;
       queryClient.setQueryData(PASSENGER_ACTIVE_RIDE_KEY, ride);
       void queryClient.invalidateQueries({ queryKey: ['ride-offers', ride.id] });
       void queryClient.invalidateQueries({ queryKey: ['open-rides'] });

@@ -199,7 +199,15 @@ antes crearía una falsa garantía de orden y durabilidad.
 - [ ] Evento atrasado con menor `aggregate_version`.
 - [ ] Reconexión con snapshot más nuevo que los eventos locales.
 - [x] Payload inválido, razón inválida y tipo desconocido en el contrato backend.
-- [ ] HTTP que resuelve después de un evento WebSocket.
+- [x] GET HTTP iniciado antes que un evento WebSocket y resuelto después: una
+  prueba con `QueryClient` real certifica que la caché conserva el evento.
+- [x] Mutación HTTP que devuelve un estado anterior después de un terminal WS:
+  los callbacks consultan primero el detalle canónico y no reviven el ride.
+
+La barrera actual solo impide regresiones desde estados terminales. Ordenar dos
+estados no terminales concurrentes requiere `aggregate_version` y queda ligado a
+la outbox de la fase 3. `cancelQueries` protege la caché aunque el transporte
+Axios todavía continúe en segundo plano sin propagar `AbortSignal`.
 
 ## Fase 3 — Tiempo real durable y multiworker
 

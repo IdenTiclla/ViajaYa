@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { QueryClient } from '@tanstack/react-query';
+
 import { reducePassengerOffers } from '../src/features/rides/application/passengerOffersReducer.ts';
 import {
+  applyRideMutationResult,
   reduceDriverActiveRide,
   reducePassengerActiveRide,
+  reduceRideMutationResult,
   shouldApplyRideStatus,
 } from '../src/features/rides/application/rideStatusReducer.ts';
 
@@ -157,6 +161,58 @@ test('un ride terminal no retrocede por un evento atrasado', () => {
     shouldApplyRideStatus(ride('ride-1', 'completed'), ride('ride-2', 'searching')),
     true,
   );
+});
+
+test('una respuesta HTTP accepted atrasada no reemplaza el cancelled recibido por WS', async () => {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const detailKey = ['ride', 'ride-1'];
+  const activeKey = ['passenger-active-ride'];
+  let resolveHttp;
+  const httpResponse = new Promise((resolve) => {
+    resolveHttp = resolve;
+  });
+  queryClient.setQueryData(detailKey, ride('ride-1', 'searching'));
+  queryClient.setQueryData(activeKey, ride('ride-1', 'searching'));
+  const applyHttpResponse = httpResponse.then((incoming) => {
+    if (applyRideMutationResult(queryClient, incoming)) {
+      queryClient.setQueryData(activeKey, incoming);
+    }
+  });
+
+  // El WebSocket se adelanta mientras la petición HTTP continúa pendiente.
+  const cancelled = ride('ride-1', 'cancelled');
+  queryClient.setQueryData(detailKey, cancelled);
+  queryClient.setQueryData(activeKey, null);
+  resolveHttp(ride('ride-1', 'accepted'));
+  await applyHttpResponse;
+
+  assert.deepEqual(queryClient.getQueryData(detailKey), cancelled);
+  assert.equal(queryClient.getQueryData(activeKey), null);
+  queryClient.clear();
+});
+
+test('una respuesta HTTP normal avanza el ride no terminal', () => {
+  const accepted = ride('ride-1', 'accepted');
+  const reduction = reduceRideMutationResult(
+    ride('ride-1', 'searching'),
+    accepted,
+  );
+
+  assert.equal(reduction.applied, true);
+  assert.strictEqual(reduction.ride, accepted);
+});
+
+test('una respuesta HTTP del mismo estado terminal puede refrescar sus datos', () => {
+  const cancelled = ride('ride-1', 'cancelled');
+  const reduction = reduceRideMutationResult(
+    ride('ride-1', 'cancelled'),
+    cancelled,
+  );
+
+  assert.equal(reduction.applied, true);
+  assert.strictEqual(reduction.ride, cancelled);
 });
 
 test('el activo del pasajero se recupera, actualiza y limpia al terminar', () => {

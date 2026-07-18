@@ -13,6 +13,7 @@ import { Marker } from 'react-native-maps';
 
 import { colors, fontWeight, radius, spacing } from '@/core/theme';
 import type { Coordinates } from '@/features/booking/domain/types';
+import { PinLoadingIndicator } from '@/shared/components';
 
 type Props = {
   kind: 'A' | 'B';
@@ -29,6 +30,8 @@ type Props = {
   dim?: boolean;
   /** Jerarquía del marcador cuando varios puntos se superponen. */
   zIndex?: number;
+  /** Indica que todavía se está resolviendo el nombre de este punto. */
+  loading?: boolean;
   onPress?: () => void;
 };
 
@@ -44,6 +47,7 @@ export function RoutePinMarker({
   showEditControl,
   dim,
   zIndex,
+  loading = false,
   onPress,
 }: Props) {
   return (
@@ -74,7 +78,10 @@ export function RoutePinMarker({
         )}
         <View
           style={[styles.pinBase, kind === 'A' ? styles.pinA : styles.pinB, dim && styles.pinDim]}>
-          <Text style={styles.pinLabel}>{kind}</Text>
+          <Text style={[styles.pinLabel, loading && styles.pinLabelLoading]}>{kind}</Text>
+          <View style={styles.pinLoader} pointerEvents="none">
+            <PinLoadingIndicator loading={loading} color={colors.textOnPrimary} compact />
+          </View>
         </View>
       </View>
     </Marker>
@@ -143,4 +150,14 @@ const styles = StyleSheet.create({
   pinB: { backgroundColor: colors.danger },
   pinDim: { opacity: 0.5 },
   pinLabel: { color: colors.textOnPrimary, fontSize: 10, fontWeight: fontWeight.bold },
+  pinLabelLoading: { opacity: 0 },
+  pinLoader: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });

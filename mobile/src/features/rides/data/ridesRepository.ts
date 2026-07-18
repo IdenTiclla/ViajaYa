@@ -7,7 +7,11 @@
  */
 import { api } from '@/core/http/client';
 import type { VehicleType } from '@/features/auth/domain/types';
-import { getPlaceStreetName } from '@/features/booking/domain/placeLabels';
+import {
+  assertPlaceLabelResolved,
+  getPlaceReadableAddress,
+  getPlaceStreetName,
+} from '@/features/booking/domain/placeLabels';
 import type { Place } from '@/features/booking/domain/types';
 import type {
   CreateOfferInput,
@@ -39,11 +43,12 @@ function toPlace(dto: PointDto): Place {
 }
 
 function toPointDto(place: Place): PointDto {
+  assertPlaceLabelResolved(place);
   return {
     latitude: place.coordinates.latitude,
     longitude: place.coordinates.longitude,
-    name: place.name,
-    address: place.address,
+    name: getPlaceStreetName(place),
+    address: getPlaceReadableAddress(place),
     country_code: place.countryCode,
   };
 }

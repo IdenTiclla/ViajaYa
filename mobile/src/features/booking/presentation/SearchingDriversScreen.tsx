@@ -30,10 +30,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
-import { useBookingStore } from '@/features/booking/application/useBookingStore';
 import type { Place } from '@/features/booking/domain/types';
 import {
-  useCancelRide,
   usePauseForEdit,
   useUpdateRideFare,
 } from '@/features/rides/application/useRideMutations';
@@ -49,6 +47,9 @@ export function SearchingDriversScreen({
   destination,
   currentFare,
   connectionError,
+  cancelPending,
+  cancelError,
+  onCancelRequest,
   onRetry,
 }: {
   rideId: string | null;
@@ -57,48 +58,43 @@ export function SearchingDriversScreen({
   /** Oferta vigente del viaje (en vivo). */
   currentFare: number | null;
   connectionError?: unknown;
+  cancelPending: boolean;
+  cancelError?: unknown;
+  onCancelRequest: () => void;
   onRetry?: () => void;
 }) {
   const router = useRouter();
-  const cancelRide = useCancelRide();
   const updateFare = useUpdateRideFare();
   const pauseForEdit = usePauseForEdit();
-  const negotiationBusy = cancelRide.isPending || updateFare.isPending || pauseForEdit.isPending;
+  const negotiationBusy = cancelPending || updateFare.isPending || pauseForEdit.isPending;
 
   const [fareInput, setFareInput] = useState<string | null>(null);
   const pendingFareRef = useRef<number | null>(null);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [sheetHeight, setSheetHeight] = useState(0);
-  // Algunos Android conservan la altura reducida del KeyboardAvoidingView al
-  // ocultar el teclado; al remontarlo, la hoja vuelve a anclarse abajo.
-  const [keyboardAvoiderKey, setKeyboardAvoiderKey] = useState(0);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const hasConnectionError = connectionError != null;
   // La hoja no tiene una altura fija: medirla evita que el trayecto quede
   // descentrado o cubierto en pantallas pequeñas y grandes.
   const mapBottomPadding = sheetHeight > 0 ? sheetHeight + spacing.lg : 440;
 
   useEffect(() => {
-    const subscription = Keyboard.addListener('keyboardDidHide', () => {
-      setKeyboardAvoiderKey((key) => key + 1);
+    const showSubscription = Keyboard.addListener('keyboardDidShow', () => {
+      setKeyboardVisible(true);
     });
-    return () => subscription.remove();
+    const hideSubscription = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardVisible(false);
+    });
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
   }, []);
 
   const onCancel = () => {
     setConfirmCancel(false);
     if (negotiationBusy) return;
-    if (!rideId) {
-      useBookingStore.getState().resetTrip();
-      router.replace('/(app)/(tabs)');
-      return;
-    }
-    // Resetea el store recién cuando el backend confirma el cancel.
-    cancelRide.mutate(rideId, {
-      onSuccess: () => {
-        useBookingStore.getState().resetTrip();
-        router.replace('/(app)/(tabs)');
-      },
-    });
+    onCancelRequest();
   };
 
   const fareLocked = currentFare == null || negotiationBusy;
@@ -178,26 +174,25 @@ export function SearchingDriversScreen({
           </TouchableOpacity>
         </SafeAreaView>
 
-        <View style={styles.center} pointerEvents="none">
-          <PulseLoader />
-        </View>
-
         <KeyboardAvoidingView
-          key={keyboardAvoiderKey}
           style={styles.sheetAvoider}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior="padding"
+          enabled={Platform.OS === 'ios' || keyboardVisible}
+          keyboardVerticalOffset={0}
           pointerEvents="box-none">
-        <SafeAreaView
-          edges={['bottom']}
-          style={styles.sheet}
-          onLayout={(event) => setSheetHeight(event.nativeEvent.layout.height)}>
-          <ScrollView
-            contentContainerStyle={styles.sheetContent}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="on-drag"
-            showsVerticalScrollIndicator={false}
-            bounces={false}>
-          <View style={styles.sheetHandle} />
+          <SafeAreaView
+            edges={['bottom']}
+            style={styles.sheet}
+            onLayout={(event) => {
+              if (!keyboardVisible) setSheetHeight(event.nativeEvent.layout.height);
+            }}>
+            <ScrollView
+              contentContainerStyle={styles.sheetContent}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+              showsVerticalScrollIndicator={false}
+              bounces={false}>
+              <View style={styles.sheetHandle} />
 
           {/* Estado de búsqueda */}
           <View style={styles.statusRow}>
@@ -220,11 +215,7 @@ export function SearchingDriversScreen({
               disabled={!hasConnectionError || !onRetry}
               accessibilityRole={hasConnectionError ? 'button' : undefined}
               accessibilityLabel={hasConnectionError ? 'Reintentar conexión' : undefined}>
-              <Ionicons
-                name={hasConnectionError ? 'refresh' : 'sync'}
-                size={18}
-                color={hasConnectionError ? colors.danger : colors.primary}
-              />
+              <IconoSincronizacionGiratorio conError={hasConnectionError} />
             </TouchableOpacity>
           </View>
 
@@ -278,8 +269,8 @@ export function SearchingDriversScreen({
           <Text style={styles.progressLabel}>Esperando ofertas de conductores</Text>
 
           {/* Acciones */}
-          {cancelRide.isError && (
-            <Text style={styles.error}>{getApiErrorMessage(cancelRide.error)}</Text>
+          {cancelError != null && (
+            <Text style={styles.error}>{getApiErrorMessage(cancelError)}</Text>
           )}
           {pauseForEdit.isError && (
             <Text style={styles.error}>{getApiErrorMessage(pauseForEdit.error)}</Text>
@@ -292,11 +283,11 @@ export function SearchingDriversScreen({
             accessibilityLabel="Cancelar solicitud">
             <Ionicons name="close" size={18} color={colors.danger} />
             <Text style={styles.cancelText}>
-              {cancelRide.isPending ? 'Cancelando…' : 'Cancelar solicitud'}
+              {cancelPending ? 'Cancelando…' : 'Cancelar solicitud'}
             </Text>
           </TouchableOpacity>
-          </ScrollView>
-        </SafeAreaView>
+            </ScrollView>
+          </SafeAreaView>
         </KeyboardAvoidingView>
       </View>
 
@@ -316,79 +307,39 @@ export function SearchingDriversScreen({
   );
 }
 
-/** Loader circular con dos anillos que se expanden (pulso) y un ícono central
- * que late, en bucle infinito mientras se buscan conductores. */
-function PulseLoader() {
-  const [ring1] = useState(() => new Animated.Value(0));
-  const [ring2] = useState(() => new Animated.Value(0));
-  const [core] = useState(() => new Animated.Value(0));
+/** Indicador de sincronización activo durante toda la búsqueda de ofertas. */
+function IconoSincronizacionGiratorio({ conError }: { conError: boolean }) {
+  const [giro] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
-    // Todas las animaciones usan el driver nativo. Evitamos `Animated.delay`
-    // dentro de la secuencia (es no-nativo y, al mezclarse con timings nativos,
-    // rompe el `loop` tras una pasada); el desfase del 2º anillo va por setTimeout.
-    const ringLoop = (value: Animated.Value) =>
-      Animated.loop(
-        Animated.timing(value, {
-          toValue: 1,
-          duration: 2200,
-          easing: Easing.out(Easing.ease),
-          useNativeDriver: true,
-        }),
-      );
-
-    const a = ringLoop(ring1);
-    const b = ringLoop(ring2);
-    a.start();
-    const stagger = setTimeout(() => b.start(), 1100);
-
-    const coreLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(core, {
-          toValue: 1,
-          duration: 1100,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(core, {
-          toValue: 0,
-          duration: 1100,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-      ]),
+    const animacion = Animated.loop(
+      Animated.timing(giro, {
+        toValue: 1,
+        duration: 1_200,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
     );
-    coreLoop.start();
+    animacion.start();
+    return () => animacion.stop();
+  }, [giro]);
 
-    return () => {
-      clearTimeout(stagger);
-      a.stop();
-      b.stop();
-      coreLoop.stop();
-    };
-  }, [ring1, ring2, core]);
-
-  const ringStyle = (value: Animated.Value) => ({
-    transform: [
-      {
-        scale: value.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1.8] }),
-      },
-    ],
-    opacity: value.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.5, 0.25, 0] }),
+  const rotate = giro.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
   });
 
-  const coreStyle = {
-    transform: [{ scale: core.interpolate({ inputRange: [0, 1], outputRange: [1, 1.12] }) }],
-  };
-
   return (
-    <View style={styles.loader}>
-      <Animated.View style={[styles.ring, ringStyle(ring1)]} />
-      <Animated.View style={[styles.ring, ringStyle(ring2)]} />
-      <Animated.View style={[styles.loaderCore, coreStyle]}>
-        <Ionicons name="search" size={26} color={colors.textOnPrimary} />
-      </Animated.View>
-    </View>
+    <Animated.View
+      style={{ transform: [{ rotate }] }}
+      pointerEvents="none"
+      accessibilityElementsHidden>
+      <Ionicons
+        name={conError ? 'refresh' : 'sync'}
+        size={18}
+        color={conError ? colors.danger : colors.primary}
+      />
+    </Animated.View>
   );
 }
 
@@ -427,7 +378,6 @@ const styles = StyleSheet.create({
   mapFallback: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: colors.surfaceMuted },
   scrim: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
 
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   backArea: { position: 'absolute', top: 0, left: 0, padding: spacing.md },
   backButton: {
     width: 44,
@@ -452,23 +402,8 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
 
-  loader: { width: 88, height: 88, alignItems: 'center', justifyContent: 'center' },
-  ring: { position: 'absolute', width: 88, height: 88, borderRadius: radius.pill, backgroundColor: colors.primary },
-  loaderCore: {
-    width: 56,
-    height: 56,
-    borderRadius: radius.pill,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: colors.primary,
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 6,
-  },
-
   sheet: {
+    width: '100%',
     maxHeight: '88%',
     backgroundColor: colors.background,
     borderTopLeftRadius: radius.lg,

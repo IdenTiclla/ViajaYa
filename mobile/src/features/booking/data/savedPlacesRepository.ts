@@ -4,7 +4,11 @@
  * a/desde los tipos del dominio móvil, igual que `ridesRepository`.
  */
 import { api } from '@/core/http/client';
-import { getPlaceStreetName } from '@/features/booking/domain/placeLabels';
+import {
+  assertPlaceLabelResolved,
+  getPlaceReadableAddress,
+  getPlaceStreetName,
+} from '@/features/booking/domain/placeLabels';
 import type { Place, SavedPlace, SavedPlaceCategory } from '@/features/booking/domain/types';
 
 type PointDto = {
@@ -23,11 +27,12 @@ type SavedPlaceDto = {
 };
 
 function toPointDto(place: Place): PointDto {
+  assertPlaceLabelResolved(place);
   return {
     latitude: place.coordinates.latitude,
     longitude: place.coordinates.longitude,
-    name: place.name,
-    address: place.address,
+    name: getPlaceStreetName(place),
+    address: getPlaceReadableAddress(place),
     country_code: place.countryCode,
   };
 }

@@ -5,11 +5,13 @@ Separados de las entidades de dominio.
 
 from __future__ import annotations
 
+import re
+import unicodedata
 import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.application.dto import RideDetail, RideHistoryItem
 from app.domain.entities import (
@@ -46,9 +48,60 @@ class PointSchema(BaseModel):
         )
 
 
+_COORDINATES_ONLY = re.compile(
+    r"^-?\d{1,2}(?:\.\d+)?\s*,\s*-?\d{1,3}(?:\.\d+)?$"
+)
+_COORDINATE_VALUE = re.compile(r"^-?\d{1,3}(?:\.\d+)?$")
+_PROVISIONAL_NAMES = {
+    "ubicacion seleccionada",
+    "direccion seleccionada",
+    "direccion pendiente",
+    "direccion no disponible",
+    "obteniendo direccion...",
+    "obteniendo lugar...",
+    "origen",
+    "destino",
+    "lugar",
+}
+
+
+def _normalize_label(value: str) -> str:
+    decomposed = unicodedata.normalize("NFD", value.strip().casefold())
+    without_accents = "".join(char for char in decomposed if unicodedata.category(char) != "Mn")
+    return without_accents.replace("…", "...")
+
+
+def _is_useful_label(value: str) -> bool:
+    normalized = _normalize_label(value)
+    return (
+        bool(normalized)
+        and normalized not in _PROVISIONAL_NAMES
+        and not _COORDINATES_ONLY.fullmatch(normalized)
+        and not _COORDINATE_VALUE.fullmatch(normalized)
+    )
+
+
+class PointInputSchema(PointSchema):
+    """Punto entrante: nunca admite una etiqueta provisional como nombre final."""
+
+    @model_validator(mode="after")
+    def normalize_readable_name(self) -> PointInputSchema:
+        if _is_useful_label(self.name):
+            self.name = self.name.strip()
+        else:
+            address_first_line = self.address.split(",", maxsplit=1)[0].strip()
+            if _is_useful_label(self.address) and _is_useful_label(address_first_line):
+                self.name = address_first_line
+            else:
+                raise ValueError("Falta obtener un nombre legible para la ubicación seleccionada.")
+
+        self.address = self.address.strip() if _is_useful_label(self.address) else self.name
+        return self
+
+
 class CreateRideRequestRequest(BaseModel):
-    origin: PointSchema
-    destination: PointSchema
+    origin: PointInputSchema
+    destination: PointInputSchema
     service_type: ServiceType
     fare: Decimal = Field(gt=0, max_digits=10, decimal_places=2)
     payment_method: PaymentMethod = PaymentMethod.CASH

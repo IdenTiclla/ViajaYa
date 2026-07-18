@@ -15,6 +15,16 @@ import axios, {
 import { env } from '@/core/config/env';
 import { tokenStorage } from '@/core/http/tokenStorage';
 
+declare module 'axios' {
+  export interface AxiosRequestConfig {
+    skipAuth?: boolean;
+  }
+
+  export interface InternalAxiosRequestConfig {
+    skipAuth?: boolean;
+  }
+}
+
 type RetriableConfig = InternalAxiosRequestConfig & { _retry?: boolean };
 
 let onSessionExpired: (() => void) | null = null;
@@ -34,6 +44,7 @@ export const api = axios.create({
 });
 
 api.interceptors.request.use(async (config) => {
+  if (config.skipAuth) return config;
   const tokens = await tokenStorage.get();
   if (tokens?.accessToken) {
     config.headers.Authorization = `Bearer ${tokens.accessToken}`;
@@ -71,7 +82,8 @@ api.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
     const original = error.config as RetriableConfig | undefined;
-    const skipRefresh = NO_REFRESH_PATHS.some((path) => original?.url?.includes(path));
+    const skipRefresh =
+      original?.skipAuth || NO_REFRESH_PATHS.some((path) => original?.url?.includes(path));
 
     if (error.response?.status === 401 && original && !original._retry && !skipRefresh) {
       original._retry = true;

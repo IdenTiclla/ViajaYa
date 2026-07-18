@@ -86,7 +86,7 @@ export function TripScreen() {
   const [confirmCancel, setConfirmCancel] = useState(false);
   useBlockHardwareBack(Boolean(id) && ride?.status !== 'cancelled' && ride?.status !== 'completed');
 
-  const goHome = () => router.replace('/(app)/(tabs)');
+  const goHome = () => router.dismissTo('/(app)/(tabs)');
   const closeAndGoHome = () => {
     queryClient.setQueryData(PASSENGER_ACTIVE_RIDE_KEY, null);
     goHome();

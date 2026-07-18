@@ -48,7 +48,7 @@ export function RatingScreen() {
         current?.id === id ? null : current,
       );
     }
-    router.replace('/(app)/(tabs)');
+    router.dismissTo('/(app)/(tabs)');
   };
 
   if (!id) {

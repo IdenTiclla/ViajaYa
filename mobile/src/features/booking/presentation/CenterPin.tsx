@@ -9,14 +9,24 @@ import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { PinLoadingIndicator } from '@/shared/components';
 
 const PIN_SIZE = 46;
 
-export function CenterPin({ label, color = colors.primary }: { label: string; color?: string }) {
+export function CenterPin({
+  label,
+  color = colors.primary,
+  loading = false,
+}: {
+  label: string;
+  color?: string;
+  loading?: boolean;
+}) {
   return (
     <View style={styles.overlay} pointerEvents="none">
       <View style={styles.block}>
         <View style={styles.callout}>
+          <PinLoadingIndicator loading={loading} color={colors.textOnPrimary} compact />
           <Text style={styles.calloutText} numberOfLines={1} ellipsizeMode="tail">
             {label}
           </Text>
@@ -46,8 +56,12 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     borderRadius: radius.pill,
     marginBottom: spacing.xs,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
   },
   calloutText: {
+    flexShrink: 1,
     color: colors.textOnPrimary,
     fontSize: fontSize.xs,
     fontWeight: fontWeight.semibold,

@@ -14,7 +14,7 @@
  */
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -112,11 +112,28 @@ export function OffersScreen() {
   const [acceptIntent, setAcceptIntent] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [offerToReject, setOfferToReject] = useState<Offer | null>(null);
+  const [returningHome, setReturningHome] = useState(false);
+  const returningHomeRef = useRef(false);
   const confirmationVisible = confirming || (assigned && acceptIntent);
   const activeOfferToReject =
     offerToReject && visibleOffers.some((offer) => offer.id === offerToReject.id)
       ? offerToReject
       : null;
+
+  const beginReturnHome = useCallback(() => {
+    if (returningHomeRef.current) return;
+    returningHomeRef.current = true;
+    useBookingStore.getState().resetTrip();
+    setReturningHome(true);
+  }, []);
+
+  // Primero desmonta mapa, marcadores y diálogos. En el siguiente frame vuelve
+  // al Tabs que ya existe debajo, evitando dos árboles nativos superpuestos.
+  useEffect(() => {
+    if (!returningHome) return;
+    const frame = requestAnimationFrame(() => router.dismissTo('/(app)/(tabs)'));
+    return () => cancelAnimationFrame(frame);
+  }, [returningHome, router]);
 
   // Backup: si el viaje queda asignado por otra vía (p. ej. WS), ir al viaje.
   useEffect(() => {
@@ -125,14 +142,12 @@ export function OffersScreen() {
     }
   }, [assigned, id, confirmationVisible, router]);
 
-  // El viaje se canceló sin que esta pantalla lo iniciara (otro dispositivo,
-  // sesión previa): sin este efecto el pasajero quedaría "buscando" un viaje
-  // muerto. El cancel local también pasa por aquí sin daño (replace idempotente).
+  // Esta es la única autoridad de salida, tanto para cancelación local como para
+  // un evento recibido desde otro dispositivo. El ref impide navegar dos veces.
   useEffect(() => {
     if (!cancelled || cancelRide.isPending || confirmationVisible) return;
-    useBookingStore.getState().resetTrip();
-    router.replace('/(app)/(tabs)');
-  }, [cancelled, cancelRide.isPending, confirmationVisible, router]);
+    beginReturnHome();
+  }, [beginReturnHome, cancelled, cancelRide.isPending, confirmationVisible]);
 
   const onAccept = (offer: Offer) => {
     if (acceptOffer.isPending) return;
@@ -192,8 +207,7 @@ export function OffersScreen() {
     });
   };
 
-  const onCancel = () => {
-    setConfirmCancel(false);
+  const cancelRequest = () => {
     if (
       acceptOffer.isPending ||
       rejectOffer.isPending ||
@@ -201,18 +215,19 @@ export function OffersScreen() {
       cancelRide.isPending
     ) return;
     if (!id) {
-      useBookingStore.getState().resetTrip();
-      router.replace('/(app)/(tabs)');
+      beginReturnHome();
       return;
     }
     // Resetea el store recién cuando el backend confirma: si la red falla, el
     // usuario se queda en la pantalla con el error (sin ride huérfano).
     cancelRide.mutate(id, {
-      onSuccess: () => {
-        useBookingStore.getState().resetTrip();
-        router.replace('/(app)/(tabs)');
-      },
+      onSuccess: beginReturnHome,
     });
+  };
+
+  const onCancel = () => {
+    setConfirmCancel(false);
+    cancelRequest();
   };
 
   // Oferta cuyo Aceptar está en curso: solo esa tarjeta se bloquea (las demás
@@ -223,6 +238,8 @@ export function OffersScreen() {
     rejectOffer.isPending ||
     pauseForEdit.isPending ||
     cancelRide.isPending;
+
+  if (returningHome) return <View style={styles.root} />;
 
   if (assigned && !confirmationVisible) {
     // El viaje quedó asignado: el overlay ya navegó, o este es el respaldo.
@@ -240,6 +257,9 @@ export function OffersScreen() {
         destination={displayDestination}
         currentFare={ride?.fare ?? (fare ? Number(fare.replace(',', '.')) : null)}
         connectionError={rideQuery.error ?? offersQuery.error}
+        cancelPending={cancelRide.isPending}
+        cancelError={cancelRide.isError ? cancelRide.error : undefined}
+        onCancelRequest={cancelRequest}
         onRetry={() => {
           void rideQuery.refetch();
           void offersQuery.refetch();

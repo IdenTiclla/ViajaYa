@@ -18,7 +18,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
+import MapView, { PROVIDER_GOOGLE, type Details, type Region } from 'react-native-maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
@@ -33,13 +33,24 @@ import {
   isCoordinatesInBolivia,
   isPlaceInBolivia,
 } from '@/features/booking/domain/bolivia';
-import { getPlaceStreetName } from '@/features/booking/domain/placeLabels';
+import {
+  getPlaceStreetName,
+  isPlaceLabelResolved,
+} from '@/features/booking/domain/placeLabels';
 import type { Place } from '@/features/booking/domain/types';
 import { CenterPin } from '@/features/booking/presentation/CenterPin';
 import { useCurrentLocation } from '@/features/home/application/useCurrentLocation';
 import { RoutePinMarker } from '@/features/rides/presentation/RoutePinMarker';
+import { PinLoadingIndicator } from '@/shared/components';
 
 const MIN_DESTINATION_DISTANCE_METERS = 50;
+
+function coordenadasCasiIguales(a: Place['coordinates'], b: Place['coordinates']): boolean {
+  return (
+    Math.abs(a.latitude - b.latitude) < 0.00001 &&
+    Math.abs(a.longitude - b.longitude) < 0.00001
+  );
+}
 
 export function PickOnMapScreen() {
   const router = useRouter();
@@ -67,49 +78,71 @@ export function PickOnMapScreen() {
     status: locationStatus,
     coordinates,
     canAskAgain,
+    isEstimated,
     retry: retryLocation,
   } = useCurrentLocation();
   const mapRef = useRef<MapView>(null);
+  const mapReady = useRef(false);
+  const pendingGpsRegion = useRef<{ region: Region; isEstimated: boolean } | null>(null);
   const usableOrigin = origin && isPlaceInBolivia(origin) ? origin : null;
   const usableCoordinates =
     coordinates && isCoordinatesInBolivia(coordinates) ? coordinates : null;
   // Solo seguimos al GPS tardío si de verdad no había origen ni GPS al iniciar.
-  const startedWithoutPreferredCenter = useRef(!usableOrigin && !usableCoordinates);
+  const startedWithoutPreferredCenter = useRef(
+    !usableOrigin && (!usableCoordinates || isEstimated),
+  );
 
   // El destino B siempre comienza desde el origen A. Origen y lugares guardados
   // también priorizan el origen vigente antes de recurrir al GPS.
-  const initialRegion = useMemo<Region | undefined>(() => {
+  const initialRegion = useMemo<Region>(() => {
     const center =
       usableOrigin?.coordinates ??
       usableCoordinates ??
-      (locationStatus === 'loading' ? undefined : BOLIVIA_DEFAULT_COORDINATES);
-    if (!center) return undefined;
+      BOLIVIA_DEFAULT_COORDINATES;
     return {
       latitude: center.latitude,
       longitude: center.longitude,
       latitudeDelta: 0.01,
       longitudeDelta: 0.01,
     };
-  }, [usableOrigin, usableCoordinates, locationStatus]);
+  }, [usableOrigin, usableCoordinates]);
 
   const [place, setPlace] = useState<Place | null>(null);
   const [destinationMoved, setDestinationMoved] = useState(false);
-  const { onRegionChangeComplete: handleRegionChange, isResolving } = useRegionPlace(
-    setPlace,
-    isSaveAs ? 'Lugar' : isOrigin ? 'Origen' : 'Destino',
+  const [hasSelectedCenter, setHasSelectedCenter] = useState(
+    Boolean(usableOrigin || usableCoordinates),
   );
+  const centerAdjustedByUser = useRef(false);
+  const automaticCenterCoordinates = useRef<Place['coordinates']>({
+    latitude: initialRegion.latitude,
+    longitude: initialRegion.longitude,
+  });
+  const {
+    onRegionChangeComplete: handleRegionChange,
+    isResolving,
+    resolutionFailed,
+  } = useRegionPlace(setPlace);
   const pointLabel = isSaveAs ? 'Lugar' : isOrigin ? 'Origen' : 'Destino';
+  const hasResolvedLabel = place != null && isPlaceLabelResolved(place);
   const currentPointName = isResolving
     ? 'Obteniendo lugar…'
-    : place
+    : hasResolvedLabel && place
       ? getPlaceStreetName(place)
-      : 'Mueve el mapa';
+      : resolutionFailed
+        ? 'Dirección pendiente'
+        : place
+          ? 'Obteniendo dirección…'
+          : 'Mueve el mapa';
   const centerPinLabel = isResolving
     ? `${pointLabel}: Obteniendo lugar…`
     : `${pointLabel}: ${currentPointName}`;
   const currentPointAddress = isResolving
     ? 'Estamos ubicando la dirección exacta'
-    : place?.address ?? `Mueve el mapa para fijar el ${noun}`;
+    : hasResolvedLabel
+      ? (place?.address ?? '')
+      : resolutionFailed
+        ? 'No pudimos obtener el nombre. Puedes mover el mapa para reintentar.'
+        : `Mueve el mapa para fijar el ${noun}`;
   const originPinLabel = usableOrigin
     ? `Origen: ${getPlaceStreetName(usableOrigin)}`
     : 'Origen: Sin definir';
@@ -118,21 +151,32 @@ export function PickOnMapScreen() {
   // (el setState ocurre en el `.then`, no de forma síncrona dentro del efecto).
   const seeded = useRef(false);
   useEffect(() => {
-    if (!initialRegion || seeded.current) return;
+    if (seeded.current) return;
     seeded.current = true;
+    // El centro nacional es solo una referencia visual mientras llega el GPS:
+    // no debe ocupar el geocoder con una dirección que el usuario no eligió.
+    if (isDestination || (!usableOrigin && !usableCoordinates)) return;
     handleRegionChange(initialRegion);
-  }, [handleRegionChange, initialRegion]);
+  }, [handleRegionChange, initialRegion, isDestination, usableCoordinates, usableOrigin]);
 
   // Si el permiso llega después de mostrar la región de respaldo, centra una
   // sola vez en la ubicación recién obtenida sin interrumpir ajustes posteriores.
   useEffect(() => {
     if (!usableCoordinates || !startedWithoutPreferredCenter.current) return;
-    startedWithoutPreferredCenter.current = false;
-    mapRef.current?.animateToRegion(
-      { ...usableCoordinates, latitudeDelta: 0.01, longitudeDelta: 0.01 },
-      400,
-    );
-  }, [usableCoordinates]);
+    const nextRegion = { ...usableCoordinates, latitudeDelta: 0.01, longitudeDelta: 0.01 };
+    if (!mapReady.current) {
+      pendingGpsRegion.current = { region: nextRegion, isEstimated };
+      return;
+    }
+
+    pendingGpsRegion.current = null;
+    centerAdjustedByUser.current = false;
+    automaticCenterCoordinates.current = usableCoordinates;
+    setHasSelectedCenter(true);
+    mapRef.current?.animateToRegion(nextRegion, 400);
+    handleRegionChange(nextRegion);
+    if (!isEstimated) startedWithoutPreferredCenter.current = false;
+  }, [handleRegionChange, isEstimated, usableCoordinates]);
 
   const recoverLocation = () => {
     if (locationStatus === 'denied' && !canAskAgain) {
@@ -148,16 +192,40 @@ export function PickOnMapScreen() {
       return;
     }
     if (isDestination) setDestinationMoved(true);
-    mapRef.current?.animateToRegion(
-      { ...usableCoordinates, latitudeDelta: 0.01, longitudeDelta: 0.01 },
-      400,
-    );
+    const nextRegion = { ...usableCoordinates, latitudeDelta: 0.01, longitudeDelta: 0.01 };
+    if (!mapReady.current) {
+      pendingGpsRegion.current = { region: nextRegion, isEstimated };
+      return;
+    }
+    centerAdjustedByUser.current = false;
+    automaticCenterCoordinates.current = usableCoordinates;
+    setHasSelectedCenter(true);
+    startedWithoutPreferredCenter.current = isEstimated;
+    mapRef.current?.animateToRegion(nextRegion, 400);
+    handleRegionChange(nextRegion);
+  };
+
+  const handleMapRegionChange = (nextRegion: Region, details: Details) => {
+    if (details.isGesture) {
+      startedWithoutPreferredCenter.current = false;
+      pendingGpsRegion.current = null;
+      centerAdjustedByUser.current = true;
+      setHasSelectedCenter(true);
+      if (isDestination) setDestinationMoved(true);
+      handleRegionChange(nextRegion);
+      return;
+    }
+    // Los centros automáticos ya se envían explícitamente al hook. MapView los
+    // vuelve a notificar al terminar la animación y no deben duplicar la consulta.
+    if (!centerAdjustedByUser.current) return;
+    if (coordenadasCasiIguales(nextRegion, automaticCenterCoordinates.current)) return;
+    handleRegionChange(nextRegion);
   };
 
   const locationUnavailable =
     !usableCoordinates &&
     (locationStatus === 'denied' || locationStatus === 'error' || coordinates != null);
-  const placeAreaError = place && !isResolving ? getBoliviaPlaceError(place) : null;
+  const placeAreaError = place ? getBoliviaPlaceError(place) : null;
   const destinationTooClose =
     isDestination &&
     usableOrigin != null &&
@@ -166,15 +234,20 @@ export function PickOnMapScreen() {
   const destinationNeedsMove = isDestination && usableOrigin != null && !destinationMoved;
   const confirmDisabled =
     !place ||
-    isResolving ||
+    !hasSelectedCenter ||
     placeAreaError != null ||
+    (isSaveAs && !hasResolvedLabel) ||
     destinationNeedsMove ||
     destinationTooClose;
-  const validationMessage = placeAreaError
-    ? placeAreaError
-    : destinationNeedsMove || destinationTooClose
-      ? 'Mueve el pin B al menos 50 metros desde el origen A.'
-      : null;
+  const validationMessage = !hasSelectedCenter
+    ? `Mueve el mapa para fijar el ${noun}.`
+    : isSaveAs && resolutionFailed
+      ? 'No pudimos obtener el nombre del lugar. Mueve el mapa para reintentar.'
+    : placeAreaError
+      ? placeAreaError
+      : destinationNeedsMove || destinationTooClose
+        ? 'Mueve el pin B al menos 50 metros desde el origen A.'
+        : null;
   const confirmLabel = isSaveAs
     ? 'Usar esta ubicación'
     : isOrigin
@@ -210,15 +283,6 @@ export function PickOnMapScreen() {
     });
   };
 
-  if (!initialRegion) {
-    return (
-      <View style={[styles.root, styles.loading]}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.loadingText}>Cargando mapa…</Text>
-      </View>
-    );
-  }
-
   return (
     <View style={styles.root}>
       <MapView
@@ -228,13 +292,27 @@ export function PickOnMapScreen() {
         initialRegion={initialRegion}
         showsUserLocation
         showsMyLocationButton={false}
-        onMapReady={() =>
-          mapRef.current?.setMapBoundaries(BOLIVIA_NORTH_EAST, BOLIVIA_SOUTH_WEST)
-        }
+        onMapReady={() => {
+          mapReady.current = true;
+          mapRef.current?.setMapBoundaries(BOLIVIA_NORTH_EAST, BOLIVIA_SOUTH_WEST);
+          const pending = pendingGpsRegion.current;
+          if (!pending) return;
+          pendingGpsRegion.current = null;
+          centerAdjustedByUser.current = false;
+          automaticCenterCoordinates.current = pending.region;
+          setHasSelectedCenter(true);
+          mapRef.current?.animateToRegion(pending.region, 400);
+          handleRegionChange(pending.region);
+          if (!pending.isEstimated) startedWithoutPreferredCenter.current = false;
+        }}
         onPanDrag={() => {
+          startedWithoutPreferredCenter.current = false;
+          pendingGpsRegion.current = null;
+          centerAdjustedByUser.current = true;
+          setHasSelectedCenter(true);
           if (isDestination) setDestinationMoved(true);
         }}
-        onRegionChangeComplete={handleRegionChange}>
+        onRegionChangeComplete={handleMapRegionChange}>
         {isDestination && usableOrigin ? (
           <RoutePinMarker
             kind="A"
@@ -244,7 +322,7 @@ export function PickOnMapScreen() {
         ) : null}
       </MapView>
 
-      <CenterPin label={centerPinLabel} color={pinColor} />
+      <CenterPin label={centerPinLabel} color={pinColor} loading={isResolving} />
 
       <SafeAreaView style={styles.topArea} edges={['top']} pointerEvents="box-none">
         <View style={styles.topBar}>
@@ -275,6 +353,7 @@ export function PickOnMapScreen() {
                     : usableOrigin?.address ?? 'Origen confirmado'
                 }
                 active={isOrigin}
+                loading={isOrigin && isResolving}
               />
               {isDestination && (
                 <>
@@ -288,6 +367,7 @@ export function PickOnMapScreen() {
                     address={validationMessage ?? currentPointAddress}
                     active
                     error={validationMessage != null}
+                    loading={isResolving}
                   />
                 </>
               )}
@@ -379,14 +459,14 @@ export function PickOnMapScreen() {
           disabled={confirmDisabled}
           onPress={confirm}
           accessibilityRole="button"
-          accessibilityState={{ disabled: confirmDisabled, busy: isResolving }}
+          accessibilityState={{ disabled: confirmDisabled }}
           accessibilityLabel={confirmLabel}>
           <Text style={styles.confirmText}>
-            {isResolving
-              ? 'Obteniendo dirección…'
-              : validationMessage
+            {validationMessage
+              ? hasSelectedCenter
                 ? 'Elige otro punto'
-                : confirmLabel}
+                : 'Mueve el mapa'
+              : confirmLabel}
           </Text>
           {isResolving ? (
             <ActivityIndicator size="small" color={colors.textOnPrimary} />
@@ -405,12 +485,14 @@ function SelectionPointRow({
   address,
   active,
   error = false,
+  loading = false,
 }: {
   kind: 'A' | 'B';
   tooltipLabel: string;
   address: string;
   active: boolean;
   error?: boolean;
+  loading?: boolean;
 }) {
   return (
     <View
@@ -427,7 +509,10 @@ function SelectionPointRow({
           styles.routePointBadge,
           kind === 'A' ? styles.routePointBadgeOrigin : styles.routePointBadgeDestination,
         ]}>
-        <Text style={styles.routePointBadgeText}>{kind}</Text>
+        <Text style={[styles.routePointBadgeText, loading && styles.hiddenPinContent]}>{kind}</Text>
+        <View style={styles.routePointBadgeLoader} pointerEvents="none">
+          <PinLoadingIndicator loading={loading} color={colors.textOnPrimary} compact />
+        </View>
       </View>
       <View style={styles.routePointCopy}>
         <Text style={styles.routePointTitle} numberOfLines={2} ellipsizeMode="tail">
@@ -452,8 +537,6 @@ function SelectionPointRow({
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceMuted },
-  loading: { alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
-  loadingText: { color: colors.textSecondary, fontSize: fontSize.sm },
 
   topArea: {
     position: 'absolute',
@@ -542,6 +625,16 @@ const styles = StyleSheet.create({
     color: colors.textOnPrimary,
     fontSize: fontSize.xs,
     fontWeight: fontWeight.bold,
+  },
+  hiddenPinContent: { opacity: 0 },
+  routePointBadgeLoader: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   routePointCopy: { flex: 1, minWidth: 0, gap: 2 },
   routePointTitle: {

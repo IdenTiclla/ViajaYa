@@ -379,14 +379,6 @@ function MapCard({
           {secondsLeft != null && secondsLeft > 0 && (
             <OfferLifeTimer secondsLeft={secondsLeft} label="" />
           )}
-          <TouchableOpacity
-            style={[styles.withdrawBtn, disabled && styles.disabled]}
-            onPress={onWithdraw}
-            disabled={disabled}
-            accessibilityRole="button"
-            accessibilityLabel="Retirar oferta">
-            <Text style={styles.withdrawBtnText}>Retirar</Text>
-          </TouchableOpacity>
         </Animated.View>
       )}
       {paused && (
@@ -479,8 +471,8 @@ function MapCard({
         </View>
       </View>
 
-      {!offered && !paused && !taken && (
-        <>
+      <View style={styles.quickSlot}>
+        {!offered && !paused && !taken && (
           <View style={styles.quickRow}>
             {QUICK_DELTAS.map((delta) => (
               <TouchableOpacity
@@ -503,8 +495,32 @@ function MapCard({
               <Text style={styles.quickPillText}>Monto</Text>
             </TouchableOpacity>
           </View>
+        )}
+      </View>
 
-          {expired || rejected ? (
+      <View style={styles.actionsSlot}>
+        {offered && (
+          <View style={styles.actions}>
+            <TouchableOpacity
+              style={[
+                styles.actionBtn,
+                styles.decline,
+                styles.withdrawAction,
+                disabled && styles.disabled,
+              ]}
+              onPress={onWithdraw}
+              disabled={disabled}
+              accessibilityRole="button"
+              accessibilityLabel="Retirar oferta">
+              <Ionicons name="close-circle-outline" size={19} color={colors.danger} />
+              <Text style={styles.declineText}>Retirar oferta</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        {!offered &&
+          !paused &&
+          !taken &&
+          (expired || rejected ? (
             <View style={styles.actions}>
               <TouchableOpacity
                 style={[styles.actionBtn, styles.accept, disabled && styles.disabled]}
@@ -545,9 +561,8 @@ function MapCard({
                 )}
               </TouchableOpacity>
             </View>
-          )}
-        </>
-      )}
+          ))}
+      </View>
     </TouchableOpacity>
   );
 }
@@ -648,6 +663,7 @@ const styles = StyleSheet.create({
 
   // Banners de estado (full-width arriba de la card, con curva superior).
   offeredBanner: {
+    minHeight: 42,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -662,6 +678,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: radius.lg,
   },
   pausedBanner: {
+    minHeight: 42,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -676,6 +693,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: radius.lg,
   },
   expiredBanner: {
+    minHeight: 42,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -690,6 +708,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: radius.lg,
   },
   rejectedBanner: {
+    minHeight: 42,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -716,6 +735,7 @@ const styles = StyleSheet.create({
   },
   dismissBannerBtnText: { color: colors.textSecondary, fontSize: fontSize.xs, fontWeight: fontWeight.bold },
   takenBanner: {
+    minHeight: 42,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -729,15 +749,8 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,
   },
-  withdrawBtn: {
-    marginLeft: 'auto',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    borderRadius: radius.pill,
-    backgroundColor: 'rgba(255,255,255,0.25)',
-  },
-  withdrawBtnText: { color: colors.textOnPrimary, fontSize: fontSize.xs, fontWeight: fontWeight.bold },
-
+  // Mantiene alineadas las cards aunque el estado oculte los controles.
+  quickSlot: { minHeight: 34 },
   quickRow: { flexDirection: 'row', gap: spacing.xs },
   quickPill: {
     paddingHorizontal: spacing.md,
@@ -778,8 +791,10 @@ const styles = StyleSheet.create({
   routeText: { fontSize: fontSize.sm, color: colors.text },
   routeDestination: { fontWeight: fontWeight.semibold },
 
+  actionsSlot: { minHeight: 46 },
   actions: { flexDirection: 'row', gap: spacing.sm },
   actionBtn: { flex: 1, height: 46, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
+  withdrawAction: { flexDirection: 'row', gap: spacing.xs },
   decline: { flex: 1, backgroundColor: '#FDECEA', borderWidth: 1, borderColor: '#F5C6C2' },
   declineText: { color: colors.danger, fontSize: fontSize.md, fontWeight: fontWeight.bold },
   accept: { flex: 1.6, backgroundColor: colors.primary },

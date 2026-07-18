@@ -4,9 +4,9 @@
  * Un `Place` es un punto del viaje (origen o destino): sus coordenadas y una
  * etiqueta legible (nombre + dirección) obtenida por geocodificación inversa.
  */
-import type { Coordinates } from '@/features/home/data/locationService';
+import type { Coordinates } from '@/core/domain/geo';
 
-export type { Coordinates };
+export type { Coordinates } from '@/core/domain/geo';
 
 export type Place = {
   coordinates: Coordinates;

@@ -4,13 +4,14 @@
  */
 import * as Location from 'expo-location';
 
+import type { Coordinates, PlaceLabel } from '@/core/domain/geo';
 import { isPlaceLabelResolved } from '@/features/booking/domain/placeLabels';
 import {
   reverseGeocodeWithGoogle,
   type CalidadGeocodificacion,
 } from '@/features/home/data/googleGeocodingService';
 
-export type Coordinates = { latitude: number; longitude: number };
+export type { Coordinates, PlaceLabel } from '@/core/domain/geo';
 
 export type LocationResult =
   | { status: 'granted'; coordinates: Coordinates; isEstimated: boolean }
@@ -18,9 +19,6 @@ export type LocationResult =
 
 type GrantedLocationResult = Extract<LocationResult, { status: 'granted' }>;
 type LocationUpdate = (result: GrantedLocationResult) => void;
-
-/** Etiqueta legible de un punto: nombre corto + dirección secundaria. */
-export type PlaceLabel = { name: string; address: string; countryCode: string | null };
 
 function formatCoords({ latitude, longitude }: Coordinates): string {
   return `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;

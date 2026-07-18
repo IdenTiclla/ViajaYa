@@ -1,7 +1,7 @@
 /** Respaldo HTTP de geocodificación para dispositivos cuyo geocoder nativo falla. */
 import { api } from '@/core/http/client';
 import { env } from '@/core/config/env';
-import type { Coordinates, PlaceLabel } from '@/features/home/data/locationService';
+import type { Coordinates, PlaceLabel } from '@/core/domain/geo';
 
 const GOOGLE_GEOCODING_ENDPOINT = 'https://maps.googleapis.com/maps/api/geocode/json';
 const PLUS_CODE_RE = /\b[A-Z0-9]{4,}\+[A-Z0-9]{2,}\b/i;

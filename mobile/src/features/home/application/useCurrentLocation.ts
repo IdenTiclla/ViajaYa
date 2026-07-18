@@ -8,7 +8,8 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef } from 'react';
 
-import { type Coordinates, locationService } from '@/features/home/data/locationService';
+import type { Coordinates } from '@/core/domain/geo';
+import { locationService } from '@/features/home/data/locationService';
 
 export type LocationStatus = 'loading' | 'granted' | 'denied' | 'error';
 

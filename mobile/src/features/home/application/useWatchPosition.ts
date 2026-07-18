@@ -8,7 +8,8 @@
  */
 import { useEffect, useState } from 'react';
 
-import { type Coordinates, locationService } from '@/features/home/data/locationService';
+import type { Coordinates } from '@/core/domain/geo';
+import { locationService } from '@/features/home/data/locationService';
 
 export type WatchStatus = 'loading' | 'granted' | 'denied' | 'error';
 

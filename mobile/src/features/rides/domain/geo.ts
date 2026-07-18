@@ -1,5 +1,5 @@
 /** Utilidades geográficas del dominio (sin IO ni framework). */
-import type { Coordinates } from '@/features/booking/domain/types';
+import type { Coordinates } from '@/core/domain/geo';
 
 /** Distancia en línea recta (haversine) entre dos puntos, en kilómetros. */
 export function haversineKm(a: Coordinates, b: Coordinates): number {

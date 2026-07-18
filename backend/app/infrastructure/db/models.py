@@ -8,6 +8,7 @@ from decimal import Decimal
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     DateTime,
     Enum,
     Float,
@@ -47,10 +48,20 @@ def _enum_values(enum_cls: type) -> list[str]:
 _ACTIVE_RIDE_STATUS_PREDICATE = text(
     "status IN ('searching', 'accepted', 'arriving', 'in_progress')"
 )
+_ACTIVE_DRIVER_RIDE_STATUS_PREDICATE = text(
+    "driver_id IS NOT NULL AND status IN ('accepted', 'arriving', 'in_progress')"
+)
+_OPEN_POOL_PREDICATE = text("status = 'searching' AND paused = false")
 
 
 class UserModel(Base):
     __tablename__ = "users"
+    __table_args__ = (
+        CheckConstraint(
+            "rating IS NULL OR (rating >= 1 AND rating <= 5)",
+            name="ck_users_rating_range",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -116,13 +127,51 @@ class RideRequestModel(Base):
             postgresql_where=_ACTIVE_RIDE_STATUS_PREDICATE,
             sqlite_where=_ACTIVE_RIDE_STATUS_PREDICATE,
         ),
+        Index(
+            "uq_ride_requests_active_driver",
+            "driver_id",
+            unique=True,
+            postgresql_where=_ACTIVE_DRIVER_RIDE_STATUS_PREDICATE,
+            sqlite_where=_ACTIVE_DRIVER_RIDE_STATUS_PREDICATE,
+        ),
+        Index(
+            "ix_ride_requests_open_pool_cursor",
+            "service_type",
+            text("created_at DESC"),
+            text("id DESC"),
+            postgresql_where=_OPEN_POOL_PREDICATE,
+            sqlite_where=_OPEN_POOL_PREDICATE,
+        ),
+        Index(
+            "ix_ride_requests_rider_status_cursor",
+            "rider_id",
+            "status",
+            text("created_at DESC"),
+            text("id DESC"),
+        ),
+        Index(
+            "ix_ride_requests_driver_status_cursor",
+            "driver_id",
+            "status",
+            text("created_at DESC"),
+            text("id DESC"),
+        ),
+        CheckConstraint(
+            "fare > 0 AND lower(CAST(fare AS TEXT)) "
+            "NOT IN ('nan', 'infinity', '-infinity')",
+            name="ck_ride_requests_fare_positive",
+        ),
+        CheckConstraint(
+            "pool_version >= 1",
+            name="ck_ride_requests_pool_version_positive",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     rider_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
 
     origin_latitude: Mapped[float] = mapped_column(Float, nullable=False)
@@ -171,11 +220,16 @@ class RideRequestModel(Base):
     driver_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
-        index=True,
         nullable=True,
     )
     accepted_offer_id: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid(as_uuid=True), nullable=True
+        Uuid(as_uuid=True),
+        ForeignKey(
+            "offers.id",
+            name="fk_ride_requests_accepted_offer_id_offers",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
     )
     paused: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="0", nullable=False
@@ -196,6 +250,10 @@ class DriverRideDismissalModel(Base):
     __tablename__ = "driver_ride_dismissals"
     __table_args__ = (
         UniqueConstraint("driver_id", "ride_id", name="uq_driver_ride_dismissals_driver_ride"),
+        CheckConstraint(
+            "pool_version >= 1",
+            name="ck_driver_ride_dismissals_pool_version_positive",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -218,6 +276,31 @@ class DriverRideDismissalModel(Base):
 
 class OfferModel(Base):
     __tablename__ = "offers"
+    __table_args__ = (
+        Index(
+            "ix_offers_ride_status_cursor",
+            "ride_id",
+            "status",
+            text("created_at DESC"),
+            text("id DESC"),
+        ),
+        Index(
+            "ix_offers_driver_status_cursor",
+            "driver_id",
+            "status",
+            text("created_at DESC"),
+            text("id DESC"),
+        ),
+        CheckConstraint(
+            "price > 0 AND lower(CAST(price AS TEXT)) "
+            "NOT IN ('nan', 'infinity', '-infinity')",
+            name="ck_offers_price_positive",
+        ),
+        CheckConstraint(
+            "eta_min IS NULL OR (eta_min >= 0 AND eta_min <= 240)",
+            name="ck_offers_eta_min_range",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -225,13 +308,11 @@ class OfferModel(Base):
     ride_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey("ride_requests.id", ondelete="CASCADE"),
-        index=True,
         nullable=False,
     )
     driver_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
-        index=True,
         nullable=False,
     )
     price: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
@@ -261,6 +342,10 @@ class RideRatingModel(Base):
     __tablename__ = "ride_ratings"
     __table_args__ = (
         UniqueConstraint("ride_id", "rater_id", name="uq_ride_ratings_ride_rater"),
+        CheckConstraint(
+            "score >= 1 AND score <= 5",
+            name="ck_ride_ratings_score_range",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(

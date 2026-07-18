@@ -1,11 +1,11 @@
 /**
- * Design tokens de ViajaYa (TaxiGo), derivados del diseño en Stitch.
+ * Design tokens de ViajaYa, derivados del diseño en Stitch.
  * Única fuente de verdad de colores, espaciado, tipografía y radios (DRY).
  */
 
 export const colors = {
   // Marca
-  primary: '#16308C', // azul TaxiGo (botones, marca)
+  primary: '#16308C', // azul principal (botones, marca)
   primaryDark: '#0F2266',
   accent: '#F5C518', // amarillo (íconos de servicio, tab activo)
 

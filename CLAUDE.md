@@ -1,4 +1,4 @@
-# ViajaYa (TaxiGo) — Monorepo
+# ViajaYa — Monorepo
 
 Aplicación de **taxis y envío de encomiendas** con negociación de tarifa en tiempo real entre
 pasajero y conductor. Monorepo con dos proyectos independientes que siguen **Clean Architecture**:

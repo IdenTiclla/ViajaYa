@@ -1,7 +1,7 @@
 import type { ExpoConfig, ConfigContext } from 'expo/config';
 
 /**
- * Configuración dinámica de Expo para ViajaYa (TaxiGo).
+ * Configuración dinámica de Expo para ViajaYa.
  * Las claves y URLs sensibles se leen de variables de entorno y se exponen a la
  * app vía `extra` (accesible con expo-constants). Ver `.env.example`.
  */

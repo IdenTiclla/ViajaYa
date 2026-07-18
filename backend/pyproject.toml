@@ -1,7 +1,7 @@
 [project]
 name = "viajaya-backend"
 version = "0.1.0"
-description = "ViajaYa (TaxiGo) backend API - FastAPI clean architecture"
+description = "ViajaYa backend API - FastAPI clean architecture"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115",

@@ -25,12 +25,16 @@ import {
   DRIVER_ACTIVE_RIDE_KEY,
   PASSENGER_ACTIVE_RIDE_KEY,
 } from '@/features/rides/application/useRides';
+import { reducePassengerOffers } from '@/features/rides/application/passengerOffersReducer';
+import {
+  isTerminalRide,
+  reduceDriverActiveRide,
+  reducePassengerActiveRide,
+  shouldApplyRideStatus,
+} from '@/features/rides/application/rideStatusReducer';
 import { formatBolivianos } from '@/features/rides/domain/money';
 import {
   type OfferDto,
-  type OpenRideDto,
-  type OpenRidePageDto,
-  type RideDto,
   toOffer,
   toOpenRide,
   toOpenRidePage,
@@ -41,10 +45,6 @@ import {
   passengerSocketMessageSchema,
 } from '@/features/rides/data/realtimeSchemas';
 import type { Offer, Ride } from '@/features/rides/domain/types';
-
-function isTerminalRide(ride: Ride): boolean {
-  return ride.status === 'completed' || ride.status === 'cancelled';
-}
 
 /** Pasajero: recibe en vivo las ofertas y los cambios de estado de su viaje. */
 export function useNegotiationSocket(rideId: string | null, enabled = true): void {
@@ -62,9 +62,12 @@ export function useNegotiationSocket(rideId: string | null, enabled = true): voi
             queryKey: ['ride-offers', rideId],
             exact: true,
           });
-          queryClient.setQueryData(
+          queryClient.setQueryData<Offer[]>(
             ['ride-offers', rideId],
-            (msg.data as OfferDto[]).map(toOffer),
+            reducePassengerOffers([], {
+              type: 'snapshot',
+              offers: msg.data.map(toOffer),
+            }).offers,
           );
           break;
         case 'offer_created': {
@@ -73,17 +76,19 @@ export function useNegotiationSocket(rideId: string | null, enabled = true): voi
             exact: true,
           });
           // Nueva oferta o el conductor mejoró la suya: upsert por id.
-          const offer = toOffer(msg.data as OfferDto);
-          const isNew = !queryClient
-            .getQueryData<Offer[]>(['ride-offers', rideId])
-            ?.some((o) => o.id === offer.id);
-          queryClient.setQueryData<Offer[]>(['ride-offers', rideId], (prev = []) =>
-            prev.some((o) => o.id === offer.id)
-              ? prev.map((o) => (o.id === offer.id ? offer : o))
-              : [offer, ...prev.filter((o) => o.driver.id !== offer.driver.id)],
+          const offer = toOffer(msg.data);
+          const currentOffers =
+            queryClient.getQueryData<Offer[]>(['ride-offers', rideId]) ?? [];
+          const reduction = reducePassengerOffers(currentOffers, {
+            type: 'created',
+            offer,
+          });
+          queryClient.setQueryData<Offer[]>(
+            ['ride-offers', rideId],
+            reduction.offers,
           );
           // No repite el aviso si el backend reenvia exactamente la misma oferta.
-          if (isNew) {
+          if (reduction.notice?.kind === 'received') {
             usePassengerToasts.getState().push({
               kind: 'offer_received',
               rideId,
@@ -110,33 +115,34 @@ export function useNegotiationSocket(rideId: string | null, enabled = true): voi
           // El conductor retiro su oferta o tomo otro viaje. Si llega `offer_id`
           // quitamos solo esa tarjeta; si no, todas las del conductor. Una mejora
           // (`superseded`) se procesa de forma atomica al llegar `offer_created`.
-          const { driver_id: driverId, offer_id: offerId, reason } = msg.data as {
-            driver_id: string;
-            offer_id?: string | null;
-            reason?: string;
-          };
+          const { driver_id: driverId, offer_id: offerId, reason } = msg.data;
           await queryClient.cancelQueries({
             queryKey: ['ride-offers', rideId],
             exact: true,
           });
-          // En una mejora, `offer_created` llega a continuacion y reemplaza la
-          // tarjeta por conductor en una sola escritura. Conservar la anterior
-          // durante esos milisegundos evita volver visualmente a "Buscando".
-          if (reason === 'superseded') break;
           const existing =
             queryClient.getQueryData<Offer[]>(['ride-offers', rideId]) ?? [];
-          const removed = existing.find((o) =>
-            offerId ? o.id === offerId : o.driver.id === driverId,
-          );
-          queryClient.setQueryData<Offer[]>(['ride-offers', rideId], (prev = []) =>
-            prev.filter((o) => (offerId ? o.id !== offerId : o.driver.id !== driverId)),
-          );
-          if (removed) {
+          const reduction = reducePassengerOffers(existing, {
+            type: 'withdrawn',
+            driverId,
+            offerId,
+            reason:
+              reason === 'superseded' || reason === 'driver_offline'
+                ? reason
+                : undefined,
+          });
+          if (reduction.offers !== existing) {
+            queryClient.setQueryData<Offer[]>(
+              ['ride-offers', rideId],
+              reduction.offers,
+            );
+          }
+          if (reduction.notice?.kind === 'withdrawn') {
             usePassengerToasts.getState().push({
               kind: 'offer_withdrawn',
               rideId,
               title: 'Oferta retirada',
-              message: `${removed.driver.fullName} retiró su oferta.`,
+              message: `${reduction.notice.offer.driver.fullName} retiró su oferta.`,
             });
           }
           break;
@@ -144,32 +150,33 @@ export function useNegotiationSocket(rideId: string | null, enabled = true): voi
         case 'offer_expired': {
           // La oferta del conductor venció (30 s) sin respuesta: el backend la
           // emite también al pasajero para retirar la tarjeta en vivo.
-          const { offer_id: offerId } = msg.data as {
-            offer_id: string;
-            ride_id: string;
-          };
+          const { offer_id: offerId } = msg.data;
           await queryClient.cancelQueries({
             queryKey: ['ride-offers', rideId],
             exact: true,
           });
           const existing =
             queryClient.getQueryData<Offer[]>(['ride-offers', rideId]) ?? [];
-          const expired = existing.find((o) => o.id === offerId);
-          queryClient.setQueryData<Offer[]>(['ride-offers', rideId], (prev = []) =>
-            prev.filter((o) => o.id !== offerId),
+          const reduction = reducePassengerOffers(existing, {
+            type: 'expired',
+            offerId,
+          });
+          queryClient.setQueryData<Offer[]>(
+            ['ride-offers', rideId],
+            reduction.offers,
           );
-          if (expired) {
+          if (reduction.notice?.kind === 'expired') {
             usePassengerToasts.getState().push({
               kind: 'offer_expired',
               rideId,
               title: 'Oferta expirada',
-              message: `La oferta de ${expired.driver.fullName} expiró.`,
+              message: `La oferta de ${reduction.notice.offer.driver.fullName} expiró.`,
             });
           }
           break;
         }
         case 'ride_status': {
-          const ride = toRide(msg.data as RideDto);
+          const ride = toRide(msg.data);
           await Promise.all([
             queryClient.cancelQueries({ queryKey: ['ride', rideId] }),
             queryClient.cancelQueries({ queryKey: PASSENGER_ACTIVE_RIDE_KEY }),
@@ -178,21 +185,15 @@ export function useNegotiationSocket(rideId: string | null, enabled = true): voi
 
           // Los estados terminales son irreversibles. Un evento SEARCHING que
           // quedo en vuelo antes del POST /cancel no puede revivir la solicitud.
-          if (
-            cachedRide &&
-            isTerminalRide(cachedRide) &&
-            cachedRide.status !== ride.status
-          ) {
+          if (!shouldApplyRideStatus(cachedRide, ride)) {
             break;
           }
 
           queryClient.setQueryData(['ride', rideId], ride);
-          queryClient.setQueryData<Ride | null>(PASSENGER_ACTIVE_RIDE_KEY, (current) => {
-            if (isTerminalRide(ride)) {
-              return current?.id === ride.id ? null : (current ?? null);
-            }
-            return current == null || current.id === ride.id ? ride : current;
-          });
+          queryClient.setQueryData<Ride | null>(
+            PASSENGER_ACTIVE_RIDE_KEY,
+            (current) => reducePassengerActiveRide(current, ride),
+          );
           break;
         }
         default:
@@ -218,7 +219,7 @@ export function useDriverPoolSocket(enabled = true): void {
           // `ride_created` que anuncia una renovación de la solicitud. Solo
           // borramos el aviso de expiración si la tarifa actual es mayor que la
           // que el pasajero ofrecía cuando el conductor envió esa propuesta.
-          const openRidesPage = toOpenRidePage(msg.data as OpenRidePageDto);
+          const openRidesPage = toOpenRidePage(msg.data);
           const openRides = openRidesPage.items;
           await queryClient.cancelQueries({ queryKey: ['open-rides'], exact: true });
           queryClient.setQueryData<OpenRidesInfiniteData>(
@@ -258,7 +259,7 @@ export function useDriverPoolSocket(enabled = true): void {
         case 'paused_rides_snapshot': {
           // Recupera el aviso que habría llegado como `ride_paused` si el
           // conductor estaba fuera de la app durante la edición.
-          const pausedRides = (msg.data as OpenRideDto[]).map(toOpenRide);
+          const pausedRides = msg.data.map(toOpenRide);
           await queryClient.cancelQueries({ queryKey: ['open-rides'], exact: true });
           queryClient.setQueryData<OpenRidesInfiniteData>(['open-rides'], (prev) =>
             prependPausedOpenRides(prev, pausedRides),
@@ -281,7 +282,7 @@ export function useDriverPoolSocket(enabled = true): void {
           //   cambiados); sin esto, la tarjeta seguiría mostrando "Tu oferta expiró"
           //   / "Tu oferta fue rechazada" sobre un precio que el conductor nunca
           //   ofertó. No se toca `offered` (oferta viva) ni `taken`.
-          const ride = toOpenRide(msg.data as OpenRideDto);
+          const ride = toOpenRide(msg.data);
           await queryClient.cancelQueries({ queryKey: ['open-rides'], exact: true });
           queryClient.setQueryData<OpenRidesInfiniteData>(['open-rides'], (prev) =>
             upsertOpenRide(prev, ride),
@@ -293,7 +294,7 @@ export function useDriverPoolSocket(enabled = true): void {
           break;
         }
         case 'ride_closed': {
-          const { ride_id: rideId } = msg.data as { ride_id: string };
+          const { ride_id: rideId } = msg.data;
           await queryClient.cancelQueries({ queryKey: ['open-rides'], exact: true });
           queryClient.setQueryData<OpenRidesInfiniteData>(['open-rides'], (prev) =>
             removeOpenRide(prev, rideId),
@@ -310,7 +311,7 @@ export function useDriverPoolSocket(enabled = true): void {
           // solicitud" + solo Quitar) durante la edición. Reemplaza al viejo
           // `offer_rejected(ride_paused)` que no traía los datos y, combinado con
           // el ride_closed, hacía desaparecer la tarjeta durante la edición.
-          const ride = toOpenRide(msg.data as OpenRideDto);
+          const ride = toOpenRide(msg.data);
           await queryClient.cancelQueries({ queryKey: ['open-rides'], exact: true });
           queryClient.setQueryData<OpenRidesInfiniteData>(['open-rides'], (prev) =>
             prependPausedOpenRides(prev, [ride]),
@@ -327,7 +328,7 @@ export function useDriverPoolSocket(enabled = true): void {
         case 'offer_accepted': {
           // El pasajero aceptó su oferta: el viaje se le asigna y la pantalla del
           // conductor cambia a navegación. Limpia el estado de esa oferta.
-          const ride = toRide(msg.data as RideDto);
+          const ride = toRide(msg.data);
           await queryClient.cancelQueries({ queryKey: DRIVER_ACTIVE_RIDE_KEY });
           queryClient.setQueryData(DRIVER_ACTIVE_RIDE_KEY, ride);
           useDriverRequests.getState().clearRide(ride.id);
@@ -341,7 +342,7 @@ export function useDriverPoolSocket(enabled = true): void {
         }
         case 'offer_expired': {
           // Su oferta venció (30 s) sin respuesta del pasajero (aviso en vivo).
-          const { ride_id: rideId } = msg.data as { ride_id: string };
+          const { ride_id: rideId } = msg.data;
           useDriverRequests.getState().markExpired(rideId);
           useDriverToasts.getState().push({
             kind: 'expired',
@@ -353,10 +354,7 @@ export function useDriverPoolSocket(enabled = true): void {
         }
         case 'offer_rejected': {
           // Su oferta murió. La razón distingue el desenlace para el mensaje correcto.
-          const { ride_id: rideId, reason } = msg.data as {
-            ride_id: string;
-            reason?: string;
-          };
+          const { ride_id: rideId, reason } = msg.data;
           const store = useDriverRequests.getState();
           const toasts = useDriverToasts.getState();
           if (reason === 'ride_taken') {
@@ -392,7 +390,7 @@ export function useDriverPoolSocket(enabled = true): void {
           await queryClient.cancelQueries({ queryKey: DRIVER_ACTIVE_RIDE_KEY });
           queryClient.setQueryData(
             DRIVER_ACTIVE_RIDE_KEY,
-            toRide(msg.data as RideDto),
+            toRide(msg.data),
           );
           break;
         case 'offers_withdrawn':
@@ -406,21 +404,17 @@ export function useDriverPoolSocket(enabled = true): void {
           // canceló): refleja el estado en su viaje activo al instante. La
           // pantalla del conductor decide cuándo limpiar el terminal, después de
           // mostrar cancelación o calificación.
-          const ride = toRide(msg.data as RideDto);
+          const ride = toRide(msg.data);
           await Promise.all([
             queryClient.cancelQueries({ queryKey: ['ride', ride.id] }),
             queryClient.cancelQueries({ queryKey: DRIVER_ACTIVE_RIDE_KEY }),
           ]);
           const cachedRide = queryClient.getQueryData<Ride>(['ride', ride.id]);
-          if (
-            cachedRide &&
-            isTerminalRide(cachedRide) &&
-            cachedRide.status !== ride.status
-          ) {
+          if (!shouldApplyRideStatus(cachedRide, ride)) {
             break;
           }
           queryClient.setQueryData<Ride | null>(DRIVER_ACTIVE_RIDE_KEY, (prev) =>
-            prev && prev.id === ride.id ? ride : prev,
+            reduceDriverActiveRide(prev, ride),
           );
           queryClient.setQueryData(['ride', ride.id], ride);
           break;

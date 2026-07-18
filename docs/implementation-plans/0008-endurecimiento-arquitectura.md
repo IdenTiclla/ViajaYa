@@ -164,8 +164,9 @@ parciales ni niveles de aislamiento.
   discriminados y construirlos antes de toda emisión.
 - [x] Mantener schemas Zod equivalentes por socket en mobile.
 - [x] Parsear cada mensaje antes de mutar React Query o Zustand.
-- [ ] Extraer reducers puros para pasajero y conductor; los hooks solo conectarán el
-  socket, validarán y aplicarán efectos.
+- [x] Extraer reducers puros para las ofertas del pasajero y los estados de ride
+  compartidos; `openRidesCache` ya reduce el pool del conductor. Los hooks
+  conservan únicamente la coordinación del socket, caché, stores y efectos UI.
 - [x] Registrar eventos inválidos con metadatos sanitizados, sin incluir tokens,
   URL, frame ni payload.
 

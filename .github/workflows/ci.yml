@@ -115,6 +115,9 @@ jobs:
       - name: Instalar dependencias
         run: npm ci
 
+      - name: Probar reducers de tiempo real
+        run: node --experimental-strip-types --test tests/*.test.mjs
+
       - name: Verificar tipos
         run: npx tsc --noEmit
 

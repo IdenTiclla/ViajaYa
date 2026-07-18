@@ -19,6 +19,15 @@ from starlette.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 from app.api.deps import get_session_factory
+from app.api.v1.schemas.realtime import (
+    DriverOffersSnapshotMessage,
+    OfferCreatedMessage,
+    OffersSnapshotMessage,
+    OpenRidesSnapshotMessage,
+    PausedRidesSnapshotMessage,
+    RideStatusMessage,
+    parse_negotiation_message,
+)
 from app.domain.entities import OfferStatus, UserRole, VehicleType
 from app.infrastructure.db.base import Base
 from app.infrastructure.db.models import OfferModel
@@ -72,11 +81,13 @@ def _websocket_connect(client: TestClient, url: str):
 def _receive_driver_handshake(ws) -> tuple[dict, dict]:
     """Consume el handshake autoritativo del conductor en su orden contractual."""
     open_rides = ws.receive_json()
-    assert open_rides["type"] == "open_rides_snapshot"
+    assert isinstance(parse_negotiation_message(open_rides), OpenRidesSnapshotMessage)
     paused_rides = ws.receive_json()
-    assert paused_rides["type"] == "paused_rides_snapshot"
+    assert isinstance(
+        parse_negotiation_message(paused_rides), PausedRidesSnapshotMessage
+    )
     offers = ws.receive_json()
-    assert offers["type"] == "driver_offers_snapshot"
+    assert isinstance(parse_negotiation_message(offers), DriverOffersSnapshotMessage)
     return open_rides, offers
 
 
@@ -193,7 +204,7 @@ def test_passenger_receives_snapshot_and_live_offer(ws_client: TestClient):
     url = f"/api/v1/ws/rides/{ride_id}?token={rider_token}"
     with _websocket_connect(ws_client, url) as ws:
         snapshot = ws.receive_json()
-        assert snapshot["type"] == "offers_snapshot"
+        assert isinstance(parse_negotiation_message(snapshot), OffersSnapshotMessage)
         assert snapshot["data"] == []
 
         # El conductor oferta por HTTP → el pasajero lo recibe en vivo.
@@ -204,7 +215,7 @@ def test_passenger_receives_snapshot_and_live_offer(ws_client: TestClient):
         )
         assert offer.status_code == 201, offer.text
         event = ws.receive_json()
-        assert event["type"] == "offer_created"
+        assert isinstance(parse_negotiation_message(event), OfferCreatedMessage)
         assert event["data"]["ride_id"] == ride_id
 
         # Al aceptar, el pasajero recibe el viaje asignado (decisión final):
@@ -216,7 +227,7 @@ def test_passenger_receives_snapshot_and_live_offer(ws_client: TestClient):
         assert accepted.status_code == 200, accepted.text
         assert accepted.json()["status"] == "accepted"
         status_event = ws.receive_json()
-        assert status_event["type"] == "ride_status"
+        assert isinstance(parse_negotiation_message(status_event), RideStatusMessage)
         assert status_event["data"]["status"] == "accepted"
 
 

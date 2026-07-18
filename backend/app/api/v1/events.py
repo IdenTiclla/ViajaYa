@@ -11,6 +11,28 @@ from __future__ import annotations
 import uuid
 
 from app.api.v1.schemas.offers import OfferResponse
+from app.api.v1.schemas.realtime import (
+    NegotiationMessage,
+    OfferAcceptedMessage,
+    OfferCreatedMessage,
+    OfferExpiredData,
+    OfferExpiredMessage,
+    OfferRejectedData,
+    OfferRejectedMessage,
+    OfferRejectedReason,
+    OffersWithdrawnData,
+    OffersWithdrawnMessage,
+    OfferWithdrawnData,
+    OfferWithdrawnMessage,
+    OfferWithdrawnReason,
+    RideClosedData,
+    RideClosedMessage,
+    RideCreatedMessage,
+    RidePausedData,
+    RidePausedMessage,
+    RideStatusMessage,
+    dump_negotiation_message,
+)
 from app.api.v1.schemas.rides import OpenRideResponse, RideResponse
 from app.application.dto import (
     AcceptOfferResult,
@@ -27,21 +49,9 @@ from app.infrastructure.realtime.hub import (
     ride_topic,
 )
 
-# Tipos de evento (deben coincidir con el cliente móvil).
-RIDE_CREATED = "ride_created"
-RIDE_CLOSED = "ride_closed"
-RIDE_PAUSED = "ride_paused"
-OFFER_CREATED = "offer_created"
-OFFER_REJECTED = "offer_rejected"
-OFFER_WITHDRAWN = "offer_withdrawn"
-OFFER_ACCEPTED = "offer_accepted"
-OFFERS_WITHDRAWN = "offers_withdrawn"
-OFFER_EXPIRED = "offer_expired"
-RIDE_STATUS = "ride_status"
 
-
-def _envelope(event_type: str, data: object) -> dict:
-    return {"type": event_type, "data": data}
+async def _broadcast(topic: str, message: NegotiationMessage) -> None:
+    await hub.broadcast(topic, dump_negotiation_message(message))
 
 
 async def publish_ride_created(detail: OpenRideDetail) -> None:
@@ -50,17 +60,17 @@ async def publish_ride_created(detail: OpenRideDetail) -> None:
     Llega ya enriquecida con los datos del pasajero: el conductor los ve en la
     tarjeta desde el primer ``ride_created`` (no solo en el snapshot).
     """
-    payload = OpenRideResponse.from_open_ride(detail).model_dump(mode="json")
-    await hub.broadcast(
-        pool_topic(detail.ride.service_type.value), _envelope(RIDE_CREATED, payload)
+    await _broadcast(
+        pool_topic(detail.ride.service_type.value),
+        RideCreatedMessage(data=OpenRideResponse.from_open_ride(detail)),
     )
 
 
 async def publish_ride_closed(ride_id: uuid.UUID, service_type: ServiceType) -> None:
     """La solicitud deja de estar abierta (asignada/cancelada): sale del pool."""
-    await hub.broadcast(
+    await _broadcast(
         pool_topic(service_type.value),
-        _envelope(RIDE_CLOSED, {"ride_id": str(ride_id)}),
+        RideClosedMessage(data=RideClosedData(ride_id=ride_id)),
     )
 
 
@@ -85,45 +95,49 @@ async def publish_ride_paused(
     ride = result.ride
     await publish_ride_closed(ride.id, ride.service_type)
     for offer in result.paused_offers:
-        await hub.broadcast(
+        await _broadcast(
             ride_topic(ride.id),
-            _envelope(
-                OFFER_WITHDRAWN,
-                {"driver_id": str(offer.driver_id), "offer_id": str(offer.id)},
+            OfferWithdrawnMessage(
+                data=OfferWithdrawnData(
+                    driver_id=offer.driver_id,
+                    offer_id=offer.id,
+                )
             ),
         )
         if open_detail is not None:
-            payload = OpenRideResponse.from_open_ride(open_detail).model_dump(mode="json")
-            await hub.broadcast(
+            await _broadcast(
                 driver_topic(offer.driver_id),
-                _envelope(
-                    RIDE_PAUSED,
-                    {**payload, "offer_id": str(offer.id)},
+                RidePausedMessage(
+                    data=RidePausedData.from_open_ride(
+                        OpenRideResponse.from_open_ride(open_detail),
+                        offer.id,
+                    )
                 ),
             )
 
 
 async def publish_offer_created(detail: OfferDetail) -> None:
     """Una oferta nueva llega al pasajero dueño del viaje."""
-    payload = OfferResponse.from_detail(detail).model_dump(mode="json")
-    await hub.broadcast(
-        ride_topic(detail.offer.ride_id), _envelope(OFFER_CREATED, payload)
+    await _broadcast(
+        ride_topic(detail.offer.ride_id),
+        OfferCreatedMessage(data=OfferResponse.from_detail(detail)),
     )
 
 
-async def publish_offer_rejected(offer: Offer, reason: str = "declined") -> None:
+async def publish_offer_rejected(
+    offer: Offer, reason: OfferRejectedReason = "declined"
+) -> None:
     """La oferta murió para el conductor: rechazada por el pasajero (``declined``),
     el viaje fue tomado por otro conductor (``ride_taken``) o lo canceló
     (``ride_cancelled``)."""
-    await hub.broadcast(
+    await _broadcast(
         driver_topic(offer.driver_id),
-        _envelope(
-            OFFER_REJECTED,
-            {
-                "ride_id": str(offer.ride_id),
-                "offer_id": str(offer.id),
-                "reason": reason,
-            },
+        OfferRejectedMessage(
+            data=OfferRejectedData(
+                ride_id=offer.ride_id,
+                offer_id=offer.id,
+                reason=reason,
+            )
         ),
     )
 
@@ -137,26 +151,32 @@ async def publish_offer_expired(offer: Offer) -> None:
     ``driver_id`` para que el cliente pueda leer el nombre del conductor de su
     caché antes de remover la tarjeta.
     """
-    payload = {
-        "ride_id": str(offer.ride_id),
-        "offer_id": str(offer.id),
-        "driver_id": str(offer.driver_id),
-        "reason": "expired",
-    }
-    await hub.broadcast(driver_topic(offer.driver_id), _envelope(OFFER_EXPIRED, payload))
-    await hub.broadcast(ride_topic(offer.ride_id), _envelope(OFFER_EXPIRED, payload))
+    message = OfferExpiredMessage(
+        data=OfferExpiredData(
+            ride_id=offer.ride_id,
+            offer_id=offer.id,
+            driver_id=offer.driver_id,
+            reason="expired",
+        )
+    )
+    await _broadcast(driver_topic(offer.driver_id), message)
+    await _broadcast(ride_topic(offer.ride_id), message)
 
 
 async def publish_offer_withdrawn_by_driver(
-    offer: Offer, *, reason: str | None = None
+    offer: Offer, *, reason: OfferWithdrawnReason | None = None
 ) -> None:
     """El conductor retiró (o se negó a confirmar) su oferta: el pasajero deja de verla."""
-    payload = {"driver_id": str(offer.driver_id), "offer_id": str(offer.id)}
+    data = OfferWithdrawnData(driver_id=offer.driver_id, offer_id=offer.id)
     if reason is not None:
-        payload["reason"] = reason
-    await hub.broadcast(
+        data = OfferWithdrawnData(
+            driver_id=offer.driver_id,
+            offer_id=offer.id,
+            reason=reason,
+        )
+    await _broadcast(
         ride_topic(offer.ride_id),
-        _envelope(OFFER_WITHDRAWN, payload),
+        OfferWithdrawnMessage(data=data),
     )
 
 
@@ -168,14 +188,13 @@ async def publish_driver_offline_offers(
         return
     for offer in offers:
         await publish_offer_withdrawn_by_driver(offer, reason="driver_offline")
-    await hub.broadcast(
+    await _broadcast(
         driver_topic(driver_id),
-        _envelope(
-            OFFERS_WITHDRAWN,
-            {
-                "ride_ids": [str(offer.ride_id) for offer in offers],
-                "reason": "driver_offline",
-            },
+        OffersWithdrawnMessage(
+            data=OffersWithdrawnData(
+                ride_ids=[offer.ride_id for offer in offers],
+                reason="driver_offline",
+            )
         ),
     )
 
@@ -187,15 +206,14 @@ async def publish_offer_superseded(superseded_offer_id: uuid.UUID, detail: Offer
     quita la tarjeta vieja sin avisar "retiró su oferta" (el ``offer_created``
     inmediato ya anuncia el monto nuevo).
     """
-    await hub.broadcast(
+    await _broadcast(
         ride_topic(detail.offer.ride_id),
-        _envelope(
-            OFFER_WITHDRAWN,
-            {
-                "driver_id": str(detail.driver.id),
-                "offer_id": str(superseded_offer_id),
-                "reason": "superseded",
-            },
+        OfferWithdrawnMessage(
+            data=OfferWithdrawnData(
+                driver_id=detail.driver.id,
+                offer_id=superseded_offer_id,
+                reason="superseded",
+            )
         ),
     )
     await publish_offer_created(detail)
@@ -207,14 +225,10 @@ async def publish_ride_status(detail: RideDetail) -> None:
     El conductor también lo recibe por su canal personal para enterarse en vivo
     de cambios que no inició él (p. ej. el pasajero canceló el viaje).
     """
-    payload = RideResponse.from_detail(detail).model_dump(mode="json")
-    await hub.broadcast(
-        ride_topic(detail.ride.id), _envelope(RIDE_STATUS, payload)
-    )
+    message = RideStatusMessage(data=RideResponse.from_detail(detail))
+    await _broadcast(ride_topic(detail.ride.id), message)
     if detail.driver is not None:
-        await hub.broadcast(
-            driver_topic(detail.driver.id), _envelope(RIDE_STATUS, payload)
-        )
+        await _broadcast(driver_topic(detail.driver.id), message)
 
 
 async def publish_offer_accepted(result: AcceptOfferResult) -> None:
@@ -231,33 +245,38 @@ async def publish_offer_accepted(result: AcceptOfferResult) -> None:
     """
     ride = result.detail.ride
     driver = result.detail.driver
-    ride_payload = RideResponse.from_detail(result.detail).model_dump(mode="json")
+    ride_response = RideResponse.from_detail(result.detail)
 
-    await hub.broadcast(ride_topic(ride.id), _envelope(RIDE_STATUS, ride_payload))
+    await _broadcast(ride_topic(ride.id), RideStatusMessage(data=ride_response))
     await publish_ride_closed(ride.id, ride.service_type)
 
     if driver is not None:
-        await hub.broadcast(
-            driver_topic(driver.id), _envelope(OFFER_ACCEPTED, ride_payload)
-        )
-        await hub.broadcast(
+        await _broadcast(
             driver_topic(driver.id),
-            _envelope(
-                OFFERS_WITHDRAWN,
-                {"ride_ids": [str(rid) for rid in result.withdrawn_ride_ids]},
+            OfferAcceptedMessage(data=ride_response),
+        )
+        await _broadcast(
+            driver_topic(driver.id),
+            OffersWithdrawnMessage(
+                data=OffersWithdrawnData(ride_ids=result.withdrawn_ride_ids)
             ),
         )
         for other_ride_id in result.withdrawn_ride_ids:
-            await hub.broadcast(
+            await _broadcast(
                 ride_topic(other_ride_id),
-                _envelope(OFFER_WITHDRAWN, {"driver_id": str(driver.id)}),
+                OfferWithdrawnMessage(
+                    data=OfferWithdrawnData(driver_id=driver.id)
+                ),
             )
 
     for loser_id in result.losing_driver_ids:
-        await hub.broadcast(
+        await _broadcast(
             driver_topic(loser_id),
-            _envelope(
-                OFFER_REJECTED,
-                {"ride_id": str(ride.id), "offer_id": None, "reason": "ride_taken"},
+            OfferRejectedMessage(
+                data=OfferRejectedData(
+                    ride_id=ride.id,
+                    offer_id=None,
+                    reason="ride_taken",
+                )
             ),
         )

@@ -36,6 +36,10 @@ import {
   toOpenRidePage,
   toRide,
 } from '@/features/rides/data/ridesRepository';
+import {
+  driverSocketMessageSchema,
+  passengerSocketMessageSchema,
+} from '@/features/rides/data/realtimeSchemas';
 import type { Offer, Ride } from '@/features/rides/domain/types';
 
 function isTerminalRide(ride: Ride): boolean {
@@ -194,7 +198,7 @@ export function useNegotiationSocket(rideId: string | null, enabled = true): voi
         default:
           break;
       }
-    });
+    }, passengerSocketMessageSchema);
 
     return () => handle.close();
   }, [enabled, rideId, queryClient]);
@@ -424,7 +428,7 @@ export function useDriverPoolSocket(enabled = true): void {
         default:
           break;
       }
-    });
+    }, driverSocketMessageSchema);
 
     return () => handle.close();
   }, [enabled, queryClient]);

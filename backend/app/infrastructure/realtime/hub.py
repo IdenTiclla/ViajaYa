@@ -75,7 +75,7 @@ class RealtimeHub:
         """``True`` si algún WebSocket sigue suscrito al topic (presencia viva)."""
         return bool(self._topics.get(topic))
 
-    async def broadcast(self, topic: str, message: dict) -> None:
+    async def broadcast(self, topic: str, message: dict[str, object]) -> None:
         """Envía ``message`` (JSON-serializable) a todos los suscriptores del topic.
 
         Los sockets que fallan al enviar se descartan (desconexión silenciosa).

@@ -41,6 +41,9 @@ jobs:
       - name: Verificar estilo
         run: python -m ruff check .
 
+      - name: Verificar contrato OpenAPI
+        run: python -m scripts.export_openapi --check
+
       - name: Ejecutar pruebas rápidas
         run: python -m pytest -q
 

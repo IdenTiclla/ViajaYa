@@ -18,19 +18,128 @@ import { tokenStorage } from '@/core/http/tokenStorage';
 export type SocketMessage = { type: string; data: unknown };
 export type SocketHandle = { close: () => void };
 
+type ParserIssue = {
+  code?: string;
+  path?: PropertyKey[];
+};
+
+export type SocketMessageParser<T extends SocketMessage> = {
+  safeParse: (value: unknown) =>
+    | { success: true; data: T }
+    | { success: false; error: { issues?: ParserIssue[] } };
+};
+
+export type SanitizedSocketIssue = {
+  type: string;
+  path: string;
+  message: string;
+};
+
+export type SocketFrameResult<T extends SocketMessage> =
+  | { success: true; data: T }
+  | { success: false; issue: SanitizedSocketIssue };
+
 // Debe quedar holgadamente por debajo de la gracia de presencia del backend.
 // En el peor caso visible reintentamos cada 5 s, no justo cuando vence la gracia.
 const MAX_BACKOFF_MS = 5_000;
 const BASE_BACKOFF_MS = 1_000;
 const AUTH_SUBPROTOCOL = 'viajaya.auth';
 
+function safeMessageType(value: unknown): string {
+  if (
+    typeof value === 'object' &&
+    value !== null &&
+    'type' in value &&
+    typeof value.type === 'string' &&
+    /^[a-z0-9_]{1,64}$/.test(value.type)
+  ) {
+    return value.type;
+  }
+  return 'unknown';
+}
+
+function safeIssuePath(path: PropertyKey[] | undefined): string {
+  if (!path?.length) return '$';
+  return path
+    .slice(0, 8)
+    .map((part) =>
+      typeof part === 'number' || /^[a-zA-Z0-9_]{1,64}$/.test(String(part))
+        ? String(part)
+        : '?',
+    )
+    .join('.');
+}
+
+function safeIssueMessage(code: string | undefined): string {
+  switch (code) {
+    case 'invalid_type':
+      return 'El tipo de dato no coincide con el contrato.';
+    case 'invalid_value':
+    case 'invalid_literal':
+    case 'invalid_enum_value':
+      return 'El valor no pertenece al contrato.';
+    case 'too_small':
+    case 'too_big':
+      return 'El valor está fuera del rango permitido.';
+    case 'custom':
+      return 'El valor no cumple las reglas del contrato.';
+    default:
+      return 'El mensaje no cumple el contrato WebSocket.';
+  }
+}
+
+/** Valida un frame de texto sin incluir su contenido en el error retornado. */
+export function parseSocketFrame<T extends SocketMessage>(
+  frame: unknown,
+  parser: SocketMessageParser<T>,
+): SocketFrameResult<T> {
+  if (typeof frame !== 'string') {
+    return {
+      success: false,
+      issue: {
+        type: 'unknown',
+        path: '$',
+        message: 'El frame WebSocket no es texto JSON.',
+      },
+    };
+  }
+
+  let value: unknown;
+  try {
+    value = JSON.parse(frame) as unknown;
+  } catch {
+    return {
+      success: false,
+      issue: {
+        type: 'unknown',
+        path: '$',
+        message: 'El frame WebSocket no contiene JSON válido.',
+      },
+    };
+  }
+
+  const result = parser.safeParse(value);
+  if (result.success) return result;
+
+  const firstIssue = result.error.issues?.[0];
+  return {
+    success: false,
+    issue: {
+      type: safeMessageType(value),
+      path: safeIssuePath(firstIssue?.path),
+      message: safeIssueMessage(firstIssue?.code),
+    },
+  };
+}
+
 /**
  * Abre un socket al `path` indicado (p. ej. `/ws/rides/123`) y entrega cada
  * mensaje al callback. Devuelve un handle para cerrarlo.
  */
-export function openSocket(
+export function openSocket<T extends SocketMessage>(
   path: string,
-  onMessage: (msg: SocketMessage) => void | Promise<void>,
+  onMessage: (msg: T) => void | Promise<void>,
+  parser: SocketMessageParser<T>,
 ): SocketHandle {
   let ws: WebSocket | null = null;
   let attempt = 0;
@@ -95,22 +204,23 @@ export function openSocket(
       };
       socket.onmessage = (event) => {
         if (ws !== socket || ownGeneration !== generation) return;
-        try {
-          const parsed = JSON.parse(event.data as string) as SocketMessage;
-          if (parsed && typeof parsed.type === 'string') {
-            // Snapshot y deltas forman un stream ordenado. Serializar los handlers
-            // evita que un snapshot con un `await` termine despues de un evento
-            // posterior y pise una oferta recien recibida.
-            messageQueue = messageQueue
-              .then(() => {
-                if (ws !== socket || ownGeneration !== generation) return;
-                return onMessage(parsed);
-              })
-              .catch(() => undefined);
-          }
-        } catch {
-          // Mensaje no-JSON: lo ignoramos.
+        const parsed = parseSocketFrame(event.data, parser);
+        if (!parsed.success) {
+          // Solo registra metadatos derivados del schema. Nunca el frame, el
+          // payload ni la URL (que puede identificar un ride concreto).
+          console.warn('Mensaje WebSocket descartado.', parsed.issue);
+          return;
         }
+
+        // Snapshot y deltas forman un stream ordenado. Serializar los handlers
+        // evita que un snapshot con un `await` termine despues de un evento
+        // posterior y pise una oferta recien recibida.
+        messageQueue = messageQueue
+          .then(() => {
+            if (ws !== socket || ownGeneration !== generation) return;
+            return onMessage(parsed.data);
+          })
+          .catch(() => undefined);
       };
       socket.onerror = () => {
         // El cierre subsecuente dispara la reconexion.

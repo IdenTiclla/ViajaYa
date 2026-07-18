@@ -151,18 +151,27 @@ parciales ni niveles de aislamiento.
 
 ### HTTP
 
-- Exportar OpenAPI en CI y generar los tipos DTO consumidos por mobile.
-- Mantener mappers explícitos DTO `snake_case` → dominio `camelCase`.
-- Detectar cambios incompatibles del schema como fallo de CI.
+- [x] Exportar un snapshot OpenAPI determinista y comprobar su vigencia en CI.
+- [ ] Generar los tipos DTO consumidos por mobile a partir de OpenAPI.
+- [x] Mantener mappers explícitos DTO `snake_case` → dominio `camelCase`.
+- [x] Detectar cualquier drift del schema como fallo de CI. La clasificación
+  automática entre cambios compatibles e incompatibles queda pendiente junto
+  con la generación de tipos.
 
 ### WebSocket
 
-- Definir envelopes y payloads como schemas Pydantic discriminados.
-- Generar o mantener schemas Zod equivalentes en mobile.
-- Parsear cada mensaje antes de mutar React Query o Zustand.
-- Extraer reducers puros para pasajero y conductor; los hooks solo conectarán el
+- [x] Definir los 15 envelopes y payloads actuales como schemas Pydantic
+  discriminados y construirlos antes de toda emisión.
+- [x] Mantener schemas Zod equivalentes por socket en mobile.
+- [x] Parsear cada mensaje antes de mutar React Query o Zustand.
+- [ ] Extraer reducers puros para pasajero y conductor; los hooks solo conectarán el
   socket, validarán y aplicarán efectos.
-- Registrar eventos inválidos sin incluir tokens ni datos sensibles.
+- [x] Registrar eventos inválidos con metadatos sanitizados, sin incluir tokens,
+  URL, frame ni payload.
+
+El consumidor mobile es deliberadamente tolerante a campos adicionales para
+permitir extensiones compatibles del payload; continúa rechazando tipos
+desconocidos, campos obligatorios ausentes y valores inválidos.
 
 ### Compatibilidad
 
@@ -170,14 +179,19 @@ Durante una versión de transición, el cliente aceptará el envelope actual y e
 nuevo envelope versionado. El backend solo retirará el formato anterior cuando la
 versión mínima soportada de la app ya entienda el nuevo contrato.
 
+La subfase 2.1 conserva el envelope actual `{type, data}`. No se añadirán
+`event_id` ni `aggregate_version` efímeros: esas garantías deben nacer de la
+misma transacción que la mutación mediante la outbox de la fase 3. Añadirlos
+antes crearía una falsa garantía de orden y durabilidad.
+
 ### Pruebas
 
-- Snapshot seguido de deltas.
-- Evento duplicado.
-- Evento atrasado con menor `aggregate_version`.
-- Reconexión con snapshot más nuevo que los eventos locales.
-- Payload inválido y tipo desconocido.
-- HTTP que resuelve después de un evento WebSocket.
+- [x] Snapshot seguido de deltas en los e2e WebSocket existentes.
+- [ ] Evento duplicado.
+- [ ] Evento atrasado con menor `aggregate_version`.
+- [ ] Reconexión con snapshot más nuevo que los eventos locales.
+- [x] Payload inválido, razón inválida y tipo desconocido en el contrato backend.
+- [ ] HTTP que resuelve después de un evento WebSocket.
 
 ## Fase 3 — Tiempo real durable y multiworker
 

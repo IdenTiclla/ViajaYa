@@ -18,6 +18,15 @@ from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from app.api.deps import get_session_factory
 from app.api.v1 import events, presence
 from app.api.v1.schemas.offers import OfferResponse
+from app.api.v1.schemas.realtime import (
+    DriverActiveRideMessage,
+    DriverOffersSnapshotMessage,
+    NegotiationMessage,
+    OffersSnapshotMessage,
+    OpenRidesSnapshotMessage,
+    PausedRidesSnapshotMessage,
+    dump_negotiation_message,
+)
 from app.api.v1.schemas.rides import OpenRidePageResponse, OpenRideResponse, RideResponse
 from app.application.dto import OfferDetail, Page
 from app.application.use_cases.expire_offer import ExpireOffer
@@ -51,6 +60,10 @@ router = APIRouter(tags=["ws"])
 _POLICY_VIOLATION = 1008
 
 SessionFactoryDep = Annotated[object, Depends(get_session_factory)]
+
+
+async def _send_message(websocket: WebSocket, message: NegotiationMessage) -> None:
+    await websocket.send_json(dump_negotiation_message(message))
 
 
 async def _drain(websocket: WebSocket) -> None:
@@ -98,12 +111,10 @@ async def passenger_ws(
                 details = await ListOffersForRide(rides, offers, users).execute(
                     user, ride_id
                 )
-                snapshot = [
-                    OfferResponse.from_detail(detail).model_dump(mode="json")
-                    for detail in details
-                ]
-                await websocket.send_json(
-                    {"type": "offers_snapshot", "data": snapshot}
+                snapshot = [OfferResponse.from_detail(detail) for detail in details]
+                await _send_message(
+                    websocket,
+                    OffersSnapshotMessage(data=snapshot),
                 )
 
         # Presencia: la solicitud aparece en el pool mientras el pasajero esté
@@ -155,11 +166,9 @@ async def driver_ws(
                     if user.is_online
                     else Page(items=[])
                 )
-                snapshot = OpenRidePageResponse.from_page(open_rides_page).model_dump(
-                    mode="json"
-                )
+                snapshot = OpenRidePageResponse.from_page(open_rides_page)
                 paused_snapshot = [
-                    OpenRideResponse.from_open_ride(detail).model_dump(mode="json")
+                    OpenRideResponse.from_open_ride(detail)
                     for detail in await rides.list_paused_with_rider_for_driver(user.id)
                 ]
 
@@ -175,32 +184,31 @@ async def driver_ws(
                     else:
                         active_offers.append(offer)
                 offer_snapshot = [
-                    OfferResponse.from_detail(
-                        OfferDetail(offer=offer, driver=user)
-                    ).model_dump(mode="json")
+                    OfferResponse.from_detail(OfferDetail(offer=offer, driver=user))
                     for offer in active_offers
                 ]
                 # 2) viaje activo (recupera un offer_accepted que se perdió).
                 active_detail = await GetDriverActiveRide(ride_reads).execute(user)
 
                 # Handshake autoritativo, siempre en este orden.
-                await websocket.send_json(
-                    {"type": "open_rides_snapshot", "data": snapshot}
+                await _send_message(
+                    websocket,
+                    OpenRidesSnapshotMessage(data=snapshot),
                 )
-                await websocket.send_json(
-                    {"type": "paused_rides_snapshot", "data": paused_snapshot}
+                await _send_message(
+                    websocket,
+                    PausedRidesSnapshotMessage(data=paused_snapshot),
                 )
-                await websocket.send_json(
-                    {"type": "driver_offers_snapshot", "data": offer_snapshot}
+                await _send_message(
+                    websocket,
+                    DriverOffersSnapshotMessage(data=offer_snapshot),
                 )
                 if active_detail is not None:
-                    await websocket.send_json(
-                        {
-                            "type": "driver_active_ride",
-                            "data": RideResponse.from_detail(active_detail).model_dump(
-                                mode="json"
-                            ),
-                        }
+                    await _send_message(
+                        websocket,
+                        DriverActiveRideMessage(
+                            data=RideResponse.from_detail(active_detail)
+                        ),
                     )
 
         # Se difunde tras el handshake; el mismo socket ya está suscrito.

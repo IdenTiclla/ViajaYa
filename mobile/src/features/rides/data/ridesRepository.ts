@@ -181,6 +181,9 @@ export type RideDto = {
   driver: RideDriverDto | null;
   accepted_price: string | null;
   accepted_eta_min: number | null;
+  created_at: string | null;
+  completed_at: string | null;
+  cancelled_at: string | null;
 };
 
 export function toRide(dto: RideDto): Ride {

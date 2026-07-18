@@ -6,6 +6,7 @@
  * La *creación* de la solicitud sigue viviendo en `booking/data/ridesRepository`.
  */
 import { api } from '@/core/http/client';
+import type { components } from '@/core/http/generated/openapi';
 import type { VehicleType } from '@/features/auth/domain/types';
 import {
   assertPlaceLabelResolved,
@@ -25,13 +26,10 @@ import type {
   RideStatus,
 } from '@/features/rides/domain/types';
 
-type PointDto = {
-  latitude: number;
-  longitude: number;
-  name: string;
-  address: string;
-  country_code?: string | null;
-};
+type ApiSchemas = components['schemas'];
+
+type PointDto = ApiSchemas['PointSchema'];
+type PointInputDto = ApiSchemas['PointInputSchema'];
 
 function toPlace(dto: PointDto): Place {
   return {
@@ -42,7 +40,7 @@ function toPlace(dto: PointDto): Place {
   };
 }
 
-function toPointDto(place: Place): PointDto {
+function toPointDto(place: Place): PointInputDto {
   assertPlaceLabelResolved(place);
   return {
     latitude: place.coordinates.latitude,
@@ -53,25 +51,7 @@ function toPointDto(place: Place): PointDto {
   };
 }
 
-type OfferDriverDto = {
-  id: string;
-  full_name: string;
-  rating: number | null;
-  vehicle_type: Offer['driver']['vehicleType'];
-  plate: string | null;
-  vehicle_model: string | null;
-};
-
-export type OfferDto = {
-  id: string;
-  ride_id: string;
-  price: string;
-  eta_min: number | null;
-  status: Offer['status'];
-  driver: OfferDriverDto;
-  created_at: string | null;
-  expires_at: string | null;
-};
+export type OfferDto = ApiSchemas['OfferResponse'];
 
 export function toOffer(dto: OfferDto): Offer {
   return {
@@ -93,24 +73,7 @@ export function toOffer(dto: OfferDto): Offer {
   };
 }
 
-type OpenRideRiderDto = {
-  id: string;
-  full_name: string;
-  rating: number | null;
-  trips_completed: number;
-};
-
-export type OpenRideDto = {
-  id: string;
-  service_type: OpenRide['service'];
-  fare: string;
-  payment_method: OpenRide['payment'];
-  origin: PointDto;
-  destination: PointDto;
-  rider: OpenRideRiderDto;
-  pool_version: number;
-  created_at: string | null;
-};
+export type OpenRideDto = ApiSchemas['OpenRideResponse'];
 
 export function toOpenRide(dto: OpenRideDto): OpenRide {
   return {
@@ -141,7 +104,7 @@ export type CursorPage<T> = {
   nextCursor: string | null;
 };
 
-export type OpenRidePageDto = CursorPageDto<OpenRideDto>;
+export type OpenRidePageDto = ApiSchemas['OpenRidePageResponse'];
 
 export function toOpenRidePage(dto: OpenRidePageDto): CursorPage<OpenRide> {
   return {
@@ -150,41 +113,7 @@ export function toOpenRidePage(dto: OpenRidePageDto): CursorPage<OpenRide> {
   };
 }
 
-type RideDriverDto = {
-  id: string;
-  full_name: string;
-  phone: string | null;
-  rating: number | null;
-  vehicle_type: VehicleType | null;
-  plate: string | null;
-  vehicle_model: string | null;
-};
-
-type RideRiderDto = {
-  id: string;
-  full_name: string;
-  phone: string | null;
-  rating: number | null;
-};
-
-export type RideDto = {
-  id: string;
-  rider_id: string;
-  rider: RideRiderDto;
-  status: RideStatus;
-  paused: boolean;
-  service_type: Ride['service'];
-  fare: string;
-  payment_method: Ride['payment'];
-  origin: PointDto;
-  destination: PointDto;
-  driver: RideDriverDto | null;
-  accepted_price: string | null;
-  accepted_eta_min: number | null;
-  created_at: string | null;
-  completed_at: string | null;
-  cancelled_at: string | null;
-};
+export type RideDto = ApiSchemas['RideResponse'];
 
 export function toRide(dto: RideDto): Ride {
   return {

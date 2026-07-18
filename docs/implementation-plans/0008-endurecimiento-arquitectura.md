@@ -152,11 +152,18 @@ parciales ni niveles de aislamiento.
 ### HTTP
 
 - [x] Exportar un snapshot OpenAPI determinista y comprobar su vigencia en CI.
-- [ ] Generar los tipos DTO consumidos por mobile a partir de OpenAPI.
+- [x] Generar tipos TypeScript reproducibles desde OpenAPI y consumirlos
+  gradualmente en los repositorios mobile. Los DTO centrales de viajes, ofertas
+  y pool ya referencian el contrato generado.
 - [x] Mantener mappers explícitos DTO `snake_case` → dominio `camelCase`.
 - [x] Detectar cualquier drift del schema como fallo de CI. La clasificación
   automática entre cambios compatibles e incompatibles queda pendiente junto
-  con la generación de tipos.
+  con una herramienta de diff semántico.
+
+El generador vive aislado en el paquete de tooling de la raíz y solo produce
+tipos: no añade otro cliente HTTP ni reemplaza los mappers. Historial y ganancias
+mantienen DTO manual por ahora, porque sus schemas OpenAPI todavía exponen
+campos opcionales que deben normalizarse explícitamente antes de adoptarlos.
 
 ### WebSocket
 

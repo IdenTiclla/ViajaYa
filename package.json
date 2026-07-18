@@ -1,0 +1,12 @@
+{
+  "name": "viajaya-tooling",
+  "private": true,
+  "scripts": {
+    "openapi:generate": "openapi-typescript backend/openapi.json -o mobile/src/core/http/generated/openapi.ts",
+    "openapi:check": "openapi-typescript backend/openapi.json -o mobile/src/core/http/generated/openapi.ts --check"
+  },
+  "devDependencies": {
+    "openapi-typescript": "7.13.0",
+    "typescript": "5.9.3"
+  }
+}

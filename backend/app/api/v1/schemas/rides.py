@@ -153,7 +153,7 @@ class OpenRideRiderResponse(BaseModel):
 
     id: uuid.UUID
     full_name: str
-    rating: float | None = None
+    rating: float | None
     trips_completed: int
 
 
@@ -196,7 +196,7 @@ class OpenRidePageResponse(BaseModel):
     """Página de solicitudes abiertas ordenadas de forma estable."""
 
     items: list[OpenRideResponse]
-    next_cursor: str | None = None
+    next_cursor: str | None
 
     @classmethod
     def from_page(cls, page: Page[OpenRideDetail]) -> OpenRidePageResponse:

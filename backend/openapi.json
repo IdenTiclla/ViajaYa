@@ -480,7 +480,8 @@
           }
         },
         "required": [
-          "items"
+          "items",
+          "next_cursor"
         ],
         "title": "OpenRidePageResponse",
         "type": "object"
@@ -575,6 +576,7 @@
         "required": [
           "id",
           "full_name",
+          "rating",
           "trips_completed"
         ],
         "title": "OpenRideRiderResponse",

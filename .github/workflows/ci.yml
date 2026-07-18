@@ -110,10 +110,18 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: mobile/package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            mobile/package-lock.json
+
+      - name: Instalar herramientas del contrato HTTP
+        run: npm --prefix .. ci
 
       - name: Instalar dependencias
         run: npm ci
+
+      - name: Verificar DTO HTTP generado
+        run: npm --prefix .. run openapi:check
 
       - name: Probar reducers de tiempo real
         run: node --experimental-strip-types --test tests/*.test.mjs

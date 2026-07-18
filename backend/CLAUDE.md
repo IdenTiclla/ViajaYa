@@ -19,8 +19,8 @@ app/
 │   ├── ride_policy.py         # OFFER_TTL=30s + offer_expires_at / is_offer_expired / is_offer_active
 │   └── exceptions.py          # DomainError + 16 excepciones específicas
 ├── application/             # Casos de uso. Orquestan el dominio.
-│   ├── use_cases/             # UN caso de uso por archivo · 29 UC (lista abajo)
-│   ├── interfaces.py          # Puertos: PasswordHasher, TokenService, SocialIdentityVerifier
+│   ├── use_cases/             # UN caso de uso por archivo · 34 UC (lista abajo)
+│   ├── interfaces.py          # Puertos técnicos y proyecciones de lectura de aplicación
 │   ├── dto.py                 # @dataclass(frozen=True) de entrada/salida entre capas
 │   └── token_issuer.py        # Helper issue_token_pair(tokens, user_id)  (NO es una clase)
 ├── infrastructure/          # Adaptadores concretos.
@@ -56,6 +56,9 @@ app/
 - **Errores:** lanza `DomainError` desde los UC; se mapea a HTTP en `api/errors.py`. Única excepción:
   `unauthorized()` para auth. Nunca `HTTPException` disperso.
 - **Policy de oferta** (TTL, expiración) vive en `domain/ride_policy.py`, no en UC ni entidades.
+- **Lecturas enriquecidas:** `RideReadRepository` evita exponer ORM y cargas N+1.
+  Ganancias usa un agregado SQL para totales/conteos y otra consulta limitada a
+  los últimos 10 viajes; aplicación delimita el día en `America/La_Paz`.
 
 ### Patrón para añadir un endpoint
 
@@ -117,7 +120,9 @@ CORS se aplica en `main.py` con `cors_origins_list`.
 - **auth** (`/auth`): `POST /register`, `POST /login`, `POST /refresh`, `POST /oauth/{provider}`, `GET /me`.
 - **rides** (`/rides`):
   - `POST ""` (crear solicitud), `GET /recent-destinations`, `GET /history`, `GET /{id}`.
-  - `GET /open` (conductor: solicitudes `SEARCHING` de su `vehicle_type`, **filtradas por presencia**).
+    `GET /history` pagina con cursor opaco y responde `{items, next_cursor}`.
+  - `GET /open` (conductor: solicitudes `SEARCHING` de su `vehicle_type`, **filtradas por presencia**),
+    paginado con la misma forma `{items, next_cursor}`.
   - `GET /{id}/offers`, `POST /{id}/offers` (conductor crea oferta: `accept_at_fare=True` usa el fare, o contraoferta con `price`+`eta_min`).
   - `POST /offers/{offer_id}/accept` (pasajero: asignación **directa atómica**), `/reject`, `/withdraw`.
   - `PATCH /{id}/status` (conductor: `ACCEPTED→ARRIVING→IN_PROGRESS→COMPLETED`).
@@ -127,13 +132,15 @@ CORS se aplica en `main.py` con `cors_origins_list`.
 
 Rutas protegidas: usan `CurrentUserDep` (header `Authorization: Bearer <access_token>`).
 
-### Casos de uso (29)
+### Casos de uso (34)
 
 `register_user`, `authenticate_user`, `authenticate_with_oauth`, `refresh_token`,
-`create_ride_request`, `list_recent_destinations`, `list_open_rides`, `get_ride`,
-`list_ride_history`, `create_offer`, `list_offers_for_ride`, `accept_offer`, `reject_offer`,
+`create_ride_request`, `list_recent_destinations`, `list_open_rides`, `dismiss_open_ride`,
+`get_ride`, `get_passenger_active_ride`, `get_pending_rating_ride`, `list_ride_history`,
+`create_offer`, `list_offers_for_ride`, `accept_offer`, `reject_offer`,
 `withdraw_offer`, `expire_offer`, `update_ride_status`, `update_ride_fare`, `cancel_ride`,
-`pause_ride_for_edit`, `edit_ride`, `rate_ride`, `set_driver_online`, `get_driver_active_ride`,
+`cancel_ride_on_disconnect`, `pause_ride_for_edit`, `edit_ride`, `update_ride_request`,
+`rate_ride`, `skip_ride_rating`, `set_driver_online`, `get_driver_active_ride`,
 `get_driver_earnings`, `list_saved_places`, `create_saved_place`, `update_saved_place`,
 `delete_saved_place`.
 
@@ -176,7 +183,8 @@ fuera de la URL y los access logs; cierre 1008 si es inválido):
   `driver_offers_snapshot` → `driver_active_ride` (si existe); excluye ofertas vencidas y recupera
   ofertas pendientes/viaje activo al reiniciar. Después recibe eventos de su
   `pool:{vehicle_type}`, de `pool:delivery` y de `driver:{id}`. Una barrera de entrega evita la
-  ventana ciega entre snapshot y suscripción.
+  ventana ciega entre snapshot y suscripción. `open_rides_snapshot.data` usa
+  `{items, next_cursor}`; `paused_rides_snapshot.data` conserva su lista.
 
 **Eventos** (`api/v1/events.py`, publicados vía `hub.broadcast` a `ride_topic`/`driver_topic`/`pool_topic`):
 
@@ -196,7 +204,7 @@ cerrar la app o perder ambos canales durante toda la gracia cancela la búsqueda
 ## Migraciones (Alembic)
 
 - Config: `alembic.ini` + `migrations/env.py` (engine **async** con `async_engine_from_config`).
-- **15 migraciones** en `migrations/versions/` (`0001_create_users` … `0015_unique_active_ride`).
+- **17 migraciones** en `migrations/versions/` (`0001_create_users` … `0017_pg_integrity_indexes`).
 - Importante: los enums se persisten por **valor** minúsculo vía `values_callable=_enum_values`
   en `infrastructure/db/models.py` (migración `0006_normalize_enum_values`). No rompas esa convención
   o se caerán columnas existentes.
@@ -220,6 +228,10 @@ común `ViajaYa1234#`): `passenger1/2@viajaya.com`, `driver.auto1/2@viajaya.com`
 - `tests/e2e/` — API completa contra SQLite async (`aiosqlite`); fixtures en `conftest.py`
   (override de `get_session` y `get_oauth_verifiers` con `FakeVerifier`).
 - `tests/e2e/test_negotiation_ws.py` — flujo WS de negociación passenger↔driver.
+- `tests/postgresql/` — certificación destructiva opt-in contra una base exclusivamente
+  desechable indicada por `VIAJAYA_TEST_DATABASE_URL`; hace skip si la variable no existe.
+- `.github/workflows/ci.yml` ejecuta en paralelo la suite rápida, la certificación
+  PostgreSQL 16 y las comprobaciones TypeScript/ESLint de mobile.
 - `asyncio_mode = "auto"` (pytest-asyncio): no hace falta `@pytest.mark.asyncio`.
 - Al añadir un UC o endpoint, acompáñalo de su test unitario y/o e2e.
 

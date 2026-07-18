@@ -46,6 +46,11 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 cd backend && pytest
 ```
 
+La integración continua ejecuta en paralelo la suite rápida del backend, las
+pruebas transaccionales contra PostgreSQL 16 y las comprobaciones TypeScript y
+ESLint de mobile. La certificación PostgreSQL local requiere una base desechable
+marcada explícitamente como test mediante `VIAJAYA_TEST_DATABASE_URL`.
+
 ## Estado
 
 - [x] Fase 0 — Andamiaje del monorepo

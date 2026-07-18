@@ -91,6 +91,10 @@ Las rutas ocultas declaran `tabBarButton: () => null` (ej. el `index` redirect d
 
 - **Server state → React Query** (`QueryClient` singleton: `retry:1`, `staleTime:30s`). Polling lento
   (15–20 s) como respaldo del WS en `useOpenRides`, `useRideOffers`, `useRide`, `useDriverActiveRide`.
+- El pool abierto y el historial usan `useInfiniteQuery` sobre el contrato
+  `{items, next_cursor}`. La caché `['open-rides']` es `InfiniteData`: los eventos
+  WS deben usar `features/rides/application/openRidesCache.ts`, no escribir arrays
+  directamente.
 - **Estado de sesión/cliente → Zustand**: `authStore` (sesión), `useBookingStore` (reserva),
   `useDriverRequests` (conjuntos `dismissed`/`offered`/`rejected`/`taken`/`expired`/`paused` del
   conductor), `usePassengerToasts` / `useDriverToasts` (toasts efímeros, máx 3).
@@ -170,7 +174,7 @@ aquí.** Mantén ambos lados en sintonía.
 
 ### Enums de dominio (mobile)
 
-`ServiceType = 'taxi' | 'moto'` · `PaymentMethod = 'qr' | 'cash'` ·
+`ServiceType = 'taxi' | 'moto' | 'delivery'` · `PaymentMethod = 'qr' | 'cash'` ·
 `RideStatus = 'searching' | 'accepted' | 'arriving' | 'in_progress' | 'completed' | 'cancelled'` ·
 `OfferStatus = 'pending' | 'accepted' | 'rejected' | 'expired'`. Oferta TTL = 30 s. Moneda = Bs (bolivianos).
 

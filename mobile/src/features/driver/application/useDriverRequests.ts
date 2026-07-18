@@ -58,6 +58,8 @@ type DriverRequestsState = {
       rideId: string;
       id: string;
       price: number;
+      /** Tarifa vigente de la solicitud, distinta del precio contraofertado. */
+      rideFare: number;
       etaMin: number | null;
       expiresAt: string | null;
     }[],
@@ -137,7 +139,7 @@ export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
         offered[offer.rideId] = {
           offerId: offer.id,
           price: offer.price,
-          rideFare: offer.price,
+          rideFare: offer.rideFare,
           etaMin: offer.etaMin,
           expiresAt,
         };

@@ -15,6 +15,7 @@ import { usePassengerToasts } from '@/features/booking/application/usePassengerT
 import { useDriverRequests } from '@/features/driver/application/useDriverRequests';
 import { useDriverToasts } from '@/features/driver/application/useDriverToasts';
 import {
+  flattenOpenRides,
   type OpenRidesInfiniteData,
   openRidesSnapshot,
   prependPausedOpenRides,
@@ -245,11 +246,29 @@ export function useDriverPoolSocket(enabled = true): void {
           break;
         case 'driver_offers_snapshot': {
           const offers = (msg.data as OfferDto[]).map(toOffer);
+          // El handshake entrega primero las solicitudes (abiertas y pausadas),
+          // por lo que aquí ya conocemos la tarifa del pasajero. No se debe usar
+          // `offer.price`: en una contraoferta es el monto del conductor y rompería
+          // la detección de una solicitud renovada después de expirar.
+          const currentRides =
+            flattenOpenRides(
+              queryClient.getQueryData<OpenRidesInfiniteData>(['open-rides']),
+            );
+          const rideFares = new Map(
+            currentRides.map((ride) => [ride.id, ride.fare]),
+          );
+          const currentOffers = useDriverRequests.getState().offered;
           useDriverRequests.getState().reconcileOffered(
             offers.map((offer) => ({
               rideId: offer.rideId,
               id: offer.id,
               price: offer.price,
+              // El fallback previo conserva el dato correcto durante una
+              // reconexión excepcional sin snapshot de la solicitud.
+              rideFare:
+                rideFares.get(offer.rideId) ??
+                currentOffers[offer.rideId]?.rideFare ??
+                offer.price,
               etaMin: offer.etaMin,
               expiresAt: offer.expiresAt,
             })),

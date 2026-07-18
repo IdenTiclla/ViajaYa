@@ -15,6 +15,13 @@ import { usePassengerToasts } from '@/features/booking/application/usePassengerT
 import { useDriverRequests } from '@/features/driver/application/useDriverRequests';
 import { useDriverToasts } from '@/features/driver/application/useDriverToasts';
 import {
+  type OpenRidesInfiniteData,
+  openRidesSnapshot,
+  prependPausedOpenRides,
+  removeOpenRide,
+  upsertOpenRide,
+} from '@/features/rides/application/openRidesCache';
+import {
   DRIVER_ACTIVE_RIDE_KEY,
   PASSENGER_ACTIVE_RIDE_KEY,
 } from '@/features/rides/application/useRides';
@@ -22,12 +29,14 @@ import { formatBolivianos } from '@/features/rides/domain/money';
 import {
   type OfferDto,
   type OpenRideDto,
+  type OpenRidePageDto,
   type RideDto,
   toOffer,
   toOpenRide,
+  toOpenRidePage,
   toRide,
 } from '@/features/rides/data/ridesRepository';
-import type { Offer, OpenRide, Ride } from '@/features/rides/domain/types';
+import type { Offer, Ride } from '@/features/rides/domain/types';
 
 function isTerminalRide(ride: Ride): boolean {
   return ride.status === 'completed' || ride.status === 'cancelled';
@@ -205,9 +214,13 @@ export function useDriverPoolSocket(enabled = true): void {
           // `ride_created` que anuncia una renovación de la solicitud. Solo
           // borramos el aviso de expiración si la tarifa actual es mayor que la
           // que el pasajero ofrecía cuando el conductor envió esa propuesta.
-          const openRides = (msg.data as OpenRideDto[]).map(toOpenRide);
+          const openRidesPage = toOpenRidePage(msg.data as OpenRidePageDto);
+          const openRides = openRidesPage.items;
           await queryClient.cancelQueries({ queryKey: ['open-rides'], exact: true });
-          queryClient.setQueryData(['open-rides'], openRides);
+          queryClient.setQueryData<OpenRidesInfiniteData>(
+            ['open-rides'],
+            openRidesSnapshot(openRidesPage),
+          );
           const driverRequests = useDriverRequests.getState();
           for (const ride of openRides) {
             // Una solicitud presente en el pool ya terminó de editarse. Esto
@@ -243,10 +256,9 @@ export function useDriverPoolSocket(enabled = true): void {
           // conductor estaba fuera de la app durante la edición.
           const pausedRides = (msg.data as OpenRideDto[]).map(toOpenRide);
           await queryClient.cancelQueries({ queryKey: ['open-rides'], exact: true });
-          queryClient.setQueryData<OpenRide[]>(['open-rides'], (prev = []) => {
-            const pausedIds = new Set(pausedRides.map((ride) => ride.id));
-            return [...pausedRides, ...prev.filter((ride) => !pausedIds.has(ride.id))];
-          });
+          queryClient.setQueryData<OpenRidesInfiniteData>(['open-rides'], (prev) =>
+            prependPausedOpenRides(prev, pausedRides),
+          );
           for (const ride of pausedRides) {
             useDriverRequests.getState().markPaused(ride.id);
           }
@@ -267,10 +279,8 @@ export function useDriverPoolSocket(enabled = true): void {
           //   ofertó. No se toca `offered` (oferta viva) ni `taken`.
           const ride = toOpenRide(msg.data as OpenRideDto);
           await queryClient.cancelQueries({ queryKey: ['open-rides'], exact: true });
-          queryClient.setQueryData<OpenRide[]>(['open-rides'], (prev = []) =>
-            prev.some((r) => r.id === ride.id)
-              ? prev.map((r) => (r.id === ride.id ? ride : r))
-              : [ride, ...prev],
+          queryClient.setQueryData<OpenRidesInfiniteData>(['open-rides'], (prev) =>
+            upsertOpenRide(prev, ride),
           );
           useDriverRequests.getState().clearPaused(ride.id);
           useDriverRequests.getState().clearDismissedBefore(ride.id, ride.poolVersion);
@@ -281,8 +291,8 @@ export function useDriverPoolSocket(enabled = true): void {
         case 'ride_closed': {
           const { ride_id: rideId } = msg.data as { ride_id: string };
           await queryClient.cancelQueries({ queryKey: ['open-rides'], exact: true });
-          queryClient.setQueryData<OpenRide[]>(['open-rides'], (prev = []) =>
-            prev.filter((r) => r.id !== rideId),
+          queryClient.setQueryData<OpenRidesInfiniteData>(['open-rides'], (prev) =>
+            removeOpenRide(prev, rideId),
           );
           // La solicitud salió del pool: limpia su estado local (sin zombies).
           useDriverRequests.getState().clearRide(rideId);
@@ -298,10 +308,8 @@ export function useDriverPoolSocket(enabled = true): void {
           // el ride_closed, hacía desaparecer la tarjeta durante la edición.
           const ride = toOpenRide(msg.data as OpenRideDto);
           await queryClient.cancelQueries({ queryKey: ['open-rides'], exact: true });
-          queryClient.setQueryData<OpenRide[]>(['open-rides'], (prev = []) =>
-            prev.some((r) => r.id === ride.id)
-              ? prev.map((r) => (r.id === ride.id ? ride : r))
-              : [ride, ...prev],
+          queryClient.setQueryData<OpenRidesInfiniteData>(['open-rides'], (prev) =>
+            prependPausedOpenRides(prev, [ride]),
           );
           useDriverRequests.getState().markPaused(ride.id);
           useDriverToasts.getState().push({

@@ -131,6 +131,25 @@ export function toOpenRide(dto: OpenRideDto): OpenRide {
   };
 }
 
+export type CursorPageDto<T> = {
+  items: T[];
+  next_cursor: string | null;
+};
+
+export type CursorPage<T> = {
+  items: T[];
+  nextCursor: string | null;
+};
+
+export type OpenRidePageDto = CursorPageDto<OpenRideDto>;
+
+export function toOpenRidePage(dto: OpenRidePageDto): CursorPage<OpenRide> {
+  return {
+    items: dto.items.map(toOpenRide),
+    nextCursor: dto.next_cursor,
+  };
+}
+
 type RideDriverDto = {
   id: string;
   full_name: string;
@@ -275,9 +294,17 @@ function toEarnings(dto: DriverEarningsDto): DriverEarnings {
 
 export const ridesRepository = {
   // --- Conductor ---
-  async getOpenRides(): Promise<OpenRide[]> {
-    const { data } = await api.get<OpenRideDto[]>('/rides/open');
-    return data.map(toOpenRide);
+  async getOpenRides(
+    cursor: string | null = null,
+    limit?: number,
+  ): Promise<CursorPage<OpenRide>> {
+    const { data } = await api.get<OpenRidePageDto>('/rides/open', {
+      params: {
+        ...(cursor != null ? { cursor } : {}),
+        ...(limit != null ? { limit } : {}),
+      },
+    });
+    return toOpenRidePage(data);
   },
 
   async dismissOpenRide(rideId: string): Promise<void> {
@@ -358,11 +385,22 @@ export const ridesRepository = {
     return toRide(data);
   },
 
-  async getHistory(status?: RideStatus): Promise<RideHistoryItem[]> {
-    const { data } = await api.get<RideHistoryItemDto[]>('/rides/history', {
-      params: status ? { status } : undefined,
+  async getHistory(
+    status?: RideStatus,
+    cursor: string | null = null,
+    limit?: number,
+  ): Promise<CursorPage<RideHistoryItem>> {
+    const { data } = await api.get<CursorPageDto<RideHistoryItemDto>>('/rides/history', {
+      params: {
+        ...(status ? { status } : {}),
+        ...(cursor != null ? { cursor } : {}),
+        ...(limit != null ? { limit } : {}),
+      },
     });
-    return data.map(toHistoryItem);
+    return {
+      items: data.items.map(toHistoryItem),
+      nextCursor: data.next_cursor,
+    };
   },
 
   async rateRide(rideId: string, input: RatingInput): Promise<void> {

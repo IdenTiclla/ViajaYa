@@ -10,6 +10,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
+from typing import Generic, TypeVar
 
 from app.domain.entities import (
     AuthProvider,
@@ -21,6 +22,24 @@ from app.domain.entities import (
     ServiceType,
     User,
 )
+
+T = TypeVar("T")
+
+
+@dataclass(frozen=True)
+class PageCursor:
+    """Posición estable para continuar una lectura ordenada en forma descendente."""
+
+    created_at: datetime
+    id: uuid.UUID
+
+
+@dataclass(frozen=True)
+class Page(Generic[T]):
+    """Segmento de una colección y posición de la página siguiente, si existe."""
+
+    items: list[T]
+    next_cursor: PageCursor | None = None
 
 
 @dataclass(frozen=True)

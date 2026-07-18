@@ -9,6 +9,7 @@ from __future__ import annotations
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal
 
 from app.domain.entities import (
@@ -174,12 +175,19 @@ class RideRequestRepository(ABC):
 
     @abstractmethod
     async def list_open_with_rider_for_vehicle(
-        self, vehicle_type: VehicleType, *, driver_id: uuid.UUID | None = None
+        self,
+        vehicle_type: VehicleType,
+        *,
+        driver_id: uuid.UUID | None = None,
+        before_created_at: datetime | None = None,
+        before_id: uuid.UUID | None = None,
+        limit: int | None = None,
     ) -> list[OpenRideDetail]:
         """Solicitudes compatibles enriquecidas con el resumen del pasajero
         (nombre, rating y viajes completados), en **una sola query** (JOIN +
         conteo, sin N+1). Si se recibe ``driver_id``, excluye las versiones que
-        ese conductor ocultó. Orden: de la más nueva a la más vieja."""
+        ese conductor ocultó. ``before_created_at``/``before_id`` forman el
+        cursor descendente y ``limit`` acota las filas. Orden total: fecha e id."""
 
     @abstractmethod
     async def dismiss_open_ride_for_driver(

@@ -53,6 +53,9 @@ type Props = {
   taken: Set<string>;
   /** Ride a seleccionar al abrir el mapa (al tocar una tarjeta desde la lista). */
   initialSelectedId?: string | null;
+  hasNextPage: boolean;
+  isFetchingNextPage: boolean;
+  onEndReached: () => void;
   onOpenDetail: (ride: OpenRide) => void;
   onAccept: (ride: OpenRide) => void;
   onDismiss: (ride: OpenRide) => void;
@@ -72,6 +75,9 @@ export function SolicitudesMapa({
   paused,
   taken,
   initialSelectedId,
+  hasNextPage,
+  isFetchingNextPage,
+  onEndReached,
   onOpenDetail,
   onAccept,
   onDismiss,
@@ -292,6 +298,15 @@ export function SolicitudesMapa({
               />
             </View>
           )}
+          onEndReached={hasNextPage ? onEndReached : undefined}
+          onEndReachedThreshold={0.35}
+          ListFooterComponent={
+            isFetchingNextPage ? (
+              <View style={styles.pageLoader}>
+                <ActivityIndicator color={colors.primary} size="small" />
+              </View>
+            ) : null
+          }
           accessibilityLabel={`Carrusel con ${rides.length} solicitudes`}
           accessibilityHint="Desliza horizontalmente para cambiar de solicitud"
         />
@@ -550,6 +565,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingBottom: spacing.sm,
     gap: spacing.sm,
+  },
+  pageLoader: {
+    width: spacing.xxl,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   pager: {

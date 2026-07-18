@@ -13,7 +13,8 @@ from decimal import Decimal
 
 from pydantic import BaseModel, Field, model_validator
 
-from app.application.dto import RideDetail, RideHistoryItem
+from app.api.v1.pagination import encode_cursor
+from app.application.dto import Page, RideDetail, RideHistoryItem
 from app.domain.entities import (
     Location,
     PaymentMethod,
@@ -191,6 +192,20 @@ class OpenRideResponse(BaseModel):
         )
 
 
+class OpenRidePageResponse(BaseModel):
+    """Página de solicitudes abiertas ordenadas de forma estable."""
+
+    items: list[OpenRideResponse]
+    next_cursor: str | None = None
+
+    @classmethod
+    def from_page(cls, page: Page[OpenRideDetail]) -> OpenRidePageResponse:
+        return cls(
+            items=[OpenRideResponse.from_open_ride(item) for item in page.items],
+            next_cursor=encode_cursor(page.next_cursor),
+        )
+
+
 class RideDriverSchema(BaseModel):
     """Datos del conductor asignado, expuestos al pasajero durante el viaje."""
 
@@ -348,4 +363,18 @@ class RideHistoryItemResponse(BaseModel):
                 else None
             ),
             created_at=ride.completed_at or ride.cancelled_at or ride.created_at,
+        )
+
+
+class RideHistoryPageResponse(BaseModel):
+    """Página del historial de un pasajero o conductor."""
+
+    items: list[RideHistoryItemResponse]
+    next_cursor: str | None = None
+
+    @classmethod
+    def from_page(cls, page: Page[RideHistoryItem]) -> RideHistoryPageResponse:
+        return cls(
+            items=[RideHistoryItemResponse.from_item(item) for item in page.items],
+            next_cursor=encode_cursor(page.next_cursor),
         )

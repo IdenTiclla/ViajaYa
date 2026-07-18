@@ -604,7 +604,7 @@ def test_taxi_and_moto_driver_sockets_receive_delivery_pool(
         ws_client, f"/api/v1/ws/driver?token={driver_token}"
     ) as driver_ws:
         snapshot, _ = _receive_driver_handshake(driver_ws)
-        assert snapshot["data"] == []
+        assert snapshot["data"] == {"items": [], "next_cursor": None}
 
         ride = ws_client.post(
             RIDES,
@@ -637,10 +637,11 @@ def test_open_rides_endpoint_includes_rider(ws_client: TestClient):
         resp = ws_client.get(RIDES + "/open", headers=_headers(driver_token))
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert len(data) == 1
-        assert data[0]["id"] == ride["id"]
-        assert data[0]["rider"]["full_name"] == "rider"
-        assert data[0]["rider"]["trips_completed"] == 0
+        assert data["next_cursor"] is None
+        assert len(data["items"]) == 1
+        assert data["items"][0]["id"] == ride["id"]
+        assert data["items"][0]["rider"]["full_name"] == "rider"
+        assert data["items"][0]["rider"]["trips_completed"] == 0
 
 
 def test_open_ride_visible_during_grace_after_disconnect(ws_client: TestClient):
@@ -660,7 +661,7 @@ def test_open_ride_visible_during_grace_after_disconnect(ws_client: TestClient):
 
     with _websocket_connect(ws_client, f"/api/v1/ws/driver?token={driver_token}") as ws:
         snapshot, _ = _receive_driver_handshake(ws)
-        assert any(r["id"] == ride["id"] for r in snapshot["data"])
+        assert any(r["id"] == ride["id"] for r in snapshot["data"]["items"])
 
 
 def test_open_ride_hidden_after_grace_when_passenger_gone(ws_client: TestClient, monkeypatch):
@@ -684,7 +685,7 @@ def test_open_ride_hidden_after_grace_when_passenger_gone(ws_client: TestClient,
 
     with _websocket_connect(ws_client, f"/api/v1/ws/driver?token={driver_token}") as ws:
         snapshot, _ = _receive_driver_handshake(ws)
-        assert all(r["id"] != ride["id"] for r in snapshot["data"])
+        assert all(r["id"] != ride["id"] for r in snapshot["data"]["items"])
 
 
 def test_ride_cancelled_after_grace_when_passenger_gone(ws_client: TestClient, monkeypatch):
@@ -896,7 +897,7 @@ def test_open_rides_snapshot_excludes_absent_passenger(ws_client: TestClient):
 
     with _websocket_connect(ws_client, f"/api/v1/ws/driver?token={driver_token}") as ws:
         snapshot, offers = _receive_driver_handshake(ws)
-        assert snapshot["data"] == []
+        assert snapshot["data"] == {"items": [], "next_cursor": None}
         assert offers["data"] == []
 
 

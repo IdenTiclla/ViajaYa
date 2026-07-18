@@ -13,7 +13,7 @@ from typing import Annotated
 from fastapi import Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.application.interfaces import SocialIdentityVerifier, TokenService
+from app.application.interfaces import RideReadRepository, SocialIdentityVerifier, TokenService
 from app.application.use_cases.accept_offer import AcceptOffer
 from app.application.use_cases.authenticate_user import AuthenticateUser
 from app.application.use_cases.authenticate_with_oauth import AuthenticateWithOAuth
@@ -62,6 +62,7 @@ from app.infrastructure.db.repositories import (
     SqlAlchemyPendingRatingRepository,
     SqlAlchemyRatingRepository,
     SqlAlchemyRatingSkipRepository,
+    SqlAlchemyRideReadRepository,
     SqlAlchemyRideRequestRepository,
     SqlAlchemySavedPlaceRepository,
     SqlAlchemyUserRepository,
@@ -99,6 +100,13 @@ def get_ride_request_repository(session: SessionDep) -> RideRequestRepository:
 
 
 RideRequestRepositoryDep = Annotated[RideRequestRepository, Depends(get_ride_request_repository)]
+
+
+def get_ride_read_repository(session: SessionDep) -> RideReadRepository:
+    return SqlAlchemyRideReadRepository(session)
+
+
+RideReadRepositoryDep = Annotated[RideReadRepository, Depends(get_ride_read_repository)]
 
 
 def get_saved_place_repository(session: SessionDep) -> SavedPlaceRepository:
@@ -267,11 +275,9 @@ def get_set_driver_online(
 
 
 def get_driver_active_ride(
-    rides: RideRequestRepositoryDep,
-    offers: OfferRepositoryDep,
-    users: UserRepositoryDep,
+    ride_reads: RideReadRepositoryDep,
 ) -> GetDriverActiveRide:
-    return GetDriverActiveRide(rides, offers, users)
+    return GetDriverActiveRide(ride_reads)
 
 
 def get_passenger_active_ride(
@@ -313,18 +319,13 @@ def get_skip_ride_rating(
 
 
 def get_list_ride_history(
-    rides: RideRequestRepositoryDep,
-    offers: OfferRepositoryDep,
-    users: UserRepositoryDep,
-    ratings: RatingRepositoryDep,
+    ride_reads: RideReadRepositoryDep,
 ) -> ListRideHistory:
-    return ListRideHistory(rides, offers, users, ratings)
+    return ListRideHistory(ride_reads)
 
 
-def get_get_driver_earnings(
-    rides: RideRequestRepositoryDep, offers: OfferRepositoryDep
-) -> GetDriverEarnings:
-    return GetDriverEarnings(rides, offers)
+def get_get_driver_earnings(ride_reads: RideReadRepositoryDep) -> GetDriverEarnings:
+    return GetDriverEarnings(ride_reads)
 
 
 def get_list_saved_places(places: SavedPlaceRepositoryDep) -> ListSavedPlaces:

@@ -18,8 +18,8 @@ from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from app.api.deps import get_session_factory
 from app.api.v1 import events, presence
 from app.api.v1.schemas.offers import OfferResponse
-from app.api.v1.schemas.rides import OpenRideResponse, RideResponse
-from app.application.dto import OfferDetail
+from app.api.v1.schemas.rides import OpenRidePageResponse, OpenRideResponse, RideResponse
+from app.application.dto import OfferDetail, Page
 from app.application.use_cases.expire_offer import ExpireOffer
 from app.application.use_cases.get_driver_active_ride import GetDriverActiveRide
 from app.application.use_cases.list_offers_for_ride import ListOffersForRide
@@ -29,6 +29,7 @@ from app.domain.ride_policy import is_offer_expired
 from app.infrastructure.config import get_settings
 from app.infrastructure.db.repositories import (
     SqlAlchemyOfferRepository,
+    SqlAlchemyRideReadRepository,
     SqlAlchemyRideRequestRepository,
     SqlAlchemyUserRepository,
 )
@@ -129,6 +130,7 @@ async def driver_ws(
         async with session_factory() as session:
             users = SqlAlchemyUserRepository(session)
             rides = SqlAlchemyRideRequestRepository(session)
+            ride_reads = SqlAlchemyRideReadRepository(session)
             offers = SqlAlchemyOfferRepository(session)
             tokens = JwtTokenService(get_settings())
 
@@ -148,15 +150,14 @@ async def driver_ws(
                 for topic in topics:
                     hub.subscribe(topic, websocket)
 
-                open_rides = (
+                open_rides_page = (
                     presence.present_rides(await ListOpenRides(rides).execute(user))
                     if user.is_online
-                    else []
+                    else Page(items=[])
                 )
-                snapshot = [
-                    OpenRideResponse.from_open_ride(detail).model_dump(mode="json")
-                    for detail in open_rides
-                ]
+                snapshot = OpenRidePageResponse.from_page(open_rides_page).model_dump(
+                    mode="json"
+                )
                 paused_snapshot = [
                     OpenRideResponse.from_open_ride(detail).model_dump(mode="json")
                     for detail in await rides.list_paused_with_rider_for_driver(user.id)
@@ -180,7 +181,7 @@ async def driver_ws(
                     for offer in active_offers
                 ]
                 # 2) viaje activo (recupera un offer_accepted que se perdió).
-                active_detail = await GetDriverActiveRide(rides, offers, users).execute(user)
+                active_detail = await GetDriverActiveRide(ride_reads).execute(user)
 
                 # Handshake autoritativo, siempre en este orden.
                 await websocket.send_json(

@@ -11,10 +11,10 @@ import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  FlatList,
   KeyboardAvoidingView,
   Modal,
   Platform,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -138,6 +138,25 @@ export function SolicitudesEntrantesScreen() {
     () => (online ? rides.filter((r) => !dismissed.has(r.id)) : []),
     [online, rides, dismissed],
   );
+  const loadMoreOpenRides = useCallback(() => {
+    if (
+      openRidesQuery.hasNextPage &&
+      !openRidesQuery.isFetchingNextPage &&
+      !openRidesQuery.isFetchNextPageError
+    ) {
+      void openRidesQuery.fetchNextPage();
+    }
+  }, [openRidesQuery]);
+
+  // El backend puede filtrar por presencia después de resolver el cursor y
+  // devolver una página vacía con continuación. Sigue avanzando hasta hallar
+  // una solicitud visible o agotar páginas, sin solapar peticiones ni reintentar
+  // automáticamente una página que ya falló.
+  useEffect(() => {
+    if (openRidesEnabled && visibleRides.length === 0) {
+      loadMoreOpenRides();
+    }
+  }, [loadMoreOpenRides, openRidesEnabled, visibleRides.length]);
 
   // Ride cuya oferta está en curso (para el "Enviando…" de su tarjeta).
   // Gate por isPending: `createOffer.variables` persiste tras el onSuccess (React
@@ -348,6 +367,9 @@ export function SolicitudesEntrantesScreen() {
             paused={paused}
             taken={taken}
             initialSelectedId={selectedForMap}
+            hasNextPage={openRidesQuery.hasNextPage}
+            isFetchingNextPage={openRidesQuery.isFetchingNextPage}
+            onEndReached={loadMoreOpenRides}
             onOpenDetail={openStatus}
             onAccept={acceptAtFare}
             onDismiss={dismissRide}
@@ -373,13 +395,14 @@ export function SolicitudesEntrantesScreen() {
             {createOffer.isError && (
               <Text style={styles.error}>{getApiErrorMessage(createOffer.error)}</Text>
             )}
-            <ScrollView
+            <FlatList
               style={styles.list}
+              data={visibleRides}
+              keyExtractor={(item) => item.id}
               contentContainerStyle={styles.listContent}
-              showsVerticalScrollIndicator={false}>
-              {visibleRides.map((item) => (
+              showsVerticalScrollIndicator={false}
+              renderItem={({ item }) => (
                 <RequestCard
-                  key={item.id}
                   ride={item}
                   offered={isOffered(item.id)}
                   rejected={rejected.has(item.id)}
@@ -397,8 +420,18 @@ export function SolicitudesEntrantesScreen() {
                   onOpenPriceInput={() => openPriceInput(item)}
                   onWithdraw={() => withdraw(item)}
                 />
-              ))}
-            </ScrollView>
+              )}
+              onEndReached={loadMoreOpenRides}
+              onEndReachedThreshold={0.35}
+              ListFooterComponent={
+                openRidesQuery.isFetchingNextPage ? (
+                  <ActivityIndicator
+                    style={styles.pageLoader}
+                    color={colors.primary}
+                  />
+                ) : null
+              }
+            />
           </View>
         </>
       )}
@@ -669,6 +702,7 @@ const styles = StyleSheet.create({
   // Estado "con solicitudes" — modo lista (sobre el mapa de fondo).
   list: { flex: 1 },
   listContent: { paddingHorizontal: spacing.sm, gap: spacing.sm, paddingBottom: spacing.xxl },
+  pageLoader: { marginVertical: spacing.md },
   error: {
     color: colors.danger,
     fontSize: fontSize.sm,

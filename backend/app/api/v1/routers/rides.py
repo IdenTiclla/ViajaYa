@@ -6,7 +6,7 @@ import asyncio
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, Query, Response, status
 
 from app.api.deps import (
     CurrentUserDep,
@@ -34,16 +34,17 @@ from app.api.deps import (
     get_withdraw_offer,
 )
 from app.api.v1 import events, presence
+from app.api.v1.pagination import decode_cursor
 from app.api.v1.presence import present_rides
 from app.api.v1.schemas.offers import OfferCreate, OfferResponse
 from app.api.v1.schemas.ratings import RatingCreate, RatingResponse
 from app.api.v1.schemas.rides import (
     CreateRideRequestRequest,
-    OpenRideResponse,
+    OpenRidePageResponse,
     RecentDestinationResponse,
     RideEdit,
     RideFareUpdate,
-    RideHistoryItemResponse,
+    RideHistoryPageResponse,
     RideRequestResponse,
     RideResponse,
     RideStatusUpdate,
@@ -150,18 +151,20 @@ async def recent_destinations(
     return [RecentDestinationResponse.from_location(loc) for loc in locations]
 
 
-@router.get("/open", response_model=list[OpenRideResponse])
+@router.get("/open", response_model=OpenRidePageResponse)
 async def open_rides(
     current_user: CurrentUserDep,
     use_case: Annotated[ListOpenRides, Depends(get_list_open_rides)],
-) -> list[OpenRideResponse]:
+    cursor: Annotated[str | None, Query(max_length=512)] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+) -> OpenRidePageResponse:
     """Solicitudes abiertas del tipo de vehículo del conductor (en línea).
 
     Solo las que tienen al pasajero presente (conexión WS viva): las abandonadas
     no se muestran.
     """
-    details = await use_case.execute(current_user)
-    return [OpenRideResponse.from_open_ride(detail) for detail in present_rides(details)]
+    page = await use_case.execute(current_user, decode_cursor(cursor), limit)
+    return OpenRidePageResponse.from_page(present_rides(page))
 
 
 @router.post("/{ride_id}/dismiss", status_code=status.HTTP_204_NO_CONTENT)
@@ -217,15 +220,17 @@ async def withdraw_offer(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.get("/history", response_model=list[RideHistoryItemResponse])
+@router.get("/history", response_model=RideHistoryPageResponse)
 async def ride_history(
     current_user: CurrentUserDep,
     use_case: Annotated[ListRideHistory, Depends(get_list_ride_history)],
     status: RideStatus | None = None,
-) -> list[RideHistoryItemResponse]:
+    cursor: Annotated[str | None, Query(max_length=512)] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> RideHistoryPageResponse:
     """Historial de viajes terminales del usuario (pasajero o conductor)."""
-    items = await use_case.execute(current_user, status)
-    return [RideHistoryItemResponse.from_item(item) for item in items]
+    page = await use_case.execute(current_user, status, decode_cursor(cursor), limit)
+    return RideHistoryPageResponse.from_page(page)
 
 
 @router.get("/me/active", response_model=RideResponse | None)

@@ -7,9 +7,18 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from app.application.dto import SocialProfile
+from app.application.dto import (
+    DriverEarnings,
+    EarningsItem,
+    Page,
+    PageCursor,
+    RideDetail,
+    RideHistoryItem,
+    SocialProfile,
+)
 from app.application.interfaces import (
     PasswordHasher,
+    RideReadRepository,
     SocialIdentityVerifier,
     TokenService,
 )
@@ -61,6 +70,16 @@ _PASSENGER_ACTIVE_RIDE_STATUSES = (
     RideStatus.ARRIVING,
     RideStatus.IN_PROGRESS,
 )
+
+
+def _as_utc(moment: datetime | None) -> datetime:
+    if moment is None:
+        return datetime.min.replace(tzinfo=UTC)
+    return moment.replace(tzinfo=UTC) if moment.tzinfo is None else moment.astimezone(UTC)
+
+
+def _created_order(ride: RideRequest) -> tuple[datetime, int]:
+    return (_as_utc(ride.created_at), ride.id.int)
 
 
 class InMemoryUserRepository(UserRepository):
@@ -195,19 +214,40 @@ class InMemoryRideRequestRepository(RideRequestRepository):
         ]
 
     async def list_open_with_rider_for_vehicle(
-        self, vehicle_type: VehicleType, *, driver_id: uuid.UUID | None = None
+        self,
+        vehicle_type: VehicleType,
+        *,
+        driver_id: uuid.UUID | None = None,
+        before_created_at: datetime | None = None,
+        before_id: uuid.UUID | None = None,
+        limit: int | None = None,
     ) -> list[OpenRideDetail]:
-        return [
-            self._detail_for(r)
-            for r in reversed(self.rides)
-            if r.service_type in services_for_vehicle(vehicle_type)
-            and r.status is RideStatus.SEARCHING
-            and not r.paused
-            and (
-                driver_id is None
-                or self.dismissals.get((driver_id, r.id)) != r.pool_version
-            )
-        ]
+        if (before_created_at is None) != (before_id is None):
+            raise ValueError("El cursor del pool requiere fecha e id.")
+        cursor_order = (
+            (_as_utc(before_created_at), before_id.int)
+            if before_created_at is not None and before_id is not None
+            else None
+        )
+        rides = sorted(
+            (
+                r
+                for r in self.rides
+                if r.service_type in services_for_vehicle(vehicle_type)
+                and r.status is RideStatus.SEARCHING
+                and not r.paused
+                and (
+                    driver_id is None
+                    or self.dismissals.get((driver_id, r.id)) != r.pool_version
+                )
+                and (cursor_order is None or _created_order(r) < cursor_order)
+            ),
+            key=_created_order,
+            reverse=True,
+        )
+        if limit is not None:
+            rides = rides[:limit]
+        return [self._detail_for(r) for r in rides]
 
     async def dismiss_open_ride_for_driver(
         self, driver_id: uuid.UUID, ride_id: uuid.UUID, pool_version: int
@@ -659,6 +699,151 @@ class InMemoryRatingRepository(RatingRepository):
     async def average_for(self, ratee_id: uuid.UUID) -> float | None:
         scores = [r.score for r in self._ratings.values() if r.ratee_id == ratee_id]
         return sum(scores) / len(scores) if scores else None
+
+
+class InMemoryRideReadRepository(RideReadRepository):
+    """Compone los repositorios en memoria como proyección de lectura."""
+
+    def __init__(
+        self,
+        rides: InMemoryRideRequestRepository,
+        offers: InMemoryOfferRepository,
+        users: InMemoryUserRepository,
+        ratings: InMemoryRatingRepository,
+    ) -> None:
+        self._rides = rides
+        self._offers = offers
+        self._users = users
+        self._ratings = ratings
+
+    async def get_active_for_driver(self, driver_id: uuid.UUID) -> RideDetail | None:
+        ride = max(
+            (
+                candidate
+                for candidate in self._rides.rides
+                if candidate.driver_id == driver_id
+                and candidate.status in _ACTIVE_RIDE_STATUSES
+            ),
+            key=_created_order,
+            default=None,
+        )
+        if ride is None:
+            return None
+        offer = (
+            await self._offers.get_by_id(ride.accepted_offer_id)
+            if ride.accepted_offer_id is not None
+            else None
+        )
+        return RideDetail(
+            ride=ride,
+            rider=await self._users.get_by_id(ride.rider_id),
+            accepted_offer=offer,
+        )
+
+    async def list_history_items(
+        self,
+        user_id: uuid.UUID,
+        role: UserRole,
+        statuses: set[RideStatus],
+        cursor: PageCursor | None,
+        limit: int,
+    ) -> Page[RideHistoryItem]:
+        def participates(ride: RideRequest) -> bool:
+            participant_id = (
+                ride.driver_id if role is UserRole.DRIVER else ride.rider_id
+            )
+            return participant_id == user_id and ride.status in statuses
+
+        rides = sorted(
+            (ride for ride in self._rides.rides if participates(ride)),
+            key=_created_order,
+            reverse=True,
+        )
+        if cursor is not None:
+            cursor_order = (_as_utc(cursor.created_at), cursor.id.int)
+            rides = [ride for ride in rides if _created_order(ride) < cursor_order]
+        has_more = len(rides) > limit
+        rides = rides[:limit]
+        items: list[RideHistoryItem] = []
+        for ride in rides:
+            offer = (
+                await self._offers.get_by_id(ride.accepted_offer_id)
+                if ride.accepted_offer_id is not None
+                else None
+            )
+            counterpart_id = ride.rider_id if role is UserRole.DRIVER else ride.driver_id
+            counterpart = (
+                await self._users.get_by_id(counterpart_id)
+                if counterpart_id is not None
+                else None
+            )
+            rating = await self._ratings.get_by_ride_and_rater(ride.id, user_id)
+            items.append(
+                RideHistoryItem(
+                    ride=ride,
+                    counterpart=counterpart,
+                    price=offer.price if offer is not None else ride.fare,
+                    my_rating=rating.score if rating is not None else None,
+                )
+            )
+        next_cursor = None
+        if has_more and items:
+            last = items[-1].ride
+            if last.created_at is None:
+                raise ValueError("Un viaje persistido debe tener created_at.")
+            next_cursor = PageCursor(created_at=last.created_at, id=last.id)
+        return Page(items=items, next_cursor=next_cursor)
+
+    async def get_driver_earnings_summary(
+        self,
+        driver_id: uuid.UUID,
+        day_start_utc: datetime,
+        day_end_utc: datetime,
+        recent_limit: int,
+    ) -> DriverEarnings:
+        completed = [
+            ride
+            for ride in self._rides.rides
+            if ride.driver_id == driver_id and ride.status is RideStatus.COMPLETED
+        ]
+
+        completed.sort(
+            key=lambda ride: (
+                _as_utc(ride.completed_at or ride.created_at),
+                _as_utc(ride.created_at),
+                ride.id.int,
+            ),
+            reverse=True,
+        )
+        items: list[EarningsItem] = []
+        for ride in completed:
+            offer = (
+                await self._offers.get_by_id(ride.accepted_offer_id)
+                if ride.accepted_offer_id is not None
+                else None
+            )
+            items.append(
+                EarningsItem(
+                    ride_id=ride.id,
+                    destination_name=ride.destination.name,
+                    price=offer.price if offer is not None else ride.fare,
+                    completed_at=ride.completed_at or ride.created_at,
+                )
+            )
+        total_today = Decimal("0")
+        trips_today = 0
+        for item in items:
+            completed_at = _as_utc(item.completed_at)
+            if day_start_utc <= completed_at < day_end_utc:
+                total_today += item.price
+                trips_today += 1
+        return DriverEarnings(
+            total_today=total_today,
+            trips_today=trips_today,
+            total_all_time=sum((item.price for item in items), start=Decimal("0")),
+            trips_all_time=len(items),
+            recent=items[:recent_limit],
+        )
 
 
 class InMemoryRatingSkipRepository(RatingSkipRepository):

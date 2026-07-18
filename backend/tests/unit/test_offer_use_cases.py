@@ -496,9 +496,9 @@ async def test_list_open_rides_filters_by_vehicle_type_and_includes_delivery(
 
     open_rides = await ListOpenRides(rides).execute(_driver(vehicle))
 
-    assert {detail.ride.service_type for detail in open_rides} == expected_services
-    assert all(detail.rider.full_name == "Pasa" for detail in open_rides)
-    assert all(detail.rider.trips_completed == 0 for detail in open_rides)
+    assert {detail.ride.service_type for detail in open_rides.items} == expected_services
+    assert all(detail.rider.full_name == "Pasa" for detail in open_rides.items)
+    assert all(detail.rider.trips_completed == 0 for detail in open_rides.items)
 
 
 async def test_list_offers_hides_expired_offers():

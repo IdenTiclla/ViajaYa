@@ -18,7 +18,7 @@ from typing import Any
 
 from anyio import CancelScope
 
-from app.application.dto import RideDetail
+from app.application.dto import Page, RideDetail
 from app.application.use_cases.cancel_ride_on_disconnect import CancelRideOnDisconnect
 from app.domain.entities import RideRequest, RideStatus
 from app.domain.repositories import OpenRideDetail
@@ -63,9 +63,12 @@ def is_ride_present(ride: RideRequest) -> bool:
     return False
 
 
-def present_rides(details: list[OpenRideDetail]) -> list[OpenRideDetail]:
-    """Filtra una lista de solicitudes enriquecidas a solo las que tienen pasajero presente."""
-    return [detail for detail in details if is_ride_present(detail.ride)]
+def present_rides(page: Page[OpenRideDetail]) -> Page[OpenRideDetail]:
+    """Filtra los items presentes sin alterar la posición de continuación SQL."""
+    return Page(
+        items=[detail for detail in page.items if is_ride_present(detail.ride)],
+        next_cursor=page.next_cursor,
+    )
 
 
 async def on_passenger_connect(

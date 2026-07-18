@@ -6,6 +6,10 @@
 import { type QueryClient, useMutation, useQueryClient } from '@tanstack/react-query';
 
 import {
+  emptyOpenRides,
+  type OpenRidesInfiniteData,
+} from '@/features/rides/application/openRidesCache';
+import {
   DRIVER_ACTIVE_RIDE_KEY,
   PASSENGER_ACTIVE_RIDE_KEY,
 } from '@/features/rides/application/useRides';
@@ -154,7 +158,10 @@ export function useSetOnline() {
       if (isOnline) {
         void queryClient.invalidateQueries({ queryKey: ['open-rides'] });
       } else {
-        queryClient.setQueryData(['open-rides'], []);
+        queryClient.setQueryData<OpenRidesInfiniteData>(
+          ['open-rides'],
+          emptyOpenRides(),
+        );
       }
     },
   });

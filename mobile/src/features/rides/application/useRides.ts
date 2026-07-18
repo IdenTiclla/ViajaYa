@@ -7,9 +7,10 @@
  * vía principal. Las consultas de un viaje concreto dejan de refrescarse cuando
  * el viaje llega a un estado terminal (`completed`/`cancelled`).
  */
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 
+import { flattenOpenRides } from '@/features/rides/application/openRidesCache';
 import { ridesRepository } from '@/features/rides/data/ridesRepository';
 import type { Ride } from '@/features/rides/domain/types';
 
@@ -29,18 +30,24 @@ function isTerminal(status: Ride['status'] | undefined): boolean {
 
 /** Conductor: solicitudes abiertas de su tipo de vehículo. */
 export function useOpenRides(enabled = true) {
-  const query = useQuery({
+  const query = useInfiniteQuery({
     queryKey: ['open-rides'],
-    queryFn: () => ridesRepository.getOpenRides(),
+    queryFn: ({ pageParam }) => ridesRepository.getOpenRides(pageParam),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     refetchInterval: enabled ? POLL_OPEN_MS : false,
     enabled,
   });
   return {
-    rides: query.data ?? [],
+    rides: flattenOpenRides(query.data),
     isLoading: query.isPending,
     isError: query.isError,
     error: query.error,
     refetch: query.refetch,
+    hasNextPage: query.hasNextPage,
+    fetchNextPage: query.fetchNextPage,
+    isFetchingNextPage: query.isFetchingNextPage,
+    isFetchNextPageError: query.isFetchNextPageError,
   };
 }
 

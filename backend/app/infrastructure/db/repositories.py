@@ -6,10 +6,19 @@ import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import case, func, or_, select, tuple_, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.application.dto import (
+    DriverEarnings,
+    EarningsItem,
+    Page,
+    PageCursor,
+    RideDetail,
+    RideHistoryItem,
+)
+from app.application.interfaces import RideReadRepository
 from app.domain.entities import (
     AuthProvider,
     Location,
@@ -415,7 +424,13 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
         return [_ride_to_entity(row) for row in result.scalars().all()]
 
     async def list_open_with_rider_for_vehicle(
-        self, vehicle_type: VehicleType, *, driver_id: uuid.UUID | None = None
+        self,
+        vehicle_type: VehicleType,
+        *,
+        driver_id: uuid.UUID | None = None,
+        before_created_at: datetime | None = None,
+        before_id: uuid.UUID | None = None,
+        limit: int | None = None,
     ) -> list[OpenRideDetail]:
         # Una sola query: JOIN con el pasajero + subquery correlacionada que cuenta
         # sus viajes completados. Así el pool de solicitudes (alto volumen, refresco
@@ -439,7 +454,6 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
                 RideRequestModel.status == RideStatus.SEARCHING,
                 RideRequestModel.paused.is_(False),
             )
-            .order_by(RideRequestModel.created_at.desc())
         )
         if driver_id is not None:
             statement = statement.outerjoin(
@@ -452,6 +466,25 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
                     DriverRideDismissalModel.pool_version != RideRequestModel.pool_version,
                 )
             )
+        if (before_created_at is None) != (before_id is None):
+            raise ValueError("El cursor del pool requiere fecha e id.")
+        if before_created_at is not None and before_id is not None:
+            created_key = RideRequestModel.created_at
+            cursor_key = before_created_at
+            if self._session.bind is not None and self._session.bind.dialect.name == "sqlite":
+                # SQLite persiste CURRENT_TIMESTAMP sin fracción, pero serializa
+                # binds DateTime con ``.000000``. ``datetime`` iguala ambas formas.
+                created_key = func.datetime(created_key)
+                cursor_key = func.datetime(cursor_key)
+            statement = statement.where(
+                tuple_(created_key, RideRequestModel.id) < tuple_(cursor_key, before_id)
+            )
+        statement = statement.order_by(
+            RideRequestModel.created_at.desc(),
+            RideRequestModel.id.desc(),
+        )
+        if limit is not None:
+            statement = statement.limit(limit)
         result = await self._session.execute(statement)
         details: list[OpenRideDetail] = []
         for ride_row, user_row, trips in result.all():
@@ -597,6 +630,183 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
             .order_by(RideRequestModel.created_at.desc())
         )
         return [_ride_to_entity(row) for row in result.scalars().all()]
+
+
+class SqlAlchemyRideReadRepository(RideReadRepository):
+    """Consultas enriquecidas de viajes sin escrituras ni cargas N+1."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def get_active_for_driver(self, driver_id: uuid.UUID) -> RideDetail | None:
+        result = await self._session.execute(
+            select(RideRequestModel, UserModel, OfferModel)
+            .join(UserModel, UserModel.id == RideRequestModel.rider_id)
+            .outerjoin(OfferModel, OfferModel.id == RideRequestModel.accepted_offer_id)
+            .where(
+                RideRequestModel.driver_id == driver_id,
+                RideRequestModel.status.in_(_ACTIVE_RIDE_STATUSES),
+            )
+            .order_by(
+                RideRequestModel.created_at.desc(),
+                RideRequestModel.id.desc(),
+            )
+            .limit(1)
+        )
+        row = result.first()
+        if row is None:
+            return None
+        ride_row, rider_row, offer_row = row
+        return RideDetail(
+            ride=_ride_to_entity(ride_row),
+            rider=_to_entity(rider_row),
+            accepted_offer=_offer_to_entity(offer_row) if offer_row is not None else None,
+        )
+
+    async def list_history_items(
+        self,
+        user_id: uuid.UUID,
+        role: UserRole,
+        statuses: set[RideStatus],
+        cursor: PageCursor | None,
+        limit: int,
+    ) -> Page[RideHistoryItem]:
+        participant = (
+            RideRequestModel.driver_id
+            if role is UserRole.DRIVER
+            else RideRequestModel.rider_id
+        )
+        counterpart_id = (
+            RideRequestModel.rider_id
+            if role is UserRole.DRIVER
+            else RideRequestModel.driver_id
+        )
+        agreed_price = func.coalesce(OfferModel.price, RideRequestModel.fare)
+        statement = (
+            select(
+                RideRequestModel,
+                UserModel,
+                agreed_price,
+                RideRatingModel.score,
+            )
+            .outerjoin(UserModel, UserModel.id == counterpart_id)
+            .outerjoin(OfferModel, OfferModel.id == RideRequestModel.accepted_offer_id)
+            .outerjoin(
+                RideRatingModel,
+                (RideRatingModel.ride_id == RideRequestModel.id)
+                & (RideRatingModel.rater_id == user_id),
+            )
+            .where(participant == user_id, RideRequestModel.status.in_(statuses))
+            .order_by(
+                RideRequestModel.created_at.desc(),
+                RideRequestModel.id.desc(),
+            )
+            .limit(limit + 1)
+        )
+        if cursor is not None:
+            created_key = RideRequestModel.created_at
+            cursor_key = cursor.created_at
+            if self._session.bind is not None and self._session.bind.dialect.name == "sqlite":
+                created_key = func.datetime(created_key)
+                cursor_key = func.datetime(cursor_key)
+            statement = statement.where(
+                tuple_(created_key, RideRequestModel.id) < tuple_(cursor_key, cursor.id)
+            )
+        result = await self._session.execute(statement)
+        rows = result.all()
+        has_more = len(rows) > limit
+        items = [
+            RideHistoryItem(
+                ride=_ride_to_entity(ride_row),
+                counterpart=_to_entity(counterpart_row) if counterpart_row is not None else None,
+                price=Decimal(str(price)),
+                my_rating=score,
+            )
+            for ride_row, counterpart_row, price, score in rows[:limit]
+        ]
+        next_cursor = None
+        if has_more and items:
+            last = items[-1].ride
+            if last.created_at is None:  # pragma: no cover - la BD no permite NULL
+                raise ValueError("Un viaje persistido debe tener created_at.")
+            next_cursor = PageCursor(created_at=last.created_at, id=last.id)
+        return Page(items=items, next_cursor=next_cursor)
+
+    async def get_driver_earnings_summary(
+        self,
+        driver_id: uuid.UUID,
+        day_start_utc: datetime,
+        day_end_utc: datetime,
+        recent_limit: int,
+    ) -> DriverEarnings:
+        agreed_price = func.coalesce(OfferModel.price, RideRequestModel.fare)
+        completed_at = func.coalesce(
+            RideRequestModel.completed_at,
+            RideRequestModel.created_at,
+        )
+        completed_key = completed_at
+        day_start_key = day_start_utc
+        day_end_key = day_end_utc
+        if self._session.bind is not None and self._session.bind.dialect.name == "sqlite":
+            completed_key = func.datetime(completed_key)
+            day_start_key = func.datetime(day_start_key)
+            day_end_key = func.datetime(day_end_key)
+        today = (completed_key >= day_start_key) & (completed_key < day_end_key)
+        totals = (
+            await self._session.execute(
+                select(
+                    func.coalesce(func.sum(agreed_price), Decimal("0")),
+                    func.count(RideRequestModel.id),
+                    func.coalesce(
+                        func.sum(case((today, agreed_price), else_=Decimal("0"))),
+                        Decimal("0"),
+                    ),
+                    func.coalesce(func.sum(case((today, 1), else_=0)), 0),
+                )
+                .select_from(RideRequestModel)
+                .outerjoin(OfferModel, OfferModel.id == RideRequestModel.accepted_offer_id)
+                .where(
+                    RideRequestModel.driver_id == driver_id,
+                    RideRequestModel.status == RideStatus.COMPLETED,
+                )
+            )
+        ).one()
+        recent_result = await self._session.execute(
+            select(
+                RideRequestModel.id,
+                RideRequestModel.destination_name,
+                agreed_price,
+                completed_at,
+            )
+            .outerjoin(OfferModel, OfferModel.id == RideRequestModel.accepted_offer_id)
+            .where(
+                RideRequestModel.driver_id == driver_id,
+                RideRequestModel.status == RideStatus.COMPLETED,
+            )
+            .order_by(
+                completed_at.desc(),
+                RideRequestModel.created_at.desc(),
+                RideRequestModel.id.desc(),
+            )
+            .limit(recent_limit)
+        )
+        recent = [
+            EarningsItem(
+                ride_id=ride_id,
+                destination_name=destination_name,
+                price=Decimal(str(price)),
+                completed_at=finished_at,
+            )
+            for ride_id, destination_name, price, finished_at in recent_result.all()
+        ]
+        total_all, trips_all, total_today, trips_today = totals
+        return DriverEarnings(
+            total_today=Decimal(str(total_today or 0)),
+            trips_today=int(trips_today or 0),
+            total_all_time=Decimal(str(total_all or 0)),
+            trips_all_time=int(trips_all or 0),
+            recent=recent,
+        )
 
 
 class SqlAlchemyPendingRatingRepository(PendingRatingRepository):

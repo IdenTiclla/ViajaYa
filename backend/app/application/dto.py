@@ -266,11 +266,19 @@ class RidePausedResult:
 
 @dataclass(frozen=True)
 class CancelRideResult:
-    """Resultado de cancelar un viaje: el ride cancelado y las ofertas vivas que
-    murieron con él, para avisar a esos conductores (``reason: ride_cancelled``)."""
+    """Cancelación enriquecida y sus ofertas vivas rechazadas.
 
-    ride: RideRequest
+    El detalle se captura antes del commit para que la respuesta HTTP, la outbox
+    y la publicación directa compartan exactamente el mismo estado terminal.
+    """
+
+    detail: RideDetail
     cancelled_offers: list[Offer]
+
+    @property
+    def ride(self) -> RideRequest:
+        """Atajo compatible para las reglas que solo necesitan la entidad."""
+        return self.detail.ride
 
 
 @dataclass(frozen=True)

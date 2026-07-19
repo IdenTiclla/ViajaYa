@@ -15,13 +15,16 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.v1.realtime_outbox import (
     DisabledAcceptOfferEventRecorder,
+    DisabledCancelRideEventRecorder,
     DisabledCreateOfferEventRecorder,
     DisabledPauseRideEventRecorder,
     OutboxAcceptOfferEventRecorder,
+    OutboxCancelRideEventRecorder,
     OutboxCreateOfferEventRecorder,
     OutboxPauseRideEventRecorder,
 )
 from app.application.interfaces import (
+    CancelRideEventRecorder,
     RealtimeSnapshotReader,
     RideReadRepository,
     SocialIdentityVerifier,
@@ -37,6 +40,7 @@ from app.application.use_cases.build_passenger_realtime_snapshot import (
     BuildPassengerRealtimeSnapshot,
 )
 from app.application.use_cases.cancel_ride import CancelRide
+from app.application.use_cases.cancel_ride_on_disconnect import CancelRideOnDisconnect
 from app.application.use_cases.create_offer import CreateOffer
 from app.application.use_cases.create_ride_request import CreateRideRequest
 from app.application.use_cases.create_saved_place import CreateSavedPlace
@@ -328,8 +332,43 @@ def get_update_ride_fare(rides: RideRequestRepositoryDep) -> UpdateRideFare:
     return UpdateRideFare(rides)
 
 
-def get_cancel_ride(rides: RideRequestRepositoryDep, offers: OfferRepositoryDep) -> CancelRide:
-    return CancelRide(rides, offers)
+def _cancel_ride_recorder(
+    session: AsyncSession,
+    settings: Settings,
+) -> CancelRideEventRecorder:
+    return (
+        OutboxCancelRideEventRecorder(SqlAlchemyRealtimeOutbox(session))
+        if settings.realtime_outbox_recording_enabled
+        else DisabledCancelRideEventRecorder()
+    )
+
+
+def get_cancel_ride(
+    rides: RideRequestRepositoryDep,
+    users: UserRepositoryDep,
+    session: SessionDep,
+    settings: SettingsDep,
+) -> CancelRide:
+    return CancelRide(
+        rides,
+        SqlAlchemyOfferRepository(session, commit_cancel=False),
+        users,
+        SqlAlchemyUnitOfWork(session),
+        _cancel_ride_recorder(session, settings),
+    )
+
+
+def build_cancel_ride_on_disconnect(
+    session: AsyncSession,
+    settings: Settings,
+) -> CancelRideOnDisconnect:
+    """Cablea el cierre de presencia sobre una única sesión/UoW."""
+    return CancelRideOnDisconnect(
+        SqlAlchemyOfferRepository(session, commit_cancel=False),
+        SqlAlchemyUserRepository(session),
+        SqlAlchemyUnitOfWork(session),
+        _cancel_ride_recorder(session, settings),
+    )
 
 
 def get_pause_ride_for_edit(

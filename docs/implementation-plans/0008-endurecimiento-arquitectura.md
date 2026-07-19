@@ -276,8 +276,9 @@ Axios todavía continúe en segundo plano sin propagar `AbortSignal`.
 > todo el batch con un código estable, deja de bloquear sus streams y conserva
 > las filas para auditoría; el hueco resultante obliga a resnapshot antes de
 > continuar el replay live.
-> `CreateOffer`/reemplazo, `AcceptOffer` y `PauseRideForEdit` son los primeros
-> productores: mutación, batch ordenado y versiones se confirman en un solo commit mediante
+> `CreateOffer`/reemplazo, `AcceptOffer`, `PauseRideForEdit`, `CancelRide` y el
+> cierre automático por ausencia son los primeros productores: mutación, batch
+> ordenado y versiones se confirman en un solo commit mediante
 > `UnitOfWork`; la publicación directa reutiliza exactamente los payloads
 > persistidos. El fanout de aceptación conserva `ride_status`, cierre del pool,
 > notificación/limpieza del ganador y retiros/rechazos de los afectados en un
@@ -371,6 +372,9 @@ Base ya cumplida por `93b9741`:
   reutilizar el mismo batch canónico en la publicación directa.
 - [x] Migrar pausa para edición al mismo UoW; capturar el detalle enriquecido
   antes del commit y preservar `ride_closed → offer_withdrawn → ride_paused`.
+- [x] Migrar cancelación manual y por ausencia al mismo UoW; capturar el detalle
+  antes del commit y preservar `ride_status → ride_closed → offer_rejected[]`,
+  incluyendo el `ride_status` personal cuando ya existe conductor asignado.
 - [x] Añadir `0020` y cuarentena terminal atómica para batches inválidos, con
   códigos cerrados, índices que excluyen terminales y downgrade protegido.
 
@@ -385,8 +389,13 @@ Dispatcher sombra, sin Redis ni cambios de contrato/mobile:
 - [ ] Medir pendientes y edad máxima, y definir retención de filas publicadas.
 - [ ] No habilitar entrega real hasta que el envelope lleve `event_id`, versiones
   de agregado/stream en el socket vivo y el gate mobile esté integrado.
-- [ ] Migrar cancelación, resolviendo versiones de los otros rides afectados por
-  cada fanout.
+- [x] Migrar cancelación con un único builder canónico y agregado `ride`; esta
+  operación no muta otros rides y ordena sus rechazos por UUID de oferta.
+
+Antes del modo `live`, hacer conmutativa en mobile la reducción de
+`ride_closed` y `offer_rejected`: pertenecen a streams distintos y Redis no
+promete su orden relativo aunque cada stream conserve continuidad. La entrega
+directa actual sí preserva el orden del batch.
 
 ### 3.2 Bridge Redis y sockets locales
 

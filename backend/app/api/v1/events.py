@@ -36,6 +36,7 @@ from app.api.v1.schemas.realtime import (
 from app.api.v1.schemas.rides import OpenRideResponse, RideResponse
 from app.application.dto import (
     AcceptOfferResult,
+    CancelRideResult,
     CreateOfferResult,
     OfferDetail,
     PendingRealtimeEvent,
@@ -238,6 +239,53 @@ def build_pause_ride_events(result: RidePausedResult) -> list[PendingRealtimeEve
     return pending
 
 
+def build_cancel_ride_events(result: CancelRideResult) -> list[PendingRealtimeEvent]:
+    """Construye el fanout durable/directo de una cancelación."""
+    ride = result.detail.ride
+    message = RideStatusMessage(data=RideResponse.from_detail(result.detail))
+    pending = [
+        _pending_realtime_event(
+            topic=ride_topic(ride.id),
+            aggregate_type="ride",
+            aggregate_id=ride.id,
+            message=message,
+        )
+    ]
+    if result.detail.driver is not None:
+        pending.append(
+            _pending_realtime_event(
+                topic=driver_topic(result.detail.driver.id),
+                aggregate_type="ride",
+                aggregate_id=ride.id,
+                message=message,
+            )
+        )
+    pending.append(
+        _pending_realtime_event(
+            topic=pool_topic(ride.service_type.value),
+            aggregate_type="ride",
+            aggregate_id=ride.id,
+            message=RideClosedMessage(data=RideClosedData(ride_id=ride.id)),
+        )
+    )
+    for offer in sorted(result.cancelled_offers, key=lambda item: item.id.hex):
+        pending.append(
+            _pending_realtime_event(
+                topic=driver_topic(offer.driver_id),
+                aggregate_type="ride",
+                aggregate_id=ride.id,
+                message=OfferRejectedMessage(
+                    data=OfferRejectedData(
+                        ride_id=ride.id,
+                        offer_id=offer.id,
+                        reason="ride_cancelled",
+                    )
+                ),
+            )
+        )
+    return pending
+
+
 async def publish_ride_created(detail: OpenRideDetail) -> None:
     """Una solicitud nueva (o renovada) aparece para los conductores del pool.
 
@@ -273,6 +321,11 @@ async def publish_ride_paused(result: RidePausedResult) -> None:
     - Al pasajero: ``OFFER_WITHDRAWN`` para que quite las tarjetas de ofertas.
     """
     await _broadcast_pending(build_pause_ride_events(result))
+
+
+async def publish_ride_cancelled(result: CancelRideResult) -> None:
+    """Difunde una cancelación usando exactamente el batch de la outbox."""
+    await _broadcast_pending(build_cancel_ride_events(result))
 
 
 async def publish_offer_created(detail: OfferDetail) -> None:

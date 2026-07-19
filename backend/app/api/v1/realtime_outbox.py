@@ -7,6 +7,7 @@ from collections.abc import Sequence
 
 from app.api.v1.events import (
     build_accept_offer_events,
+    build_cancel_ride_events,
     build_create_offer_events,
     build_pause_ride_events,
 )
@@ -17,6 +18,7 @@ from app.api.v1.schemas.realtime import (
 )
 from app.application.dto import (
     AcceptOfferResult,
+    CancelRideResult,
     CreateOfferResult,
     RealtimeOutboxEvent,
     RealtimeOutboxQuarantineCode,
@@ -25,6 +27,7 @@ from app.application.dto import (
 from app.application.exceptions import InvalidRealtimeOutboxBatchError
 from app.application.interfaces import (
     AcceptOfferEventRecorder,
+    CancelRideEventRecorder,
     CreateOfferEventRecorder,
     PauseRideEventRecorder,
     RealtimeOutbox,
@@ -220,4 +223,21 @@ class DisabledPauseRideEventRecorder(PauseRideEventRecorder):
     """Recorder nulo mientras el productor de pausa está deshabilitado."""
 
     async def record(self, result: RidePausedResult) -> None:
+        del result
+
+
+class OutboxCancelRideEventRecorder(CancelRideEventRecorder):
+    """Registra el fanout de cancelación dentro de su transacción de negocio."""
+
+    def __init__(self, outbox: RealtimeOutbox) -> None:
+        self._outbox = outbox
+
+    async def record(self, result: CancelRideResult) -> None:
+        await self._outbox.add_batch(build_cancel_ride_events(result))
+
+
+class DisabledCancelRideEventRecorder(CancelRideEventRecorder):
+    """Recorder nulo mientras el productor de cancelación está deshabilitado."""
+
+    async def record(self, result: CancelRideResult) -> None:
         del result

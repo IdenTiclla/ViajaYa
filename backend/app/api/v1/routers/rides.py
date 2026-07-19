@@ -382,18 +382,11 @@ async def cancel_ride(
     ride_id: uuid.UUID,
     current_user: CurrentUserDep,
     use_case: Annotated[CancelRide, Depends(get_cancel_ride)],
-    get_ride_use_case: Annotated[GetRide, Depends(get_get_ride)],
 ) -> RideResponse:
     """Cancela el viaje (pasajero o conductor asignado), antes de iniciarlo."""
     result = await use_case.execute(current_user, ride_id)
-    detail = await get_ride_use_case.execute(current_user, ride_id)
-    await events.publish_ride_status(detail)
-    # Si estaba en el pool (buscando), que los conductores la quiten de su lista.
-    await events.publish_ride_closed(detail.ride.id, detail.ride.service_type)
-    # Avisa a los conductores con oferta viva: el viaje se canceló (no "tomada").
-    for offer in result.cancelled_offers:
-        await events.publish_offer_rejected(offer, reason="ride_cancelled")
-    return RideResponse.from_detail(detail)
+    await events.publish_ride_cancelled(result)
+    return RideResponse.from_detail(result.detail)
 
 
 @router.post("/{ride_id}/pause-edit", response_model=RideResponse)

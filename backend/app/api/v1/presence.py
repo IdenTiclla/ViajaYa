@@ -18,15 +18,12 @@ from typing import Any
 
 from anyio import CancelScope
 
-from app.application.dto import Page, RideDetail
-from app.application.use_cases.cancel_ride_on_disconnect import CancelRideOnDisconnect
+from app.api.deps import build_cancel_ride_on_disconnect
+from app.application.dto import Page
 from app.domain.entities import RideRequest, RideStatus
 from app.domain.repositories import OpenRideDetail
-from app.infrastructure.db.repositories import (
-    SqlAlchemyOfferRepository,
-    SqlAlchemyRideRequestRepository,
-    SqlAlchemyUserRepository,
-)
+from app.infrastructure.config import get_settings
+from app.infrastructure.db.repositories import SqlAlchemyRideRequestRepository
 from app.infrastructure.realtime.hub import hub, ride_topic
 
 logger = logging.getLogger(__name__)
@@ -246,20 +243,16 @@ async def _run_cancel_after_grace(
 
     try:
         async with session_factory() as session:
-            offers = SqlAlchemyOfferRepository(session)
-            users = SqlAlchemyUserRepository(session)
-            result = await CancelRideOnDisconnect(offers).execute(ride_id)
+            result = await build_cancel_ride_on_disconnect(
+                session,
+                get_settings(),
+            ).execute(ride_id)
             if result is None:
                 return
-            rider = await users.get_by_id(result.ride.rider_id)
 
         from app.api.v1 import events
 
-        detail = RideDetail(ride=result.ride, rider=rider)
-        await events.publish_ride_status(detail)
-        await events.publish_ride_closed(result.ride.id, result.ride.service_type)
-        for offer in result.cancelled_offers:
-            await events.publish_offer_rejected(offer, reason="ride_cancelled")
+        await events.publish_ride_cancelled(result)
     except asyncio.CancelledError:
         raise
     except Exception:

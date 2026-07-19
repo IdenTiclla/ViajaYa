@@ -948,10 +948,21 @@ def test_driver_notified_when_passenger_cancels(ws_client: TestClient):
         # El pasajero cancela → al conductor le llegan ride_closed (pool) y
         # offer_rejected (personal, reason ride_cancelled). (También hay un
         # ride_created previo encolado al abrir el pasajero su conexión.)
-        ws_client.post(f"{RIDES}/{ride['id']}/cancel", headers=_headers(rider_token))
-        events = [ws.receive_json() for _ in range(3)]
-        rejected = next(e for e in events if e["type"] == "offer_rejected")
+        cancelled = ws_client.post(
+            f"{RIDES}/{ride['id']}/cancel",
+            headers=_headers(rider_token),
+        )
+        assert cancelled.status_code == 200, cancelled.text
+        assert cancelled.json()["status"] == "cancelled"
+        received = [ws.receive_json() for _ in range(3)]
+        assert [event["type"] for event in received] == [
+            "ride_created",
+            "ride_closed",
+            "offer_rejected",
+        ]
+        rejected = received[2]
         assert rejected["data"]["ride_id"] == ride["id"]
+        assert rejected["data"]["offer_id"] is not None
         assert rejected["data"]["reason"] == "ride_cancelled"
 
 

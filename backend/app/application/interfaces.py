@@ -13,6 +13,7 @@ from datetime import datetime
 
 from app.application.dto import (
     AcceptOfferResult,
+    CancelRideResult,
     CreateOfferResult,
     DriverEarnings,
     DriverRealtimeSnapshot,
@@ -142,6 +143,14 @@ class PauseRideEventRecorder(ABC):
     @abstractmethod
     async def record(self, result: RidePausedResult) -> None:
         """Añade a la outbox el cierre, retiros y avisos de pausa."""
+
+
+class CancelRideEventRecorder(ABC):
+    """Registra los eventos durables producidos al cancelar un viaje."""
+
+    @abstractmethod
+    async def record(self, result: CancelRideResult) -> None:
+        """Añade a la outbox el estado terminal, cierre y rechazos."""
 
 
 class PasswordHasher(ABC):

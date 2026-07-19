@@ -10,6 +10,7 @@ from decimal import Decimal
 
 from app.application.dto import (
     AcceptOfferResult,
+    CancelRideResult,
     CreateOfferResult,
     DriverEarnings,
     EarningsItem,
@@ -22,6 +23,7 @@ from app.application.dto import (
 )
 from app.application.interfaces import (
     AcceptOfferEventRecorder,
+    CancelRideEventRecorder,
     CreateOfferEventRecorder,
     PasswordHasher,
     PauseRideEventRecorder,
@@ -31,6 +33,8 @@ from app.application.interfaces import (
     UnitOfWork,
 )
 from app.application.use_cases.accept_offer import AcceptOffer
+from app.application.use_cases.cancel_ride import CancelRide
+from app.application.use_cases.cancel_ride_on_disconnect import CancelRideOnDisconnect
 from app.application.use_cases.create_offer import CreateOffer
 from app.application.use_cases.pause_ride_for_edit import PauseRideForEdit
 from app.domain.entities import (
@@ -751,6 +755,60 @@ class InMemoryAcceptOfferEventRecorder(AcceptOfferEventRecorder):
         if self._error is not None:
             raise self._error
         self.results.append(result)
+
+
+class InMemoryCancelRideEventRecorder(CancelRideEventRecorder):
+    def __init__(
+        self,
+        *,
+        operations: list[str] | None = None,
+        error: BaseException | None = None,
+    ) -> None:
+        self.results: list[CancelRideResult] = []
+        self._operations = operations
+        self._error = error
+
+    async def record(self, result: CancelRideResult) -> None:
+        if self._operations is not None:
+            self._operations.append("record")
+        if self._error is not None:
+            raise self._error
+        self.results.append(result)
+
+
+def cancel_ride_use_case(
+    rides: InMemoryRideRequestRepository,
+    offers: InMemoryOfferRepository,
+    users: InMemoryUserRepository,
+    *,
+    unit_of_work: UnitOfWork | None = None,
+    event_recorder: CancelRideEventRecorder | None = None,
+) -> CancelRide:
+    """Cablea CancelRide con dobles transaccionales explícitos."""
+    return CancelRide(
+        rides,
+        offers,
+        users,
+        unit_of_work or InMemoryUnitOfWork(offers, rides=rides),
+        event_recorder or InMemoryCancelRideEventRecorder(),
+    )
+
+
+def cancel_ride_on_disconnect_use_case(
+    rides: InMemoryRideRequestRepository,
+    offers: InMemoryOfferRepository,
+    users: InMemoryUserRepository,
+    *,
+    unit_of_work: UnitOfWork | None = None,
+    event_recorder: CancelRideEventRecorder | None = None,
+) -> CancelRideOnDisconnect:
+    """Cablea el cierre por ausencia con dobles transaccionales explícitos."""
+    return CancelRideOnDisconnect(
+        offers,
+        users,
+        unit_of_work or InMemoryUnitOfWork(offers, rides=rides),
+        event_recorder or InMemoryCancelRideEventRecorder(),
+    )
 
 
 def accept_offer_use_case(

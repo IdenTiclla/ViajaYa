@@ -9,7 +9,6 @@ from decimal import Decimal
 import pytest
 
 from app.application.dto import CreateOfferInput
-from app.application.use_cases.cancel_ride import CancelRide
 from app.application.use_cases.expire_offer import ExpireOffer
 from app.application.use_cases.list_offers_for_ride import ListOffersForRide
 from app.application.use_cases.list_open_rides import ListOpenRides
@@ -35,8 +34,10 @@ from app.domain.ride_policy import OFFER_TTL
 from tests.fakes import (
     InMemoryOfferRepository,
     InMemoryRideRequestRepository,
+    InMemoryUnitOfWork,
     InMemoryUserRepository,
     accept_offer_use_case,
+    cancel_ride_use_case,
     create_offer_use_case,
 )
 
@@ -563,6 +564,7 @@ async def test_cancel_ride_kills_active_offers():
     users = InMemoryUserRepository()
     offers = InMemoryOfferRepository(rides=rides, users=users)
     rider, d1, d2 = _passenger(), _driver(), _driver()
+    await users.add(rider)
     await users.add(d1)
     await users.add(d2)
     ride = await rides.add(_ride(rider.id))
@@ -573,7 +575,7 @@ async def test_cancel_ride_kills_active_offers():
         d2, ride.id, CreateOfferInput(accept_at_fare=True)
     )
 
-    result = await CancelRide(rides, offers).execute(rider, ride.id)
+    result = await cancel_ride_use_case(rides, offers, users).execute(rider, ride.id)
 
     assert result.ride.cancelled_at is not None
     assert (await offers.get_by_id(o1.detail.offer.id)).status is OfferStatus.REJECTED
@@ -607,7 +609,12 @@ async def test_cancel_ride_does_not_reject_offer_when_accept_wins_race():
     )
 
     with pytest.raises(InvalidRideTransitionError):
-        await CancelRide(rides, offers).execute(rider, ride.id)
+        await cancel_ride_use_case(
+            rides,
+            offers,
+            users,
+            unit_of_work=InMemoryUnitOfWork(),
+        ).execute(rider, ride.id)
 
     current = await rides.get_by_id(ride.id)
     assert current.status is RideStatus.ACCEPTED

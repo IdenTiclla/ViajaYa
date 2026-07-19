@@ -10,7 +10,6 @@ from fastapi import APIRouter, Depends, Query, Response, status
 
 from app.api.deps import (
     CurrentUserDep,
-    RideRequestRepositoryDep,
     get_accept_offer,
     get_cancel_ride,
     get_create_offer,
@@ -363,18 +362,11 @@ async def update_fare(
     body: RideFareUpdate,
     current_user: CurrentUserDep,
     use_case: Annotated[UpdateRideFare, Depends(get_update_ride_fare)],
-    get_ride_use_case: Annotated[GetRide, Depends(get_get_ride)],
-    rides_repo: RideRequestRepositoryDep,
 ) -> RideResponse:
     """El pasajero ajusta su oferta mientras se buscan conductores."""
-    await use_case.execute(current_user, ride_id, body.fare)
-    detail = await get_ride_use_case.execute(current_user, ride_id)
-    # Al pasajero (su detalle) y al pool de conductores (ven el nuevo monto).
-    await events.publish_ride_status(detail)
-    open_detail = await rides_repo.open_ride_with_rider(ride_id)
-    if open_detail is not None:
-        await events.publish_ride_created(open_detail)
-    return RideResponse.from_detail(detail)
+    result = await use_case.execute(current_user, ride_id, body.fare)
+    await events.publish_ride_republished(result)
+    return RideResponse.from_detail(result.detail)
 
 
 @router.post("/{ride_id}/cancel", response_model=RideResponse)
@@ -409,10 +401,9 @@ async def edit_ride(
     body: RideEdit,
     current_user: CurrentUserDep,
     use_case: Annotated[EditRide, Depends(get_edit_ride)],
-    rides_repo: RideRequestRepositoryDep,
 ) -> RideResponse:
     """Guarda los cambios de una solicitud pausada y la vuelve a publicar en el pool."""
-    ride = await use_case.execute(
+    result = await use_case.execute(
         current_user,
         ride_id,
         CreateRideRequestInput(
@@ -423,9 +414,5 @@ async def edit_ride(
             payment_method=body.payment_method,
         ),
     )
-    detail = RideDetail(ride=ride, rider=current_user, driver=None, accepted_offer=None)
-    open_detail = await rides_repo.open_ride_with_rider(ride_id)
-    if open_detail is not None:
-        await events.publish_ride_created(open_detail)
-    await events.publish_ride_status(detail)
-    return RideResponse.from_detail(detail)
+    await events.publish_ride_republished(result)
+    return RideResponse.from_detail(result.detail)

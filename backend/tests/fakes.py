@@ -19,6 +19,7 @@ from app.application.dto import (
     RideDetail,
     RideHistoryItem,
     RidePausedResult,
+    RideRepublishedResult,
     SocialProfile,
 )
 from app.application.interfaces import (
@@ -27,6 +28,7 @@ from app.application.interfaces import (
     CreateOfferEventRecorder,
     PasswordHasher,
     PauseRideEventRecorder,
+    RepublishRideEventRecorder,
     RideReadRepository,
     SocialIdentityVerifier,
     TokenService,
@@ -36,7 +38,10 @@ from app.application.use_cases.accept_offer import AcceptOffer
 from app.application.use_cases.cancel_ride import CancelRide
 from app.application.use_cases.cancel_ride_on_disconnect import CancelRideOnDisconnect
 from app.application.use_cases.create_offer import CreateOffer
+from app.application.use_cases.create_ride_request import CreateRideRequest
+from app.application.use_cases.edit_ride import EditRide
 from app.application.use_cases.pause_ride_for_edit import PauseRideForEdit
+from app.application.use_cases.update_ride_fare import UpdateRideFare
 from app.domain.entities import (
     ACTIVE_OFFER_STATUSES,
     AuthProvider,
@@ -774,6 +779,65 @@ class InMemoryCancelRideEventRecorder(CancelRideEventRecorder):
         if self._error is not None:
             raise self._error
         self.results.append(result)
+
+
+class InMemoryRepublishRideEventRecorder(RepublishRideEventRecorder):
+    def __init__(
+        self,
+        *,
+        operations: list[str] | None = None,
+        error: BaseException | None = None,
+    ) -> None:
+        self.results: list[RideRepublishedResult] = []
+        self._operations = operations
+        self._error = error
+
+    async def record(self, result: RideRepublishedResult) -> None:
+        if self._operations is not None:
+            self._operations.append("record")
+        if self._error is not None:
+            raise self._error
+        self.results.append(result)
+
+
+def create_ride_request_use_case(
+    rides: InMemoryRideRequestRepository,
+    *,
+    unit_of_work: UnitOfWork | None = None,
+) -> CreateRideRequest:
+    """Cablea CreateRideRequest con una frontera transaccional explícita."""
+    return CreateRideRequest(
+        rides,
+        unit_of_work or InMemoryUnitOfWork(rides=rides),
+    )
+
+
+def update_ride_fare_use_case(
+    rides: InMemoryRideRequestRepository,
+    *,
+    unit_of_work: UnitOfWork | None = None,
+    event_recorder: RepublishRideEventRecorder | None = None,
+) -> UpdateRideFare:
+    """Cablea UpdateRideFare con dobles transaccionales explícitos."""
+    return UpdateRideFare(
+        rides,
+        unit_of_work or InMemoryUnitOfWork(rides=rides),
+        event_recorder or InMemoryRepublishRideEventRecorder(),
+    )
+
+
+def edit_ride_use_case(
+    rides: InMemoryRideRequestRepository,
+    *,
+    unit_of_work: UnitOfWork | None = None,
+    event_recorder: RepublishRideEventRecorder | None = None,
+) -> EditRide:
+    """Cablea EditRide con dobles transaccionales explícitos."""
+    return EditRide(
+        rides,
+        unit_of_work or InMemoryUnitOfWork(rides=rides),
+        event_recorder or InMemoryRepublishRideEventRecorder(),
+    )
 
 
 def cancel_ride_use_case(

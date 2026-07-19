@@ -236,8 +236,16 @@ def _ride_to_entity(row: RideRequestModel) -> RideRequest:
 
 
 class SqlAlchemyRideRequestRepository(RideRequestRepository):
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        *,
+        commit_add: bool = True,
+        commit_update_if_state: bool = True,
+    ) -> None:
         self._session = session
+        self._commit_add = commit_add
+        self._commit_update_if_state = commit_update_if_state
 
     async def add(self, ride: RideRequest) -> RideRequest:
         row = RideRequestModel(
@@ -263,7 +271,10 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
             cancelled_at=ride.cancelled_at,
         )
         self._session.add(row)
-        await self._session.commit()
+        if self._commit_add:
+            await self._session.commit()
+        else:
+            await self._session.flush()
         await self._session.refresh(row)
         return _ride_to_entity(row)
 
@@ -382,7 +393,10 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
             await self._session.rollback()
             return None
 
-        await self._session.commit()
+        if self._commit_update_if_state:
+            await self._session.commit()
+        else:
+            await self._session.flush()
         row = await self._session.get(RideRequestModel, ride.id, populate_existing=True)
         if row is None:  # pragma: no cover - el UPDATE acaba de devolver este id
             return None

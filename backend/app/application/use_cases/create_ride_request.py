@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from app.application.dto import CreateRideRequestInput
+from app.application.interfaces import UnitOfWork
 from app.domain.entities import Location, RideRequest, User, UserRole
 from app.domain.exceptions import NotAuthorizedActionError, RideAlreadyActiveError
 from app.domain.repositories import RideRequestRepository
@@ -10,10 +11,28 @@ from app.domain.value_objects import FareOffer, ServiceAreaPoint
 
 
 class CreateRideRequest:
-    def __init__(self, rides: RideRequestRepository) -> None:
+    def __init__(
+        self,
+        rides: RideRequestRepository,
+        unit_of_work: UnitOfWork,
+    ) -> None:
         self._rides = rides
+        self._unit_of_work = unit_of_work
 
     async def execute(self, rider: User, data: CreateRideRequestInput) -> RideRequest:
+        try:
+            ride = await self._create(rider, data)
+            await self._unit_of_work.commit()
+            return ride
+        except BaseException:
+            await self._unit_of_work.rollback()
+            raise
+
+    async def _create(
+        self,
+        rider: User,
+        data: CreateRideRequestInput,
+    ) -> RideRequest:
         if rider.role is not UserRole.PASSENGER:
             raise NotAuthorizedActionError("Solo los pasajeros pueden solicitar viajes.")
 

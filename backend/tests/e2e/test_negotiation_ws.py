@@ -611,6 +611,92 @@ def test_driver_receives_open_ride_event_when_passenger_connects(ws_client: Test
             assert event["data"]["rider"]["trips_completed"] == 0
 
 
+def test_fare_update_republishes_canonical_payload_to_both_roles(
+    ws_client: TestClient,
+):
+    rider_token = _register(ws_client, "rider@x.com")
+    driver_token = _register(ws_client, "driver@x.com")
+    _promote_driver(ws_client, "driver@x.com")
+
+    with _websocket_connect(
+        ws_client,
+        f"/api/v1/ws/driver?token={driver_token}",
+    ) as driver_ws:
+        _receive_driver_handshake(driver_ws)
+        ride = ws_client.post(
+            RIDES,
+            json=_ride_payload(),
+            headers=_headers(rider_token),
+        ).json()
+        with _websocket_connect(
+            ws_client,
+            f"/api/v1/ws/rides/{ride['id']}?token={rider_token}",
+        ) as rider_ws:
+            assert rider_ws.receive_json()["type"] == "offers_snapshot"
+            assert driver_ws.receive_json()["type"] == "ride_created"
+
+            updated = ws_client.patch(
+                f"{RIDES}/{ride['id']}/fare",
+                json={"fare": "30.00"},
+                headers=_headers(rider_token),
+            )
+            assert updated.status_code == 200, updated.text
+
+            rider_event = rider_ws.receive_json()
+            driver_event = driver_ws.receive_json()
+            assert rider_event["type"] == "ride_status"
+            assert rider_event["data"]["fare"] == "30.00"
+            assert driver_event["type"] == "ride_created"
+            assert driver_event["data"]["fare"] == "30.00"
+            assert driver_event["data"]["pool_version"] == 2
+
+
+def test_edit_reopens_ride_in_new_service_pool(ws_client: TestClient):
+    rider_token = _register(ws_client, "rider@x.com")
+    driver_token = _register(ws_client, "driver@x.com")
+    _promote_driver(ws_client, "driver@x.com")
+
+    with _websocket_connect(
+        ws_client,
+        f"/api/v1/ws/driver?token={driver_token}",
+    ) as driver_ws:
+        _receive_driver_handshake(driver_ws)
+        ride = ws_client.post(
+            RIDES,
+            json=_ride_payload(),
+            headers=_headers(rider_token),
+        ).json()
+        with _websocket_connect(
+            ws_client,
+            f"/api/v1/ws/rides/{ride['id']}?token={rider_token}",
+        ) as rider_ws:
+            assert rider_ws.receive_json()["type"] == "offers_snapshot"
+            assert driver_ws.receive_json()["type"] == "ride_created"
+
+            paused = ws_client.post(
+                f"{RIDES}/{ride['id']}/pause-edit",
+                headers=_headers(rider_token),
+            )
+            assert paused.status_code == 200, paused.text
+            assert driver_ws.receive_json()["type"] == "ride_closed"
+
+            edited = ws_client.patch(
+                f"{RIDES}/{ride['id']}",
+                json=_ride_payload("delivery"),
+                headers=_headers(rider_token),
+            )
+            assert edited.status_code == 200, edited.text
+
+            rider_event = rider_ws.receive_json()
+            driver_event = driver_ws.receive_json()
+            assert rider_event["type"] == "ride_status"
+            assert rider_event["data"]["paused"] is False
+            assert rider_event["data"]["service_type"] == "delivery"
+            assert driver_event["type"] == "ride_created"
+            assert driver_event["data"]["service_type"] == "delivery"
+            assert driver_event["data"]["pool_version"] == 2
+
+
 @pytest.mark.parametrize("vehicle", [VehicleType.TAXI, VehicleType.MOTO])
 def test_taxi_and_moto_driver_sockets_receive_delivery_pool(
     ws_client: TestClient,

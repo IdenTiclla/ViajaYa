@@ -265,6 +265,22 @@ class RidePausedResult:
 
 
 @dataclass(frozen=True)
+class RideRepublishedResult:
+    """Solicitud actualizada que vuelve a anunciarse en el pool.
+
+    Conserva en un mismo resultado el detalle privado del pasajero y la
+    proyección pública enriquecida que consumen los conductores.
+    """
+
+    detail: RideDetail
+    open_detail: OpenRideDetail
+
+    @property
+    def ride(self) -> RideRequest:
+        return self.detail.ride
+
+
+@dataclass(frozen=True)
 class CancelRideResult:
     """Cancelación enriquecida y sus ofertas vivas rechazadas.
 

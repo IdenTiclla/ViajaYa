@@ -26,6 +26,7 @@ from app.application.dto import (
     RideDetail,
     RideHistoryItem,
     RidePausedResult,
+    RideRepublishedResult,
     SocialProfile,
 )
 from app.domain.entities import AuthProvider, RideStatus, UserRole
@@ -143,6 +144,14 @@ class PauseRideEventRecorder(ABC):
     @abstractmethod
     async def record(self, result: RidePausedResult) -> None:
         """Añade a la outbox el cierre, retiros y avisos de pausa."""
+
+
+class RepublishRideEventRecorder(ABC):
+    """Registra los eventos durables al renovar una solicitud en el pool."""
+
+    @abstractmethod
+    async def record(self, result: RideRepublishedResult) -> None:
+        """Añade a la outbox el detalle del pasajero y la proyección del pool."""
 
 
 class CancelRideEventRecorder(ABC):

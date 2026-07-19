@@ -42,6 +42,7 @@ from app.application.dto import (
     PendingRealtimeEvent,
     RideDetail,
     RidePausedResult,
+    RideRepublishedResult,
 )
 from app.domain.entities import Offer, ServiceType
 from app.domain.repositories import OpenRideDetail
@@ -286,6 +287,29 @@ def build_cancel_ride_events(result: CancelRideResult) -> list[PendingRealtimeEv
     return pending
 
 
+def build_republish_ride_events(
+    result: RideRepublishedResult,
+) -> list[PendingRealtimeEvent]:
+    """Construye el batch durable/directo de una renovación del pool."""
+    ride = result.ride
+    return [
+        _pending_realtime_event(
+            topic=ride_topic(ride.id),
+            aggregate_type="ride",
+            aggregate_id=ride.id,
+            message=RideStatusMessage(data=RideResponse.from_detail(result.detail)),
+        ),
+        _pending_realtime_event(
+            topic=pool_topic(ride.service_type.value),
+            aggregate_type="ride",
+            aggregate_id=ride.id,
+            message=RideCreatedMessage(
+                data=OpenRideResponse.from_open_ride(result.open_detail)
+            ),
+        ),
+    ]
+
+
 async def publish_ride_created(detail: OpenRideDetail) -> None:
     """Una solicitud nueva (o renovada) aparece para los conductores del pool.
 
@@ -326,6 +350,11 @@ async def publish_ride_paused(result: RidePausedResult) -> None:
 async def publish_ride_cancelled(result: CancelRideResult) -> None:
     """Difunde una cancelación usando exactamente el batch de la outbox."""
     await _broadcast_pending(build_cancel_ride_events(result))
+
+
+async def publish_ride_republished(result: RideRepublishedResult) -> None:
+    """Difunde una renovación usando exactamente el batch de la outbox."""
+    await _broadcast_pending(build_republish_ride_events(result))
 
 
 async def publish_offer_created(detail: OfferDetail) -> None:

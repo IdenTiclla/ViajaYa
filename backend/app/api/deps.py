@@ -18,14 +18,17 @@ from app.api.v1.realtime_outbox import (
     DisabledCancelRideEventRecorder,
     DisabledCreateOfferEventRecorder,
     DisabledPauseRideEventRecorder,
+    DisabledRepublishRideEventRecorder,
     OutboxAcceptOfferEventRecorder,
     OutboxCancelRideEventRecorder,
     OutboxCreateOfferEventRecorder,
     OutboxPauseRideEventRecorder,
+    OutboxRepublishRideEventRecorder,
 )
 from app.application.interfaces import (
     CancelRideEventRecorder,
     RealtimeSnapshotReader,
+    RepublishRideEventRecorder,
     RideReadRepository,
     SocialIdentityVerifier,
     TokenService,
@@ -251,8 +254,11 @@ def get_authenticate_with_oauth(
     return AuthenticateWithOAuth(users, tokens, verifiers)
 
 
-def get_create_ride_request(rides: RideRequestRepositoryDep) -> CreateRideRequest:
-    return CreateRideRequest(rides)
+def get_create_ride_request(session: SessionDep) -> CreateRideRequest:
+    return CreateRideRequest(
+        SqlAlchemyRideRequestRepository(session, commit_add=False),
+        SqlAlchemyUnitOfWork(session),
+    )
 
 
 def get_list_recent_destinations(rides: RideRequestRepositoryDep) -> ListRecentDestinations:
@@ -328,8 +334,26 @@ def get_update_ride_status(rides: RideRequestRepositoryDep) -> UpdateRideStatus:
     return UpdateRideStatus(rides)
 
 
-def get_update_ride_fare(rides: RideRequestRepositoryDep) -> UpdateRideFare:
-    return UpdateRideFare(rides)
+def _republish_ride_recorder(
+    session: AsyncSession,
+    settings: Settings,
+) -> RepublishRideEventRecorder:
+    return (
+        OutboxRepublishRideEventRecorder(SqlAlchemyRealtimeOutbox(session))
+        if settings.realtime_outbox_recording_enabled
+        else DisabledRepublishRideEventRecorder()
+    )
+
+
+def get_update_ride_fare(
+    session: SessionDep,
+    settings: SettingsDep,
+) -> UpdateRideFare:
+    return UpdateRideFare(
+        SqlAlchemyRideRequestRepository(session, commit_update_if_state=False),
+        SqlAlchemyUnitOfWork(session),
+        _republish_ride_recorder(session, settings),
+    )
 
 
 def _cancel_ride_recorder(
@@ -390,8 +414,15 @@ def get_pause_ride_for_edit(
     )
 
 
-def get_edit_ride(rides: RideRequestRepositoryDep) -> EditRide:
-    return EditRide(rides)
+def get_edit_ride(
+    session: SessionDep,
+    settings: SettingsDep,
+) -> EditRide:
+    return EditRide(
+        SqlAlchemyRideRequestRepository(session, commit_update_if_state=False),
+        SqlAlchemyUnitOfWork(session),
+        _republish_ride_recorder(session, settings),
+    )
 
 
 def get_set_driver_online(users: UserRepositoryDep, offers: OfferRepositoryDep) -> SetDriverOnline:

@@ -229,9 +229,10 @@ una escritura concurrente y demuestra que ambos permanecen en la versión
 anterior. Una captura nueva verá ambos valores nuevos. Los casos de uso derivan
 los streams autorizados y un adaptador API traduce los DTO enriquecidos al schema
 Pydantic sin IO adicional. El WebSocket todavía no invoca este reader ni emite
-los snapshots v2: presencia sigue en memoria y solo creación/reemplazo,
-aceptación de ofertas y pausa para edición alimentan la outbox, por lo que
-activarlos aún daría watermarks incompletos.
+los snapshots v2: presencia sigue en memoria y todavía quedan productores
+legacy, aunque creación/reemplazo y aceptación de ofertas, pausa, cancelación,
+cambio de tarifa y reapertura ya alimentan la outbox. Activarlos ahora todavía
+daría watermarks incompletos.
 
 Mobile incluye además un gate puro de replay. Decide `apply`, `drop` o `resync`
 sin adelantar cursores y solo los confirma después de que el handler complete la
@@ -276,11 +277,16 @@ Axios todavía continúe en segundo plano sin propagar `AbortSignal`.
 > todo el batch con un código estable, deja de bloquear sus streams y conserva
 > las filas para auditoría; el hueco resultante obliga a resnapshot antes de
 > continuar el replay live.
-> `CreateOffer`/reemplazo, `AcceptOffer`, `PauseRideForEdit`, `CancelRide` y el
-> cierre automático por ausencia son los primeros productores: mutación, batch
-> ordenado y versiones se confirman en un solo commit mediante
+> `CreateOffer`/reemplazo, `AcceptOffer`, `PauseRideForEdit`, `CancelRide`, el
+> cierre automático por ausencia, `UpdateRideFare` y `EditRide` son los primeros
+> productores: mutación, batch ordenado y versiones se confirman en un solo commit mediante
 > `UnitOfWork`; la publicación directa reutiliza exactamente los payloads
-> persistidos. El fanout de aceptación conserva `ride_status`, cierre del pool,
+> persistidos. `CreateRideRequest` también delega el commit a la aplicación, pero
+> no registra `ride_created`: el alta solo se anuncia cuando el pasajero confirma
+> presencia por WebSocket. Las renovaciones del pool estandarizan el batch
+> `ride_status → ride_created` y capturan antes del commit tanto el detalle del
+> pasajero como la proyección pública enriquecida. El fanout de aceptación conserva
+> `ride_status`, cierre del pool,
 > notificación/limpieza del ganador y retiros/rechazos de los afectados en un
 > único batch multistream. El recorder está detrás
 > de `REALTIME_OUTBOX_RECORDING_ENABLED=false` y el dispatcher se controla con
@@ -349,8 +355,8 @@ habilitarlo. La secuencia de flags es:
 entrega real se debe comprobar que no quede backlog sombra reproducible. Cambiar
 estos flags no permite aumentar el número de workers API.
 
-Las operaciones atómicas de aceptación, cancelación, pausa y creación/reemplazo
-de oferta serán las primeras en migrar. No se retirará la publicación directa
+Las operaciones atómicas de aceptación, cancelación, pausa, creación/reemplazo
+de oferta, creación de ride y renovación del pool son las primeras migradas. No se retirará la publicación directa
 hasta que la outbox funcione en modo sombra y sus métricas coincidan.
 
 Base ya cumplida por `93b9741`:
@@ -375,6 +381,9 @@ Base ya cumplida por `93b9741`:
 - [x] Migrar cancelación manual y por ausencia al mismo UoW; capturar el detalle
   antes del commit y preservar `ride_status → ride_closed → offer_rejected[]`,
   incluyendo el `ride_status` personal cuando ya existe conductor asignado.
+- [x] Migrar creación de ride a `flush` + commit del UoW sin anunciarlo antes de
+  presencia, y migrar tarifa/edición a un builder durable compartido
+  `ride_status → ride_created` con payload enriquecido previo al commit.
 - [x] Añadir `0020` y cuarentena terminal atómica para batches inválidos, con
   códigos cerrados, índices que excluyen terminales y downgrade protegido.
 
@@ -391,11 +400,18 @@ Dispatcher sombra, sin Redis ni cambios de contrato/mobile:
   de agregado/stream en el socket vivo y el gate mobile esté integrado.
 - [x] Migrar cancelación con un único builder canónico y agregado `ride`; esta
   operación no muta otros rides y ordena sus rechazos por UUID de oferta.
+- [ ] Migrar el anuncio inicial/reanuncio de presencia con lock y revalidación
+  `SEARCHING && !paused`; no registrar `ride_created` desde el POST de creación.
 
 Antes del modo `live`, hacer conmutativa en mobile la reducción de
 `ride_closed` y `offer_rejected`: pertenecen a streams distintos y Redis no
 promete su orden relativo aunque cada stream conserve continuidad. La entrega
 directa actual sí preserva el orden del batch.
+
+También antes de `live`, la proyección mobile debe ignorar `ride_created`
+duplicados o atrasados sin limpiar desenlaces locales y proteger el cruce
+`ride_closed` del pool anterior contra `ride_created` de un servicio nuevo. Los
+streams conservan orden individual, no orden relativo entre pools distintos.
 
 ### 3.2 Bridge Redis y sockets locales
 

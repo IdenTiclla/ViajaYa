@@ -152,14 +152,14 @@ procesados, pero no los entrega al hub WebSocket ni a Redis. No existe un modo
 
 Rutas protegidas: usan `CurrentUserDep` (header `Authorization: Bearer <access_token>`).
 
-### Casos de uso (34)
+### Casos de uso (33)
 
 `register_user`, `authenticate_user`, `authenticate_with_oauth`, `refresh_token`,
 `create_ride_request`, `list_recent_destinations`, `list_open_rides`, `dismiss_open_ride`,
 `get_ride`, `get_passenger_active_ride`, `get_pending_rating_ride`, `list_ride_history`,
 `create_offer`, `list_offers_for_ride`, `accept_offer`, `reject_offer`,
 `withdraw_offer`, `expire_offer`, `update_ride_status`, `update_ride_fare`, `cancel_ride`,
-`cancel_ride_on_disconnect`, `pause_ride_for_edit`, `edit_ride`, `update_ride_request`,
+`cancel_ride_on_disconnect`, `pause_ride_for_edit`, `edit_ride`,
 `rate_ride`, `skip_ride_rating`, `set_driver_online`, `get_driver_active_ride`,
 `get_driver_earnings`, `list_saved_places`, `create_saved_place`, `update_saved_place`,
 `delete_saved_place`.

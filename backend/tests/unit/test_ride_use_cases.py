@@ -8,10 +8,7 @@ from decimal import Decimal
 import pytest
 
 from app.application.dto import CreateOfferInput, CreateRideRequestInput, LocationInput
-from app.application.use_cases.create_ride_request import CreateRideRequest
-from app.application.use_cases.edit_ride import EditRide
 from app.application.use_cases.list_recent_destinations import ListRecentDestinations
-from app.application.use_cases.update_ride_fare import UpdateRideFare
 from app.domain.entities import (
     OfferStatus,
     PaymentMethod,
@@ -34,7 +31,10 @@ from tests.fakes import (
     InMemoryUnitOfWork,
     InMemoryUserRepository,
     create_offer_use_case,
+    create_ride_request_use_case,
+    edit_ride_use_case,
     pause_ride_use_case,
+    update_ride_fare_use_case,
 )
 
 
@@ -57,7 +57,7 @@ async def test_create_ride_request_persists_searching():
     repo = InMemoryRideRequestRepository()
     rider = _rider()
 
-    ride = await CreateRideRequest(repo).execute(rider, _input())
+    ride = await create_ride_request_use_case(repo).execute(rider, _input())
 
     assert ride.rider_id == rider.id
     assert ride.status is RideStatus.SEARCHING
@@ -71,7 +71,7 @@ async def test_create_ride_request_persists_searching():
 async def test_create_ride_request_keeps_chosen_payment_method():
     repo = InMemoryRideRequestRepository()
 
-    ride = await CreateRideRequest(repo).execute(
+    ride = await create_ride_request_use_case(repo).execute(
         _rider(), _input(payment_method=PaymentMethod.QR)
     )
 
@@ -81,7 +81,7 @@ async def test_create_ride_request_keeps_chosen_payment_method():
 async def test_create_ride_request_rejects_invalid_coordinates():
     repo = InMemoryRideRequestRepository()
     with pytest.raises(InvalidLocationError):
-        await CreateRideRequest(repo).execute(
+        await create_ride_request_use_case(repo).execute(
             _rider(), _input(destination=LocationInput(200.0, -68.0, "X", "Y"))
         )
 
@@ -93,7 +93,7 @@ async def test_create_ride_request_rejects_destination_outside_bolivia(
     repo = InMemoryRideRequestRepository()
 
     with pytest.raises(InvalidLocationError, match="Bolivia"):
-        await CreateRideRequest(repo).execute(
+        await create_ride_request_use_case(repo).execute(
             _rider(),
             _input(
                 destination=LocationInput(
@@ -112,25 +112,34 @@ async def test_create_ride_request_rejects_destination_outside_bolivia(
 async def test_create_ride_request_rejects_non_positive_fare():
     repo = InMemoryRideRequestRepository()
     with pytest.raises(InvalidFareError):
-        await CreateRideRequest(repo).execute(_rider(), _input(fare=Decimal("0")))
+        await create_ride_request_use_case(repo).execute(
+            _rider(),
+            _input(fare=Decimal("0")),
+        )
 
 
 async def test_create_ride_request_rejects_second_active_ride():
     repo = InMemoryRideRequestRepository()
     rider = _rider()
-    await CreateRideRequest(repo).execute(rider, _input())
+    await create_ride_request_use_case(repo).execute(rider, _input())
 
     with pytest.raises(RideAlreadyActiveError):
-        await CreateRideRequest(repo).execute(rider, _input(fare=Decimal("30.00")))
+        await create_ride_request_use_case(repo).execute(
+            rider,
+            _input(fare=Decimal("30.00")),
+        )
 
 
 async def test_create_ride_request_allows_new_ride_after_terminal_state():
     repo = InMemoryRideRequestRepository()
     rider = _rider()
-    first = await CreateRideRequest(repo).execute(rider, _input())
+    first = await create_ride_request_use_case(repo).execute(rider, _input())
 
     cancelled = await repo.cancel_if_searching(first.id)
-    second = await CreateRideRequest(repo).execute(rider, _input(fare=Decimal("30.00")))
+    second = await create_ride_request_use_case(repo).execute(
+        rider,
+        _input(fare=Decimal("30.00")),
+    )
 
     assert cancelled is not None
     assert cancelled.cancelled_at is not None
@@ -142,13 +151,13 @@ async def test_create_ride_request_rejects_driver_role():
     driver = _driver()
 
     with pytest.raises(NotAuthorizedActionError):
-        await CreateRideRequest(repo).execute(driver, _input())
+        await create_ride_request_use_case(repo).execute(driver, _input())
 
 
 async def test_update_if_state_does_not_overwrite_newer_status():
     repo = InMemoryRideRequestRepository()
     rider = _rider()
-    ride = await CreateRideRequest(repo).execute(rider, _input())
+    ride = await create_ride_request_use_case(repo).execute(rider, _input())
     candidate = replace(ride, status=RideStatus.CANCELLED)
     ride.status = RideStatus.IN_PROGRESS
 
@@ -161,7 +170,7 @@ async def test_update_if_state_does_not_overwrite_newer_status():
 async def test_update_if_state_compares_fare_when_status_is_unchanged():
     repo = InMemoryRideRequestRepository()
     rider = _rider()
-    ride = await CreateRideRequest(repo).execute(rider, _input())
+    ride = await create_ride_request_use_case(repo).execute(rider, _input())
     candidate = replace(ride, fare=Decimal("30.00"))
     ride.fare = Decimal("28.00")
 
@@ -178,7 +187,7 @@ async def test_update_if_state_compares_fare_when_status_is_unchanged():
 async def test_cancel_if_searching_ignores_paused_ride():
     repo = InMemoryRideRequestRepository()
     rider = _rider()
-    ride = await CreateRideRequest(repo).execute(rider, _input())
+    ride = await create_ride_request_use_case(repo).execute(rider, _input())
     ride.paused = True
 
     assert await repo.cancel_if_searching(ride.id) is None
@@ -188,7 +197,7 @@ async def test_cancel_if_searching_ignores_paused_ride():
 async def test_recent_destinations_dedupes_and_orders():
     repo = InMemoryRideRequestRepository()
     rider = _rider()
-    create = CreateRideRequest(repo)
+    create = create_ride_request_use_case(repo)
 
     first = await create.execute(
         rider, _input(destination=LocationInput(-16.49, -68.14, "A", "dir A"))
@@ -213,7 +222,7 @@ async def test_recent_destinations_dedupes_and_orders():
 async def test_recent_destinations_isolated_per_rider():
     repo = InMemoryRideRequestRepository()
     rider_a, rider_b = _rider("a@viajaya.com"), _rider("b@viajaya.com")
-    await CreateRideRequest(repo).execute(rider_a, _input())
+    await create_ride_request_use_case(repo).execute(rider_a, _input())
 
     assert await ListRecentDestinations(repo).execute(rider_b.id) == []
 
@@ -221,9 +230,17 @@ async def test_recent_destinations_isolated_per_rider():
 async def test_update_ride_fare_adjusts_offer():
     repo = InMemoryRideRequestRepository()
     rider = _rider()
-    ride = await CreateRideRequest(repo).execute(rider, _input(fare=Decimal("25.00")))
+    ride = await create_ride_request_use_case(repo).execute(
+        rider,
+        _input(fare=Decimal("25.00")),
+    )
 
-    updated = await UpdateRideFare(repo).execute(rider, ride.id, Decimal("30.00"))
+    result = await update_ride_fare_use_case(repo).execute(
+        rider,
+        ride.id,
+        Decimal("30.00"),
+    )
+    updated = result.ride
 
     assert updated.fare == Decimal("30.00")
     assert updated.status is RideStatus.SEARCHING
@@ -233,9 +250,18 @@ async def test_update_ride_fare_adjusts_offer():
 async def test_update_ride_fare_allows_lower_offer():
     repo = InMemoryRideRequestRepository()
     rider = _rider()
-    ride = await CreateRideRequest(repo).execute(rider, _input(fare=Decimal("25.00")))
+    ride = await create_ride_request_use_case(repo).execute(
+        rider,
+        _input(fare=Decimal("25.00")),
+    )
 
-    updated = await UpdateRideFare(repo).execute(rider, ride.id, Decimal("20.00"))
+    updated = (
+        await update_ride_fare_use_case(repo).execute(
+            rider,
+            ride.id,
+            Decimal("20.00"),
+        )
+    ).ride
 
     assert updated.fare == Decimal("20.00")
 
@@ -243,31 +269,46 @@ async def test_update_ride_fare_allows_lower_offer():
 async def test_update_ride_fare_rejects_unchanged_offer():
     repo = InMemoryRideRequestRepository()
     rider = _rider()
-    ride = await CreateRideRequest(repo).execute(rider, _input(fare=Decimal("25.00")))
+    ride = await create_ride_request_use_case(repo).execute(
+        rider,
+        _input(fare=Decimal("25.00")),
+    )
 
     with pytest.raises(InvalidFareError, match="diferente"):
-        await UpdateRideFare(repo).execute(rider, ride.id, Decimal("25.00"))
+        await update_ride_fare_use_case(repo).execute(
+            rider,
+            ride.id,
+            Decimal("25.00"),
+        )
 
 
 async def test_update_ride_fare_rejects_non_owner():
     repo = InMemoryRideRequestRepository()
     rider = _rider()
-    ride = await CreateRideRequest(repo).execute(rider, _input())
+    ride = await create_ride_request_use_case(repo).execute(rider, _input())
     stranger = _rider()
 
     with pytest.raises(NotAuthorizedActionError):
-        await UpdateRideFare(repo).execute(stranger, ride.id, Decimal("99.00"))
+        await update_ride_fare_use_case(repo).execute(
+            stranger,
+            ride.id,
+            Decimal("99.00"),
+        )
 
 
 async def test_update_ride_fare_rejects_when_not_searching():
     repo = InMemoryRideRequestRepository()
     rider = _rider()
-    ride = await CreateRideRequest(repo).execute(rider, _input())
+    ride = await create_ride_request_use_case(repo).execute(rider, _input())
     ride.status = RideStatus.ACCEPTED
     await repo.update(ride)
 
     with pytest.raises(InvalidRideTransitionError):
-        await UpdateRideFare(repo).execute(rider, ride.id, Decimal("99.00"))
+        await update_ride_fare_use_case(repo).execute(
+            rider,
+            ride.id,
+            Decimal("99.00"),
+        )
 
 
 def _driver() -> User:
@@ -286,7 +327,7 @@ async def test_pause_ride_hides_from_pool_and_kills_offers():
     offers = InMemoryOfferRepository(rides=rides, users=users)
     rider, driver = _rider(), _driver()
     await users.add(driver)
-    ride = await CreateRideRequest(rides).execute(rider, _input())
+    ride = await create_ride_request_use_case(rides).execute(rider, _input())
     offer = await create_offer_use_case(rides, offers).execute(
         driver, ride.id, CreateOfferInput(accept_at_fare=True)
     )
@@ -318,7 +359,10 @@ async def test_pause_ride_does_not_overwrite_concurrent_fare_increase():
     offers = FareChangesBeforePause(rides=rides, users=users)
     rider, driver = _rider(), _driver()
     await users.add(driver)
-    ride = await CreateRideRequest(rides).execute(rider, _input(fare=Decimal("25.00")))
+    ride = await create_ride_request_use_case(rides).execute(
+        rider,
+        _input(fare=Decimal("25.00")),
+    )
     offer = await create_offer_use_case(rides, offers).execute(
         driver, ride.id, CreateOfferInput(accept_at_fare=True)
     )
@@ -340,7 +384,7 @@ async def test_pause_ride_does_not_overwrite_concurrent_fare_increase():
 async def test_pause_ride_rejects_when_not_searching():
     rides = InMemoryRideRequestRepository()
     rider = _rider()
-    ride = await CreateRideRequest(rides).execute(rider, _input())
+    ride = await create_ride_request_use_case(rides).execute(rider, _input())
     ride.status = RideStatus.ACCEPTED
     await rides.update(ride)
 
@@ -354,20 +398,25 @@ async def test_pause_ride_rejects_when_not_searching():
 async def test_edit_ride_updates_fields_and_unpauses():
     rides = InMemoryRideRequestRepository()
     rider = _rider()
-    ride = await CreateRideRequest(rides).execute(rider, _input(fare=Decimal("25.00")))
+    ride = await create_ride_request_use_case(rides).execute(
+        rider,
+        _input(fare=Decimal("25.00")),
+    )
     await pause_ride_use_case(rides, InMemoryOfferRepository(rides=rides)).execute(
         rider, ride.id
     )
 
-    updated = await EditRide(rides).execute(
-        rider,
-        ride.id,
-        _input(
-            destination=LocationInput(-16.40, -68.20, "Mercado", "Av. 3"),
-            fare=Decimal("40.00"),
-            payment_method=PaymentMethod.QR,
-        ),
-    )
+    updated = (
+        await edit_ride_use_case(rides).execute(
+            rider,
+            ride.id,
+            _input(
+                destination=LocationInput(-16.40, -68.20, "Mercado", "Av. 3"),
+                fare=Decimal("40.00"),
+                payment_method=PaymentMethod.QR,
+            ),
+        )
+    ).ride
 
     assert updated.paused is False
     assert updated.fare == Decimal("40.00")
@@ -382,22 +431,26 @@ async def test_edit_ride_updates_fields_and_unpauses():
 async def test_edit_ride_requires_paused():
     rides = InMemoryRideRequestRepository()
     rider = _rider()
-    ride = await CreateRideRequest(rides).execute(rider, _input())
+    ride = await create_ride_request_use_case(rides).execute(rider, _input())
 
     with pytest.raises(InvalidRideTransitionError):
-        await EditRide(rides).execute(rider, ride.id, _input(fare=Decimal("40.00")))
+        await edit_ride_use_case(rides).execute(
+            rider,
+            ride.id,
+            _input(fare=Decimal("40.00")),
+        )
 
 
 async def test_edit_ride_rejects_destination_outside_bolivia_without_mutating_ride():
     rides = InMemoryRideRequestRepository()
     rider = _rider()
-    ride = await CreateRideRequest(rides).execute(rider, _input())
+    ride = await create_ride_request_use_case(rides).execute(rider, _input())
     await pause_ride_use_case(rides, InMemoryOfferRepository(rides=rides)).execute(
         rider, ride.id
     )
 
     with pytest.raises(InvalidLocationError, match="Bolivia"):
-        await EditRide(rides).execute(
+        await edit_ride_use_case(rides).execute(
             rider,
             ride.id,
             _input(

@@ -10,6 +10,7 @@ from app.api.v1.events import (
     build_cancel_ride_events,
     build_create_offer_events,
     build_pause_ride_events,
+    build_republish_ride_events,
 )
 from app.api.v1.schemas.realtime import (
     RealtimeEventEnvelopeV2,
@@ -23,6 +24,7 @@ from app.application.dto import (
     RealtimeOutboxEvent,
     RealtimeOutboxQuarantineCode,
     RidePausedResult,
+    RideRepublishedResult,
 )
 from app.application.exceptions import InvalidRealtimeOutboxBatchError
 from app.application.interfaces import (
@@ -32,6 +34,7 @@ from app.application.interfaces import (
     PauseRideEventRecorder,
     RealtimeOutbox,
     RealtimeOutboxBatchValidator,
+    RepublishRideEventRecorder,
 )
 
 _POOL_TOPICS = frozenset({"pool:taxi", "pool:moto", "pool:delivery"})
@@ -240,4 +243,21 @@ class DisabledCancelRideEventRecorder(CancelRideEventRecorder):
     """Recorder nulo mientras el productor de cancelación está deshabilitado."""
 
     async def record(self, result: CancelRideResult) -> None:
+        del result
+
+
+class OutboxRepublishRideEventRecorder(RepublishRideEventRecorder):
+    """Registra una renovación del pool dentro de su transacción de negocio."""
+
+    def __init__(self, outbox: RealtimeOutbox) -> None:
+        self._outbox = outbox
+
+    async def record(self, result: RideRepublishedResult) -> None:
+        await self._outbox.add_batch(build_republish_ride_events(result))
+
+
+class DisabledRepublishRideEventRecorder(RepublishRideEventRecorder):
+    """Recorder nulo mientras la renovación durable está deshabilitada."""
+
+    async def record(self, result: RideRepublishedResult) -> None:
         del result

@@ -349,6 +349,28 @@ def build_withdraw_offer_events(
     ]
 
 
+def build_reject_offer_events(
+    offer: Offer,
+    *,
+    reason: OfferRejectedReason = "declined",
+) -> list[PendingRealtimeEvent]:
+    """Construye el rechazo durable/directo de una oferta por el pasajero."""
+    return [
+        _pending_realtime_event(
+            topic=driver_topic(offer.driver_id),
+            aggregate_type="ride",
+            aggregate_id=offer.ride_id,
+            message=OfferRejectedMessage(
+                data=OfferRejectedData(
+                    ride_id=offer.ride_id,
+                    offer_id=offer.id,
+                    reason=reason,
+                )
+            ),
+        )
+    ]
+
+
 async def publish_ride_created(detail: OpenRideDetail) -> None:
     """Una solicitud nueva (o renovada) aparece para los conductores del pool.
 
@@ -408,16 +430,7 @@ async def publish_offer_rejected(
     """La oferta murió para el conductor: rechazada por el pasajero (``declined``),
     el viaje fue tomado por otro conductor (``ride_taken``) o lo canceló
     (``ride_cancelled``)."""
-    await _broadcast(
-        driver_topic(offer.driver_id),
-        OfferRejectedMessage(
-            data=OfferRejectedData(
-                ride_id=offer.ride_id,
-                offer_id=offer.id,
-                reason=reason,
-            )
-        ),
-    )
+    await _broadcast_pending(build_reject_offer_events(offer, reason=reason))
 
 
 async def publish_offer_expired(offer: Offer) -> None:

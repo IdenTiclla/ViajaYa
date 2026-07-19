@@ -11,6 +11,7 @@ from app.api.v1.events import (
     build_cancel_ride_events,
     build_create_offer_events,
     build_pause_ride_events,
+    build_reject_offer_events,
     build_republish_ride_events,
     build_withdraw_offer_events,
 )
@@ -37,6 +38,7 @@ from app.application.interfaces import (
     PauseRideEventRecorder,
     RealtimeOutbox,
     RealtimeOutboxBatchValidator,
+    RejectOfferEventRecorder,
     RepublishRideEventRecorder,
     WithdrawOfferEventRecorder,
 )
@@ -298,6 +300,23 @@ class OutboxWithdrawOfferEventRecorder(WithdrawOfferEventRecorder):
 
 class DisabledWithdrawOfferEventRecorder(WithdrawOfferEventRecorder):
     """Recorder nulo mientras el retiro durable está deshabilitado."""
+
+    async def record(self, offer: Offer) -> None:
+        del offer
+
+
+class OutboxRejectOfferEventRecorder(RejectOfferEventRecorder):
+    """Registra el rechazo explícito dentro de su transacción de negocio."""
+
+    def __init__(self, outbox: RealtimeOutbox) -> None:
+        self._outbox = outbox
+
+    async def record(self, offer: Offer) -> None:
+        await self._outbox.add_batch(build_reject_offer_events(offer))
+
+
+class DisabledRejectOfferEventRecorder(RejectOfferEventRecorder):
+    """Recorder nulo mientras el rechazo durable está deshabilitado."""
 
     async def record(self, offer: Offer) -> None:
         del offer

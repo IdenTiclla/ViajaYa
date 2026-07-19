@@ -28,6 +28,7 @@ from app.application.interfaces import (
     CreateOfferEventRecorder,
     PasswordHasher,
     PauseRideEventRecorder,
+    RejectOfferEventRecorder,
     RepublishRideEventRecorder,
     RideReadRepository,
     SocialIdentityVerifier,
@@ -42,6 +43,7 @@ from app.application.use_cases.create_offer import CreateOffer
 from app.application.use_cases.create_ride_request import CreateRideRequest
 from app.application.use_cases.edit_ride import EditRide
 from app.application.use_cases.pause_ride_for_edit import PauseRideForEdit
+from app.application.use_cases.reject_offer import RejectOffer
 from app.application.use_cases.update_ride_fare import UpdateRideFare
 from app.application.use_cases.withdraw_offer import WithdrawOffer
 from app.domain.entities import (
@@ -833,6 +835,25 @@ class InMemoryWithdrawOfferEventRecorder(WithdrawOfferEventRecorder):
         self.offers.append(offer)
 
 
+class InMemoryRejectOfferEventRecorder(RejectOfferEventRecorder):
+    def __init__(
+        self,
+        *,
+        operations: list[str] | None = None,
+        error: BaseException | None = None,
+    ) -> None:
+        self.offers: list[Offer] = []
+        self._operations = operations
+        self._error = error
+
+    async def record(self, offer: Offer) -> None:
+        if self._operations is not None:
+            self._operations.append("record")
+        if self._error is not None:
+            raise self._error
+        self.offers.append(offer)
+
+
 def create_ride_request_use_case(
     rides: InMemoryRideRequestRepository,
     *,
@@ -884,6 +905,22 @@ def withdraw_offer_use_case(
         offers,
         unit_of_work or InMemoryUnitOfWork(offers),
         event_recorder or InMemoryWithdrawOfferEventRecorder(),
+    )
+
+
+def reject_offer_use_case(
+    rides: InMemoryRideRequestRepository,
+    offers: InMemoryOfferRepository,
+    *,
+    unit_of_work: UnitOfWork | None = None,
+    event_recorder: RejectOfferEventRecorder | None = None,
+) -> RejectOffer:
+    """Cablea RejectOffer con dobles transaccionales explícitos."""
+    return RejectOffer(
+        rides,
+        offers,
+        unit_of_work or InMemoryUnitOfWork(offers),
+        event_recorder or InMemoryRejectOfferEventRecorder(),
     )
 
 

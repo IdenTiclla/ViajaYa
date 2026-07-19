@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import uuid
 
+from app.application.interfaces import RejectOfferEventRecorder, UnitOfWork
 from app.domain.entities import ACTIVE_OFFER_STATUSES, Offer, User
 from app.domain.exceptions import (
     InvalidRideTransitionError,
@@ -20,11 +21,29 @@ from app.domain.repositories import OfferRepository, RideRequestRepository
 
 
 class RejectOffer:
-    def __init__(self, rides: RideRequestRepository, offers: OfferRepository) -> None:
+    def __init__(
+        self,
+        rides: RideRequestRepository,
+        offers: OfferRepository,
+        unit_of_work: UnitOfWork,
+        event_recorder: RejectOfferEventRecorder,
+    ) -> None:
         self._rides = rides
         self._offers = offers
+        self._unit_of_work = unit_of_work
+        self._event_recorder = event_recorder
 
     async def execute(self, rider: User, offer_id: uuid.UUID) -> Offer:
+        try:
+            offer = await self._reject(rider, offer_id)
+            await self._event_recorder.record(offer)
+            await self._unit_of_work.commit()
+            return offer
+        except BaseException:
+            await self._unit_of_work.rollback()
+            raise
+
+    async def _reject(self, rider: User, offer_id: uuid.UUID) -> Offer:
         offer = await self._offers.get_by_id(offer_id)
         if offer is None:
             raise OfferNotFoundError("La oferta no existe.")

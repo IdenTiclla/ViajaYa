@@ -278,8 +278,8 @@ Axios todavía continúe en segundo plano sin propagar `AbortSignal`.
 > las filas para auditoría; el hueco resultante obliga a resnapshot antes de
 > continuar el replay live.
 > `CreateOffer`/reemplazo, `AcceptOffer`, `PauseRideForEdit`, `CancelRide`, el
-> cierre automático por ausencia, `UpdateRideFare`, `EditRide` y
-> `AnnounceOpenRide` y `WithdrawOffer` son los primeros
+> cierre automático por ausencia, `UpdateRideFare`, `EditRide`,
+> `AnnounceOpenRide`, `WithdrawOffer` y `RejectOffer` son los primeros
 > productores: mutación, batch ordenado y versiones se confirman en un solo commit mediante
 > `UnitOfWork`; la publicación directa reutiliza exactamente los payloads
 > persistidos. `CreateRideRequest` también delega el commit a la aplicación, pero
@@ -310,6 +310,8 @@ Axios todavía continúe en segundo plano sin propagar `AbortSignal`.
 > su orden de transporte sigue siendo best-effort hasta activar outbox v2 live.
 > El retiro voluntario de una oferta también usa compare-and-set + outbox + UoW;
 > su único `offer_withdrawn` comparte builder entre la copia durable y el socket.
+> El rechazo explícito replica la misma frontera y registra un único
+> `offer_rejected(reason=declined)` en el stream personal del conductor.
 
 Para publicar un evento después de un commit sin ventana de pérdida, la mutación
 y el registro del evento deben pertenecer a la misma transacción. Se introdujo
@@ -412,6 +414,8 @@ Dispatcher sombra, sin Redis ni cambios de contrato/mobile:
   `SEARCHING && !paused`; no registrar `ride_created` desde el POST de creación.
 - [x] Migrar el retiro voluntario de oferta a compare-and-set + outbox + commit
   del UoW; conservar un único `offer_withdrawn` en el stream del ride.
+- [x] Migrar el rechazo explícito de oferta a compare-and-set + outbox + commit
+  del UoW; conservar `offer_rejected(reason=declined)` en el stream del conductor.
 
 Antes del modo `live`, hacer conmutativa en mobile la reducción de
 `ride_closed` y `offer_rejected`: pertenecen a streams distintos y Redis no

@@ -64,7 +64,7 @@ app/
   otros repositorios mecánicamente: migra todos los call sites de una operación
   en el mismo cambio. `CreateOffer`, `AcceptOffer`, `PauseRideForEdit`,
   `CancelRide`, `CancelRideOnDisconnect`, `UpdateRideFare`, `EditRide`,
-  `AnnounceOpenRide` y `WithdrawOffer` ya usan este flujo;
+  `AnnounceOpenRide`, `WithdrawOffer` y `RejectOffer` ya usan este flujo;
   `CreateRideRequest` delega el commit al UoW, pero no anuncia hasta que se
   confirma presencia.
 
@@ -218,9 +218,9 @@ offer_withdrawn, offer_accepted, offers_withdrawn (plural), offer_expired, ride_
 
 - `offers_withdrawn` (plural) → al conductor elegido: lista de `ride_ids` cuyas ofertas suyas se retiraron al ganar el viaje.
 - El polling del cliente queda **solo como respaldo lento**; la vía principal es el WS.
-- Crear/reemplazar/retirar oferta, aceptar oferta, pausar, cancelar, renovar el
-  pool y anunciar presencia ya persisten antes del commit sus batches ordenados
-  en `realtime_outbox` cuando
+- Crear/reemplazar/retirar/rechazar oferta, aceptar oferta, pausar, cancelar,
+  renovar el pool y anunciar presencia ya persisten antes del commit sus batches
+  ordenados en `realtime_outbox` cuando
   `REALTIME_OUTBOX_RECORDING_ENABLED=true`; la entrega directa reutiliza esos
   mismos payloads `{type,data}`. El dispatcher controlado por
   `REALTIME_OUTBOX_DISPATCH_MODE=shadow` solo valida y marca la copia durable; la

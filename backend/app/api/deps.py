@@ -20,12 +20,14 @@ from app.api.v1.realtime_outbox import (
     DisabledCreateOfferEventRecorder,
     DisabledPauseRideEventRecorder,
     DisabledRepublishRideEventRecorder,
+    DisabledWithdrawOfferEventRecorder,
     OutboxAcceptOfferEventRecorder,
     OutboxAnnounceOpenRideEventRecorder,
     OutboxCancelRideEventRecorder,
     OutboxCreateOfferEventRecorder,
     OutboxPauseRideEventRecorder,
     OutboxRepublishRideEventRecorder,
+    OutboxWithdrawOfferEventRecorder,
 )
 from app.application.interfaces import (
     CancelRideEventRecorder,
@@ -322,8 +324,20 @@ def get_accept_offer(
     )
 
 
-def get_withdraw_offer(offers: OfferRepositoryDep) -> WithdrawOffer:
-    return WithdrawOffer(offers)
+def get_withdraw_offer(
+    session: SessionDep,
+    settings: SettingsDep,
+) -> WithdrawOffer:
+    recorder = (
+        OutboxWithdrawOfferEventRecorder(SqlAlchemyRealtimeOutbox(session))
+        if settings.realtime_outbox_recording_enabled
+        else DisabledWithdrawOfferEventRecorder()
+    )
+    return WithdrawOffer(
+        SqlAlchemyOfferRepository(session, commit_reject_if_pending=False),
+        SqlAlchemyUnitOfWork(session),
+        recorder,
+    )
 
 
 def get_reject_offer(

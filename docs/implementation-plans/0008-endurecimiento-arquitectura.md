@@ -279,7 +279,7 @@ Axios todavía continúe en segundo plano sin propagar `AbortSignal`.
 > continuar el replay live.
 > `CreateOffer`/reemplazo, `AcceptOffer`, `PauseRideForEdit`, `CancelRide`, el
 > cierre automático por ausencia, `UpdateRideFare`, `EditRide` y
-> `AnnounceOpenRide` son los primeros
+> `AnnounceOpenRide` y `WithdrawOffer` son los primeros
 > productores: mutación, batch ordenado y versiones se confirman en un solo commit mediante
 > `UnitOfWork`; la publicación directa reutiliza exactamente los payloads
 > persistidos. `CreateRideRequest` también delega el commit a la aplicación, pero
@@ -308,6 +308,8 @@ Axios todavía continúe en segundo plano sin propagar `AbortSignal`.
 > antes del commit. El heartbeat HTTP conserva su función de renovar la gracia y
 > no crea eventos periódicos. La publicación directa ocurre después del commit;
 > su orden de transporte sigue siendo best-effort hasta activar outbox v2 live.
+> El retiro voluntario de una oferta también usa compare-and-set + outbox + UoW;
+> su único `offer_withdrawn` comparte builder entre la copia durable y el socket.
 
 Para publicar un evento después de un commit sin ventana de pérdida, la mutación
 y el registro del evento deben pertenecer a la misma transacción. Se introdujo
@@ -408,6 +410,8 @@ Dispatcher sombra, sin Redis ni cambios de contrato/mobile:
   operación no muta otros rides y ordena sus rechazos por UUID de oferta.
 - [x] Migrar el anuncio inicial/reanuncio de presencia con lock y revalidación
   `SEARCHING && !paused`; no registrar `ride_created` desde el POST de creación.
+- [x] Migrar el retiro voluntario de oferta a compare-and-set + outbox + commit
+  del UoW; conservar un único `offer_withdrawn` en el stream del ride.
 
 Antes del modo `live`, hacer conmutativa en mobile la reducción de
 `ride_closed` y `offer_rejected`: pertenecen a streams distintos y Redis no

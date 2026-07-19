@@ -326,6 +326,29 @@ def build_announce_open_ride_events(
     ]
 
 
+def build_withdraw_offer_events(
+    offer: Offer,
+    *,
+    reason: OfferWithdrawnReason | None = None,
+) -> list[PendingRealtimeEvent]:
+    """Construye el retiro durable/directo de una oferta del conductor."""
+    data = OfferWithdrawnData(driver_id=offer.driver_id, offer_id=offer.id)
+    if reason is not None:
+        data = OfferWithdrawnData(
+            driver_id=offer.driver_id,
+            offer_id=offer.id,
+            reason=reason,
+        )
+    return [
+        _pending_realtime_event(
+            topic=ride_topic(offer.ride_id),
+            aggregate_type="ride",
+            aggregate_id=offer.ride_id,
+            message=OfferWithdrawnMessage(data=data),
+        )
+    ]
+
+
 async def publish_ride_created(detail: OpenRideDetail) -> None:
     """Una solicitud nueva (o renovada) aparece para los conductores del pool.
 
@@ -422,17 +445,7 @@ async def publish_offer_withdrawn_by_driver(
     offer: Offer, *, reason: OfferWithdrawnReason | None = None
 ) -> None:
     """El conductor retiró (o se negó a confirmar) su oferta: el pasajero deja de verla."""
-    data = OfferWithdrawnData(driver_id=offer.driver_id, offer_id=offer.id)
-    if reason is not None:
-        data = OfferWithdrawnData(
-            driver_id=offer.driver_id,
-            offer_id=offer.id,
-            reason=reason,
-        )
-    await _broadcast(
-        ride_topic(offer.ride_id),
-        OfferWithdrawnMessage(data=data),
-    )
+    await _broadcast_pending(build_withdraw_offer_events(offer, reason=reason))
 
 
 async def publish_driver_offline_offers(

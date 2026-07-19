@@ -62,8 +62,11 @@ app/
 - **Transacciones migradas a outbox:** el repositorio hace `flush`, el caso de
   uso registra el batch y `UnitOfWork` decide el único `commit`. No conviertas
   otros repositorios mecánicamente: migra todos los call sites de una operación
-  en el mismo cambio. `CreateOffer`, `AcceptOffer` y `PauseRideForEdit` ya usan
-  este flujo.
+  en el mismo cambio. `CreateOffer`, `AcceptOffer`, `PauseRideForEdit`,
+  `CancelRide`, `CancelRideOnDisconnect`, `UpdateRideFare`, `EditRide`,
+  `AnnounceOpenRide` y `WithdrawOffer` ya usan este flujo;
+  `CreateRideRequest` delega el commit al UoW, pero no anuncia hasta que se
+  confirma presencia.
 
 ### Patrón para añadir un endpoint
 
@@ -152,10 +155,10 @@ procesados, pero no los entrega al hub WebSocket ni a Redis. No existe un modo
 
 Rutas protegidas: usan `CurrentUserDep` (header `Authorization: Bearer <access_token>`).
 
-### Casos de uso (33)
+### Casos de uso (34)
 
 `register_user`, `authenticate_user`, `authenticate_with_oauth`, `refresh_token`,
-`create_ride_request`, `list_recent_destinations`, `list_open_rides`, `dismiss_open_ride`,
+`create_ride_request`, `announce_open_ride`, `list_recent_destinations`, `list_open_rides`, `dismiss_open_ride`,
 `get_ride`, `get_passenger_active_ride`, `get_pending_rating_ride`, `list_ride_history`,
 `create_offer`, `list_offers_for_ride`, `accept_offer`, `reject_offer`,
 `withdraw_offer`, `expire_offer`, `update_ride_status`, `update_ride_fare`, `cancel_ride`,
@@ -215,8 +218,9 @@ offer_withdrawn, offer_accepted, offers_withdrawn (plural), offer_expired, ride_
 
 - `offers_withdrawn` (plural) → al conductor elegido: lista de `ride_ids` cuyas ofertas suyas se retiraron al ganar el viaje.
 - El polling del cliente queda **solo como respaldo lento**; la vía principal es el WS.
-- Crear/reemplazar, aceptar oferta y pausar para edición ya persisten antes del
-  commit sus batches ordenados en `realtime_outbox` cuando
+- Crear/reemplazar/retirar oferta, aceptar oferta, pausar, cancelar, renovar el
+  pool y anunciar presencia ya persisten antes del commit sus batches ordenados
+  en `realtime_outbox` cuando
   `REALTIME_OUTBOX_RECORDING_ENABLED=true`; la entrega directa reutiliza esos
   mismos payloads `{type,data}`. El dispatcher controlado por
   `REALTIME_OUTBOX_DISPATCH_MODE=shadow` solo valida y marca la copia durable; la

@@ -29,7 +29,7 @@ from app.application.dto import (
     RideRepublishedResult,
     SocialProfile,
 )
-from app.domain.entities import AuthProvider, RideStatus, UserRole
+from app.domain.entities import AuthProvider, Offer, RideStatus, UserRole
 from app.domain.repositories import OpenRideDetail
 
 
@@ -169,6 +169,14 @@ class AnnounceOpenRideEventRecorder(ABC):
     @abstractmethod
     async def record(self, detail: OpenRideDetail) -> None:
         """Añade a la outbox el ``ride_created`` ya revalidado bajo lock."""
+
+
+class WithdrawOfferEventRecorder(ABC):
+    """Registra el retiro voluntario de una oferta por su conductor."""
+
+    @abstractmethod
+    async def record(self, offer: Offer) -> None:
+        """Añade a la outbox el ``offer_withdrawn`` de la oferta mutada."""
 
 
 class PasswordHasher(ABC):

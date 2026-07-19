@@ -12,6 +12,7 @@ from app.api.v1.events import (
     build_create_offer_events,
     build_pause_ride_events,
     build_republish_ride_events,
+    build_withdraw_offer_events,
 )
 from app.api.v1.schemas.realtime import (
     RealtimeEventEnvelopeV2,
@@ -37,7 +38,9 @@ from app.application.interfaces import (
     RealtimeOutbox,
     RealtimeOutboxBatchValidator,
     RepublishRideEventRecorder,
+    WithdrawOfferEventRecorder,
 )
+from app.domain.entities import Offer
 from app.domain.repositories import OpenRideDetail
 
 _POOL_TOPICS = frozenset({"pool:taxi", "pool:moto", "pool:delivery"})
@@ -281,3 +284,20 @@ class DisabledAnnounceOpenRideEventRecorder(AnnounceOpenRideEventRecorder):
 
     async def record(self, detail: OpenRideDetail) -> None:
         del detail
+
+
+class OutboxWithdrawOfferEventRecorder(WithdrawOfferEventRecorder):
+    """Registra el retiro voluntario dentro de su transacción de negocio."""
+
+    def __init__(self, outbox: RealtimeOutbox) -> None:
+        self._outbox = outbox
+
+    async def record(self, offer: Offer) -> None:
+        await self._outbox.add_batch(build_withdraw_offer_events(offer))
+
+
+class DisabledWithdrawOfferEventRecorder(WithdrawOfferEventRecorder):
+    """Recorder nulo mientras el retiro durable está deshabilitado."""
+
+    async def record(self, offer: Offer) -> None:
+        del offer

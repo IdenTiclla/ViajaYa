@@ -917,6 +917,7 @@ class SqlAlchemyOfferRepository(OfferRepository):
         commit_accept: bool = True,
         commit_pause: bool = True,
         commit_cancel: bool = True,
+        commit_reject_if_pending: bool = True,
     ) -> None:
         self._session = session
         # Migración incremental: estas mutaciones participan del UoW; los demás
@@ -925,6 +926,7 @@ class SqlAlchemyOfferRepository(OfferRepository):
         self._commit_accept = commit_accept
         self._commit_pause = commit_pause
         self._commit_cancel = commit_cancel
+        self._commit_reject_if_pending = commit_reject_if_pending
 
     async def add(self, offer: Offer) -> Offer:
         row = OfferModel(
@@ -1056,9 +1058,13 @@ class SqlAlchemyOfferRepository(OfferRepository):
             .returning(OfferModel.id)
         )
         if result.scalar_one_or_none() is None:
-            await self._session.rollback()
+            if self._commit_reject_if_pending:
+                await self._session.rollback()
             return None
-        await self._session.commit()
+        if self._commit_reject_if_pending:
+            await self._session.commit()
+        else:
+            await self._session.flush()
         row = await self._session.get(OfferModel, offer_id, populate_existing=True)
         return _offer_to_entity(row) if row else None
 

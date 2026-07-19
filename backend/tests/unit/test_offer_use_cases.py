@@ -14,7 +14,6 @@ from app.application.use_cases.list_offers_for_ride import ListOffersForRide
 from app.application.use_cases.list_open_rides import ListOpenRides
 from app.application.use_cases.set_driver_online import SetDriverOnline
 from app.application.use_cases.update_ride_status import UpdateRideStatus
-from app.application.use_cases.withdraw_offer import WithdrawOffer
 from app.domain.entities import (
     Location,
     OfferStatus,
@@ -39,6 +38,7 @@ from tests.fakes import (
     accept_offer_use_case,
     cancel_ride_use_case,
     create_offer_use_case,
+    withdraw_offer_use_case,
 )
 
 _LOC = Location(-16.5, -68.13, "Casa", "Calle 1")
@@ -360,7 +360,9 @@ async def test_withdraw_offer_kills_pending_offer():
         driver, ride.id, CreateOfferInput(accept_at_fare=True)
     )
 
-    withdrawn = await WithdrawOffer(offers).execute(driver, offer.detail.offer.id)
+    withdrawn = await withdraw_offer_use_case(offers).execute(
+        driver, offer.detail.offer.id
+    )
 
     assert withdrawn.status is OfferStatus.REJECTED
 
@@ -374,7 +376,7 @@ async def test_withdraw_offer_rejects_foreign_driver():
     )
 
     with pytest.raises(NotAuthorizedActionError):
-        await WithdrawOffer(offers).execute(other, offer.detail.offer.id)
+        await withdraw_offer_use_case(offers).execute(other, offer.detail.offer.id)
 
 
 async def test_update_ride_status_valid_progression():

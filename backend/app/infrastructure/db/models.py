@@ -7,6 +7,8 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import (
+    JSON,
+    BigInteger,
     Boolean,
     CheckConstraint,
     DateTime,
@@ -23,6 +25,7 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.domain.entities import (
@@ -52,6 +55,8 @@ _ACTIVE_DRIVER_RIDE_STATUS_PREDICATE = text(
     "driver_id IS NOT NULL AND status IN ('accepted', 'arriving', 'in_progress')"
 )
 _OPEN_POOL_PREDICATE = text("status = 'searching' AND paused = false")
+_OUTBOX_PENDING_PREDICATE = text("published_at IS NULL AND sequence = 0")
+_OUTBOX_PAYLOAD_TYPE = JSON().with_variant(JSONB(), "postgresql")
 
 
 class UserModel(Base):
@@ -430,3 +435,97 @@ class SavedPlaceModel(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
+
+
+class RealtimeAggregateVersionModel(Base):
+    """Contador transaccional de versión para cada agregado del tiempo real."""
+
+    __tablename__ = "realtime_aggregate_versions"
+    __table_args__ = (
+        CheckConstraint(
+            "version >= 0",
+            name="ck_realtime_aggregate_versions_version_nonnegative",
+        ),
+    )
+
+    aggregate_type: Mapped[str] = mapped_column(String(32), primary_key=True)
+    aggregate_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True
+    )
+    version: Mapped[int] = mapped_column(
+        BigInteger, default=0, server_default="0", nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+
+class RealtimeOutboxModel(Base):
+    """Evento durable pendiente de publicación por el dispatcher."""
+
+    __tablename__ = "realtime_outbox"
+    __table_args__ = (
+        UniqueConstraint(
+            "batch_id",
+            "sequence",
+            name="uq_realtime_outbox_batch_sequence",
+        ),
+        UniqueConstraint(
+            "aggregate_type",
+            "aggregate_id",
+            "aggregate_version",
+            name="uq_realtime_outbox_aggregate_version",
+        ),
+        CheckConstraint(
+            "sequence >= 0",
+            name="ck_realtime_outbox_sequence_nonnegative",
+        ),
+        CheckConstraint(
+            "aggregate_version >= 1",
+            name="ck_realtime_outbox_aggregate_version_positive",
+        ),
+        CheckConstraint(
+            "attempts >= 0",
+            name="ck_realtime_outbox_attempts_nonnegative",
+        ),
+        Index(
+            "ix_realtime_outbox_pending",
+            "next_attempt_at",
+            "created_at",
+            "id",
+            postgresql_where=_OUTBOX_PENDING_PREDICATE,
+            sqlite_where=_OUTBOX_PENDING_PREDICATE,
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    batch_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    sequence: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    topic: Mapped[str] = mapped_column(String(255), nullable=False)
+    aggregate_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    aggregate_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    aggregate_version: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    payload: Mapped[dict[str, object]] = mapped_column(
+        _OUTBOX_PAYLOAD_TYPE, nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    next_attempt_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    published_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    attempts: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)

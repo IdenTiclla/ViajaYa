@@ -8,7 +8,6 @@ from decimal import Decimal
 import pytest
 
 from app.application.dto import CreateOfferInput, CreateRideRequestInput, LocationInput
-from app.application.use_cases.create_offer import CreateOffer
 from app.application.use_cases.create_ride_request import CreateRideRequest
 from app.application.use_cases.edit_ride import EditRide
 from app.application.use_cases.list_recent_destinations import ListRecentDestinations
@@ -34,6 +33,7 @@ from tests.fakes import (
     InMemoryOfferRepository,
     InMemoryRideRequestRepository,
     InMemoryUserRepository,
+    create_offer_use_case,
 )
 
 
@@ -286,7 +286,7 @@ async def test_pause_ride_hides_from_pool_and_kills_offers():
     rider, driver = _rider(), _driver()
     await users.add(driver)
     ride = await CreateRideRequest(rides).execute(rider, _input())
-    offer = await CreateOffer(rides, offers).execute(
+    offer = await create_offer_use_case(rides, offers).execute(
         driver, ride.id, CreateOfferInput(accept_at_fare=True)
     )
 
@@ -318,7 +318,7 @@ async def test_pause_ride_does_not_overwrite_concurrent_fare_increase():
     rider, driver = _rider(), _driver()
     await users.add(driver)
     ride = await CreateRideRequest(rides).execute(rider, _input(fare=Decimal("25.00")))
-    offer = await CreateOffer(rides, offers).execute(
+    offer = await create_offer_use_case(rides, offers).execute(
         driver, ride.id, CreateOfferInput(accept_at_fare=True)
     )
 

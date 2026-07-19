@@ -8,17 +8,73 @@ from __future__ import annotations
 
 import uuid
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from datetime import datetime
 
 from app.application.dto import (
+    CreateOfferResult,
     DriverEarnings,
     Page,
     PageCursor,
+    PendingRealtimeEvent,
+    RealtimeOutboxEvent,
     RideDetail,
     RideHistoryItem,
     SocialProfile,
 )
 from app.domain.entities import AuthProvider, RideStatus, UserRole
+
+
+class UnitOfWork(ABC):
+    """Frontera transaccional decidida por la capa de aplicación."""
+
+    @abstractmethod
+    async def commit(self) -> None:
+        """Confirma la mutación de negocio y sus eventos pendientes."""
+
+    @abstractmethod
+    async def rollback(self) -> None:
+        """Descarta todo lo realizado por la operación actual."""
+
+
+class RealtimeOutbox(ABC):
+    """Persistencia y reclamación transaccional de eventos de tiempo real."""
+
+    @abstractmethod
+    async def add_batch(
+        self,
+        events: Sequence[PendingRealtimeEvent],
+    ) -> list[RealtimeOutboxEvent]:
+        """Añade un lote y asigna secuencia y versión a cada publicación."""
+
+    @abstractmethod
+    async def claim_next_batch(self, now: datetime) -> list[RealtimeOutboxEvent]:
+        """Bloquea y devuelve el siguiente lote listo para publicarse."""
+
+    @abstractmethod
+    async def mark_batch_published(
+        self,
+        batch_id: uuid.UUID,
+        published_at: datetime,
+    ) -> None:
+        """Marca como publicado un lote reclamado."""
+
+    @abstractmethod
+    async def mark_batch_failed(
+        self,
+        batch_id: uuid.UUID,
+        error: str,
+        next_attempt_at: datetime,
+    ) -> None:
+        """Registra el fallo y programa el siguiente intento del lote."""
+
+
+class CreateOfferEventRecorder(ABC):
+    """Registra los eventos durables producidos al crear o mejorar una oferta."""
+
+    @abstractmethod
+    async def record(self, result: CreateOfferResult) -> None:
+        """Añade a la outbox el desenlace completo de la operación."""
 
 
 class PasswordHasher(ABC):

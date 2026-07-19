@@ -872,8 +872,16 @@ def _offer_to_entity(row: OfferModel) -> Offer:
 
 
 class SqlAlchemyOfferRepository(OfferRepository):
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        *,
+        commit_create_or_supersede: bool = True,
+    ) -> None:
         self._session = session
+        # Migración incremental: únicamente este método participa todavía del
+        # UnitOfWork; los demás conservan sus commits internos.
+        self._commit_create_or_supersede = commit_create_or_supersede
 
     async def add(self, offer: Offer) -> Offer:
         row = OfferModel(
@@ -969,7 +977,10 @@ class SqlAlchemyOfferRepository(OfferRepository):
             status=offer.status,
         )
         self._session.add(row)
-        await self._session.commit()
+        if self._commit_create_or_supersede:
+            await self._session.commit()
+        else:
+            await self._session.flush()
         await self._session.refresh(row)
         return OfferCreation(
             offer=_offer_to_entity(row),

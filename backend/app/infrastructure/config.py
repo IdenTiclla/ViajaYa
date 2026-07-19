@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     facebook_app_id: str = ""
     facebook_app_secret: str = ""
 
+    # El recorder queda apagado hasta que exista un dispatcher sombra que drene
+    # y marque los batches sin reproducir eventos históricos al cliente.
+    realtime_outbox_recording_enabled: bool = False
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

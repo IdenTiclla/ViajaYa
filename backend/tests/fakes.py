@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import uuid
+from copy import deepcopy
 from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
 
 from app.application.dto import (
+    CreateOfferResult,
     DriverEarnings,
     EarningsItem,
     Page,
@@ -17,11 +19,14 @@ from app.application.dto import (
     SocialProfile,
 )
 from app.application.interfaces import (
+    CreateOfferEventRecorder,
     PasswordHasher,
     RideReadRepository,
     SocialIdentityVerifier,
     TokenService,
+    UnitOfWork,
 )
+from app.application.use_cases.create_offer import CreateOffer
 from app.domain.entities import (
     ACTIVE_OFFER_STATUSES,
     AuthProvider,
@@ -665,6 +670,73 @@ class InMemoryOfferRepository(OfferRepository):
             return None
         offer.status = OfferStatus.EXPIRED
         return offer
+
+
+class InMemoryUnitOfWork(UnitOfWork):
+    """UoW de prueba que restaura las ofertas si la operación falla."""
+
+    def __init__(
+        self,
+        offers: InMemoryOfferRepository | None = None,
+        *,
+        operations: list[str] | None = None,
+        commit_error: BaseException | None = None,
+    ) -> None:
+        self.commits = 0
+        self.rollbacks = 0
+        self._offers = offers
+        self._offer_snapshot = deepcopy(offers.offers) if offers is not None else None
+        self._operations = operations
+        self._commit_error = commit_error
+
+    async def commit(self) -> None:
+        self.commits += 1
+        if self._operations is not None:
+            self._operations.append("commit")
+        if self._commit_error is not None:
+            raise self._commit_error
+
+    async def rollback(self) -> None:
+        self.rollbacks += 1
+        if self._operations is not None:
+            self._operations.append("rollback")
+        if self._offers is not None and self._offer_snapshot is not None:
+            self._offers.offers[:] = deepcopy(self._offer_snapshot)
+
+
+class InMemoryCreateOfferEventRecorder(CreateOfferEventRecorder):
+    def __init__(
+        self,
+        *,
+        operations: list[str] | None = None,
+        error: BaseException | None = None,
+    ) -> None:
+        self.results: list[CreateOfferResult] = []
+        self._operations = operations
+        self._error = error
+
+    async def record(self, result: CreateOfferResult) -> None:
+        if self._operations is not None:
+            self._operations.append("record")
+        if self._error is not None:
+            raise self._error
+        self.results.append(result)
+
+
+def create_offer_use_case(
+    rides: RideRequestRepository,
+    offers: InMemoryOfferRepository,
+    *,
+    unit_of_work: UnitOfWork | None = None,
+    event_recorder: CreateOfferEventRecorder | None = None,
+) -> CreateOffer:
+    """Cablea CreateOffer con dobles transaccionales explícitos."""
+    return CreateOffer(
+        rides,
+        offers,
+        unit_of_work or InMemoryUnitOfWork(offers),
+        event_recorder or InMemoryCreateOfferEventRecorder(),
+    )
 
 
 class InMemoryRatingRepository(RatingRepository):

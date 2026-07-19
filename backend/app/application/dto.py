@@ -26,6 +26,41 @@ from app.domain.entities import (
 T = TypeVar("T")
 
 
+@dataclass(frozen=True, slots=True)
+class PendingRealtimeEvent:
+    """Evento listo para persistirse, todavía sin metadatos de entrega.
+
+    La outbox asigna el id, lote, secuencia y versión del agregado dentro de la
+    misma transacción que la mutación de negocio.
+    """
+
+    event_type: str
+    topic: str
+    aggregate_type: str
+    aggregate_id: uuid.UUID
+    payload: dict[str, object]
+
+
+@dataclass(frozen=True, slots=True)
+class RealtimeOutboxEvent:
+    """Evento durable reclamado o recién añadido a la outbox."""
+
+    id: uuid.UUID
+    batch_id: uuid.UUID
+    sequence: int
+    event_type: str
+    topic: str
+    aggregate_type: str
+    aggregate_id: uuid.UUID
+    aggregate_version: int
+    payload: dict[str, object]
+    created_at: datetime
+    next_attempt_at: datetime
+    published_at: datetime | None
+    attempts: int
+    last_error: str | None
+
+
 @dataclass(frozen=True)
 class PageCursor:
     """Posición estable para continuar una lectura ordenada en forma descendente."""

@@ -25,7 +25,7 @@ app/
 │   └── token_issuer.py        # Helper issue_token_pair(tokens, user_id)  (NO es una clase)
 ├── infrastructure/          # Adaptadores concretos.
 │   ├── config.py              # Settings (pydantic-settings). ÚNICA fuente de verdad de config.
-│   ├── db/                    # SQLAlchemy: base, models, session, repositories (SqlAlchemy*)
+│   ├── db/                    # SQLAlchemy: models, repos, UnitOfWork y outbox durable
 │   ├── security/              # bcrypt_hasher, jwt_service
 │   ├── oauth/                 # google_verifier, facebook_verifier
 │   └── realtime/              # hub (singleton pub/sub por topic), ws_auth (subprotocol seguro)
@@ -59,6 +59,10 @@ app/
 - **Lecturas enriquecidas:** `RideReadRepository` evita exponer ORM y cargas N+1.
   Ganancias usa un agregado SQL para totales/conteos y otra consulta limitada a
   los últimos 10 viajes; aplicación delimita el día en `America/La_Paz`.
+- **Transacciones migradas a outbox:** el repositorio hace `flush`, el caso de
+  uso registra el batch y `UnitOfWork` decide el único `commit`. No conviertas
+  otros repositorios mecánicamente: migra todos los call sites de una operación
+  en el mismo cambio. Por ahora solo `CreateOffer` usa este flujo.
 
 ### Patrón para añadir un endpoint
 
@@ -109,7 +113,8 @@ DATABASE_URL=postgresql+asyncpg://viajaya:viajaya@localhost:5432/viajaya
 JWT_SECRET, JWT_ALGORITHM (HS256),
 ACCESS_TOKEN_EXPIRE_MINUTES (30), REFRESH_TOKEN_EXPIRE_DAYS (14),
 CORS_ORIGINS (lista separada por comas; helper .cors_origins_list),
-GOOGLE_CLIENT_ID, FACEBOOK_APP_ID, FACEBOOK_APP_SECRET
+GOOGLE_CLIENT_ID, FACEBOOK_APP_ID, FACEBOOK_APP_SECRET,
+REALTIME_OUTBOX_RECORDING_ENABLED (false hasta activar dispatcher sombra)
 ```
 
 Accede a la config con `get_settings()` (cacheado con `@lru_cache`); **no leas `os.environ` directo**.
@@ -195,6 +200,10 @@ offer_withdrawn, offer_accepted, offers_withdrawn (plural), offer_expired, ride_
 
 - `offers_withdrawn` (plural) → al conductor elegido: lista de `ride_ids` cuyas ofertas suyas se retiraron al ganar el viaje.
 - El polling del cliente queda **solo como respaldo lento**; la vía principal es el WS.
+- Crear/reemplazar oferta ya persiste antes del commit un batch ordenado en
+  `realtime_outbox` cuando `REALTIME_OUTBOX_RECORDING_ENABLED=true`; la entrega
+  directa reutiliza ese mismo payload `{type,data}`. El flag permanece apagado
+  hasta incorporar el dispatcher sombra y el backend sigue limitado a un worker.
 
 Presencia (`api/v1/presence.py`): la solicitud aparece en `/rides/open` mientras el pasajero esté
 conectado al WS o dentro de la ventana de gracia (`PRESENCE_GRACE_SECONDS = 120`). Minimizar/cambiar
@@ -204,7 +213,7 @@ cerrar la app o perder ambos canales durante toda la gracia cancela la búsqueda
 ## Migraciones (Alembic)
 
 - Config: `alembic.ini` + `migrations/env.py` (engine **async** con `async_engine_from_config`).
-- **17 migraciones** en `migrations/versions/` (`0001_create_users` … `0017_pg_integrity_indexes`).
+- **18 migraciones** en `migrations/versions/` (`0001_create_users` … `0018_realtime_outbox`).
 - Importante: los enums se persisten por **valor** minúsculo vía `values_callable=_enum_values`
   en `infrastructure/db/models.py` (migración `0006_normalize_enum_values`). No rompas esa convención
   o se caerán columnas existentes.
@@ -230,6 +239,8 @@ común `ViajaYa1234#`): `passenger1/2@viajaya.com`, `driver.auto1/2@viajaya.com`
 - `tests/e2e/test_negotiation_ws.py` — flujo WS de negociación passenger↔driver.
 - `tests/postgresql/` — certificación destructiva opt-in contra una base exclusivamente
   desechable indicada por `VIAJAYA_TEST_DATABASE_URL`; hace skip si la variable no existe.
+  `test_pg_outbox_0018.py` verifica el ciclo de migración y que dos workers
+  reclamen batches completos y disjuntos con `SKIP LOCKED`.
 - `.github/workflows/ci.yml` ejecuta en paralelo la suite rápida, la certificación
   PostgreSQL 16 y las comprobaciones TypeScript/ESLint de mobile.
 - `asyncio_mode = "auto"` (pytest-asyncio): no hace falta `@pytest.mark.asyncio`.

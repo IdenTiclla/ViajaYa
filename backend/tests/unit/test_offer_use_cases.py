@@ -11,7 +11,6 @@ import pytest
 from app.application.dto import CreateOfferInput
 from app.application.use_cases.accept_offer import AcceptOffer
 from app.application.use_cases.cancel_ride import CancelRide
-from app.application.use_cases.create_offer import CreateOffer
 from app.application.use_cases.expire_offer import ExpireOffer
 from app.application.use_cases.list_offers_for_ride import ListOffersForRide
 from app.application.use_cases.list_open_rides import ListOpenRides
@@ -38,6 +37,7 @@ from tests.fakes import (
     InMemoryOfferRepository,
     InMemoryRideRequestRepository,
     InMemoryUserRepository,
+    create_offer_use_case,
 )
 
 _LOC = Location(-16.5, -68.13, "Casa", "Calle 1")
@@ -73,7 +73,7 @@ async def test_create_offer_accept_at_fare():
     rider, driver = _passenger(), _driver()
     ride = await rides.add(_ride(rider.id))
 
-    result = await CreateOffer(rides, offers).execute(
+    result = await create_offer_use_case(rides, offers).execute(
         driver, ride.id, CreateOfferInput(accept_at_fare=True, eta_min=5)
     )
 
@@ -89,7 +89,7 @@ async def test_create_offer_counteroffer_uses_own_price():
     rider, driver = _passenger(), _driver()
     ride = await rides.add(_ride(rider.id))
 
-    result = await CreateOffer(rides, offers).execute(
+    result = await create_offer_use_case(rides, offers).execute(
         driver, ride.id, CreateOfferInput(accept_at_fare=False, price=Decimal("30.00"), eta_min=8)
     )
 
@@ -107,7 +107,7 @@ async def test_taxi_and_moto_can_offer_and_be_assigned_delivery(
     await users.add(driver)
     ride = await rides.add(_ride(rider.id, service=ServiceType.DELIVERY))
 
-    created = await CreateOffer(rides, offers).execute(
+    created = await create_offer_use_case(rides, offers).execute(
         driver, ride.id, CreateOfferInput(accept_at_fare=True)
     )
     accepted = await AcceptOffer(rides, offers).execute(
@@ -126,10 +126,10 @@ async def test_create_offer_supersedes_previous_pending_offer():
     rider, driver = _passenger(), _driver()
     ride = await rides.add(_ride(rider.id))
 
-    first = await CreateOffer(rides, offers).execute(
+    first = await create_offer_use_case(rides, offers).execute(
         driver, ride.id, CreateOfferInput(accept_at_fare=False, price=Decimal("30.00"))
     )
-    improved = await CreateOffer(rides, offers).execute(
+    improved = await create_offer_use_case(rides, offers).execute(
         driver, ride.id, CreateOfferInput(accept_at_fare=False, price=Decimal("26.00"))
     )
 
@@ -147,13 +147,13 @@ async def test_create_offer_blocked_after_ride_assigned():
     rider, driver = _passenger(), _driver()
     await users.add(driver)
     ride = await rides.add(_ride(rider.id))
-    first = await CreateOffer(rides, offers).execute(
+    first = await create_offer_use_case(rides, offers).execute(
         driver, ride.id, CreateOfferInput(accept_at_fare=True)
     )
     await AcceptOffer(rides, offers).execute(rider, first.detail.offer.id)
 
     with pytest.raises(InvalidRideTransitionError):
-        await CreateOffer(rides, offers).execute(
+        await create_offer_use_case(rides, offers).execute(
             driver, ride.id, CreateOfferInput(accept_at_fare=False, price=Decimal("20.00"))
         )
 
@@ -165,7 +165,7 @@ async def test_create_offer_rejects_mismatched_vehicle():
     ride = await rides.add(_ride(rider.id, service=ServiceType.TAXI))
 
     with pytest.raises(NotAuthorizedActionError):
-        await CreateOffer(rides, offers).execute(
+        await create_offer_use_case(rides, offers).execute(
             moto_driver, ride.id, CreateOfferInput(accept_at_fare=True)
         )
 
@@ -178,7 +178,7 @@ async def test_create_offer_rejects_non_searching_ride():
     await rides.add(ride)
 
     with pytest.raises(InvalidRideTransitionError):
-        await CreateOffer(rides, offers).execute(
+        await create_offer_use_case(rides, offers).execute(
             driver, ride.id, CreateOfferInput(accept_at_fare=True)
         )
 
@@ -190,7 +190,7 @@ async def test_create_offer_rejects_offline_driver():
     ride = await rides.add(_ride(rider.id))
 
     with pytest.raises(DriverUnavailableError):
-        await CreateOffer(rides, offers).execute(
+        await create_offer_use_case(rides, offers).execute(
             driver, ride.id, CreateOfferInput(accept_at_fare=True)
         )
 
@@ -203,7 +203,7 @@ async def test_create_offer_rejects_paused_ride():
     await rides.add(ride)
 
     with pytest.raises(InvalidRideTransitionError):
-        await CreateOffer(rides, offers).execute(
+        await create_offer_use_case(rides, offers).execute(
             driver, ride.id, CreateOfferInput(accept_at_fare=True)
         )
 
@@ -218,7 +218,7 @@ async def test_create_offer_rejects_busy_driver():
     target = await rides.add(_ride(rider_b.id))
 
     with pytest.raises(DriverUnavailableError):
-        await CreateOffer(rides, offers).execute(
+        await create_offer_use_case(rides, offers).execute(
             driver, target.id, CreateOfferInput(accept_at_fare=True)
         )
 
@@ -233,10 +233,10 @@ async def test_accept_offer_assigns_ride_and_rejects_others():
     await users.add(d2)
     ride = await rides.add(_ride(rider.id))
 
-    o1 = await CreateOffer(rides, offers).execute(
+    o1 = await create_offer_use_case(rides, offers).execute(
         d1, ride.id, CreateOfferInput(accept_at_fare=True)
     )
-    o2 = await CreateOffer(rides, offers).execute(
+    o2 = await create_offer_use_case(rides, offers).execute(
         d2, ride.id, CreateOfferInput(accept_at_fare=False, price=Decimal("30.00"))
     )
 
@@ -261,10 +261,10 @@ async def test_accept_second_offer_after_assignment_fails():
     await users.add(d2)
     ride = await rides.add(_ride(rider.id))
 
-    o1 = await CreateOffer(rides, offers).execute(
+    o1 = await create_offer_use_case(rides, offers).execute(
         d1, ride.id, CreateOfferInput(accept_at_fare=True)
     )
-    o2 = await CreateOffer(rides, offers).execute(
+    o2 = await create_offer_use_case(rides, offers).execute(
         d2, ride.id, CreateOfferInput(accept_at_fare=True)
     )
 
@@ -281,7 +281,7 @@ async def test_accept_rejects_foreign_passenger():
     rider, intruder, driver = _passenger(), _passenger(), _driver()
     await users.add(driver)
     ride = await rides.add(_ride(rider.id))
-    offer = await CreateOffer(rides, offers).execute(
+    offer = await create_offer_use_case(rides, offers).execute(
         driver, ride.id, CreateOfferInput(accept_at_fare=True)
     )
 
@@ -296,7 +296,7 @@ async def test_accept_rejects_expired_offer():
     rider, driver = _passenger(), _driver()
     await users.add(driver)
     ride = await rides.add(_ride(rider.id))
-    offer = await CreateOffer(rides, offers).execute(
+    offer = await create_offer_use_case(rides, offers).execute(
         driver, ride.id, CreateOfferInput(accept_at_fare=True)
     )
 
@@ -319,10 +319,10 @@ async def test_accept_fails_when_driver_already_busy():
     ride_a = await rides.add(_ride(rider_a.id))
     ride_b = await rides.add(_ride(rider_b.id))
 
-    offer_a = await CreateOffer(rides, offers).execute(
+    offer_a = await create_offer_use_case(rides, offers).execute(
         driver, ride_a.id, CreateOfferInput(accept_at_fare=True)
     )
-    offer_b = await CreateOffer(rides, offers).execute(
+    offer_b = await create_offer_use_case(rides, offers).execute(
         driver, ride_b.id, CreateOfferInput(accept_at_fare=True)
     )
 
@@ -343,7 +343,7 @@ async def test_withdraw_offer_kills_pending_offer():
     rides, offers = InMemoryRideRequestRepository(), InMemoryOfferRepository()
     rider, driver = _passenger(), _driver()
     ride = await rides.add(_ride(rider.id))
-    offer = await CreateOffer(rides, offers).execute(
+    offer = await create_offer_use_case(rides, offers).execute(
         driver, ride.id, CreateOfferInput(accept_at_fare=True)
     )
 
@@ -356,7 +356,7 @@ async def test_withdraw_offer_rejects_foreign_driver():
     rides, offers = InMemoryRideRequestRepository(), InMemoryOfferRepository()
     rider, driver, other = _passenger(), _driver(), _driver()
     ride = await rides.add(_ride(rider.id))
-    offer = await CreateOffer(rides, offers).execute(
+    offer = await create_offer_use_case(rides, offers).execute(
         driver, ride.id, CreateOfferInput(accept_at_fare=True)
     )
 
@@ -431,7 +431,7 @@ async def test_set_driver_offline_rejects_pending_offers():
     rider, driver = _passenger(), _driver()
     await users.add(driver)
     ride = await rides.add(_ride(rider.id))
-    created = await CreateOffer(rides, offers).execute(
+    created = await create_offer_use_case(rides, offers).execute(
         driver,
         ride.id,
         CreateOfferInput(accept_at_fare=False, price=Decimal("30.00")),
@@ -509,10 +509,10 @@ async def test_list_offers_hides_expired_offers():
     await users.add(d2)
     ride = await rides.add(_ride(rider.id))
 
-    fresh = await CreateOffer(rides, offers).execute(
+    fresh = await create_offer_use_case(rides, offers).execute(
         d1, ride.id, CreateOfferInput(accept_at_fare=True)
     )
-    old = await CreateOffer(rides, offers).execute(
+    old = await create_offer_use_case(rides, offers).execute(
         d2, ride.id, CreateOfferInput(accept_at_fare=True)
     )
     # Envejecemos una oferta más allá de su TTL (30 s).
@@ -534,10 +534,12 @@ async def test_list_offers_empty_after_accept():
     await users.add(d2)
     ride = await rides.add(_ride(rider.id))
 
-    o1 = await CreateOffer(rides, offers).execute(
+    o1 = await create_offer_use_case(rides, offers).execute(
         d1, ride.id, CreateOfferInput(accept_at_fare=True)
     )
-    await CreateOffer(rides, offers).execute(d2, ride.id, CreateOfferInput(accept_at_fare=True))
+    await create_offer_use_case(rides, offers).execute(
+        d2, ride.id, CreateOfferInput(accept_at_fare=True)
+    )
     await AcceptOffer(rides, offers).execute(rider, o1.detail.offer.id)
 
     listed = await ListOffersForRide(rides, offers, users).execute(rider, ride.id)
@@ -552,10 +554,10 @@ async def test_cancel_ride_kills_active_offers():
     await users.add(d1)
     await users.add(d2)
     ride = await rides.add(_ride(rider.id))
-    o1 = await CreateOffer(rides, offers).execute(
+    o1 = await create_offer_use_case(rides, offers).execute(
         d1, ride.id, CreateOfferInput(accept_at_fare=True)
     )
-    o2 = await CreateOffer(rides, offers).execute(
+    o2 = await create_offer_use_case(rides, offers).execute(
         d2, ride.id, CreateOfferInput(accept_at_fare=True)
     )
 
@@ -588,7 +590,7 @@ async def test_cancel_ride_does_not_reject_offer_when_accept_wins_race():
     await users.add(driver)
     offers = AcceptWinsBeforeCancel(rides=rides, users=users)
     ride = await rides.add(_ride(rider.id))
-    created = await CreateOffer(rides, offers).execute(
+    created = await create_offer_use_case(rides, offers).execute(
         driver, ride.id, CreateOfferInput(accept_at_fare=True)
     )
 
@@ -604,7 +606,7 @@ async def test_expire_offer_marks_expired_when_past_ttl():
     rides, offers = InMemoryRideRequestRepository(), InMemoryOfferRepository()
     rider, driver = _passenger(), _driver()
     ride = await rides.add(_ride(rider.id))
-    created = await CreateOffer(rides, offers).execute(
+    created = await create_offer_use_case(rides, offers).execute(
         driver, ride.id, CreateOfferInput(accept_at_fare=True)
     )
     offer = created.detail.offer
@@ -628,7 +630,7 @@ async def test_expire_offer_skips_already_resolved_offer():
     rider, driver = _passenger(), _driver()
     await users.add(driver)
     ride = await rides.add(_ride(rider.id))
-    created = await CreateOffer(rides, offers).execute(
+    created = await create_offer_use_case(rides, offers).execute(
         driver, ride.id, CreateOfferInput(accept_at_fare=True)
     )
     await AcceptOffer(rides, offers).execute(rider, created.detail.offer.id)

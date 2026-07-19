@@ -36,7 +36,9 @@ from app.api.v1.schemas.realtime import (
 from app.api.v1.schemas.rides import OpenRideResponse, RideResponse
 from app.application.dto import (
     AcceptOfferResult,
+    CreateOfferResult,
     OfferDetail,
+    PendingRealtimeEvent,
     RideDetail,
     RidePausedResult,
 )
@@ -52,6 +54,56 @@ from app.infrastructure.realtime.hub import (
 
 async def _broadcast(topic: str, message: NegotiationMessage) -> None:
     await hub.broadcast(topic, dump_negotiation_message(message))
+
+
+async def _broadcast_pending(events: list[PendingRealtimeEvent]) -> None:
+    """Entrega directa de un batch ya serializado con el contrato canónico.
+
+    Mientras la outbox opera en sombra, esta sigue siendo la ruta que llega a los
+    sockets. Reutilizar el mismo batch evita que ambos caminos deriven en payload
+    u orden distintos.
+    """
+    for event in events:
+        await hub.broadcast(event.topic, event.payload)
+
+
+def _pending_offer_event(
+    ride_id: uuid.UUID, message: NegotiationMessage
+) -> PendingRealtimeEvent:
+    return PendingRealtimeEvent(
+        event_type=message.type,
+        topic=ride_topic(ride_id),
+        aggregate_type="ride",
+        aggregate_id=ride_id,
+        payload=dump_negotiation_message(message),
+    )
+
+
+def build_create_offer_events(result: CreateOfferResult) -> list[PendingRealtimeEvent]:
+    """Construye el batch durable/directo de crear o reemplazar una oferta."""
+    detail = result.detail
+    ride_id = detail.offer.ride_id
+    pending: list[PendingRealtimeEvent] = []
+    if result.superseded_offer_id is not None:
+        pending.append(
+            _pending_offer_event(
+                ride_id,
+                OfferWithdrawnMessage(
+                    data=OfferWithdrawnData(
+                        driver_id=detail.driver.id,
+                        offer_id=result.superseded_offer_id,
+                        reason="superseded",
+                    )
+                ),
+            )
+        )
+    pending.append(
+        _pending_offer_event(
+            ride_id,
+            OfferCreatedMessage(data=OfferResponse.from_detail(detail)),
+        )
+    )
+    return pending
 
 
 async def publish_ride_created(detail: OpenRideDetail) -> None:
@@ -118,9 +170,10 @@ async def publish_ride_paused(
 
 async def publish_offer_created(detail: OfferDetail) -> None:
     """Una oferta nueva llega al pasajero dueño del viaje."""
-    await _broadcast(
-        ride_topic(detail.offer.ride_id),
-        OfferCreatedMessage(data=OfferResponse.from_detail(detail)),
+    await _broadcast_pending(
+        build_create_offer_events(
+            CreateOfferResult(detail=detail, superseded_offer_id=None)
+        )
     )
 
 
@@ -206,17 +259,14 @@ async def publish_offer_superseded(superseded_offer_id: uuid.UUID, detail: Offer
     quita la tarjeta vieja sin avisar "retiró su oferta" (el ``offer_created``
     inmediato ya anuncia el monto nuevo).
     """
-    await _broadcast(
-        ride_topic(detail.offer.ride_id),
-        OfferWithdrawnMessage(
-            data=OfferWithdrawnData(
-                driver_id=detail.driver.id,
-                offer_id=superseded_offer_id,
-                reason="superseded",
+    await _broadcast_pending(
+        build_create_offer_events(
+            CreateOfferResult(
+                detail=detail,
+                superseded_offer_id=superseded_offer_id,
             )
-        ),
+        )
     )
-    await publish_offer_created(detail)
 
 
 async def publish_ride_status(detail: RideDetail) -> None:

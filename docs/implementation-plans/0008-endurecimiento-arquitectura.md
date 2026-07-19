@@ -213,12 +213,23 @@ Axios todavía continúe en segundo plano sin propagar `AbortSignal`.
 
 ### 3.1 Unidad de trabajo y outbox
 
-Para publicar un evento después de un commit sin ventana de pérdida, la mutación
-y el registro del evento deben pertenecer a la misma transacción. Se introducirá
-una `UnitOfWork` en aplicación de forma incremental; los repositorios harán
-`flush` y la unidad de trabajo decidirá `commit`/`rollback`.
+> **Progreso:** la migración `0018_realtime_outbox` crea la outbox, el contador
+> transaccional de versiones por agregado y el índice parcial de reclamación.
+> `CreateOffer`/reemplazo es el primer productor: oferta, batch ordenado y
+> versiones se confirman en un solo commit mediante `UnitOfWork`; la publicación
+> directa reutiliza exactamente el payload persistido. El recorder está detrás
+> de `REALTIME_OUTBOX_RECORDING_ENABLED=false` y debe permanecer apagado hasta
+> que el dispatcher sombra pueda drenar y marcar los batches sin entregarlos al
+> cliente. Esta entrega no habilita múltiples workers.
+> `0018` no se aplicó a la base local `viajaya`; sus pruebas PostgreSQL son
+> opt-in y CI las ejecutará sobre una base desechable.
 
-Tabla propuesta `realtime_outbox`:
+Para publicar un evento después de un commit sin ventana de pérdida, la mutación
+y el registro del evento deben pertenecer a la misma transacción. Se introdujo
+una `UnitOfWork` en aplicación de forma incremental; los repositorios migrados
+hacen `flush` y la unidad de trabajo decide `commit`/`rollback`.
+
+Esquema actual de `realtime_outbox`:
 
 - `id UUID` (`event_id`);
 - `event_type`, `topic`;
@@ -227,6 +238,11 @@ Tabla propuesta `realtime_outbox`:
 - `created_at`, `published_at`;
 - `attempts`, `last_error`.
 
+La implementación añade además `batch_id` + `sequence` para preservar el orden
+de fanouts y `next_attempt_at` para evitar reintentos calientes. La tabla
+`realtime_aggregate_versions` asigna versiones dentro de la transacción; no se
+reutiliza `pool_version`, porque ese contador no cambia en todos los eventos.
+
 Un dispatcher reclamará filas con `FOR UPDATE SKIP LOCKED`, publicará en Redis y
 marcará `published_at`. Si muere después de publicar y antes de marcar, el evento
 se repetirá; por eso la idempotencia del cliente es obligatoria.
@@ -234,6 +250,24 @@ se repetirá; por eso la idempotencia del cliente es obligatoria.
 Las operaciones atómicas de aceptación, cancelación, pausa y creación/reemplazo
 de oferta serán las primeras en migrar. No se retirará la publicación directa
 hasta que la outbox funcione en modo sombra y sus métricas coincidan.
+
+- [x] Crear esquema, índices, constraints y downgrade de `0018`.
+- [x] Reclamar batches completos con `FOR UPDATE SKIP LOCKED` y liberarlos al
+  hacer rollback.
+- [x] Migrar creación/reemplazo de oferta a `flush` + outbox + commit del UoW.
+- [x] Reutilizar el mismo builder canónico para outbox y WebSocket directo.
+- [x] Proteger el producer con un feature flag apagado por defecto para no crear
+  un backlog histórico imposible de reproducir con seguridad.
+- [ ] Ejecutar el dispatcher en modo sombra con lifecycle y apagado coordinado.
+- [ ] Marcar/depurar el backlog sombra antes de habilitar entrega real.
+- [ ] Validar al despachar que `event_type`, topic y payload canónico coincidan;
+  medir pendientes y edad máxima, y definir retención de filas publicadas.
+- [ ] No habilitar entrega real con múltiples dispatchers hasta que el envelope
+  lleve `event_id`/`aggregate_version` y mobile descarte duplicados y versiones
+  atrasadas; batches distintos del mismo agregado todavía pueden reclamarse en
+  paralelo.
+- [ ] Migrar aceptación y después pausa/cancelación, resolviendo versiones de
+  los otros rides afectados por el fanout.
 
 ### 3.2 Bridge Redis y sockets locales
 

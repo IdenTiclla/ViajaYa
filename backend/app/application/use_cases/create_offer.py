@@ -10,6 +10,7 @@ from __future__ import annotations
 import uuid
 
 from app.application.dto import CreateOfferInput, CreateOfferResult, OfferDetail
+from app.application.interfaces import CreateOfferEventRecorder, UnitOfWork
 from app.domain.entities import Offer, RideStatus, User, vehicle_can_serve
 from app.domain.exceptions import (
     DriverUnavailableError,
@@ -23,11 +24,31 @@ from app.domain.value_objects import FareOffer
 
 
 class CreateOffer:
-    def __init__(self, rides: RideRequestRepository, offers: OfferRepository) -> None:
+    def __init__(
+        self,
+        rides: RideRequestRepository,
+        offers: OfferRepository,
+        unit_of_work: UnitOfWork,
+        event_recorder: CreateOfferEventRecorder,
+    ) -> None:
         self._rides = rides
         self._offers = offers
+        self._unit_of_work = unit_of_work
+        self._event_recorder = event_recorder
 
     async def execute(
+        self, driver: User, ride_id: uuid.UUID, data: CreateOfferInput
+    ) -> CreateOfferResult:
+        try:
+            result = await self._mutate(driver, ride_id, data)
+            await self._event_recorder.record(result)
+            await self._unit_of_work.commit()
+            return result
+        except BaseException:
+            await self._unit_of_work.rollback()
+            raise
+
+    async def _mutate(
         self, driver: User, ride_id: uuid.UUID, data: CreateOfferInput
     ) -> CreateOfferResult:
         if not driver.is_driver or driver.vehicle_type is None:

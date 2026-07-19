@@ -14,7 +14,6 @@ from decimal import Decimal
 
 from app.application.dto import CreateOfferInput
 from app.application.use_cases.accept_offer import AcceptOffer
-from app.application.use_cases.create_offer import CreateOffer
 from app.domain.entities import (
     Location,
     OfferStatus,
@@ -30,6 +29,7 @@ from tests.fakes import (
     InMemoryOfferRepository,
     InMemoryRideRequestRepository,
     InMemoryUserRepository,
+    create_offer_use_case,
 )
 
 _LOC = Location(-16.5, -68.13, "Casa", "Calle 1")
@@ -75,10 +75,10 @@ async def test_accept_withdraws_drivers_other_offers():
     ride_a = await rides.add(_ride(rider_a.id))
     ride_b = await rides.add(_ride(rider_b.id))
 
-    offer_a = await CreateOffer(rides, offers).execute(
+    offer_a = await create_offer_use_case(rides, offers).execute(
         driver, ride_a.id, CreateOfferInput(accept_at_fare=True)
     )
-    offer_b = await CreateOffer(rides, offers).execute(
+    offer_b = await create_offer_use_case(rides, offers).execute(
         driver, ride_b.id, CreateOfferInput(accept_at_fare=True)
     )
 
@@ -99,10 +99,10 @@ async def test_accept_returns_none_when_ride_already_assigned():
     await users.add(d2)
     ride = await rides.add(_ride(rider.id))
 
-    o1 = await CreateOffer(rides, offers).execute(
+    o1 = await create_offer_use_case(rides, offers).execute(
         d1, ride.id, CreateOfferInput(accept_at_fare=True)
     )
-    o2 = await CreateOffer(rides, offers).execute(
+    o2 = await create_offer_use_case(rides, offers).execute(
         d2, ride.id, CreateOfferInput(accept_at_fare=True)
     )
 
@@ -122,7 +122,7 @@ async def test_accept_revalidates_paused_ride_atomically():
     rider, driver = _passenger(), _driver()
     await users.add(driver)
     ride = await rides.add(_ride(rider.id))
-    created = await CreateOffer(rides, offers).execute(
+    created = await create_offer_use_case(rides, offers).execute(
         driver, ride.id, CreateOfferInput(accept_at_fare=True)
     )
     ride.paused = True
@@ -138,7 +138,7 @@ async def test_accept_revalidates_driver_online_atomically():
     rider, driver = _passenger(), _driver()
     await users.add(driver)
     ride = await rides.add(_ride(rider.id))
-    created = await CreateOffer(rides, offers).execute(
+    created = await create_offer_use_case(rides, offers).execute(
         driver, ride.id, CreateOfferInput(accept_at_fare=True)
     )
 
@@ -156,7 +156,7 @@ async def test_accept_revalidates_offer_ttl_atomically():
     rider, driver = _passenger(), _driver()
     await users.add(driver)
     ride = await rides.add(_ride(rider.id))
-    created = await CreateOffer(rides, offers).execute(
+    created = await create_offer_use_case(rides, offers).execute(
         driver, ride.id, CreateOfferInput(accept_at_fare=True)
     )
     offer = await offers.get_by_id(created.detail.offer.id)
@@ -173,7 +173,7 @@ async def test_reject_if_pending_cannot_reject_accepted_offer():
     rider, driver = _passenger(), _driver()
     await users.add(driver)
     ride = await rides.add(_ride(rider.id))
-    created = await CreateOffer(rides, offers).execute(
+    created = await create_offer_use_case(rides, offers).execute(
         driver, ride.id, CreateOfferInput(accept_at_fare=True)
     )
     await offers.accept_atomically(created.detail.offer.id)

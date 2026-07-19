@@ -13,6 +13,10 @@ from typing import Annotated
 from fastapi import Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.realtime_outbox import (
+    DisabledCreateOfferEventRecorder,
+    OutboxCreateOfferEventRecorder,
+)
 from app.application.interfaces import RideReadRepository, SocialIdentityVerifier, TokenService
 from app.application.use_cases.accept_offer import AcceptOffer
 from app.application.use_cases.authenticate_user import AuthenticateUser
@@ -57,6 +61,7 @@ from app.domain.repositories import (
     UserRepository,
 )
 from app.infrastructure.config import Settings, get_settings
+from app.infrastructure.db.outbox import SqlAlchemyRealtimeOutbox
 from app.infrastructure.db.repositories import (
     SqlAlchemyOfferRepository,
     SqlAlchemyPendingRatingRepository,
@@ -68,6 +73,7 @@ from app.infrastructure.db.repositories import (
     SqlAlchemyUserRepository,
 )
 from app.infrastructure.db.session import async_session_factory, get_session
+from app.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from app.infrastructure.oauth.facebook_verifier import FacebookIdentityVerifier
 from app.infrastructure.oauth.google_verifier import GoogleIdentityVerifier
 from app.infrastructure.security.bcrypt_hasher import BcryptPasswordHasher
@@ -213,9 +219,22 @@ def get_dismiss_open_ride(rides: RideRequestRepositoryDep) -> DismissOpenRide:
 
 
 def get_create_offer(
-    rides: RideRequestRepositoryDep, offers: OfferRepositoryDep
+    rides: RideRequestRepositoryDep,
+    session: SessionDep,
+    settings: SettingsDep,
 ) -> CreateOffer:
-    return CreateOffer(rides, offers)
+    offers = SqlAlchemyOfferRepository(session, commit_create_or_supersede=False)
+    recorder = (
+        OutboxCreateOfferEventRecorder(SqlAlchemyRealtimeOutbox(session))
+        if settings.realtime_outbox_recording_enabled
+        else DisabledCreateOfferEventRecorder()
+    )
+    return CreateOffer(
+        rides,
+        offers,
+        SqlAlchemyUnitOfWork(session),
+        recorder,
+    )
 
 
 def get_list_offers_for_ride(

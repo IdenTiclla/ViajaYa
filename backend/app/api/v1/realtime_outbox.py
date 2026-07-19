@@ -6,7 +6,11 @@ import uuid
 from collections.abc import Sequence
 
 from app.api.v1.events import build_create_offer_events
-from app.api.v1.schemas.realtime import parse_negotiation_message
+from app.api.v1.schemas.realtime import (
+    RealtimeEventEnvelopeV2,
+    parse_negotiation_message,
+    validate_realtime_event_semantics,
+)
 from app.application.dto import CreateOfferResult, RealtimeOutboxEvent
 from app.application.exceptions import InvalidRealtimeOutboxBatchError
 from app.application.interfaces import (
@@ -16,28 +20,7 @@ from app.application.interfaces import (
 )
 
 _POOL_TOPICS = frozenset({"pool:taxi", "pool:moto", "pool:delivery"})
-_EVENT_TOPIC_PREFIXES = {
-    "ride_created": frozenset({"pool"}),
-    "ride_closed": frozenset({"pool"}),
-    "ride_paused": frozenset({"driver"}),
-    "offer_created": frozenset({"ride"}),
-    "offer_rejected": frozenset({"driver"}),
-    "offer_withdrawn": frozenset({"ride"}),
-    "offer_accepted": frozenset({"driver"}),
-    "offers_withdrawn": frozenset({"driver"}),
-    "offer_expired": frozenset({"ride", "driver"}),
-    "ride_status": frozenset({"ride", "driver"}),
-}
-_RIDE_ID_FIELD_BY_EVENT = {
-    "ride_created": "id",
-    "ride_closed": "ride_id",
-    "ride_paused": "id",
-    "offer_created": "ride_id",
-    "offer_rejected": "ride_id",
-    "offer_accepted": "id",
-    "offer_expired": "ride_id",
-    "ride_status": "id",
-}
+_MAX_SAFE_JSON_INTEGER = 2**53 - 1
 
 
 def _has_allowed_topic(topic: str) -> bool:
@@ -56,17 +39,6 @@ def _has_allowed_topic(topic: str) -> bool:
 
 def _invalid_batch(reason: str) -> InvalidRealtimeOutboxBatchError:
     return InvalidRealtimeOutboxBatchError(f"Lote realtime inválido: {reason}.")
-
-
-def _topic_prefix(topic: str) -> str:
-    return topic.partition(":")[0]
-
-
-def _topic_uuid(topic: str) -> uuid.UUID | None:
-    prefix, _, raw_id = topic.partition(":")
-    if prefix not in {"ride", "driver"}:
-        return None
-    return uuid.UUID(raw_id)
 
 
 def validate_realtime_outbox_batch(events: Sequence[RealtimeOutboxEvent]) -> None:
@@ -89,10 +61,10 @@ def validate_realtime_outbox_batch(events: Sequence[RealtimeOutboxEvent]) -> Non
 
     last_stream_version: dict[str, int] = {}
     for event in events:
-        if event.aggregate_version < 1:
-            raise _invalid_batch("contiene aggregate_version no positiva")
-        if event.stream_version < 1:
-            raise _invalid_batch("contiene stream_version no positiva")
+        if not 1 <= event.aggregate_version <= _MAX_SAFE_JSON_INTEGER:
+            raise _invalid_batch("contiene aggregate_version fuera del rango JSON seguro")
+        if not 1 <= event.stream_version <= _MAX_SAFE_JSON_INTEGER:
+            raise _invalid_batch("contiene stream_version fuera del rango JSON seguro")
         if not _has_allowed_topic(event.topic):
             raise _invalid_batch("contiene un topic no permitido")
 
@@ -111,31 +83,50 @@ def validate_realtime_outbox_batch(events: Sequence[RealtimeOutboxEvent]) -> Non
             message = parse_negotiation_message(event.payload)
         except (TypeError, ValueError):
             raise _invalid_batch("contiene un payload fuera del contrato") from None
+        try:
+            validate_realtime_event_semantics(
+                event_type=event.event_type,
+                stream=event.topic,
+                aggregate_type=event.aggregate_type,
+                aggregate_id=event.aggregate_id,
+                message=message,
+            )
+        except ValueError as error:
+            # La razón solo contiene nombres de campos/reglas, nunca el payload.
+            raise _invalid_batch(str(error)) from None
 
-        topic_prefix = _topic_prefix(event.topic)
-        if topic_prefix not in _EVENT_TOPIC_PREFIXES.get(event.event_type, frozenset()):
-            raise _invalid_batch("event_type no admite el topic indicado")
 
-        expected_aggregate_type = (
-            "driver" if event.event_type == "offers_withdrawn" else "ride"
-        )
-        if event.aggregate_type != expected_aggregate_type:
-            raise _invalid_batch("aggregate_type no coincide con event_type")
+def _serialize_realtime_outbox_event_v2(
+    event: RealtimeOutboxEvent,
+) -> dict[str, object]:
+    payload_data = event.payload.get("data")
+    if not isinstance(payload_data, dict):
+        raise _invalid_batch("payload.data no es un objeto")
 
-        topic_id = _topic_uuid(event.topic)
-        if topic_prefix == event.aggregate_type and topic_id != event.aggregate_id:
-            raise _invalid_batch("el topic no coincide con aggregate_id")
+    envelope = RealtimeEventEnvelopeV2(
+        schema_version=2,
+        kind="event",
+        event_id=event.id,
+        batch_id=event.batch_id,
+        sequence=event.sequence,
+        aggregate_type=event.aggregate_type,
+        aggregate_id=event.aggregate_id,
+        aggregate_version=event.aggregate_version,
+        stream=event.topic,
+        stream_version=event.stream_version,
+        occurred_at=event.created_at,
+        type=event.event_type,
+        data=payload_data,
+    )
+    return envelope.model_dump(mode="json")
 
-        ride_id_field = _RIDE_ID_FIELD_BY_EVENT.get(event.event_type)
-        if event.aggregate_type == "ride" and ride_id_field is not None:
-            ride_id = getattr(message.data, ride_id_field)
-            if ride_id != event.aggregate_id:
-                raise _invalid_batch("el payload no coincide con aggregate_id")
 
-        if event.event_type == "ride_created":
-            expected_pool = f"pool:{message.data.service_type.value}"
-            if event.topic != expected_pool:
-                raise _invalid_batch("el servicio del payload no coincide con el pool")
+def serialize_realtime_outbox_batch_v2(
+    events: Sequence[RealtimeOutboxEvent],
+) -> list[dict[str, object]]:
+    """Valida un lote canónico y lo traduce a envelopes v2 listos para JSON."""
+    validate_realtime_outbox_batch(events)
+    return [_serialize_realtime_outbox_event_v2(event) for event in events]
 
 
 class CanonicalRealtimeOutboxBatchValidator(RealtimeOutboxBatchValidator):

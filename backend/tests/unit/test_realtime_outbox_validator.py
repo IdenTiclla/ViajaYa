@@ -10,6 +10,7 @@ import pytest
 
 from app.api.v1.realtime_outbox import (
     CanonicalRealtimeOutboxBatchValidator,
+    serialize_realtime_outbox_batch_v2,
     validate_realtime_outbox_batch,
 )
 from app.application.dto import RealtimeOutboxEvent
@@ -89,13 +90,13 @@ def test_rechaza_un_event_id_duplicado() -> None:
         validate_realtime_outbox_batch(events)
 
 
-@pytest.mark.parametrize("aggregate_version", [0, -1])
+@pytest.mark.parametrize("aggregate_version", [0, -1, 2**53])
 def test_rechaza_aggregate_version_no_positiva(aggregate_version: int) -> None:
     with pytest.raises(InvalidRealtimeOutboxBatchError, match="aggregate_version"):
         validate_realtime_outbox_batch([_event(aggregate_version=aggregate_version)])
 
 
-@pytest.mark.parametrize("stream_version", [0, -1])
+@pytest.mark.parametrize("stream_version", [0, -1, 2**53])
 def test_rechaza_stream_version_no_positiva(stream_version: int) -> None:
     with pytest.raises(InvalidRealtimeOutboxBatchError, match="stream_version"):
         validate_realtime_outbox_batch([_event(stream_version=stream_version)])
@@ -152,7 +153,7 @@ def test_rechaza_payload_fuera_del_contrato_sin_filtrarlo() -> None:
 def test_rechaza_un_topic_no_admitido_por_el_tipo_de_evento() -> None:
     event = _event(topic=f"ride:{uuid.uuid4()}")
 
-    with pytest.raises(InvalidRealtimeOutboxBatchError, match="no admite el topic"):
+    with pytest.raises(InvalidRealtimeOutboxBatchError, match="no admite el stream"):
         validate_realtime_outbox_batch([event])
 
 
@@ -167,7 +168,7 @@ def test_rechaza_un_topic_que_no_coincide_con_el_agregado() -> None:
         },
     )
 
-    with pytest.raises(InvalidRealtimeOutboxBatchError, match="topic.*aggregate_id"):
+    with pytest.raises(InvalidRealtimeOutboxBatchError, match="stream.*aggregate_id"):
         validate_realtime_outbox_batch([event])
 
 
@@ -224,3 +225,44 @@ def test_rechaza_un_pool_que_no_coincide_con_el_servicio() -> None:
 
     with pytest.raises(InvalidRealtimeOutboxBatchError, match="servicio.*pool"):
         validate_realtime_outbox_batch([event])
+
+
+def test_serializa_batch_unitario_outbox_a_envelope_v2() -> None:
+    event = _event(stream_version=9)
+
+    envelope = serialize_realtime_outbox_batch_v2([event])[0]
+
+    assert envelope == {
+        "schema_version": 2,
+        "kind": "event",
+        "event_id": str(event.id),
+        "batch_id": str(event.batch_id),
+        "sequence": 0,
+        "aggregate_type": "ride",
+        "aggregate_id": str(event.aggregate_id),
+        "aggregate_version": 1,
+        "stream": event.topic,
+        "stream_version": 9,
+        "occurred_at": event.created_at.isoformat().replace("+00:00", "Z"),
+        "type": "ride_closed",
+        "data": {"ride_id": str(event.aggregate_id)},
+    }
+
+
+def test_serializa_batch_canonico_preservando_secuencia_y_stream() -> None:
+    batch_id = uuid.uuid4()
+    events = [
+        _event(batch_id=batch_id, sequence=0, stream_version=20),
+        _event(batch_id=batch_id, sequence=1, stream_version=21),
+    ]
+
+    envelopes = serialize_realtime_outbox_batch_v2(events)
+
+    assert [envelope["sequence"] for envelope in envelopes] == [0, 1]
+    assert [envelope["stream_version"] for envelope in envelopes] == [20, 21]
+    assert all(envelope["stream"] == "pool:taxi" for envelope in envelopes)
+
+
+def test_serializer_v2_rechaza_batch_no_canonico() -> None:
+    with pytest.raises(InvalidRealtimeOutboxBatchError, match="secuencia"):
+        serialize_realtime_outbox_batch_v2([_event(sequence=1)])

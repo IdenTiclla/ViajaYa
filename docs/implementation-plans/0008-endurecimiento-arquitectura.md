@@ -65,7 +65,15 @@ con el mismo agregado, incluso entre fanouts; la versión de stream ordena lo qu
 ve cada topic y permite detectar huecos reales. El cliente deduplicará por
 `event_id`, solo aplicará la siguiente posición contigua del stream y pedirá un
 resnapshot ante un salto. Los snapshots llevarán un vector acotado de watermarks:
-uno para el pasajero y los pools más el topic personal para el conductor.
+exactamente `ride:{id}` para el pasajero; `pool:{vehicle_type}`,
+`pool:delivery` y `driver:{id}` para el conductor.
+
+`event_id` identifica una fila/entrega concreta de outbox; los fanouts de una
+misma mutación comparten `batch_id`, pero tienen IDs distintos. Un
+`aggregate_version` menor recibido por otro stream no se descarta globalmente:
+puede representar un delta que la proyección local aún necesita. Los guards de
+versión por agregado deben vivir en el reducer de cada proyección cuando el
+evento más nuevo sea un estado completo que realmente sustituya al anterior.
 
 ### Fallo seguro de presencia
 
@@ -197,12 +205,40 @@ La subfase 2.1 conserva el envelope actual `{type, data}`. No se añadirán
 misma transacción que la mutación mediante la outbox de la fase 3. Añadirlos
 antes crearía una falsa garantía de orden y durabilidad.
 
+La base del contrato v2 ya está implementada, pero todavía no está conectada al
+socket en vivo. Backend dispone de schemas estrictos para el envelope durable y
+los snapshots unificados, además de un serializador que traduce batches
+canónicos de outbox. Mobile conserva los parsers legacy y ofrece parsers duales:
+si un frame incluye cualquier clave reservada de v2 debe satisfacer el contrato
+v2 completo y nunca degrada silenciosamente a legacy. Ambos lados limitan
+versiones y secuencias al máximo entero seguro de JSON.
+
+El snapshot del pasajero contiene `{ride, offers}` y un único watermark. El del
+conductor contiene `{open_rides, paused_rides, offers, active_ride}` y los tres
+streams que realmente consume. `snapshot_id` y `captured_at` identifican la
+captura. Estos snapshots aún no se construyen desde una transacción de lectura
+consistente ni se emiten; activar v2 antes de resolver eso abriría una ventana
+entre el estado y sus watermarks.
+
+Mobile incluye además un gate puro de replay. Decide `apply`, `drop` o `resync`
+sin adelantar cursores y solo los confirma después de que el handler complete la
+mutación de caché. Así un fallo del handler permite reintentar el evento. El gate
+deduplica la misma entrega y detecta reutilización contradictoria de `event_id`
+incluyendo una huella canónica de `{type, data}`. Todavía no está cableado a
+`useNegotiationSocket`: hacerlo requiere que el
+backend entregue primero el snapshot consistente y que el socket pueda solicitar
+una resincronización controlada.
+
 ### Pruebas
 
 - [x] Snapshot seguido de deltas en los e2e WebSocket existentes.
-- [ ] Evento duplicado.
-- [ ] Evento atrasado con menor `aggregate_version`.
-- [ ] Reconexión con snapshot más nuevo que los eventos locales.
+- [x] Retry exacto de una entrega en el gate puro; reutilizar el mismo `event_id`
+  con otro stream, metadata o payload fuerza resnapshot.
+- [x] Evento atrasado con menor `aggregate_version` en otro stream: se conserva
+  el delta si su posición de stream es contigua, sin regresiones globales.
+- [x] Snapshot más nuevo que los eventos locales y rechazo de snapshots viejos.
+- [ ] Integrar el gate al socket y certificar duplicados, huecos y resnapshot con
+  el transporte WebSocket real.
 - [x] Payload inválido, razón inválida y tipo desconocido en el contrato backend.
 - [x] GET HTTP iniciado antes que un evento WebSocket y resuelto después: una
   prueba con `QueryClient` real certifica que la caché conserva el evento.
@@ -229,8 +265,11 @@ Axios todavía continúe en segundo plano sin propagar `AbortSignal`.
 > `REALTIME_OUTBOX_DISPATCH_MODE=off|shadow`, también apagado por defecto. El modo
 > sombra únicamente reclama, valida y marca batches: no entrega al hub WebSocket
 > ni a Redis. Esta vertical no incorpora modo `live` ni habilita múltiples
-> workers. El lifecycle ya realiza preflight del esquema actual, usa una sesión nueva por
-> iteración y detiene el loop de forma coordinada.
+> workers. El lifecycle ya realiza preflight del esquema actual, usa una sesión
+> nueva por iteración y detiene el loop de forma coordinada. El contrato v2 y su
+> serializador ya pueden representar esos batches, y mobile ya puede validarlos y
+> decidir su replay de forma pura; ninguna de esas piezas está habilitada en el
+> socket vivo todavía.
 > `0018`/`0019` no se aplicaron a la base local `viajaya`; sus pruebas PostgreSQL son
 > opt-in y CI las ejecutará sobre una base desechable.
 
@@ -298,6 +337,8 @@ Base ya cumplida por `93b9741`:
   un backlog histórico imposible de reproducir con seguridad.
 - [x] Añadir `0019`, reservar posiciones por stream sin deadlocks y evitar que
   claims concurrentes adelanten un batch del mismo topic.
+- [x] Definir y probar el envelope v2, snapshots con watermarks, parser dual
+  mobile y gate puro de idempotencia sin cambiar la emisión actual.
 
 Dispatcher sombra, sin Redis ni cambios de contrato/mobile:
 
@@ -309,8 +350,8 @@ Dispatcher sombra, sin Redis ni cambios de contrato/mobile:
   sus batches con la publicación directa antes de habilitar entrega real.
 - [ ] Medir pendientes y edad máxima, y definir retención de filas publicadas.
 - [ ] No habilitar entrega real hasta que el envelope lleve `event_id`, versiones
-  de agregado/stream, mobile detecte duplicados/atrasados/huecos y exista una
-  salida terminal para batches inválidos.
+  de agregado/stream en el socket vivo, el gate mobile esté integrado y exista
+  una salida terminal para batches inválidos.
 - [ ] Migrar aceptación y después pausa/cancelación, resolviendo versiones de
   los otros rides afectados por el fanout.
 

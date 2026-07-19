@@ -20,6 +20,7 @@ from app.application.dto import (
     PassengerRealtimeSnapshot,
     PendingRealtimeEvent,
     RealtimeOutboxEvent,
+    RealtimeOutboxQuarantineCode,
     RideDetail,
     RideHistoryItem,
     SocialProfile,
@@ -69,6 +70,19 @@ class RealtimeOutbox(ABC):
         next_attempt_at: datetime,
     ) -> None:
         """Registra el fallo y programa el siguiente intento del lote."""
+
+    @abstractmethod
+    async def mark_batch_quarantined(
+        self,
+        batch_id: uuid.UUID,
+        code: RealtimeOutboxQuarantineCode,
+        quarantined_at: datetime,
+    ) -> int:
+        """Aparta de forma terminal un lote inválido todavía pendiente.
+
+        Devuelve la cantidad de filas que hicieron la transición. La operación
+        es idempotente y nunca revive lotes publicados o apartados.
+        """
 
 
 class RealtimeSnapshotReader(ABC):

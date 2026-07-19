@@ -45,17 +45,24 @@ class ShadowRealtimeOutboxDispatcher:
     ) -> None:
         if poll_interval_seconds <= 0:
             raise ValueError("El intervalo de polling debe ser positivo.")
+        if retry_base_seconds <= 0:
+            raise ValueError("El backoff base debe ser positivo.")
+        if retry_max_seconds < retry_base_seconds:
+            raise ValueError("El backoff máximo no puede ser menor al base.")
         self._session_factory = session_factory
         self._validator = validator
         self._poll_interval_seconds = poll_interval_seconds
+        # Se conserva para clasificar fallos transitorios cuando exista un
+        # transporte live; los errores de contrato nunca consumen backoff.
         self._retry_base_seconds = retry_base_seconds
         self._retry_max_seconds = retry_max_seconds
         self._clock = clock
         self._stop_event = asyncio.Event()
         self._running = False
         self._last_error: str | None = None
-        self._invalid_batch_count = 0
-        self._last_invalid_batch_id: str | None = None
+        self._quarantined_batch_count = 0
+        self._last_quarantined_batch_id: str | None = None
+        self._last_quarantine_code: str | None = None
 
     @property
     def running(self) -> bool:
@@ -67,21 +74,26 @@ class ShadowRealtimeOutboxDispatcher:
         return self._last_error
 
     @property
-    def invalid_batch_count(self) -> int:
-        """Cantidad de intentos rechazados por el contrato desde el arranque."""
-        return self._invalid_batch_count
+    def quarantined_batch_count(self) -> int:
+        """Cantidad de batches apartados terminalmente desde el arranque."""
+        return self._quarantined_batch_count
 
     @property
-    def last_invalid_batch_id(self) -> str | None:
-        """Último batch inválido, sin incluir topic ni payload."""
-        return self._last_invalid_batch_id
+    def last_quarantined_batch_id(self) -> str | None:
+        """Último batch apartado, sin incluir topic ni payload."""
+        return self._last_quarantined_batch_id
+
+    @property
+    def last_quarantine_code(self) -> str | None:
+        """Código estable del último batch apartado."""
+        return self._last_quarantine_code
 
     async def preflight(self) -> None:
-        """Falla al arrancar si la migración 0018 todavía no está aplicada."""
+        """Falla al arrancar si alguna migración 0018–0020 no está aplicada."""
         async with self._session_factory() as session:
             try:
                 # Seleccionar los modelos completos detecta también una tabla
-                # parcial a la que le falte alguna columna de la revisión 0018.
+                # parcial a la que le falte alguna columna hasta la revisión 0020.
                 await session.execute(select(RealtimeOutboxModel).limit(1))
                 await session.execute(select(RealtimeAggregateVersionModel).limit(1))
                 await session.execute(select(RealtimeStreamVersionModel).limit(1))
@@ -95,8 +107,6 @@ class ShadowRealtimeOutboxDispatcher:
                 SqlAlchemyRealtimeOutbox(session),
                 SqlAlchemyUnitOfWork(session),
                 self._validator,
-                retry_base_seconds=self._retry_base_seconds,
-                retry_max_seconds=self._retry_max_seconds,
             )
             return await use_case.execute(self._clock())
 
@@ -115,7 +125,7 @@ class ShadowRealtimeOutboxDispatcher:
                     raise
                 except Exception as error:  # noqa: BLE001 - loop resiliente
                     self._last_error = type(error).__name__
-                    logger.exception(
+                    logger.error(
                         "Falló una iteración del dispatcher sombra (%s).",
                         self._last_error,
                     )
@@ -124,13 +134,15 @@ class ShadowRealtimeOutboxDispatcher:
 
                 if result.status == "empty":
                     await self._wait_for_work()
-                elif result.status == "failed":
-                    self._invalid_batch_count += 1
-                    self._last_invalid_batch_id = str(result.batch_id)
+                elif result.status == "quarantined":
+                    self._quarantined_batch_count += 1
+                    self._last_quarantined_batch_id = str(result.batch_id)
+                    self._last_quarantine_code = result.quarantine_code
                     logger.error(
-                        "El dispatcher sombra rechazó el batch %s; "
-                        "se reintentará con backoff.",
-                        self._last_invalid_batch_id,
+                        "El dispatcher sombra puso en cuarentena terminal "
+                        "el batch %s (%s).",
+                        self._last_quarantined_batch_id,
+                        self._last_quarantine_code,
                     )
         finally:
             self._running = False

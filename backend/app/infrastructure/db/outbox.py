@@ -13,7 +13,11 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
-from app.application.dto import PendingRealtimeEvent, RealtimeOutboxEvent
+from app.application.dto import (
+    PendingRealtimeEvent,
+    RealtimeOutboxEvent,
+    RealtimeOutboxQuarantineCode,
+)
 from app.application.interfaces import RealtimeOutbox
 from app.infrastructure.db.models import (
     RealtimeAggregateVersionModel,
@@ -39,6 +43,8 @@ def _to_event(row: RealtimeOutboxModel) -> RealtimeOutboxEvent:
         published_at=row.published_at,
         attempts=row.attempts,
         last_error=row.last_error,
+        quarantined_at=row.quarantined_at,
+        quarantine_code=row.quarantine_code,
     )
 
 
@@ -122,6 +128,7 @@ class SqlAlchemyRealtimeOutbox(RealtimeOutbox):
                     prior.stream_version < member.stream_version,
                     prior.batch_id != member.batch_id,
                     prior.published_at.is_(None),
+                    prior.quarantined_at.is_(None),
                 ),
             )
             .where(member.batch_id == anchor_row.batch_id)
@@ -135,6 +142,7 @@ class SqlAlchemyRealtimeOutbox(RealtimeOutbox):
                 .where(
                     anchor_row.sequence == 0,
                     anchor_row.published_at.is_(None),
+                    anchor_row.quarantined_at.is_(None),
                     anchor_row.next_attempt_at <= now,
                     ~blocking_prior,
                 )
@@ -171,7 +179,11 @@ class SqlAlchemyRealtimeOutbox(RealtimeOutbox):
     ) -> None:
         await self._session.execute(
             update(RealtimeOutboxModel)
-            .where(RealtimeOutboxModel.batch_id == batch_id)
+            .where(
+                RealtimeOutboxModel.batch_id == batch_id,
+                RealtimeOutboxModel.published_at.is_(None),
+                RealtimeOutboxModel.quarantined_at.is_(None),
+            )
             .values(published_at=published_at, last_error=None)
         )
 
@@ -183,9 +195,34 @@ class SqlAlchemyRealtimeOutbox(RealtimeOutbox):
     ) -> None:
         await self._session.execute(
             update(RealtimeOutboxModel)
-            .where(RealtimeOutboxModel.batch_id == batch_id)
+            .where(
+                RealtimeOutboxModel.batch_id == batch_id,
+                RealtimeOutboxModel.published_at.is_(None),
+                RealtimeOutboxModel.quarantined_at.is_(None),
+            )
             .values(last_error=error, next_attempt_at=next_attempt_at)
         )
+
+    async def mark_batch_quarantined(
+        self,
+        batch_id: uuid.UUID,
+        code: RealtimeOutboxQuarantineCode,
+        quarantined_at: datetime,
+    ) -> int:
+        result = await self._session.execute(
+            update(RealtimeOutboxModel)
+            .where(
+                RealtimeOutboxModel.batch_id == batch_id,
+                RealtimeOutboxModel.published_at.is_(None),
+                RealtimeOutboxModel.quarantined_at.is_(None),
+            )
+            .values(
+                quarantined_at=quarantined_at,
+                quarantine_code=code,
+                last_error=None,
+            )
+        )
+        return int(result.rowcount or 0)
 
     async def _reserve_aggregate_versions(
         self,

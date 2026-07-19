@@ -149,6 +149,41 @@ async def test_commit_del_head_habilita_la_siguiente_version_del_stream(
         await _cleanup(pg_test_db, {ride_id}, {topic})
 
 
+async def test_cuarentena_habilita_el_sucesor_solo_despues_del_commit(
+    pg_test_db,
+) -> None:
+    ride_id = uuid.uuid4()
+    topic = f"ride:{ride_id}"
+
+    try:
+        head = await _add_batch(pg_test_db, [_pending(ride_id, topic)])
+        successor = await _add_batch(pg_test_db, [_pending(ride_id, topic)])
+        sessions = async_sessionmaker(pg_test_db.engine, expire_on_commit=False)
+        claim_at = datetime.now(UTC) + timedelta(seconds=1)
+
+        async with sessions() as session_a, sessions() as session_b:
+            outbox_a = SqlAlchemyRealtimeOutbox(session_a)
+            outbox_b = SqlAlchemyRealtimeOutbox(session_b)
+            claimed_head = await outbox_a.claim_next_batch(claim_at)
+            assert claimed_head[0].batch_id == head[0].batch_id
+            assert await outbox_a.mark_batch_quarantined(
+                head[0].batch_id,
+                "invalid_payload",
+                claim_at,
+            ) == 1
+
+            assert await outbox_b.claim_next_batch(claim_at) == []
+            await session_b.rollback()
+            await session_a.commit()
+
+            claimed_successor = await outbox_b.claim_next_batch(claim_at)
+            assert claimed_successor[0].batch_id == successor[0].batch_id
+            assert claimed_successor[0].stream_version == 2
+            await session_b.rollback()
+    finally:
+        await _cleanup(pg_test_db, {ride_id}, {topic})
+
+
 async def test_productores_con_topics_invertidos_no_forman_deadlock(
     pg_test_db,
 ) -> None:

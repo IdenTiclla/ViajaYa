@@ -146,7 +146,7 @@ async def test_run_stops_while_waiting_without_leaving_an_orphan_task(
     assert call_count == 1
 
 
-async def test_run_exposes_an_invalid_batch_without_logging_its_payload(
+async def test_run_exposes_a_quarantined_batch_without_logging_its_payload(
     outbox_sessions: async_sessionmaker[AsyncSession],
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
@@ -154,20 +154,42 @@ async def test_run_exposes_an_invalid_batch_without_logging_its_payload(
     dispatcher = _dispatcher(outbox_sessions, poll_interval_seconds=30)
     batch_id = uuid.uuid4()
 
-    async def dispatch_failed() -> DispatchRealtimeOutboxResult:
+    async def dispatch_quarantined() -> DispatchRealtimeOutboxResult:
         dispatcher.stop()
         return DispatchRealtimeOutboxResult(
-            status="failed",
+            status="quarantined",
             batch_id=batch_id,
             event_count=1,
+            quarantine_code="invalid_payload",
         )
 
-    monkeypatch.setattr(dispatcher, "dispatch_once", dispatch_failed)
+    monkeypatch.setattr(dispatcher, "dispatch_once", dispatch_quarantined)
     await dispatcher.run()
 
-    assert dispatcher.invalid_batch_count == 1
-    assert dispatcher.last_invalid_batch_id == str(batch_id)
+    assert dispatcher.quarantined_batch_count == 1
+    assert dispatcher.last_quarantined_batch_id == str(batch_id)
+    assert dispatcher.last_quarantine_code == "invalid_payload"
     assert str(batch_id) in caplog.text
+
+
+async def test_run_sanitizes_unexpected_errors(
+    outbox_sessions: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    dispatcher = _dispatcher(outbox_sessions, poll_interval_seconds=30)
+    secret = "payload-super-secreto"
+
+    async def dispatch_error() -> DispatchRealtimeOutboxResult:
+        dispatcher.stop()
+        raise RuntimeError(secret)
+
+    monkeypatch.setattr(dispatcher, "dispatch_once", dispatch_error)
+    await dispatcher.run()
+
+    assert dispatcher.last_error == "RuntimeError"
+    assert "RuntimeError" in caplog.text
+    assert secret not in caplog.text
 
 
 async def test_preflight_accepts_a_database_with_outbox_tables(
@@ -176,7 +198,7 @@ async def test_preflight_accepts_a_database_with_outbox_tables(
     await _dispatcher(outbox_sessions).preflight()
 
 
-async def test_preflight_rejects_a_database_without_migration_0018() -> None:
+async def test_preflight_rejects_a_database_without_migrations_0018_to_0020() -> None:
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:",
         poolclass=StaticPool,

@@ -55,8 +55,12 @@ _ACTIVE_DRIVER_RIDE_STATUS_PREDICATE = text(
     "driver_id IS NOT NULL AND status IN ('accepted', 'arriving', 'in_progress')"
 )
 _OPEN_POOL_PREDICATE = text("status = 'searching' AND paused = false")
-_OUTBOX_PENDING_PREDICATE = text("published_at IS NULL AND sequence = 0")
-_OUTBOX_UNPUBLISHED_PREDICATE = text("published_at IS NULL")
+_OUTBOX_PENDING_PREDICATE = text(
+    "published_at IS NULL AND quarantined_at IS NULL AND sequence = 0"
+)
+_OUTBOX_UNPUBLISHED_PREDICATE = text(
+    "published_at IS NULL AND quarantined_at IS NULL"
+)
 _OUTBOX_PAYLOAD_TYPE = JSON().with_variant(JSONB(), "postgresql")
 
 
@@ -524,6 +528,19 @@ class RealtimeOutboxModel(Base):
             "attempts >= 0",
             name="ck_realtime_outbox_attempts_nonnegative",
         ),
+        CheckConstraint(
+            "published_at IS NULL OR quarantined_at IS NULL",
+            name="ck_realtime_outbox_terminal_state_exclusive",
+        ),
+        CheckConstraint(
+            "(quarantined_at IS NULL) = (quarantine_code IS NULL)",
+            name="ck_realtime_outbox_quarantine_complete",
+        ),
+        CheckConstraint(
+            "quarantine_code IS NULL OR "
+            "length(trim(quarantine_code)) BETWEEN 1 AND 64",
+            name="ck_realtime_outbox_quarantine_code_length",
+        ),
         Index(
             "ix_realtime_outbox_pending",
             "next_attempt_at",
@@ -538,6 +555,13 @@ class RealtimeOutboxModel(Base):
             "stream_version",
             postgresql_where=_OUTBOX_UNPUBLISHED_PREDICATE,
             sqlite_where=_OUTBOX_UNPUBLISHED_PREDICATE,
+        ),
+        Index(
+            "ix_realtime_outbox_quarantined",
+            "quarantined_at",
+            "batch_id",
+            postgresql_where=text("quarantined_at IS NOT NULL AND sequence = 0"),
+            sqlite_where=text("quarantined_at IS NOT NULL AND sequence = 0"),
         ),
     )
 
@@ -566,6 +590,10 @@ class RealtimeOutboxModel(Base):
     published_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    quarantined_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    quarantine_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     attempts: Mapped[int] = mapped_column(
         Integer, default=0, server_default="0", nullable=False
     )

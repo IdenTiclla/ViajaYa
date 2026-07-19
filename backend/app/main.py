@@ -50,7 +50,7 @@ def create_app(
                 ),
                 retry_max_seconds=resolved_settings.realtime_outbox_retry_max_seconds,
             )
-            # Con el flag activo, una base sin 0018 es un error de despliegue y
+            # Con el flag activo, una base sin 0018–0020 es un error de despliegue y
             # debe impedir que la API aparente estar lista.
             await dispatcher.preflight()
             dispatcher_task = asyncio.create_task(

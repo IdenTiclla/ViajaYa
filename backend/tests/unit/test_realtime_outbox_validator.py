@@ -58,8 +58,10 @@ def test_validador_canonico_implementa_el_puerto_de_aplicacion() -> None:
 
 
 def test_rechaza_un_lote_vacio() -> None:
-    with pytest.raises(InvalidRealtimeOutboxBatchError, match="vacío"):
+    with pytest.raises(InvalidRealtimeOutboxBatchError, match="vacío") as error:
         validate_realtime_outbox_batch([])
+
+    assert error.value.code == "empty_batch"
 
 
 def test_rechaza_mas_de_un_batch_id() -> None:
@@ -131,8 +133,10 @@ def test_rechaza_un_topic_fuera_del_espacio_permitido(topic: str) -> None:
 def test_rechaza_discrepancia_entre_event_type_y_payload_type() -> None:
     event = _event()
 
-    with pytest.raises(InvalidRealtimeOutboxBatchError, match="payload.type"):
+    with pytest.raises(InvalidRealtimeOutboxBatchError, match="payload.type") as error:
         validate_realtime_outbox_batch([replace(event, event_type="offer_expired")])
+
+    assert error.value.code == "event_type_mismatch"
 
 
 def test_rechaza_payload_fuera_del_contrato_sin_filtrarlo() -> None:
@@ -147,14 +151,20 @@ def test_rechaza_payload_fuera_del_contrato_sin_filtrarlo() -> None:
     with pytest.raises(InvalidRealtimeOutboxBatchError, match="fuera del contrato") as error:
         validate_realtime_outbox_batch([event])
 
+    assert error.value.code == "invalid_payload"
     assert private_value not in str(error.value)
 
 
 def test_rechaza_un_topic_no_admitido_por_el_tipo_de_evento() -> None:
     event = _event(topic=f"ride:{uuid.uuid4()}")
 
-    with pytest.raises(InvalidRealtimeOutboxBatchError, match="no admite el stream"):
+    with pytest.raises(
+        InvalidRealtimeOutboxBatchError,
+        match="no admite el stream",
+    ) as error:
         validate_realtime_outbox_batch([event])
+
+    assert error.value.code == "invalid_routing"
 
 
 def test_rechaza_un_topic_que_no_coincide_con_el_agregado() -> None:

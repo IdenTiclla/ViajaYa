@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 from collections.abc import Sequence
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 import pytest
 
@@ -55,6 +55,8 @@ class RecordingOutbox(RealtimeOutbox):
         self.claimed_at: datetime | None = None
         self.published: list[tuple[uuid.UUID, datetime]] = []
         self.failed: list[tuple[uuid.UUID, str, datetime]] = []
+        self.quarantined: list[tuple[uuid.UUID, str, datetime]] = []
+        self.quarantine_count: int | None = None
 
     async def add_batch(self, events):  # pragma: no cover - no interviene en el UC
         del events
@@ -80,6 +82,17 @@ class RecordingOutbox(RealtimeOutbox):
         next_attempt_at: datetime,
     ) -> None:
         self.failed.append((batch_id, error, next_attempt_at))
+
+    async def mark_batch_quarantined(
+        self,
+        batch_id: uuid.UUID,
+        code: str,
+        quarantined_at: datetime,
+    ) -> int:
+        self.quarantined.append((batch_id, code, quarantined_at))
+        if self.quarantine_count is not None:
+            return self.quarantine_count
+        return len(self.events)
 
 
 class RecordingUnitOfWork(UnitOfWork):
@@ -109,17 +122,8 @@ def _use_case(
     outbox: RecordingOutbox,
     unit_of_work: RecordingUnitOfWork,
     validator: ConfigurableValidator,
-    *,
-    retry_base_seconds: float = 2,
-    retry_max_seconds: float = 30,
 ) -> DispatchRealtimeOutboxBatch:
-    return DispatchRealtimeOutboxBatch(
-        outbox,
-        unit_of_work,
-        validator,
-        retry_base_seconds=retry_base_seconds,
-        retry_max_seconds=retry_max_seconds,
-    )
+    return DispatchRealtimeOutboxBatch(outbox, unit_of_work, validator)
 
 
 async def test_empty_batch_rolls_back_the_read_transaction() -> None:
@@ -154,30 +158,49 @@ async def test_valid_batch_is_marked_published_and_committed() -> None:
     assert validator.validated == [[event]]
     assert outbox.published == [(event.batch_id, now)]
     assert outbox.failed == []
+    assert outbox.quarantined == []
     assert unit_of_work.commits == 1
     assert unit_of_work.rollbacks == 0
 
 
-async def test_invalid_batch_is_retried_with_exponential_backoff_and_committed() -> None:
+async def test_invalid_batch_is_quarantined_without_retry_and_committed() -> None:
     now = datetime.now(UTC)
     event = _event(attempts=4)
     outbox = RecordingOutbox([event])
     unit_of_work = RecordingUnitOfWork()
     validator = ConfigurableValidator(
-        InvalidRealtimeOutboxBatchError("contrato inválido")
+        InvalidRealtimeOutboxBatchError("invalid_payload", "contrato inválido")
     )
 
     result = await _use_case(outbox, unit_of_work, validator).execute(now)
 
-    assert result.status == "failed"
+    assert result.status == "quarantined"
     assert result.batch_id == event.batch_id
     assert result.event_count == 1
-    assert outbox.failed == [
-        (event.batch_id, "contrato inválido", now + timedelta(seconds=16))
+    assert result.quarantine_code == "invalid_payload"
+    assert outbox.quarantined == [
+        (event.batch_id, "invalid_payload", now),
     ]
+    assert outbox.failed == []
     assert outbox.published == []
     assert unit_of_work.commits == 1
     assert unit_of_work.rollbacks == 0
+
+
+async def test_partial_quarantine_rolls_back_and_propagates() -> None:
+    event = _event()
+    outbox = RecordingOutbox([event])
+    outbox.quarantine_count = 0
+    unit_of_work = RecordingUnitOfWork()
+    validator = ConfigurableValidator(
+        InvalidRealtimeOutboxBatchError("invalid_payload", "contrato inválido")
+    )
+
+    with pytest.raises(RuntimeError, match="no alcanzó"):
+        await _use_case(outbox, unit_of_work, validator).execute(datetime.now(UTC))
+
+    assert unit_of_work.commits == 0
+    assert unit_of_work.rollbacks == 1
 
 
 async def test_unexpected_error_rolls_back_and_propagates() -> None:
@@ -202,21 +225,3 @@ async def test_cancellation_rolls_back_and_propagates() -> None:
 
     assert unit_of_work.commits == 0
     assert unit_of_work.rollbacks == 1
-
-
-@pytest.mark.parametrize(
-    ("retry_base_seconds", "retry_max_seconds"),
-    [(0, 1), (-1, 1), (2, 1)],
-)
-def test_rejects_invalid_backoff_configuration(
-    retry_base_seconds: float,
-    retry_max_seconds: float,
-) -> None:
-    with pytest.raises(ValueError):
-        _use_case(
-            RecordingOutbox(),
-            RecordingUnitOfWork(),
-            ConfigurableValidator(),
-            retry_base_seconds=retry_base_seconds,
-            retry_max_seconds=retry_max_seconds,
-        )

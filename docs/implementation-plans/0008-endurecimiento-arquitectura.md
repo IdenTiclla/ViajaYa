@@ -270,6 +270,11 @@ Axios todavía continúe en segundo plano sin propagar `AbortSignal`.
 > por agregado. `0019_realtime_stream_versions` añade un contador independiente
 > por topic, `stream_version`, su backfill determinista y los índices para
 > preservar el orden visible de cada stream.
+> `0020_realtime_outbox_quarantine` separa la cuarentena terminal de la
+> publicación y del retry transitorio. Un error determinista de contrato aparta
+> todo el batch con un código estable, deja de bloquear sus streams y conserva
+> las filas para auditoría; el hueco resultante obliga a resnapshot antes de
+> continuar el replay live.
 > `CreateOffer`/reemplazo es el primer productor: oferta, batch ordenado y
 > versiones se confirman en un solo commit mediante `UnitOfWork`; la publicación
 > directa reutiliza exactamente el payload persistido. El recorder está detrás
@@ -284,7 +289,7 @@ Axios todavía continúe en segundo plano sin propagar `AbortSignal`.
 > socket vivo todavía. Los builders de snapshots ya disponen de un corte
 > consistente y read-only, pero siguen desacoplados del handshake por la misma
 > condición de rollout.
-> `0018`/`0019` no se aplicaron a la base local `viajaya`; sus pruebas PostgreSQL son
+> `0018`–`0020` no se aplicaron a la base local `viajaya`; sus pruebas PostgreSQL son
 > opt-in y CI las ejecutará sobre una base desechable.
 
 Para publicar un evento después de un commit sin ventana de pérdida, la mutación
@@ -300,6 +305,7 @@ Esquema actual de `realtime_outbox`:
 - `stream_version`, único y creciente dentro de cada `topic`;
 - `payload JSONB`;
 - `created_at`, `published_at`;
+- `quarantined_at`, `quarantine_code` para salida terminal explícita;
 - `attempts`, `last_error`.
 
 La implementación añade además `batch_id` + `sequence` para preservar el orden
@@ -313,8 +319,10 @@ ambos en orden determinista, para evitar deadlocks en batches multi-topic.
 El claim solo considera un batch si ninguno de sus miembros tiene una fila
 anterior sin publicar en el mismo topic. `SKIP LOCKED` permite que otro dispatcher
 avance streams independientes, pero nunca que adelante una versión posterior del
-mismo stream. Un batch inválido bloquea deliberadamente sus streams; antes del
-modo live se debe implementar cuarentena o intervención terminal explícita.
+mismo stream. Un fallo transitorio conserva ese bloqueo y usa backoff. Un batch
+inválido se cuarentena completo en el primer intento: deja de participar en los
+predicados pending y libera sus streams solo después del commit. Sus versiones
+no se reutilizan; el hueco obliga a un cliente live a solicitar otro snapshot.
 
 Un dispatcher reclamará filas con `FOR UPDATE SKIP LOCKED`, publicará en Redis y
 marcará `published_at`. Si muere después de publicar y antes de marcar, el evento
@@ -323,7 +331,7 @@ se repetirá; por eso la idempotencia del cliente es obligatoria.
 El primer dispatcher es deliberadamente **sombra** y no ejecuta esa publicación:
 certifica el claim, la validación y el lifecycle usando la outbox real, marca las
 filas procesadas y deja la entrega directa actual como única vía visible. Exige
-que `0018` y `0019` estén aplicadas antes de
+que `0018`, `0019` y `0020` estén aplicadas antes de
 habilitarlo. La secuencia de flags es:
 
 1. `off` + recording `false`: estado seguro y predeterminado;
@@ -355,19 +363,20 @@ Base ya cumplida por `93b9741`:
   mobile y gate puro de idempotencia sin cambiar la emisión actual.
 - [x] Capturar estado y watermarks v2 bajo una única transacción PostgreSQL
   `REPEATABLE READ READ ONLY`, sin mutaciones ni N+1 en las colecciones críticas.
+- [x] Añadir `0020` y cuarentena terminal atómica para batches inválidos, con
+  códigos cerrados, índices que excluyen terminales y downgrade protegido.
 
 Dispatcher sombra, sin Redis ni cambios de contrato/mobile:
 
 - [x] Ejecutar el dispatcher en modo sombra con lifecycle y apagado coordinado.
 - [x] Validar antes de marcar que lote, secuencia, `event_id`, versión,
-  `event_type`, topic y payload canónico coincidan, con error sanitizado y
-  backoff.
-- [ ] Activarlo en un entorno con `0018`/`0019`, depurar el backlog sombra y comparar
-  sus batches con la publicación directa antes de habilitar entrega real.
+  `event_type`, topic y payload canónico coincidan; errores deterministas usan
+  cuarentena sanitizada y solo fallos transitorios conservan backoff.
+- [ ] Activarlo en un entorno con `0018`–`0020`, depurar el backlog sombra y
+  comparar sus batches con la publicación directa antes de habilitar entrega real.
 - [ ] Medir pendientes y edad máxima, y definir retención de filas publicadas.
 - [ ] No habilitar entrega real hasta que el envelope lleve `event_id`, versiones
-  de agregado/stream en el socket vivo, el gate mobile esté integrado y exista
-  una salida terminal para batches inválidos.
+  de agregado/stream en el socket vivo y el gate mobile esté integrado.
 - [ ] Migrar aceptación y después pausa/cancelación, resolviendo versiones de
   los otros rides afectados por el fanout.
 
@@ -417,7 +426,7 @@ seguirán siendo la defensa final contra carreras.
 ## Despliegue incremental
 
 1. Publicar métricas y documentar el límite actual de un worker.
-2. Aplicar `0018`/`0019` y desplegar las tablas de outbox sin consumidores.
+2. Aplicar `0018`–`0020` y desplegar las tablas de outbox sin consumidores.
 3. Desplegar el dispatcher en `off` y luego activar `shadow` con recording
    `false` para certificar lifecycle y drenar backlog.
 4. Activar recording en sombra y comparar batches, payloads y métricas contra la

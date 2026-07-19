@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from app.application.dto import DispatchRealtimeOutboxResult
 from app.application.exceptions import InvalidRealtimeOutboxBatchError
@@ -11,9 +11,6 @@ from app.application.interfaces import (
     RealtimeOutboxBatchValidator,
     UnitOfWork,
 )
-
-_MAX_RECORDED_ERROR_LENGTH = 500
-_MAX_BACKOFF_EXPONENT = 20
 
 
 class DispatchRealtimeOutboxBatch:
@@ -29,19 +26,10 @@ class DispatchRealtimeOutboxBatch:
         outbox: RealtimeOutbox,
         unit_of_work: UnitOfWork,
         validator: RealtimeOutboxBatchValidator,
-        *,
-        retry_base_seconds: float,
-        retry_max_seconds: float,
     ) -> None:
-        if retry_base_seconds <= 0:
-            raise ValueError("El backoff base debe ser positivo.")
-        if retry_max_seconds < retry_base_seconds:
-            raise ValueError("El backoff máximo no puede ser menor al base.")
         self._outbox = outbox
         self._unit_of_work = unit_of_work
         self._validator = validator
-        self._retry_base_seconds = retry_base_seconds
-        self._retry_max_seconds = retry_max_seconds
 
     async def execute(self, now: datetime) -> DispatchRealtimeOutboxResult:
         try:
@@ -55,21 +43,21 @@ class DispatchRealtimeOutboxBatch:
             try:
                 self._validator.validate(events)
             except InvalidRealtimeOutboxBatchError as error:
-                retry_at = now + timedelta(
-                    seconds=self._retry_delay_seconds(
-                        max(event.attempts for event in events)
-                    )
-                )
-                await self._outbox.mark_batch_failed(
+                quarantined_count = await self._outbox.mark_batch_quarantined(
                     events[0].batch_id,
-                    str(error)[:_MAX_RECORDED_ERROR_LENGTH],
-                    retry_at,
+                    error.code,
+                    now,
                 )
+                if quarantined_count != len(events):
+                    raise RuntimeError(
+                        "La cuarentena no alcanzó a todos los eventos del batch reclamado."
+                    ) from error
                 await self._unit_of_work.commit()
                 return DispatchRealtimeOutboxResult(
-                    status="failed",
+                    status="quarantined",
                     batch_id=events[0].batch_id,
                     event_count=len(events),
+                    quarantine_code=error.code,
                 )
 
             await self._outbox.mark_batch_published(events[0].batch_id, now)
@@ -82,10 +70,3 @@ class DispatchRealtimeOutboxBatch:
         except BaseException:
             await self._unit_of_work.rollback()
             raise
-
-    def _retry_delay_seconds(self, attempts: int) -> float:
-        exponent = min(max(attempts - 1, 0), _MAX_BACKOFF_EXPONENT)
-        return min(
-            self._retry_max_seconds,
-            self._retry_base_seconds * (2**exponent),
-        )

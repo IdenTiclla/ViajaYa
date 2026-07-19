@@ -11,7 +11,11 @@ from app.api.v1.schemas.realtime import (
     parse_negotiation_message,
     validate_realtime_event_semantics,
 )
-from app.application.dto import CreateOfferResult, RealtimeOutboxEvent
+from app.application.dto import (
+    CreateOfferResult,
+    RealtimeOutboxEvent,
+    RealtimeOutboxQuarantineCode,
+)
 from app.application.exceptions import InvalidRealtimeOutboxBatchError
 from app.application.interfaces import (
     CreateOfferEventRecorder,
@@ -37,52 +41,76 @@ def _has_allowed_topic(topic: str) -> bool:
     return raw_id.lower() == str(topic_id)
 
 
-def _invalid_batch(reason: str) -> InvalidRealtimeOutboxBatchError:
-    return InvalidRealtimeOutboxBatchError(f"Lote realtime inválido: {reason}.")
+def _invalid_batch(
+    code: RealtimeOutboxQuarantineCode,
+    reason: str,
+) -> InvalidRealtimeOutboxBatchError:
+    return InvalidRealtimeOutboxBatchError(
+        code,
+        f"Lote realtime inválido: {reason}.",
+    )
 
 
 def validate_realtime_outbox_batch(events: Sequence[RealtimeOutboxEvent]) -> None:
     """Valida un lote reclamado sin exponer su payload en los errores."""
     if not events:
-        raise _invalid_batch("está vacío")
+        raise _invalid_batch("empty_batch", "está vacío")
 
     batch_ids = {event.batch_id for event in events}
     if len(batch_ids) != 1:
-        raise _invalid_batch("contiene más de un batch_id")
+        raise _invalid_batch("mixed_batch", "contiene más de un batch_id")
 
     expected_sequences = list(range(len(events)))
     sequences = [event.sequence for event in events]
     if sequences != expected_sequences:
-        raise _invalid_batch("la secuencia no es contigua desde cero")
+        raise _invalid_batch(
+            "invalid_sequence",
+            "la secuencia no es contigua desde cero",
+        )
 
     event_ids = [event.id for event in events]
     if len(set(event_ids)) != len(event_ids):
-        raise _invalid_batch("contiene event_id duplicado")
+        raise _invalid_batch("duplicate_event_id", "contiene event_id duplicado")
 
     last_stream_version: dict[str, int] = {}
     for event in events:
         if not 1 <= event.aggregate_version <= _MAX_SAFE_JSON_INTEGER:
-            raise _invalid_batch("contiene aggregate_version fuera del rango JSON seguro")
+            raise _invalid_batch(
+                "unsafe_version",
+                "contiene aggregate_version fuera del rango JSON seguro",
+            )
         if not 1 <= event.stream_version <= _MAX_SAFE_JSON_INTEGER:
-            raise _invalid_batch("contiene stream_version fuera del rango JSON seguro")
+            raise _invalid_batch(
+                "unsafe_version",
+                "contiene stream_version fuera del rango JSON seguro",
+            )
         if not _has_allowed_topic(event.topic):
-            raise _invalid_batch("contiene un topic no permitido")
+            raise _invalid_batch("invalid_topic", "contiene un topic no permitido")
 
         previous_stream_version = last_stream_version.get(event.topic)
         if (
             previous_stream_version is not None
             and event.stream_version != previous_stream_version + 1
         ):
-            raise _invalid_batch("la secuencia del stream no es contigua en el lote")
+            raise _invalid_batch(
+                "stream_gap",
+                "la secuencia del stream no es contigua en el lote",
+            )
         last_stream_version[event.topic] = event.stream_version
 
         payload_type = event.payload.get("type")
         if event.event_type != payload_type:
-            raise _invalid_batch("event_type no coincide con payload.type")
+            raise _invalid_batch(
+                "event_type_mismatch",
+                "event_type no coincide con payload.type",
+            )
         try:
             message = parse_negotiation_message(event.payload)
         except (TypeError, ValueError):
-            raise _invalid_batch("contiene un payload fuera del contrato") from None
+            raise _invalid_batch(
+                "invalid_payload",
+                "contiene un payload fuera del contrato",
+            ) from None
         try:
             validate_realtime_event_semantics(
                 event_type=event.event_type,
@@ -93,7 +121,7 @@ def validate_realtime_outbox_batch(events: Sequence[RealtimeOutboxEvent]) -> Non
             )
         except ValueError as error:
             # La razón solo contiene nombres de campos/reglas, nunca el payload.
-            raise _invalid_batch(str(error)) from None
+            raise _invalid_batch("invalid_routing", str(error)) from None
 
 
 def _serialize_realtime_outbox_event_v2(
@@ -101,7 +129,7 @@ def _serialize_realtime_outbox_event_v2(
 ) -> dict[str, object]:
     payload_data = event.payload.get("data")
     if not isinstance(payload_data, dict):
-        raise _invalid_batch("payload.data no es un objeto")
+        raise _invalid_batch("invalid_payload", "payload.data no es un objeto")
 
     envelope = RealtimeEventEnvelopeV2(
         schema_version=2,

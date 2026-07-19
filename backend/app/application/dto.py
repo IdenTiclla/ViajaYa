@@ -10,7 +10,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
-from typing import Generic, Literal, TypeVar
+from typing import Generic, Literal, TypeAlias, TypeVar
 
 from app.domain.entities import (
     AuthProvider,
@@ -25,6 +25,19 @@ from app.domain.entities import (
 from app.domain.repositories import OpenRideDetail
 
 T = TypeVar("T")
+
+RealtimeOutboxQuarantineCode: TypeAlias = Literal[
+    "empty_batch",
+    "mixed_batch",
+    "invalid_sequence",
+    "duplicate_event_id",
+    "unsafe_version",
+    "invalid_topic",
+    "stream_gap",
+    "event_type_mismatch",
+    "invalid_payload",
+    "invalid_routing",
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,15 +74,18 @@ class RealtimeOutboxEvent:
     published_at: datetime | None
     attempts: int
     last_error: str | None
+    quarantined_at: datetime | None = None
+    quarantine_code: RealtimeOutboxQuarantineCode | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class DispatchRealtimeOutboxResult:
     """Resultado de procesar como máximo un batch pendiente de la outbox."""
 
-    status: Literal["empty", "published", "failed"]
+    status: Literal["empty", "published", "failed", "quarantined"]
     batch_id: uuid.UUID | None = None
     event_count: int = 0
+    quarantine_code: RealtimeOutboxQuarantineCode | None = None
 
 
 @dataclass(frozen=True)

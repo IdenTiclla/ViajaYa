@@ -9,6 +9,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 import pytest_asyncio
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
@@ -272,6 +273,180 @@ async def test_claim_no_adelanta_un_stream_bloqueado_y_deja_progresar_otro(
         )
         assert next_same_stream[0].stream_version == 2
         await SqlAlchemyUnitOfWork(session).rollback()
+
+
+async def test_quarantine_is_terminal_idempotent_and_unblocks_stream(
+    outbox_sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    ride_id = uuid.uuid4()
+    now = datetime.now(UTC) + timedelta(seconds=1)
+    async with outbox_sessions() as session:
+        outbox = SqlAlchemyRealtimeOutbox(session)
+        head = await outbox.add_batch(
+            [
+                _pending(ride_id, "offer_withdrawn"),
+                _pending(ride_id, "offer_created"),
+            ]
+        )
+        await SqlAlchemyUnitOfWork(session).commit()
+    async with outbox_sessions() as session:
+        successor = await SqlAlchemyRealtimeOutbox(session).add_batch(
+            [_pending(ride_id, "offer_expired")]
+        )
+        await SqlAlchemyUnitOfWork(session).commit()
+
+    async with outbox_sessions() as session:
+        outbox = SqlAlchemyRealtimeOutbox(session)
+        claimed = await outbox.claim_next_batch(now)
+        assert claimed[0].batch_id == head[0].batch_id
+        assert await outbox.mark_batch_quarantined(
+            head[0].batch_id,
+            "invalid_payload",
+            now,
+        ) == 2
+        await SqlAlchemyUnitOfWork(session).commit()
+
+    async with outbox_sessions() as session:
+        outbox = SqlAlchemyRealtimeOutbox(session)
+        assert await outbox.mark_batch_quarantined(
+            head[0].batch_id,
+            "invalid_payload",
+            now,
+        ) == 0
+        await outbox.mark_batch_published(head[0].batch_id, now)
+        await SqlAlchemyUnitOfWork(session).commit()
+
+    async with outbox_sessions() as session:
+        rows = (
+            await session.execute(
+                select(RealtimeOutboxModel)
+                .where(RealtimeOutboxModel.batch_id == head[0].batch_id)
+                .order_by(RealtimeOutboxModel.sequence)
+            )
+        ).scalars().all()
+        terminal_states = [
+            (row.quarantined_at, row.quarantine_code, row.published_at)
+            for row in rows
+        ]
+        claimed_successor = await SqlAlchemyRealtimeOutbox(session).claim_next_batch(now)
+        await SqlAlchemyUnitOfWork(session).rollback()
+
+    assert [
+        (
+            quarantined_at.replace(tzinfo=UTC) if quarantined_at else None,
+            code,
+            published_at,
+        )
+        for quarantined_at, code, published_at in terminal_states
+    ] == [(now, "invalid_payload", None), (now, "invalid_payload", None)]
+    assert claimed_successor[0].batch_id == successor[0].batch_id
+    assert claimed_successor[0].stream_version == 3
+
+
+async def test_quarantine_rollback_keeps_head_blocking_its_successor(
+    outbox_sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    ride_id = uuid.uuid4()
+    now = datetime.now(UTC) + timedelta(seconds=1)
+    async with outbox_sessions() as session:
+        head = await SqlAlchemyRealtimeOutbox(session).add_batch(
+            [_pending(ride_id, "offer_created")]
+        )
+        await SqlAlchemyUnitOfWork(session).commit()
+    async with outbox_sessions() as session:
+        await SqlAlchemyRealtimeOutbox(session).add_batch(
+            [_pending(ride_id, "offer_withdrawn")]
+        )
+        await SqlAlchemyUnitOfWork(session).commit()
+
+    async with outbox_sessions() as session:
+        outbox = SqlAlchemyRealtimeOutbox(session)
+        claimed = await outbox.claim_next_batch(now)
+        assert claimed[0].batch_id == head[0].batch_id
+        assert await outbox.mark_batch_quarantined(
+            head[0].batch_id,
+            "invalid_payload",
+            now,
+        ) == 1
+        await SqlAlchemyUnitOfWork(session).rollback()
+
+    async with outbox_sessions() as session:
+        claimed_again = await SqlAlchemyRealtimeOutbox(session).claim_next_batch(now)
+        await SqlAlchemyUnitOfWork(session).rollback()
+
+    assert claimed_again[0].batch_id == head[0].batch_id
+
+
+async def test_published_batch_cannot_be_quarantined(
+    outbox_sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    ride_id = uuid.uuid4()
+    now = datetime.now(UTC) + timedelta(seconds=1)
+    async with outbox_sessions() as session:
+        outbox = SqlAlchemyRealtimeOutbox(session)
+        saved = await outbox.add_batch([_pending(ride_id, "ride_closed")])
+        await SqlAlchemyUnitOfWork(session).commit()
+    async with outbox_sessions() as session:
+        outbox = SqlAlchemyRealtimeOutbox(session)
+        await outbox.mark_batch_published(saved[0].batch_id, now)
+        await SqlAlchemyUnitOfWork(session).commit()
+    async with outbox_sessions() as session:
+        outbox = SqlAlchemyRealtimeOutbox(session)
+        assert await outbox.mark_batch_quarantined(
+            saved[0].batch_id,
+            "invalid_payload",
+            now,
+        ) == 0
+        await SqlAlchemyUnitOfWork(session).commit()
+
+        row = await session.scalar(
+            select(RealtimeOutboxModel).where(
+                RealtimeOutboxModel.batch_id == saved[0].batch_id
+            )
+        )
+
+    assert row is not None
+    assert row.published_at is not None
+    assert row.quarantined_at is None
+    assert row.quarantine_code is None
+
+
+async def test_terminal_state_constraints_reject_incomplete_or_mixed_quarantine(
+    outbox_sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    ride_id = uuid.uuid4()
+    now = datetime.now(UTC) + timedelta(seconds=1)
+    async with outbox_sessions() as session:
+        saved = await SqlAlchemyRealtimeOutbox(session).add_batch(
+            [_pending(ride_id, "ride_closed")]
+        )
+        await SqlAlchemyUnitOfWork(session).commit()
+
+    async with outbox_sessions() as session:
+        row = await session.scalar(
+            select(RealtimeOutboxModel).where(
+                RealtimeOutboxModel.batch_id == saved[0].batch_id
+            )
+        )
+        assert row is not None
+        row.quarantined_at = now
+        with pytest.raises(IntegrityError):
+            await session.commit()
+        await session.rollback()
+
+    async with outbox_sessions() as session:
+        row = await session.scalar(
+            select(RealtimeOutboxModel).where(
+                RealtimeOutboxModel.batch_id == saved[0].batch_id
+            )
+        )
+        assert row is not None
+        row.published_at = now
+        row.quarantined_at = now
+        row.quarantine_code = "invalid_payload"
+        with pytest.raises(IntegrityError):
+            await session.commit()
+        await session.rollback()
 
 
 async def test_add_batch_rechaza_un_lote_vacio(

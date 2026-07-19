@@ -66,6 +66,8 @@ def test_outbox_declara_columnas_jsonb_constraints_e_indice_pending() -> None:
         "created_at",
         "next_attempt_at",
         "published_at",
+        "quarantined_at",
+        "quarantine_code",
         "attempts",
         "last_error",
     )
@@ -93,6 +95,16 @@ def test_outbox_declara_columnas_jsonb_constraints_e_indice_pending() -> None:
         "ck_realtime_outbox_aggregate_version_positive": "aggregate_version >= 1",
         "ck_realtime_outbox_stream_version_positive": "stream_version >= 1",
         "ck_realtime_outbox_attempts_nonnegative": "attempts >= 0",
+        "ck_realtime_outbox_terminal_state_exclusive": (
+            "published_at IS NULL OR quarantined_at IS NULL"
+        ),
+        "ck_realtime_outbox_quarantine_complete": (
+            "(quarantined_at IS NULL) = (quarantine_code IS NULL)"
+        ),
+        "ck_realtime_outbox_quarantine_code_length": (
+            "quarantine_code IS NULL OR "
+            "length(trim(quarantine_code)) BETWEEN 1 AND 64"
+        ),
     }
 
     pending = next(index for index in table.indexes if index.name == "ix_realtime_outbox_pending")
@@ -102,7 +114,7 @@ def test_outbox_declara_columnas_jsonb_constraints_e_indice_pending() -> None:
         "id",
     )
     assert str(pending.dialect_options["postgresql"]["where"]) == (
-        "published_at IS NULL AND sequence = 0"
+        "published_at IS NULL AND quarantined_at IS NULL AND sequence = 0"
     )
 
     pending_stream = next(
@@ -115,8 +127,21 @@ def test_outbox_declara_columnas_jsonb_constraints_e_indice_pending() -> None:
         "stream_version",
     )
     assert str(pending_stream.dialect_options["postgresql"]["where"]) == (
-        "published_at IS NULL"
+        "published_at IS NULL AND quarantined_at IS NULL"
     )
     assert str(pending_stream.dialect_options["sqlite"]["where"]) == (
-        "published_at IS NULL"
+        "published_at IS NULL AND quarantined_at IS NULL"
+    )
+
+    quarantined = next(
+        index
+        for index in table.indexes
+        if index.name == "ix_realtime_outbox_quarantined"
+    )
+    assert tuple(expression.name for expression in quarantined.expressions) == (
+        "quarantined_at",
+        "batch_id",
+    )
+    assert str(quarantined.dialect_options["postgresql"]["where"]) == (
+        "quarantined_at IS NOT NULL AND sequence = 0"
     )

@@ -128,7 +128,8 @@ CORS se aplica en `main.py` con `cors_origins_list`.
 El rollout de la outbox sigue obligatoriamente esta secuencia: `off+false` ->
 `shadow+false` -> `shadow+true`. No uses `off+true`: produciría eventos sin un
 consumidor que depure el backlog. Antes de salir de `off` deben estar aplicadas
-`0018_realtime_outbox` y `0019_realtime_stream_versions`. `shadow` reclama,
+`0018_realtime_outbox`, `0019_realtime_stream_versions` y
+`0020_realtime_outbox_quarantine`. `shadow` reclama,
 valida y marca batches como
 procesados, pero no los entrega al hub WebSocket ni a Redis. No existe un modo
 `live` y estos flags no autorizan más de un worker API.
@@ -229,8 +230,8 @@ cerrar la app o perder ambos canales durante toda la gracia cancela la búsqueda
 ## Migraciones (Alembic)
 
 - Config: `alembic.ini` + `migrations/env.py` (engine **async** con `async_engine_from_config`).
-- **19 migraciones** en `migrations/versions/` (`0001_create_users` …
-  `0019_realtime_stream_versions`).
+- **20 migraciones** en `migrations/versions/` (`0001_create_users` …
+  `0020_realtime_outbox_quarantine`).
 - Importante: los enums se persisten por **valor** minúsculo vía `values_callable=_enum_values`
   en `infrastructure/db/models.py` (migración `0006_normalize_enum_values`). No rompas esa convención
   o se caerán columnas existentes.
@@ -257,7 +258,8 @@ común `ViajaYa1234#`): `passenger1/2@viajaya.com`, `driver.auto1/2@viajaya.com`
 - `tests/postgresql/` — certificación destructiva opt-in contra una base exclusivamente
   desechable indicada por `VIAJAYA_TEST_DATABASE_URL`; hace skip si la variable no existe.
   `test_pg_outbox_0018.py` verifica el ciclo de migración y que dos workers
-  reclamen batches completos y disjuntos con `SKIP LOCKED`.
+  reclamen batches completos y disjuntos con `SKIP LOCKED`;
+  `test_pg_outbox_0020.py` certifica la cuarentena y su downgrade protegido.
 - `.github/workflows/ci.yml` ejecuta en paralelo la suite rápida, la certificación
   PostgreSQL 16 y las comprobaciones TypeScript/ESLint de mobile.
 - `asyncio_mode = "auto"` (pytest-asyncio): no hace falta `@pytest.mark.asyncio`.

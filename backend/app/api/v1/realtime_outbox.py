@@ -10,6 +10,7 @@ from app.api.v1.events import (
     build_announce_open_ride_events,
     build_cancel_ride_events,
     build_create_offer_events,
+    build_driver_availability_events,
     build_expire_offer_events,
     build_pause_ride_events,
     build_reject_offer_events,
@@ -26,6 +27,7 @@ from app.application.dto import (
     AcceptOfferResult,
     CancelRideResult,
     CreateOfferResult,
+    DriverAvailabilityResult,
     RealtimeOutboxEvent,
     RealtimeOutboxQuarantineCode,
     RideDetail,
@@ -38,6 +40,7 @@ from app.application.interfaces import (
     AnnounceOpenRideEventRecorder,
     CancelRideEventRecorder,
     CreateOfferEventRecorder,
+    DriverAvailabilityEventRecorder,
     ExpireOfferEventRecorder,
     PauseRideEventRecorder,
     RealtimeOutbox,
@@ -359,3 +362,22 @@ class DisabledUpdateRideStatusEventRecorder(UpdateRideStatusEventRecorder):
 
     async def record(self, detail: RideDetail) -> None:
         del detail
+
+
+class OutboxDriverAvailabilityEventRecorder(DriverAvailabilityEventRecorder):
+    """Registra los retiros offline dentro de su transacción de negocio."""
+
+    def __init__(self, outbox: RealtimeOutbox) -> None:
+        self._outbox = outbox
+
+    async def record(self, result: DriverAvailabilityResult) -> None:
+        events = build_driver_availability_events(result)
+        if events:
+            await self._outbox.add_batch(events)
+
+
+class DisabledDriverAvailabilityEventRecorder(DriverAvailabilityEventRecorder):
+    """Recorder nulo mientras la disponibilidad durable está deshabilitada."""
+
+    async def record(self, result: DriverAvailabilityResult) -> None:
+        del result

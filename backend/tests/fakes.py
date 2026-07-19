@@ -12,6 +12,7 @@ from app.application.dto import (
     AcceptOfferResult,
     CancelRideResult,
     CreateOfferResult,
+    DriverAvailabilityResult,
     DriverEarnings,
     EarningsItem,
     Page,
@@ -26,6 +27,7 @@ from app.application.interfaces import (
     AcceptOfferEventRecorder,
     CancelRideEventRecorder,
     CreateOfferEventRecorder,
+    DriverAvailabilityEventRecorder,
     ExpireOfferEventRecorder,
     PasswordHasher,
     PauseRideEventRecorder,
@@ -47,6 +49,7 @@ from app.application.use_cases.edit_ride import EditRide
 from app.application.use_cases.expire_offer import ExpireOffer
 from app.application.use_cases.pause_ride_for_edit import PauseRideForEdit
 from app.application.use_cases.reject_offer import RejectOffer
+from app.application.use_cases.set_driver_online import SetDriverOnline
 from app.application.use_cases.update_ride_fare import UpdateRideFare
 from app.application.use_cases.update_ride_status import UpdateRideStatus
 from app.application.use_cases.withdraw_offer import WithdrawOffer
@@ -708,13 +711,14 @@ class InMemoryOfferRepository(OfferRepository):
 
 
 class InMemoryUnitOfWork(UnitOfWork):
-    """UoW de prueba que restaura las ofertas si la operación falla."""
+    """UoW de prueba que restaura los agregados si la operación falla."""
 
     def __init__(
         self,
         offers: InMemoryOfferRepository | None = None,
         *,
         rides: InMemoryRideRequestRepository | None = None,
+        users: InMemoryUserRepository | None = None,
         operations: list[str] | None = None,
         commit_error: BaseException | None = None,
     ) -> None:
@@ -724,6 +728,8 @@ class InMemoryUnitOfWork(UnitOfWork):
         self._offer_snapshot = deepcopy(offers.offers) if offers is not None else None
         self._rides = rides
         self._ride_snapshot = deepcopy(rides.rides) if rides is not None else None
+        self._users = users
+        self._user_snapshot = deepcopy(users.users) if users is not None else None
         self._operations = operations
         self._commit_error = commit_error
 
@@ -742,6 +748,9 @@ class InMemoryUnitOfWork(UnitOfWork):
             self._offers.offers[:] = deepcopy(self._offer_snapshot)
         if self._rides is not None and self._ride_snapshot is not None:
             self._rides.rides[:] = deepcopy(self._ride_snapshot)
+        if self._users is not None and self._user_snapshot is not None:
+            self._users.users.clear()
+            self._users.users.update(deepcopy(self._user_snapshot))
 
 
 class InMemoryCreateOfferEventRecorder(CreateOfferEventRecorder):
@@ -896,6 +905,25 @@ class InMemoryUpdateRideStatusEventRecorder(UpdateRideStatusEventRecorder):
         self.details.append(detail)
 
 
+class InMemoryDriverAvailabilityEventRecorder(DriverAvailabilityEventRecorder):
+    def __init__(
+        self,
+        *,
+        operations: list[str] | None = None,
+        error: BaseException | None = None,
+    ) -> None:
+        self.results: list[DriverAvailabilityResult] = []
+        self._operations = operations
+        self._error = error
+
+    async def record(self, result: DriverAvailabilityResult) -> None:
+        if self._operations is not None:
+            self._operations.append("record")
+        if self._error is not None:
+            raise self._error
+        self.results.append(result)
+
+
 def create_ride_request_use_case(
     rides: InMemoryRideRequestRepository,
     *,
@@ -995,6 +1023,22 @@ def update_ride_status_use_case(
         users,
         unit_of_work or InMemoryUnitOfWork(rides=rides),
         event_recorder or InMemoryUpdateRideStatusEventRecorder(),
+    )
+
+
+def set_driver_online_use_case(
+    users: InMemoryUserRepository,
+    offers: InMemoryOfferRepository,
+    *,
+    unit_of_work: UnitOfWork | None = None,
+    event_recorder: DriverAvailabilityEventRecorder | None = None,
+) -> SetDriverOnline:
+    """Cablea SetDriverOnline con dobles transaccionales explícitos."""
+    return SetDriverOnline(
+        users,
+        offers,
+        unit_of_work or InMemoryUnitOfWork(offers, users=users),
+        event_recorder or InMemoryDriverAvailabilityEventRecorder(),
     )
 
 

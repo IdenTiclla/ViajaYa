@@ -128,8 +128,14 @@ def _to_entity(row: UserModel) -> User:
 
 
 class SqlAlchemyUserRepository(UserRepository):
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        *,
+        commit_set_online: bool = True,
+    ) -> None:
         self._session = session
+        self._commit_set_online = commit_set_online
 
     async def get_by_id(self, user_id: uuid.UUID) -> User | None:
         row = await self._session.get(UserModel, user_id)
@@ -198,9 +204,13 @@ class SqlAlchemyUserRepository(UserRepository):
         )
         row = result.scalar_one_or_none()
         if row is None:  # pragma: no cover - el caso de uso valida antes
-            await self._session.rollback()
+            if self._commit_set_online:
+                await self._session.rollback()
             raise ValueError("user not found")
-        await self._session.commit()
+        if self._commit_set_online:
+            await self._session.commit()
+        else:
+            await self._session.flush()
         await self._session.refresh(row)
         return _to_entity(row)
 
@@ -920,6 +930,7 @@ class SqlAlchemyOfferRepository(OfferRepository):
         commit_cancel: bool = True,
         commit_reject_if_pending: bool = True,
         commit_mark_expired_if_pending: bool = True,
+        commit_set_driver_offline: bool = True,
     ) -> None:
         self._session = session
         # Migración incremental: estas mutaciones participan del UoW; los demás
@@ -930,6 +941,7 @@ class SqlAlchemyOfferRepository(OfferRepository):
         self._commit_cancel = commit_cancel
         self._commit_reject_if_pending = commit_reject_if_pending
         self._commit_mark_expired_if_pending = commit_mark_expired_if_pending
+        self._commit_set_driver_offline = commit_set_driver_offline
 
     async def add(self, offer: Offer) -> Offer:
         row = OfferModel(
@@ -964,7 +976,8 @@ class SqlAlchemyOfferRepository(OfferRepository):
             or driver_row.vehicle_type is None
             or not driver_row.is_online
         ):
-            await self._session.rollback()
+            if self._commit_create_or_supersede:
+                await self._session.rollback()
             return None
 
         ride_row = (
@@ -1147,7 +1160,8 @@ class SqlAlchemyOfferRepository(OfferRepository):
             or driver_row.role is not UserRole.DRIVER
             or driver_row.vehicle_type is None
         ):
-            await self._session.rollback()
+            if self._commit_set_driver_offline:
+                await self._session.rollback()
             return None
 
         active_ride = (
@@ -1161,7 +1175,8 @@ class SqlAlchemyOfferRepository(OfferRepository):
             )
         ).first()
         if active_ride is not None:
-            await self._session.rollback()
+            if self._commit_set_driver_offline:
+                await self._session.rollback()
             return None
 
         offer_rows = (
@@ -1184,7 +1199,10 @@ class SqlAlchemyOfferRepository(OfferRepository):
         for row in offer_rows:
             row.status = OfferStatus.REJECTED
         driver_row.is_online = False
-        await self._session.commit()
+        if self._commit_set_driver_offline:
+            await self._session.commit()
+        else:
+            await self._session.flush()
         await self._session.refresh(driver_row)
         return DriverOfflineTransition(
             driver=_to_entity(driver_row),

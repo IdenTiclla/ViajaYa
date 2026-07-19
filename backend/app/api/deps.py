@@ -18,6 +18,7 @@ from app.api.v1.realtime_outbox import (
     DisabledAnnounceOpenRideEventRecorder,
     DisabledCancelRideEventRecorder,
     DisabledCreateOfferEventRecorder,
+    DisabledDriverAvailabilityEventRecorder,
     DisabledExpireOfferEventRecorder,
     DisabledPauseRideEventRecorder,
     DisabledRejectOfferEventRecorder,
@@ -28,6 +29,7 @@ from app.api.v1.realtime_outbox import (
     OutboxAnnounceOpenRideEventRecorder,
     OutboxCancelRideEventRecorder,
     OutboxCreateOfferEventRecorder,
+    OutboxDriverAvailabilityEventRecorder,
     OutboxExpireOfferEventRecorder,
     OutboxPauseRideEventRecorder,
     OutboxRejectOfferEventRecorder,
@@ -508,8 +510,21 @@ def get_edit_ride(
     )
 
 
-def get_set_driver_online(users: UserRepositoryDep, offers: OfferRepositoryDep) -> SetDriverOnline:
-    return SetDriverOnline(users, offers)
+def get_set_driver_online(
+    session: SessionDep,
+    settings: SettingsDep,
+) -> SetDriverOnline:
+    recorder = (
+        OutboxDriverAvailabilityEventRecorder(SqlAlchemyRealtimeOutbox(session))
+        if settings.realtime_outbox_recording_enabled
+        else DisabledDriverAvailabilityEventRecorder()
+    )
+    return SetDriverOnline(
+        SqlAlchemyUserRepository(session, commit_set_online=False),
+        SqlAlchemyOfferRepository(session, commit_set_driver_offline=False),
+        SqlAlchemyUnitOfWork(session),
+        recorder,
+    )
 
 
 def get_driver_active_ride(

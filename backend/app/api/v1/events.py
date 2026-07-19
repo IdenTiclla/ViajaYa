@@ -38,6 +38,7 @@ from app.application.dto import (
     AcceptOfferResult,
     CancelRideResult,
     CreateOfferResult,
+    DriverAvailabilityResult,
     OfferDetail,
     PendingRealtimeEvent,
     RideDetail,
@@ -423,6 +424,34 @@ def build_update_ride_status_events(
     return pending
 
 
+def build_driver_availability_events(
+    result: DriverAvailabilityResult,
+) -> list[PendingRealtimeEvent]:
+    """Construye el fanout durable/directo de quedar offline."""
+    offers = result.withdrawn_offers
+    if not offers:
+        return []
+    pending: list[PendingRealtimeEvent] = []
+    for offer in offers:
+        pending.extend(
+            build_withdraw_offer_events(offer, reason="driver_offline")
+        )
+    pending.append(
+        _pending_realtime_event(
+            topic=driver_topic(result.driver.id),
+            aggregate_type="driver",
+            aggregate_id=result.driver.id,
+            message=OffersWithdrawnMessage(
+                data=OffersWithdrawnData(
+                    ride_ids=[offer.ride_id for offer in offers],
+                    reason="driver_offline",
+                )
+            ),
+        )
+    )
+    return pending
+
+
 async def publish_ride_created(detail: OpenRideDetail) -> None:
     """Una solicitud nueva (o renovada) aparece para los conductores del pool.
 
@@ -504,23 +533,9 @@ async def publish_offer_withdrawn_by_driver(
     await _broadcast_pending(build_withdraw_offer_events(offer, reason=reason))
 
 
-async def publish_driver_offline_offers(
-    driver_id: uuid.UUID, offers: list[Offer]
-) -> None:
+async def publish_driver_offline_offers(result: DriverAvailabilityResult) -> None:
     """Retira las ofertas del conductor offline en las pantallas de ambos roles."""
-    if not offers:
-        return
-    for offer in offers:
-        await publish_offer_withdrawn_by_driver(offer, reason="driver_offline")
-    await _broadcast(
-        driver_topic(driver_id),
-        OffersWithdrawnMessage(
-            data=OffersWithdrawnData(
-                ride_ids=[offer.ride_id for offer in offers],
-                reason="driver_offline",
-            )
-        ),
-    )
+    await _broadcast_pending(build_driver_availability_events(result))
 
 
 async def publish_offer_superseded(superseded_offer_id: uuid.UUID, detail: OfferDetail) -> None:

@@ -11,7 +11,6 @@ import pytest
 from app.application.dto import CreateOfferInput
 from app.application.use_cases.list_offers_for_ride import ListOffersForRide
 from app.application.use_cases.list_open_rides import ListOpenRides
-from app.application.use_cases.set_driver_online import SetDriverOnline
 from app.domain.entities import (
     Location,
     OfferStatus,
@@ -37,6 +36,7 @@ from tests.fakes import (
     cancel_ride_use_case,
     create_offer_use_case,
     expire_offer_use_case,
+    set_driver_online_use_case,
     update_ride_status_use_case,
     withdraw_offer_use_case,
 )
@@ -450,11 +450,12 @@ async def test_set_driver_online_toggles():
     driver.rating = 4.75
     await users.add(driver)
 
-    result = await SetDriverOnline(users, offers).execute(driver, True)
+    use_case = set_driver_online_use_case(users, offers)
+    result = await use_case.execute(driver, True)
     assert result.driver.is_online is True
     assert result.driver.rating == 4.75
     assert result.withdrawn_offers == []
-    result = await SetDriverOnline(users, offers).execute(driver, False)
+    result = await use_case.execute(driver, False)
     assert result.driver.is_online is False
     assert result.driver.rating == 4.75
     assert result.withdrawn_offers == []
@@ -473,7 +474,7 @@ async def test_set_driver_offline_rejects_pending_offers():
         CreateOfferInput(accept_at_fare=False, price=Decimal("30.00")),
     )
 
-    result = await SetDriverOnline(users, offers).execute(driver, False)
+    result = await set_driver_online_use_case(users, offers).execute(driver, False)
 
     assert result.driver.is_online is False
     assert [offer.id for offer in result.withdrawn_offers] == [created.detail.offer.id]
@@ -494,7 +495,7 @@ async def test_set_driver_offline_rejects_active_ride():
     await rides.add(ride)
 
     with pytest.raises(DriverUnavailableError):
-        await SetDriverOnline(users, offers).execute(driver, False)
+        await set_driver_online_use_case(users, offers).execute(driver, False)
 
     stored = await users.get_by_id(driver.id)
     assert stored is not None
@@ -508,7 +509,7 @@ async def test_set_driver_online_rejects_passenger():
     await users.add(passenger)
 
     with pytest.raises(NotAuthorizedActionError):
-        await SetDriverOnline(users, offers).execute(passenger, True)
+        await set_driver_online_use_case(users, offers).execute(passenger, True)
 
 
 @pytest.mark.parametrize(

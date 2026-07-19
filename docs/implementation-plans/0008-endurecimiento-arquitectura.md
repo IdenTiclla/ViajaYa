@@ -280,7 +280,7 @@ Axios todavía continúe en segundo plano sin propagar `AbortSignal`.
 > `CreateOffer`/reemplazo, `AcceptOffer`, `PauseRideForEdit`, `CancelRide`, el
 > cierre automático por ausencia, `UpdateRideFare`, `EditRide`,
 > `AnnounceOpenRide`, `WithdrawOffer`, `RejectOffer`, `ExpireOffer` y
-> `UpdateRideStatus` son los primeros
+> `UpdateRideStatus`, además de `SetDriverOnline`, son los primeros
 > productores: mutación, batch ordenado y versiones se confirman en un solo commit mediante
 > `UnitOfWork`; la publicación directa reutiliza exactamente los payloads
 > persistidos. `CreateRideRequest` también delega el commit a la aplicación, pero
@@ -322,6 +322,11 @@ Axios todavía continúe en segundo plano sin propagar `AbortSignal`.
 > registra `ride_status` primero en el stream del ride y luego en el del
 > conductor. El router devuelve ese mismo detalle, sin una segunda lectura que
 > pueda coalescer una transición concurrente posterior.
+> La disponibilidad del conductor también usa una única transacción. Quedar
+> offline registra primero un `offer_withdrawn(reason=driver_offline)` por oferta
+> viva, en el orden entregado por la transición, y termina con
+> `offers_withdrawn` en el agregado conductor. Volver online, quedar offline sin
+> ofertas o resolver solo ofertas ya vencidas no crea un batch vacío.
 
 Para publicar un evento después de un commit sin ventana de pérdida, la mutación
 y el registro del evento deben pertenecer a la misma transacción. Se introdujo
@@ -432,6 +437,9 @@ Dispatcher sombra, sin Redis ni cambios de contrato/mobile:
 - [x] Migrar los avances `ARRIVING → IN_PROGRESS → COMPLETED` a UoW + outbox;
   capturar el detalle enriquecido antes del commit y conservar el fanout
   `ride:* → driver:*` con el mismo estado exacto en HTTP y WebSocket.
+- [x] Migrar la disponibilidad del conductor a UoW + outbox; retirar todas sus
+  ofertas pendientes en el mismo commit y conservar el resumen personal al
+  final del batch, sin emitir por ofertas ya vencidas ni por cambios vacíos.
 
 Antes del modo `live`, hacer conmutativa en mobile la reducción de
 `ride_closed` y `offer_rejected`: pertenecen a streams distintos y Redis no
@@ -451,6 +459,11 @@ El reducer de `ride_status` debe impedir regresiones no terminales según la
 secuencia `SEARCHING → ACCEPTED → ARRIVING → IN_PROGRESS → COMPLETED`, aunque
 permita el mismo estado para refrescar el payload. El gate v2 ordenará el stream,
 pero este guard también protege el cruce con respuestas HTTP todavía sin versión.
+
+El consumidor conductor de `offers_withdrawn(reason=driver_offline)` no debe
+vaciar ofertas creadas después de volver online. Antes de `live`, el contrato
+debe permitir reconciliar retiros por `offer_id` exacto y el éxito HTTP offline
+debe limpiar también el estado local si el WebSocket no está disponible.
 
 ### 3.2 Bridge Redis y sockets locales
 

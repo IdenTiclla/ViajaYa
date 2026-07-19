@@ -3,17 +3,38 @@
 from __future__ import annotations
 
 from app.application.dto import DriverAvailabilityResult
+from app.application.interfaces import DriverAvailabilityEventRecorder, UnitOfWork
 from app.domain.entities import User
 from app.domain.exceptions import DriverUnavailableError, NotAuthorizedActionError
 from app.domain.repositories import OfferRepository, UserRepository
 
 
 class SetDriverOnline:
-    def __init__(self, users: UserRepository, offers: OfferRepository) -> None:
+    def __init__(
+        self,
+        users: UserRepository,
+        offers: OfferRepository,
+        unit_of_work: UnitOfWork,
+        event_recorder: DriverAvailabilityEventRecorder,
+    ) -> None:
         self._users = users
         self._offers = offers
+        self._unit_of_work = unit_of_work
+        self._event_recorder = event_recorder
 
     async def execute(self, driver: User, is_online: bool) -> DriverAvailabilityResult:
+        try:
+            result = await self._set(driver, is_online)
+            await self._event_recorder.record(result)
+            await self._unit_of_work.commit()
+            return result
+        except BaseException:
+            await self._unit_of_work.rollback()
+            raise
+
+    async def _set(
+        self, driver: User, is_online: bool
+    ) -> DriverAvailabilityResult:
         if not driver.is_driver:
             raise NotAuthorizedActionError(
                 "Solo los conductores pueden cambiar su disponibilidad."

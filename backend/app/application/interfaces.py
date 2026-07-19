@@ -15,6 +15,7 @@ from app.application.dto import (
     AcceptOfferResult,
     CancelRideResult,
     CreateOfferResult,
+    DriverAvailabilityResult,
     DriverEarnings,
     DriverRealtimeSnapshot,
     Page,
@@ -201,6 +202,14 @@ class UpdateRideStatusEventRecorder(ABC):
     @abstractmethod
     async def record(self, detail: RideDetail) -> None:
         """Añade a la outbox el estado exacto visto por ambos participantes."""
+
+
+class DriverAvailabilityEventRecorder(ABC):
+    """Registra los eventos durables al cambiar la disponibilidad del conductor."""
+
+    @abstractmethod
+    async def record(self, result: DriverAvailabilityResult) -> None:
+        """Añade los retiros producidos al quedar offline; online no emite."""
 
 
 class PasswordHasher(ABC):

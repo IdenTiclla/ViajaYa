@@ -122,6 +122,7 @@ export function SolicitudesEntrantesScreen() {
   const offeredMap = useDriverRequests((s) => s.offered);
   const isOffered = useDriverRequests((s) => s.isOffered);
   const dismiss = useDriverRequests((s) => s.dismiss);
+  const beginOfferAttempt = useDriverRequests((s) => s.beginOfferAttempt);
   const markOffered = useDriverRequests((s) => s.markOffered);
   const withdrawOffer = useWithdrawOffer();
   const dismissOpenRide = useDismissOpenRide();
@@ -165,12 +166,14 @@ export function SolicitudesEntrantesScreen() {
 
   // Ofertar NO saca al conductor de la lista: la tarjeta pasa a "Oferta enviada".
   const acceptAtFare = (ride: OpenRide) => {
+    const attemptToken = beginOfferAttempt(ride.id);
     createOffer.mutate(
       { rideId: ride.id, input: { acceptAtFare: true } },
       {
         onSuccess: (offer) => {
-          markOffered(ride.id, offer, ride.fare);
-          setOfferSent(true);
+          if (markOffered(ride.id, offer, ride.fare, attemptToken)) {
+            setOfferSent(true);
+          }
         },
         onError: (error) => {
           useDriverToasts.getState().push({
@@ -187,12 +190,14 @@ export function SolicitudesEntrantesScreen() {
   // Contraoferta rápida (+Bs): envía al instante precio = oferta del pasajero + delta.
   const quickAdd = (ride: OpenRide, delta: number) => {
     const price = Math.round((ride.fare + delta) * 100) / 100;
+    const attemptToken = beginOfferAttempt(ride.id);
     createOffer.mutate(
       { rideId: ride.id, input: { acceptAtFare: false, price } },
       {
         onSuccess: (offer) => {
-          markOffered(ride.id, offer, ride.fare);
-          setOfferSent(true);
+          if (markOffered(ride.id, offer, ride.fare, attemptToken)) {
+            setOfferSent(true);
+          }
         },
         onError: (error) => {
           useDriverToasts.getState().push({
@@ -218,13 +223,19 @@ export function SolicitudesEntrantesScreen() {
   const submitCustomPrice = () => {
     if (!priceInputFor || !customPriceIsValid || createOffer.isPending) return;
     const ride = priceInputFor;
+    const attemptToken = beginOfferAttempt(ride.id);
     createOffer.mutate(
       { rideId: ride.id, input: { acceptAtFare: false, price: parsedCustomPrice } },
       {
         onSuccess: (offer) => {
-          markOffered(ride.id, offer, ride.fare);
+          const applied = markOffered(
+            ride.id,
+            offer,
+            ride.fare,
+            attemptToken,
+          );
           setPriceInputFor(null);
-          setOfferSent(true);
+          if (applied) setOfferSent(true);
         },
       },
     );
@@ -235,7 +246,8 @@ export function SolicitudesEntrantesScreen() {
     const offer = useDriverRequests.getState().getOffer(ride.id);
     if (!offer) return;
     withdrawOffer.mutate(offer.offerId, {
-      onSuccess: () => useDriverRequests.getState().clearRide(ride.id),
+      onSuccess: () =>
+        useDriverRequests.getState().markWithdrawn(ride.id, offer.offerId),
       onError: (error) => {
         useDriverToasts.getState().push({
           kind: 'connection_error',

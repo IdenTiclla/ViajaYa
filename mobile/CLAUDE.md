@@ -137,6 +137,14 @@ exacto y solo notifica si retiró la oferta vigente. `offers_withdrawn` elimina
 solo los `ride_ids` declarados; el éxito HTTP al pasar offline vacía además las
 ofertas vivas para tolerar una caída del WebSocket.
 
+El store del conductor conserva tombstones acotados por `offer_id`, rides
+terminales y un token por intento HTTP. `markOffered` es un CAS: el `201` tardío
+de una oferta rechazada, expirada, pausada, aceptada, tomada, cancelada o retirada
+no puede revivirla, ni una respuesta anterior ganar a otra petición. Los eventos
+`ride_closed` solo retiran la oferta visible, para conmutar con el desenlace del
+stream personal. Un snapshot PostgreSQL `PENDING` sí corrige guards locales
+contradictorios, incluida una expiración por reloj adelantado.
+
 ## Tema (design system)
 
 `core/theme/tokens.ts` (única fuente de verdad; reexportado por `index.ts`):

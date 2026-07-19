@@ -71,6 +71,11 @@ function sentOffer(id, price = 20) {
   };
 }
 
+function applySentOffer(store, rideId, offer, rideFare) {
+  const attemptToken = store.beginOfferAttempt(rideId);
+  return store.markOffered(rideId, offer, rideFare, attemptToken);
+}
+
 test('el snapshot reemplaza las ofertas anteriores', () => {
   const incoming = [offer('new', 'driver-new')];
   const result = reducePassengerOffers([offer('old', 'driver-old')], {
@@ -359,8 +364,8 @@ test('los reducers activos tampoco permiten retrocesos', () => {
 test('la expiración del conductor compara offerId y es idempotente', () => {
   const store = useDriverRequests.getState();
   store.reset();
-  store.markOffered('ride-1', sentOffer('offer-1'), 18);
-  store.markOffered('ride-1', sentOffer('offer-2', 22), 19);
+  applySentOffer(store, 'ride-1', sentOffer('offer-1'), 18);
+  applySentOffer(store, 'ride-1', sentOffer('offer-2', 22), 19);
 
   assert.equal(store.markExpired('ride-1', 'offer-1'), false);
   assert.equal(useDriverRequests.getState().offered['ride-1'].offerId, 'offer-2');
@@ -377,12 +382,242 @@ test('la expiración del conductor compara offerId y es idempotente', () => {
 test('el retiro resumido elimina solo los rides indicados y tolera duplicados', () => {
   const store = useDriverRequests.getState();
   store.reset();
-  store.markOffered('ride-1', sentOffer('offer-1'));
-  store.markOffered('ride-2', sentOffer('offer-2'));
+  applySentOffer(store, 'ride-1', sentOffer('offer-1'));
+  applySentOffer(store, 'ride-2', sentOffer('offer-2'));
 
   assert.equal(store.withdrawOffered(['ride-1', 'ride-1']), 1);
   assert.equal(store.withdrawOffered(['ride-1']), 0);
   assert.equal(useDriverRequests.getState().offered['ride-1'], undefined);
   assert.equal(useDriverRequests.getState().offered['ride-2'].offerId, 'offer-2');
+  store.reset();
+});
+
+test('un rechazo WS anterior al HTTP impide revivir la misma oferta', () => {
+  const store = useDriverRequests.getState();
+  store.reset();
+  const attemptToken = store.beginOfferAttempt('ride-1');
+
+  assert.equal(store.markRejected('ride-1', 'offer-1'), true);
+  assert.equal(store.markRejected('ride-1', 'offer-1'), false);
+  assert.equal(
+    store.markOffered('ride-1', sentOffer('offer-1'), undefined, attemptToken),
+    false,
+  );
+  assert.equal(useDriverRequests.getState().offered['ride-1'], undefined);
+  assert.equal(useDriverRequests.getState().rejected.has('ride-1'), true);
+  store.reset();
+});
+
+test('una reoferta legítima no hereda el tombstone de la oferta anterior', () => {
+  const store = useDriverRequests.getState();
+  store.reset();
+  store.markRejected('ride-1', 'offer-1');
+
+  assert.equal(applySentOffer(store, 'ride-1', sentOffer('offer-2')), true);
+  assert.equal(useDriverRequests.getState().rejected.has('ride-1'), false);
+  assert.equal(store.markRejected('ride-1', 'offer-1'), false);
+  assert.equal(useDriverRequests.getState().offered['ride-1'].offerId, 'offer-2');
+  store.reset();
+});
+
+test('expiración y pausa exactas bloquean su respuesta HTTP tardía', () => {
+  const store = useDriverRequests.getState();
+  store.reset();
+  const expiredAttempt = store.beginOfferAttempt('ride-1');
+  const pausedAttempt = store.beginOfferAttempt('ride-2');
+
+  assert.equal(store.markExpired('ride-1', 'offer-expired'), true);
+  assert.equal(
+    store.markOffered(
+      'ride-1',
+      sentOffer('offer-expired'),
+      undefined,
+      expiredAttempt,
+    ),
+    false,
+  );
+  assert.equal(store.markPaused('ride-2', 'offer-paused'), true);
+  assert.equal(
+    store.markOffered(
+      'ride-2',
+      sentOffer('offer-paused'),
+      undefined,
+      pausedAttempt,
+    ),
+    false,
+  );
+  assert.equal(useDriverRequests.getState().expired.has('ride-1'), true);
+  assert.equal(useDriverRequests.getState().paused.has('ride-2'), true);
+  store.reset();
+});
+
+test('un ride asignado, tomado o cancelado bloquea cualquier oferta tardía', () => {
+  const store = useDriverRequests.getState();
+  store.reset();
+
+  const assignedAttempt = store.beginOfferAttempt('ride-assigned');
+  assert.equal(store.markAssigned('ride-assigned'), true);
+  assert.equal(
+    store.markOffered(
+      'ride-assigned',
+      sentOffer('offer-a'),
+      undefined,
+      assignedAttempt,
+    ),
+    false,
+  );
+  const takenAttempt = store.beginOfferAttempt('ride-taken');
+  assert.equal(store.markTaken('ride-taken'), true);
+  assert.equal(
+    store.markOffered(
+      'ride-taken',
+      sentOffer('offer-b'),
+      undefined,
+      takenAttempt,
+    ),
+    false,
+  );
+  const cancelledAttempt = store.beginOfferAttempt('ride-cancelled');
+  assert.equal(store.markCancelled('ride-cancelled', 'offer-c'), true);
+  assert.equal(
+    store.markOffered(
+      'ride-cancelled',
+      sentOffer('offer-c'),
+      undefined,
+      cancelledAttempt,
+    ),
+    false,
+  );
+  assert.equal(store.markAssigned('ride-assigned'), false);
+  store.reset();
+});
+
+test('ride_closed y offer_rejected convergen en cualquier orden', () => {
+  const reduceInOrder = (closedFirst) => {
+    const store = useDriverRequests.getState();
+    store.reset();
+    applySentOffer(store, 'ride-1', sentOffer('offer-1'));
+    if (closedFirst) {
+      store.withdrawOffered(['ride-1']);
+      store.markRejected('ride-1', 'offer-1');
+    } else {
+      store.markRejected('ride-1', 'offer-1');
+      store.withdrawOffered(['ride-1']);
+    }
+    const state = useDriverRequests.getState();
+    return {
+      offered: state.offered['ride-1'] ?? null,
+      rejected: state.rejected.has('ride-1'),
+      settled: state.settledOfferIds.has('offer-1'),
+    };
+  };
+
+  assert.deepEqual(reduceInOrder(true), reduceInOrder(false));
+  useDriverRequests.getState().reset();
+});
+
+test('el snapshot PENDING corrige una expiración local por reloj adelantado', () => {
+  const store = useDriverRequests.getState();
+  store.reset();
+  store.markExpired('ride-1', 'offer-1');
+
+  store.reconcileOffered([
+    {
+      rideId: 'ride-1',
+      id: 'offer-1',
+      price: 20,
+      rideFare: 20,
+      etaMin: 5,
+      // Simula reloj del dispositivo adelantado respecto al servidor.
+      expiresAt: '2000-07-18T12:00:30Z',
+    },
+  ]);
+
+  assert.equal(useDriverRequests.getState().offered['ride-1'].offerId, 'offer-1');
+  assert.equal(useDriverRequests.getState().expired.has('ride-1'), false);
+  assert.equal(useDriverRequests.getState().settledOfferIds.has('offer-1'), false);
+  assert.equal(
+    new Date(useDriverRequests.getState().offered['ride-1'].expiresAt).getTime() >
+      Date.now(),
+    true,
+  );
+  store.reset();
+});
+
+test('una pausa de snapshot invalida el HTTP incluso después de reanudar', () => {
+  const store = useDriverRequests.getState();
+  store.reset();
+  const oldAttempt = store.beginOfferAttempt('ride-1');
+  store.markPaused('ride-1');
+  store.clearPaused('ride-1');
+
+  assert.equal(
+    store.markOffered('ride-1', sentOffer('offer-old'), undefined, oldAttempt),
+    false,
+  );
+  assert.equal(applySentOffer(store, 'ride-1', sentOffer('offer-new')), true);
+  assert.equal(useDriverRequests.getState().offered['ride-1'].offerId, 'offer-new');
+  store.reset();
+});
+
+test('el retiro voluntario de A no elimina una oferta B posterior', () => {
+  const store = useDriverRequests.getState();
+  store.reset();
+  applySentOffer(store, 'ride-1', sentOffer('offer-a'));
+  applySentOffer(store, 'ride-1', sentOffer('offer-b'));
+
+  assert.equal(store.markWithdrawn('ride-1', 'offer-a'), false);
+  assert.equal(useDriverRequests.getState().offered['ride-1'].offerId, 'offer-b');
+  assert.equal(useDriverRequests.getState().settledOfferIds.has('offer-a'), true);
+  store.reset();
+});
+
+test('dos intentos solapados solo aplican la respuesta más nueva', () => {
+  const store = useDriverRequests.getState();
+  store.reset();
+  const firstAttempt = store.beginOfferAttempt('ride-1');
+  const secondAttempt = store.beginOfferAttempt('ride-1');
+
+  assert.equal(
+    store.markOffered('ride-1', sentOffer('offer-a'), undefined, firstAttempt),
+    false,
+  );
+  assert.equal(
+    store.markOffered('ride-1', sentOffer('offer-b'), undefined, secondAttempt),
+    true,
+  );
+  assert.equal(useDriverRequests.getState().offered['ride-1'].offerId, 'offer-b');
+  store.reset();
+});
+
+test('pasar offline invalida respuestas de oferta todavía pendientes', () => {
+  const store = useDriverRequests.getState();
+  store.reset();
+  const attemptToken = store.beginOfferAttempt('ride-1');
+  store.invalidateAllOfferAttempts();
+
+  assert.equal(
+    store.markOffered('ride-1', sentOffer('offer-1'), undefined, attemptToken),
+    false,
+  );
+  assert.equal(useDriverRequests.getState().offered['ride-1'], undefined);
+  store.reset();
+});
+
+test('los guards históricos mantienen una retención acotada', () => {
+  const store = useDriverRequests.getState();
+  store.reset();
+  for (let index = 0; index < 520; index += 1) {
+    store.markRejected(`ride-${index}`, `offer-${index}`);
+  }
+  for (let index = 0; index < 270; index += 1) {
+    store.markAssigned(`terminal-${index}`);
+  }
+
+  assert.equal(useDriverRequests.getState().settledOfferIds.size, 512);
+  assert.equal(useDriverRequests.getState().terminalRideIds.size, 256);
+  assert.equal(useDriverRequests.getState().offerAttemptTokens.size, 512);
+  assert.equal(useDriverRequests.getState().settledOfferIds.has('offer-0'), false);
+  assert.equal(useDriverRequests.getState().settledOfferIds.has('offer-519'), true);
   store.reset();
 });

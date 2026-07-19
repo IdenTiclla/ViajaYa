@@ -330,8 +330,9 @@ export function useDriverPoolSocket(enabled = true): void {
             ['open-rides'],
             (prev) => removeOpenRide(prev, rideId),
           );
-          // La solicitud salió del pool: limpia su estado local (sin zombies).
-          useDriverRequests.getState().clearRide(rideId);
+          // Solo quita la oferta visible. El desenlace personal puede llegar
+          // antes o después desde otro stream y debe conservar su tombstone.
+          useDriverRequests.getState().withdrawOffered([rideId]);
           break;
         }
         case 'ride_paused': {
@@ -348,13 +349,17 @@ export function useDriverPoolSocket(enabled = true): void {
             ['open-rides'],
             (prev) => prependPausedOpenRides(prev, [ride]),
           );
-          useDriverRequests.getState().markPaused(ride.id);
-          useDriverToasts.getState().push({
-            kind: 'paused',
-            rideId: ride.id,
-            title: 'Solicitud en modificación',
-            message: 'El pasajero está modificando su solicitud.',
-          });
+          const applied = useDriverRequests
+            .getState()
+            .markPaused(ride.id, msg.data.offer_id);
+          if (applied) {
+            useDriverToasts.getState().push({
+              kind: 'paused',
+              rideId: ride.id,
+              title: 'Solicitud en modificación',
+              message: 'El pasajero está modificando su solicitud.',
+            });
+          }
           break;
         }
         case 'offer_accepted': {
@@ -363,13 +368,14 @@ export function useDriverPoolSocket(enabled = true): void {
           const ride = toRide(msg.data);
           await queryClient.cancelQueries({ queryKey: DRIVER_ACTIVE_RIDE_KEY });
           queryClient.setQueryData(DRIVER_ACTIVE_RIDE_KEY, ride);
-          useDriverRequests.getState().clearRide(ride.id);
-          useDriverToasts.getState().push({
-            kind: 'accepted',
-            rideId: ride.id,
-            title: '¡Viaje confirmado!',
-            message: 'El pasajero aceptó tu oferta.',
-          });
+          if (useDriverRequests.getState().markAssigned(ride.id)) {
+            useDriverToasts.getState().push({
+              kind: 'accepted',
+              rideId: ride.id,
+              title: '¡Viaje confirmado!',
+              message: 'El pasajero aceptó tu oferta.',
+            });
+          }
           break;
         }
         case 'offer_expired': {
@@ -389,45 +395,48 @@ export function useDriverPoolSocket(enabled = true): void {
         }
         case 'offer_rejected': {
           // Su oferta murió. La razón distingue el desenlace para el mensaje correcto.
-          const { ride_id: rideId, reason } = msg.data;
+          const { ride_id: rideId, offer_id: offerId, reason } = msg.data;
           const store = useDriverRequests.getState();
           const toasts = useDriverToasts.getState();
           if (reason === 'ride_taken') {
-            store.markTaken(rideId);
-            toasts.push({
-              kind: 'taken',
-              rideId,
-              title: 'Viaje tomado',
-              message: 'Otro conductor se quedó con este viaje.',
-            });
+            if (store.markTaken(rideId, offerId ?? undefined)) {
+              toasts.push({
+                kind: 'taken',
+                rideId,
+                title: 'Viaje tomado',
+                message: 'Otro conductor se quedó con este viaje.',
+              });
+            }
           } else if (reason === 'ride_cancelled') {
-            store.markRejected(rideId);
-            toasts.push({
-              kind: 'cancelled',
-              rideId,
-              title: 'Viaje cancelado',
-              message: 'El pasajero canceló la solicitud.',
-            });
+            if (store.markCancelled(rideId, offerId ?? undefined)) {
+              toasts.push({
+                kind: 'cancelled',
+                rideId,
+                title: 'Viaje cancelado',
+                message: 'El pasajero canceló la solicitud.',
+              });
+            }
           } else {
-            store.markRejected(rideId); // declined
-            toasts.push({
-              kind: 'rejected',
-              rideId,
-              title: 'Oferta rechazada',
-              message: 'El pasajero rechazó tu oferta.',
-            });
+            if (store.markRejected(rideId, offerId ?? undefined)) {
+              toasts.push({
+                kind: 'rejected',
+                rideId,
+                title: 'Oferta rechazada',
+                message: 'El pasajero rechazó tu oferta.',
+              });
+            }
           }
           break;
         }
-        case 'driver_active_ride':
+        case 'driver_active_ride': {
           // Snapshot al reconectar: recupera el viaje activo si lo eligieron con el
           // WS caído.
+          const ride = toRide(msg.data);
           await queryClient.cancelQueries({ queryKey: DRIVER_ACTIVE_RIDE_KEY });
-          queryClient.setQueryData(
-            DRIVER_ACTIVE_RIDE_KEY,
-            toRide(msg.data),
-          );
+          queryClient.setQueryData(DRIVER_ACTIVE_RIDE_KEY, ride);
+          useDriverRequests.getState().markAssigned(ride.id);
           break;
+        }
         case 'offers_withdrawn': {
           // Ganó otro viaje o pasó offline: el backend retiró todas sus ofertas
           // pendientes conocidas. Un resumen atrasado no debe borrar ofertas de

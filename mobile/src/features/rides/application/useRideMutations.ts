@@ -167,7 +167,9 @@ export function useSetOnline() {
           emptyOpenRides(),
         );
         // El commit HTTP ya retiró las ofertas aunque el aviso WS se pierda.
-        useDriverRequests.getState().reconcileOffered([]);
+        const driverRequests = useDriverRequests.getState();
+        driverRequests.invalidateAllOfferAttempts();
+        driverRequests.reconcileOffered([]);
       }
     },
   });

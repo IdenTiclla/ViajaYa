@@ -69,9 +69,10 @@ export function OfertaEnviadaScreen() {
   const expiredRides = useDriverRequests((s) => s.expired);
   const pausedRides = useDriverRequests((s) => s.paused);
   const offeredMap = useDriverRequests((s) => s.offered);
+  const beginOfferAttempt = useDriverRequests((s) => s.beginOfferAttempt);
   const markOffered = useDriverRequests((s) => s.markOffered);
   const markExpired = useDriverRequests((s) => s.markExpired);
-  const clearRide = useDriverRequests((s) => s.clearRide);
+  const markWithdrawn = useDriverRequests((s) => s.markWithdrawn);
   const wasRejected = !!rideId && rejectedRides.has(rideId);
   const wasTaken = !!rideId && takenRides.has(rideId);
   const isPaused = !!rideId && pausedRides.has(rideId);
@@ -141,9 +142,13 @@ export function OfertaEnviadaScreen() {
 
   const reAcceptAtFare = () => {
     if (!rideId || offerActionBusy) return;
+    const attemptToken = beginOfferAttempt(rideId);
     createOffer.mutate(
       { rideId, input: { acceptAtFare: true } },
-      { onSuccess: (offer) => markOffered(rideId, offer, openRide?.fare) },
+      {
+        onSuccess: (offer) =>
+          void markOffered(rideId, offer, openRide?.fare, attemptToken),
+      },
     );
   };
 
@@ -159,11 +164,12 @@ export function OfertaEnviadaScreen() {
 
   const submitCounter = () => {
     if (!rideId || !counterPriceIsValid || offerActionBusy) return;
+    const attemptToken = beginOfferAttempt(rideId);
     createOffer.mutate(
       { rideId, input: { acceptAtFare: false, price: parsedCounterPrice } },
       {
         onSuccess: (offer) => {
-          markOffered(rideId, offer, openRide?.fare);
+          void markOffered(rideId, offer, openRide?.fare, attemptToken);
           setShowCounter(false);
         },
       },
@@ -344,7 +350,7 @@ export function OfertaEnviadaScreen() {
             if (sentOffer) {
               withdrawOffer.mutate(sentOffer.offerId, {
                 onSuccess: () => {
-                  if (rideId) clearRide(rideId);
+                  if (rideId) markWithdrawn(rideId, sentOffer.offerId);
                   backToList();
                 },
               });

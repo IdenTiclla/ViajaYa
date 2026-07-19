@@ -441,10 +441,9 @@ Dispatcher sombra, sin Redis ni cambios de contrato/mobile:
   ofertas pendientes en el mismo commit y conservar el resumen personal al
   final del batch, sin emitir por ofertas ya vencidas ni por cambios vacíos.
 
-Antes del modo `live`, hacer conmutativa en mobile la reducción de
-`ride_closed` y `offer_rejected`: pertenecen a streams distintos y Redis no
-promete su orden relativo aunque cada stream conserve continuidad. La entrega
-directa actual sí preserva el orden del batch.
+- [x] Hacer conmutativa en mobile la reducción de `ride_closed` y el desenlace
+  personal: el cierre del pool solo retira la oferta visible y preserva los
+  tombstones/estados que llegan por el stream conductor en cualquier orden.
 
 También antes de `live`, la proyección mobile debe ignorar `ride_created`
 duplicados o atrasados sin limpiar desenlaces locales y proteger el cruce
@@ -464,10 +463,11 @@ streams conservan orden individual, no orden relativo entre pools distintos.
 - [ ] Extender `offers_withdrawn` antes de `live` con pares exactos
   `{ride_id, offer_id}`. El wire actual no puede distinguir una oferta retirada
   de una reoferta posterior sobre el mismo ride.
-- [ ] Arbitrar la carrera creación HTTP/evento WS: una respuesta tardía de
-  `createOffer` no debe ejecutar `markOffered` si esa misma `offer_id` ya recibió
-  rechazo, expiración o aceptación. El tombstone debe ser por oferta, no solo
-  por ride, para permitir una reoferta posterior legítima.
+- [x] Arbitrar la carrera creación HTTP/evento WS con tombstones acotados por
+  `offer_id`, token por intento, bloqueo por ride terminal y `markOffered` CAS.
+  Una respuesta tardía ya no revive rechazo, expiración, pausa, aceptación,
+  retiro, viaje tomado, cancelación ni gana a un intento nuevo. El snapshot
+  PostgreSQL `PENDING` prevalece sobre una expiración local contradictoria.
 
 ### 3.2 Bridge Redis y sockets locales
 

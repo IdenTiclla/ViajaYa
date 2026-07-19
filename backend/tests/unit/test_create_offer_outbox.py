@@ -244,7 +244,10 @@ async def test_outbox_recorder_uses_the_same_canonical_batch():
 def test_get_create_offer_enables_outbox_and_disables_repository_autocommit():
     session = Mock(spec=AsyncSession)
     rides = InMemoryRideRequestRepository()
-    settings = Settings(realtime_outbox_recording_enabled=True)
+    settings = Settings(
+        realtime_outbox_dispatch_mode="shadow",
+        realtime_outbox_recording_enabled=True,
+    )
 
     use_case = get_create_offer(rides, session, settings)  # type: ignore[arg-type]
 
@@ -286,7 +289,10 @@ async def test_create_offer_persists_business_and_outbox_in_one_commit(
         result = await get_create_offer(
             rides,
             session,
-            Settings(realtime_outbox_recording_enabled=True),
+            Settings(
+                realtime_outbox_dispatch_mode="shadow",
+                realtime_outbox_recording_enabled=True,
+            ),
         ).execute(
             driver,
             ride.id,

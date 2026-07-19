@@ -10,7 +10,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
-from typing import Generic, TypeVar
+from typing import Generic, Literal, TypeVar
 
 from app.domain.entities import (
     AuthProvider,
@@ -59,6 +59,15 @@ class RealtimeOutboxEvent:
     published_at: datetime | None
     attempts: int
     last_error: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class DispatchRealtimeOutboxResult:
+    """Resultado de procesar como máximo un batch pendiente de la outbox."""
+
+    status: Literal["empty", "published", "failed"]
+    batch_id: uuid.UUID | None = None
+    event_count: int = 0
 
 
 @dataclass(frozen=True)

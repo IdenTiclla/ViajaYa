@@ -69,6 +69,14 @@ class RealtimeOutbox(ABC):
         """Registra el fallo y programa el siguiente intento del lote."""
 
 
+class RealtimeOutboxBatchValidator(ABC):
+    """Valida metadatos y payloads antes de despachar un lote durable."""
+
+    @abstractmethod
+    def validate(self, events: Sequence[RealtimeOutboxEvent]) -> None:
+        """Lanza un error de aplicación si el lote no es canónico."""
+
+
 class CreateOfferEventRecorder(ABC):
     """Registra los eventos durables producidos al crear o mejorar una oferta."""
 

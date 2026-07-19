@@ -218,9 +218,12 @@ Axios todavía continúe en segundo plano sin propagar `AbortSignal`.
 > `CreateOffer`/reemplazo es el primer productor: oferta, batch ordenado y
 > versiones se confirman en un solo commit mediante `UnitOfWork`; la publicación
 > directa reutiliza exactamente el payload persistido. El recorder está detrás
-> de `REALTIME_OUTBOX_RECORDING_ENABLED=false` y debe permanecer apagado hasta
-> que el dispatcher sombra pueda drenar y marcar los batches sin entregarlos al
-> cliente. Esta entrega no habilita múltiples workers.
+> de `REALTIME_OUTBOX_RECORDING_ENABLED=false` y el dispatcher se controla con
+> `REALTIME_OUTBOX_DISPATCH_MODE=off|shadow`, también apagado por defecto. El modo
+> sombra únicamente reclama, valida y marca batches: no entrega al hub WebSocket
+> ni a Redis. Esta vertical no incorpora modo `live` ni habilita múltiples
+> workers. El lifecycle ya realiza preflight de `0018`, usa una sesión nueva por
+> iteración y detiene el loop de forma coordinada.
 > `0018` no se aplicó a la base local `viajaya`; sus pruebas PostgreSQL son
 > opt-in y CI las ejecutará sobre una base desechable.
 
@@ -247,9 +250,27 @@ Un dispatcher reclamará filas con `FOR UPDATE SKIP LOCKED`, publicará en Redis
 marcará `published_at`. Si muere después de publicar y antes de marcar, el evento
 se repetirá; por eso la idempotencia del cliente es obligatoria.
 
+El primer dispatcher es deliberadamente **sombra** y no ejecuta esa publicación:
+certifica el claim, la validación y el lifecycle usando la outbox real, marca las
+filas procesadas y deja la entrega directa actual como única vía visible. No
+requiere una migración adicional; sí exige que `0018` esté aplicada antes de
+habilitarlo. La secuencia de flags es:
+
+1. `off` + recording `false`: estado seguro y predeterminado;
+2. `shadow` + recording `false`: comprobar arranque/apagado y drenar cualquier
+   backlog previo sin entregarlo;
+3. `shadow` + recording `true`: registrar y depurar en sombra mientras se compara
+   con la publicación directa.
+
+`off` + recording `true` no es una combinación desplegable. Antes de una futura
+entrega real se debe comprobar que no quede backlog sombra reproducible. Cambiar
+estos flags no permite aumentar el número de workers API.
+
 Las operaciones atómicas de aceptación, cancelación, pausa y creación/reemplazo
 de oferta serán las primeras en migrar. No se retirará la publicación directa
 hasta que la outbox funcione en modo sombra y sus métricas coincidan.
+
+Base ya cumplida por `93b9741`:
 
 - [x] Crear esquema, índices, constraints y downgrade de `0018`.
 - [x] Reclamar batches completos con `FOR UPDATE SKIP LOCKED` y liberarlos al
@@ -258,10 +279,16 @@ hasta que la outbox funcione en modo sombra y sus métricas coincidan.
 - [x] Reutilizar el mismo builder canónico para outbox y WebSocket directo.
 - [x] Proteger el producer con un feature flag apagado por defecto para no crear
   un backlog histórico imposible de reproducir con seguridad.
-- [ ] Ejecutar el dispatcher en modo sombra con lifecycle y apagado coordinado.
-- [ ] Marcar/depurar el backlog sombra antes de habilitar entrega real.
-- [ ] Validar al despachar que `event_type`, topic y payload canónico coincidan;
-  medir pendientes y edad máxima, y definir retención de filas publicadas.
+
+Dispatcher sombra, sin Redis ni cambios de contrato/mobile:
+
+- [x] Ejecutar el dispatcher en modo sombra con lifecycle y apagado coordinado.
+- [x] Validar antes de marcar que lote, secuencia, `event_id`, versión,
+  `event_type`, topic y payload canónico coincidan, con error sanitizado y
+  backoff.
+- [ ] Activarlo en un entorno con `0018`, depurar el backlog sombra y comparar
+  sus batches con la publicación directa antes de habilitar entrega real.
+- [ ] Medir pendientes y edad máxima, y definir retención de filas publicadas.
 - [ ] No habilitar entrega real con múltiples dispatchers hasta que el envelope
   lleve `event_id`/`aggregate_version` y mobile descarte duplicados y versiones
   atrasadas; batches distintos del mismo agregado todavía pueden reclamarse en
@@ -315,13 +342,17 @@ seguirán siendo la defensa final contra carreras.
 ## Despliegue incremental
 
 1. Publicar métricas y documentar el límite actual de un worker.
-2. Desplegar tablas outbox/acciones sin consumidores.
-3. Emitir envelopes versionados y actualizar mobile para idempotencia.
-4. Activar dispatcher y worker en modo sombra.
-5. Activar Redis bridge con un worker API y comparar eventos/snapshots.
-6. Desactivar temporizadores y publicación directa mediante feature flags.
-7. Probar reinicios forzados de API, Redis y workers.
-8. Habilitar dos workers API en staging; luego producción.
+2. Aplicar `0018` y desplegar las tablas de outbox sin consumidores.
+3. Desplegar el dispatcher en `off` y luego activar `shadow` con recording
+   `false` para certificar lifecycle y drenar backlog.
+4. Activar recording en sombra y comparar batches, payloads y métricas contra la
+   publicación directa, todavía con un worker.
+5. Emitir envelopes versionados y actualizar mobile para idempotencia y
+   watermarks.
+6. Activar Redis bridge con un worker API y comparar eventos/snapshots.
+7. Desactivar temporizadores y publicación directa mediante feature flags.
+8. Probar reinicios forzados de API, Redis y workers.
+9. Habilitar dos workers API en staging; luego producción.
 
 Cada paso debe tener un feature flag y rollback que no revierta migraciones ni
 borre eventos pendientes.

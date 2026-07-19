@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import Literal
 
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -26,6 +28,30 @@ class Settings(BaseSettings):
     # El recorder queda apagado hasta que exista un dispatcher sombra que drene
     # y marque los batches sin reproducir eventos históricos al cliente.
     realtime_outbox_recording_enabled: bool = False
+    realtime_outbox_dispatch_mode: Literal["off", "shadow"] = "off"
+    realtime_outbox_poll_interval_seconds: float = Field(default=1.0, gt=0, le=60)
+    realtime_outbox_retry_base_seconds: float = Field(default=1.0, gt=0, le=3600)
+    realtime_outbox_retry_max_seconds: float = Field(default=60.0, gt=0, le=86400)
+    realtime_outbox_shutdown_timeout_seconds: float = Field(default=5.0, gt=0, le=60)
+
+    @model_validator(mode="after")
+    def validate_realtime_outbox_rollout(self) -> Settings:
+        if (
+            self.realtime_outbox_recording_enabled
+            and self.realtime_outbox_dispatch_mode == "off"
+        ):
+            raise ValueError(
+                "REALTIME_OUTBOX_RECORDING_ENABLED requiere "
+                "REALTIME_OUTBOX_DISPATCH_MODE=shadow."
+            )
+        if (
+            self.realtime_outbox_retry_max_seconds
+            < self.realtime_outbox_retry_base_seconds
+        ):
+            raise ValueError(
+                "El backoff máximo de la outbox no puede ser menor al base."
+            )
+        return self
 
     @property
     def cors_origins_list(self) -> list[str]:

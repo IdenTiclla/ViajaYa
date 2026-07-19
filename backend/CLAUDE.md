@@ -114,11 +114,23 @@ JWT_SECRET, JWT_ALGORITHM (HS256),
 ACCESS_TOKEN_EXPIRE_MINUTES (30), REFRESH_TOKEN_EXPIRE_DAYS (14),
 CORS_ORIGINS (lista separada por comas; helper .cors_origins_list),
 GOOGLE_CLIENT_ID, FACEBOOK_APP_ID, FACEBOOK_APP_SECRET,
-REALTIME_OUTBOX_RECORDING_ENABLED (false hasta activar dispatcher sombra)
+REALTIME_OUTBOX_DISPATCH_MODE (off|shadow; off por defecto),
+REALTIME_OUTBOX_RECORDING_ENABLED (false por defecto),
+REALTIME_OUTBOX_POLL_INTERVAL_SECONDS (1),
+REALTIME_OUTBOX_RETRY_BASE_SECONDS (1),
+REALTIME_OUTBOX_RETRY_MAX_SECONDS (60),
+REALTIME_OUTBOX_SHUTDOWN_TIMEOUT_SECONDS (5)
 ```
 
 Accede a la config con `get_settings()` (cacheado con `@lru_cache`); **no leas `os.environ` directo**.
 CORS se aplica en `main.py` con `cors_origins_list`.
+
+El rollout de la outbox sigue obligatoriamente esta secuencia: `off+false` ->
+`shadow+false` -> `shadow+true`. No uses `off+true`: produciría eventos sin un
+consumidor que depure el backlog. Antes de salir de `off` debe estar aplicada la
+migración `0018_realtime_outbox`. `shadow` reclama, valida y marca batches como
+procesados, pero no los entrega al hub WebSocket ni a Redis. No existe un modo
+`live` y estos flags no autorizan más de un worker API.
 
 ## API (v1, prefijo `/api/v1`)
 
@@ -202,8 +214,11 @@ offer_withdrawn, offer_accepted, offers_withdrawn (plural), offer_expired, ride_
 - El polling del cliente queda **solo como respaldo lento**; la vía principal es el WS.
 - Crear/reemplazar oferta ya persiste antes del commit un batch ordenado en
   `realtime_outbox` cuando `REALTIME_OUTBOX_RECORDING_ENABLED=true`; la entrega
-  directa reutiliza ese mismo payload `{type,data}`. El flag permanece apagado
-  hasta incorporar el dispatcher sombra y el backend sigue limitado a un worker.
+  directa reutiliza ese mismo payload `{type,data}`. El dispatcher controlado por
+  `REALTIME_OUTBOX_DISPATCH_MODE=shadow` solo valida y marca la copia durable; la
+  publicación directa continúa siendo la única entrega al cliente. El modo
+  inicial es `off`, no existe entrega `live` por outbox y el backend sigue
+  limitado a un worker.
 
 Presencia (`api/v1/presence.py`): la solicitud aparece en `/rides/open` mientras el pasajero esté
 conectado al WS o dentro de la ventana de gracia (`PRESENCE_GRACE_SECONDS = 120`). Minimizar/cambiar

@@ -195,6 +195,14 @@ class ExpireOfferEventRecorder(ABC):
         """Añade a la outbox el fanout ``offer_expired`` de la oferta vencida."""
 
 
+class UpdateRideStatusEventRecorder(ABC):
+    """Registra los eventos durables al avanzar el estado de un viaje."""
+
+    @abstractmethod
+    async def record(self, detail: RideDetail) -> None:
+        """Añade a la outbox el estado exacto visto por ambos participantes."""
+
+
 class PasswordHasher(ABC):
     @abstractmethod
     def hash(self, plain: str) -> str: ...

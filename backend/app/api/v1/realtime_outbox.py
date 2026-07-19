@@ -14,6 +14,7 @@ from app.api.v1.events import (
     build_pause_ride_events,
     build_reject_offer_events,
     build_republish_ride_events,
+    build_update_ride_status_events,
     build_withdraw_offer_events,
 )
 from app.api.v1.schemas.realtime import (
@@ -27,6 +28,7 @@ from app.application.dto import (
     CreateOfferResult,
     RealtimeOutboxEvent,
     RealtimeOutboxQuarantineCode,
+    RideDetail,
     RidePausedResult,
     RideRepublishedResult,
 )
@@ -42,6 +44,7 @@ from app.application.interfaces import (
     RealtimeOutboxBatchValidator,
     RejectOfferEventRecorder,
     RepublishRideEventRecorder,
+    UpdateRideStatusEventRecorder,
     WithdrawOfferEventRecorder,
 )
 from app.domain.entities import Offer
@@ -339,3 +342,20 @@ class DisabledExpireOfferEventRecorder(ExpireOfferEventRecorder):
 
     async def record(self, offer: Offer) -> None:
         del offer
+
+
+class OutboxUpdateRideStatusEventRecorder(UpdateRideStatusEventRecorder):
+    """Registra el avance del viaje dentro de su transacción de negocio."""
+
+    def __init__(self, outbox: RealtimeOutbox) -> None:
+        self._outbox = outbox
+
+    async def record(self, detail: RideDetail) -> None:
+        await self._outbox.add_batch(build_update_ride_status_events(detail))
+
+
+class DisabledUpdateRideStatusEventRecorder(UpdateRideStatusEventRecorder):
+    """Recorder nulo mientras el avance durable está deshabilitado."""
+
+    async def record(self, detail: RideDetail) -> None:
+        del detail

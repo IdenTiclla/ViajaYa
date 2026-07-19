@@ -279,7 +279,8 @@ Axios todavía continúe en segundo plano sin propagar `AbortSignal`.
 > continuar el replay live.
 > `CreateOffer`/reemplazo, `AcceptOffer`, `PauseRideForEdit`, `CancelRide`, el
 > cierre automático por ausencia, `UpdateRideFare`, `EditRide`,
-> `AnnounceOpenRide`, `WithdrawOffer`, `RejectOffer` y `ExpireOffer` son los primeros
+> `AnnounceOpenRide`, `WithdrawOffer`, `RejectOffer`, `ExpireOffer` y
+> `UpdateRideStatus` son los primeros
 > productores: mutación, batch ordenado y versiones se confirman en un solo commit mediante
 > `UnitOfWork`; la publicación directa reutiliza exactamente los payloads
 > persistidos. `CreateRideRequest` también delega el commit a la aplicación, pero
@@ -317,6 +318,10 @@ Axios todavía continúe en segundo plano sin propagar `AbortSignal`.
 > ride; una lectura fresca bajo lock evita que el barrido de una sesión ORM
 > obsoleta sobrescriba una aceptación, rechazo o retiro concurrente. El timer de
 > 30 s continúa en memoria y su durabilidad queda reservada a `scheduled_actions`.
+> Cada avance del viaje captura antes del commit el detalle enriquecido exacto y
+> registra `ride_status` primero en el stream del ride y luego en el del
+> conductor. El router devuelve ese mismo detalle, sin una segunda lectura que
+> pueda coalescer una transición concurrente posterior.
 
 Para publicar un evento después de un commit sin ventana de pérdida, la mutación
 y el registro del evento deben pertenecer a la misma transacción. Se introdujo
@@ -424,6 +429,9 @@ Dispatcher sombra, sin Redis ni cambios de contrato/mobile:
 - [x] Migrar la expiración a UoW + outbox, conservar el batch
   `driver:* → ride:*` y revalidar bajo lock una entidad ORM fresca antes de
   marcar `EXPIRED`.
+- [x] Migrar los avances `ARRIVING → IN_PROGRESS → COMPLETED` a UoW + outbox;
+  capturar el detalle enriquecido antes del commit y conservar el fanout
+  `ride:* → driver:*` con el mismo estado exacto en HTTP y WebSocket.
 
 Antes del modo `live`, hacer conmutativa en mobile la reducción de
 `ride_closed` y `offer_rejected`: pertenecen a streams distintos y Redis no
@@ -438,6 +446,11 @@ streams conservan orden individual, no orden relativo entre pools distintos.
 El consumidor conductor de `offer_expired` también debe comparar `offer_id`, no
 solo `ride_id`: un evento atrasado de una oferta anterior no puede vencer la
 oferta nueva del mismo ride, y un duplicado no debe repetir la notificación.
+
+El reducer de `ride_status` debe impedir regresiones no terminales según la
+secuencia `SEARCHING → ACCEPTED → ARRIVING → IN_PROGRESS → COMPLETED`, aunque
+permita el mismo estado para refrescar el payload. El gate v2 ordenará el stream,
+pero este guard también protege el cruce con respuestas HTTP todavía sin versión.
 
 ### 3.2 Bridge Redis y sockets locales
 

@@ -231,6 +231,63 @@ def test_passenger_receives_snapshot_and_live_offer(ws_client: TestClient):
         assert status_event["data"]["status"] == "accepted"
 
 
+def test_status_progression_reaches_both_participants_with_exact_http_payload(
+    ws_client: TestClient,
+) -> None:
+    rider_token = _register(ws_client, "rider-status-ws@x.com")
+    driver_token = _register(ws_client, "driver-status-ws@x.com")
+    _promote_driver(ws_client, "driver-status-ws@x.com")
+
+    with _websocket_connect(ws_client, "/api/v1/ws/driver?token=" + driver_token) as driver_ws:
+        _receive_driver_handshake(driver_ws)
+        ride = ws_client.post(
+            RIDES,
+            json=_ride_payload(),
+            headers=_headers(rider_token),
+        ).json()
+
+        with _websocket_connect(
+            ws_client,
+            f"/api/v1/ws/rides/{ride['id']}?token={rider_token}",
+        ) as rider_ws:
+            assert rider_ws.receive_json()["type"] == "offers_snapshot"
+            assert driver_ws.receive_json()["type"] == "ride_created"
+            offer = ws_client.post(
+                f"{RIDES}/{ride['id']}/offers",
+                json={"accept_at_fare": True, "eta_min": 4},
+                headers=_headers(driver_token),
+            ).json()
+            assert rider_ws.receive_json()["type"] == "offer_created"
+
+            accepted = ws_client.post(
+                f"{RIDES}/offers/{offer['id']}/accept",
+                headers=_headers(rider_token),
+            )
+            assert accepted.status_code == 200, accepted.text
+            assert rider_ws.receive_json()["data"]["status"] == "accepted"
+            assert [driver_ws.receive_json()["type"] for _ in range(3)] == [
+                "ride_closed",
+                "offer_accepted",
+                "offers_withdrawn",
+            ]
+
+            for next_status in ("arriving", "in_progress", "completed"):
+                response = ws_client.patch(
+                    f"{RIDES}/{ride['id']}/status",
+                    json={"status": next_status},
+                    headers=_headers(driver_token),
+                )
+                assert response.status_code == 200, response.text
+                payload = response.json()
+
+                rider_event = rider_ws.receive_json()
+                driver_event = driver_ws.receive_json()
+                assert rider_event == {"type": "ride_status", "data": payload}
+                assert driver_event == {"type": "ride_status", "data": payload}
+
+            assert payload["completed_at"] is not None
+
+
 def test_invalid_token_closes_socket(ws_client: TestClient):
     rider_token = _register(ws_client, "rider@x.com")
     ride = ws_client.post(RIDES, json=_ride_payload(), headers=_headers(rider_token)).json()

@@ -397,6 +397,32 @@ def build_expire_offer_events(offer: Offer) -> list[PendingRealtimeEvent]:
     ]
 
 
+def build_update_ride_status_events(
+    detail: RideDetail,
+) -> list[PendingRealtimeEvent]:
+    """Construye el fanout durable/directo de un avance del viaje."""
+    ride = detail.ride
+    message = RideStatusMessage(data=RideResponse.from_detail(detail))
+    pending = [
+        _pending_realtime_event(
+            topic=ride_topic(ride.id),
+            aggregate_type="ride",
+            aggregate_id=ride.id,
+            message=message,
+        )
+    ]
+    if detail.driver is not None:
+        pending.append(
+            _pending_realtime_event(
+                topic=driver_topic(detail.driver.id),
+                aggregate_type="ride",
+                aggregate_id=ride.id,
+                message=message,
+            )
+        )
+    return pending
+
+
 async def publish_ride_created(detail: OpenRideDetail) -> None:
     """Una solicitud nueva (o renovada) aparece para los conductores del pool.
 
@@ -520,10 +546,7 @@ async def publish_ride_status(detail: RideDetail) -> None:
     El conductor también lo recibe por su canal personal para enterarse en vivo
     de cambios que no inició él (p. ej. el pasajero canceló el viaje).
     """
-    message = RideStatusMessage(data=RideResponse.from_detail(detail))
-    await _broadcast(ride_topic(detail.ride.id), message)
-    if detail.driver is not None:
-        await _broadcast(driver_topic(detail.driver.id), message)
+    await _broadcast_pending(build_update_ride_status_events(detail))
 
 
 async def publish_offer_accepted(result: AcceptOfferResult) -> None:

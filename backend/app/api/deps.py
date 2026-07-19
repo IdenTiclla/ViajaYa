@@ -22,6 +22,7 @@ from app.api.v1.realtime_outbox import (
     DisabledPauseRideEventRecorder,
     DisabledRejectOfferEventRecorder,
     DisabledRepublishRideEventRecorder,
+    DisabledUpdateRideStatusEventRecorder,
     DisabledWithdrawOfferEventRecorder,
     OutboxAcceptOfferEventRecorder,
     OutboxAnnounceOpenRideEventRecorder,
@@ -31,6 +32,7 @@ from app.api.v1.realtime_outbox import (
     OutboxPauseRideEventRecorder,
     OutboxRejectOfferEventRecorder,
     OutboxRepublishRideEventRecorder,
+    OutboxUpdateRideStatusEventRecorder,
     OutboxWithdrawOfferEventRecorder,
 )
 from app.application.interfaces import (
@@ -380,8 +382,22 @@ def build_expire_offer(session: AsyncSession, settings: Settings) -> ExpireOffer
     )
 
 
-def get_update_ride_status(rides: RideRequestRepositoryDep) -> UpdateRideStatus:
-    return UpdateRideStatus(rides)
+def get_update_ride_status(
+    session: SessionDep,
+    settings: SettingsDep,
+) -> UpdateRideStatus:
+    recorder = (
+        OutboxUpdateRideStatusEventRecorder(SqlAlchemyRealtimeOutbox(session))
+        if settings.realtime_outbox_recording_enabled
+        else DisabledUpdateRideStatusEventRecorder()
+    )
+    return UpdateRideStatus(
+        SqlAlchemyRideRequestRepository(session, commit_update_if_state=False),
+        SqlAlchemyOfferRepository(session),
+        SqlAlchemyUserRepository(session),
+        SqlAlchemyUnitOfWork(session),
+        recorder,
+    )
 
 
 def _republish_ride_recorder(

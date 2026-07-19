@@ -358,11 +358,9 @@ async def update_status(
     body: RideStatusUpdate,
     current_user: CurrentUserDep,
     use_case: Annotated[UpdateRideStatus, Depends(get_update_ride_status)],
-    get_ride_use_case: Annotated[GetRide, Depends(get_get_ride)],
 ) -> RideResponse:
     """El conductor asignado avanza el estado del viaje."""
-    await use_case.execute(current_user, ride_id, body.status)
-    detail = await get_ride_use_case.execute(current_user, ride_id)
+    detail = await use_case.execute(current_user, ride_id, body.status)
     await events.publish_ride_status(detail)
     return RideResponse.from_detail(detail)
 

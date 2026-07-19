@@ -390,7 +390,8 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
             .returning(RideRequestModel.id)
         )
         if result.scalar_one_or_none() is None:
-            await self._session.rollback()
+            if self._commit_update_if_state:
+                await self._session.rollback()
             return None
 
         if self._commit_update_if_state:

@@ -12,7 +12,6 @@ from app.application.dto import CreateOfferInput
 from app.application.use_cases.list_offers_for_ride import ListOffersForRide
 from app.application.use_cases.list_open_rides import ListOpenRides
 from app.application.use_cases.set_driver_online import SetDriverOnline
-from app.application.use_cases.update_ride_status import UpdateRideStatus
 from app.domain.entities import (
     Location,
     OfferStatus,
@@ -38,6 +37,7 @@ from tests.fakes import (
     cancel_ride_use_case,
     create_offer_use_case,
     expire_offer_use_case,
+    update_ride_status_use_case,
     withdraw_offer_use_case,
 )
 
@@ -381,44 +381,65 @@ async def test_withdraw_offer_rejects_foreign_driver():
 
 async def test_update_ride_status_valid_progression():
     rides = InMemoryRideRequestRepository()
+    offers = InMemoryOfferRepository()
+    users = InMemoryUserRepository()
     rider, driver = _passenger(), _driver()
+    await users.add(rider)
+    await users.add(driver)
     ride = _ride(rider.id)
     ride.status = RideStatus.ACCEPTED
     ride.driver_id = driver.id
     await rides.add(ride)
 
-    use_case = UpdateRideStatus(rides)
+    use_case = update_ride_status_use_case(rides, offers, users)
     updated = await use_case.execute(driver, ride.id, RideStatus.ARRIVING)
-    assert updated.status is RideStatus.ARRIVING
+    assert updated.ride.status is RideStatus.ARRIVING
     updated = await use_case.execute(driver, ride.id, RideStatus.IN_PROGRESS)
-    assert updated.status is RideStatus.IN_PROGRESS
+    assert updated.ride.status is RideStatus.IN_PROGRESS
     updated = await use_case.execute(driver, ride.id, RideStatus.COMPLETED)
-    assert updated.status is RideStatus.COMPLETED
-    assert updated.completed_at is not None
+    assert updated.ride.status is RideStatus.COMPLETED
+    assert updated.ride.completed_at is not None
 
 
 async def test_update_ride_status_rejects_invalid_jump():
     rides = InMemoryRideRequestRepository()
+    offers = InMemoryOfferRepository()
+    users = InMemoryUserRepository()
     rider, driver = _passenger(), _driver()
+    await users.add(rider)
+    await users.add(driver)
     ride = _ride(rider.id)
     ride.status = RideStatus.ACCEPTED
     ride.driver_id = driver.id
     await rides.add(ride)
 
     with pytest.raises(InvalidRideTransitionError):
-        await UpdateRideStatus(rides).execute(driver, ride.id, RideStatus.COMPLETED)
+        await update_ride_status_use_case(rides, offers, users).execute(
+            driver,
+            ride.id,
+            RideStatus.COMPLETED,
+        )
 
 
 async def test_update_ride_status_rejects_other_driver():
     rides = InMemoryRideRequestRepository()
+    offers = InMemoryOfferRepository()
+    users = InMemoryUserRepository()
     rider, driver, other = _passenger(), _driver(), _driver()
+    await users.add(rider)
+    await users.add(driver)
+    await users.add(other)
     ride = _ride(rider.id)
     ride.status = RideStatus.ACCEPTED
     ride.driver_id = driver.id
     await rides.add(ride)
 
     with pytest.raises(NotAuthorizedActionError):
-        await UpdateRideStatus(rides).execute(other, ride.id, RideStatus.ARRIVING)
+        await update_ride_status_use_case(rides, offers, users).execute(
+            other,
+            ride.id,
+            RideStatus.ARRIVING,
+        )
 
 
 async def test_set_driver_online_toggles():

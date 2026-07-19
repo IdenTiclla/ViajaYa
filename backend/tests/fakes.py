@@ -35,6 +35,7 @@ from app.application.interfaces import (
     SocialIdentityVerifier,
     TokenService,
     UnitOfWork,
+    UpdateRideStatusEventRecorder,
     WithdrawOfferEventRecorder,
 )
 from app.application.use_cases.accept_offer import AcceptOffer
@@ -47,6 +48,7 @@ from app.application.use_cases.expire_offer import ExpireOffer
 from app.application.use_cases.pause_ride_for_edit import PauseRideForEdit
 from app.application.use_cases.reject_offer import RejectOffer
 from app.application.use_cases.update_ride_fare import UpdateRideFare
+from app.application.use_cases.update_ride_status import UpdateRideStatus
 from app.application.use_cases.withdraw_offer import WithdrawOffer
 from app.domain.entities import (
     ACTIVE_OFFER_STATUSES,
@@ -875,6 +877,25 @@ class InMemoryExpireOfferEventRecorder(ExpireOfferEventRecorder):
         self.offers.append(offer)
 
 
+class InMemoryUpdateRideStatusEventRecorder(UpdateRideStatusEventRecorder):
+    def __init__(
+        self,
+        *,
+        operations: list[str] | None = None,
+        error: BaseException | None = None,
+    ) -> None:
+        self.details: list[RideDetail] = []
+        self._operations = operations
+        self._error = error
+
+    async def record(self, detail: RideDetail) -> None:
+        if self._operations is not None:
+            self._operations.append("record")
+        if self._error is not None:
+            raise self._error
+        self.details.append(detail)
+
+
 def create_ride_request_use_case(
     rides: InMemoryRideRequestRepository,
     *,
@@ -956,6 +977,24 @@ def expire_offer_use_case(
         offers,
         unit_of_work or InMemoryUnitOfWork(offers),
         event_recorder or InMemoryExpireOfferEventRecorder(),
+    )
+
+
+def update_ride_status_use_case(
+    rides: InMemoryRideRequestRepository,
+    offers: InMemoryOfferRepository,
+    users: InMemoryUserRepository,
+    *,
+    unit_of_work: UnitOfWork | None = None,
+    event_recorder: UpdateRideStatusEventRecorder | None = None,
+) -> UpdateRideStatus:
+    """Cablea UpdateRideStatus con dobles transaccionales explícitos."""
+    return UpdateRideStatus(
+        rides,
+        offers,
+        users,
+        unit_of_work or InMemoryUnitOfWork(rides=rides),
+        event_recorder or InMemoryUpdateRideStatusEventRecorder(),
     )
 
 

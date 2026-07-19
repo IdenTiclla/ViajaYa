@@ -127,8 +127,9 @@ CORS se aplica en `main.py` con `cors_origins_list`.
 
 El rollout de la outbox sigue obligatoriamente esta secuencia: `off+false` ->
 `shadow+false` -> `shadow+true`. No uses `off+true`: produciría eventos sin un
-consumidor que depure el backlog. Antes de salir de `off` debe estar aplicada la
-migración `0018_realtime_outbox`. `shadow` reclama, valida y marca batches como
+consumidor que depure el backlog. Antes de salir de `off` deben estar aplicadas
+`0018_realtime_outbox` y `0019_realtime_stream_versions`. `shadow` reclama,
+valida y marca batches como
 procesados, pero no los entrega al hub WebSocket ni a Redis. No existe un modo
 `live` y estos flags no autorizan más de un worker API.
 
@@ -228,7 +229,8 @@ cerrar la app o perder ambos canales durante toda la gracia cancela la búsqueda
 ## Migraciones (Alembic)
 
 - Config: `alembic.ini` + `migrations/env.py` (engine **async** con `async_engine_from_config`).
-- **18 migraciones** en `migrations/versions/` (`0001_create_users` … `0018_realtime_outbox`).
+- **19 migraciones** en `migrations/versions/` (`0001_create_users` …
+  `0019_realtime_stream_versions`).
 - Importante: los enums se persisten por **valor** minúsculo vía `values_callable=_enum_values`
   en `infrastructure/db/models.py` (migración `0006_normalize_enum_values`). No rompas esa convención
   o se caerán columnas existentes.

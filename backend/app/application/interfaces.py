@@ -45,7 +45,7 @@ class RealtimeOutbox(ABC):
         self,
         events: Sequence[PendingRealtimeEvent],
     ) -> list[RealtimeOutboxEvent]:
-        """Añade un lote y asigna secuencia y versión a cada publicación."""
+        """Añade un lote y asigna versiones de agregado y stream."""
 
     @abstractmethod
     async def claim_next_batch(self, now: datetime) -> list[RealtimeOutboxEvent]:

@@ -87,11 +87,22 @@ def validate_realtime_outbox_batch(events: Sequence[RealtimeOutboxEvent]) -> Non
     if len(set(event_ids)) != len(event_ids):
         raise _invalid_batch("contiene event_id duplicado")
 
+    last_stream_version: dict[str, int] = {}
     for event in events:
         if event.aggregate_version < 1:
             raise _invalid_batch("contiene aggregate_version no positiva")
+        if event.stream_version < 1:
+            raise _invalid_batch("contiene stream_version no positiva")
         if not _has_allowed_topic(event.topic):
             raise _invalid_batch("contiene un topic no permitido")
+
+        previous_stream_version = last_stream_version.get(event.topic)
+        if (
+            previous_stream_version is not None
+            and event.stream_version != previous_stream_version + 1
+        ):
+            raise _invalid_batch("la secuencia del stream no es contigua en el lote")
+        last_stream_version[event.topic] = event.stream_version
 
         payload_type = event.payload.get("type")
         if event.event_type != payload_type:

@@ -33,6 +33,7 @@ def _event(*, attempts: int = 1) -> RealtimeOutboxEvent:
         aggregate_type="ride",
         aggregate_id=ride_id,
         aggregate_version=1,
+        stream_version=1,
         payload={"type": "ride_closed", "data": {"ride_id": str(ride_id)}},
         created_at=now,
         next_attempt_at=now,

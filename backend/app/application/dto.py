@@ -30,8 +30,8 @@ T = TypeVar("T")
 class PendingRealtimeEvent:
     """Evento listo para persistirse, todavía sin metadatos de entrega.
 
-    La outbox asigna el id, lote, secuencia y versión del agregado dentro de la
-    misma transacción que la mutación de negocio.
+    La outbox asigna id, lote, secuencia y versiones de agregado/stream dentro
+    de la misma transacción que la mutación de negocio.
     """
 
     event_type: str
@@ -53,6 +53,7 @@ class RealtimeOutboxEvent:
     aggregate_type: str
     aggregate_id: uuid.UUID
     aggregate_version: int
+    stream_version: int
     payload: dict[str, object]
     created_at: datetime
     next_attempt_at: datetime

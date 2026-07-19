@@ -56,6 +56,7 @@ _ACTIVE_DRIVER_RIDE_STATUS_PREDICATE = text(
 )
 _OPEN_POOL_PREDICATE = text("status = 'searching' AND paused = false")
 _OUTBOX_PENDING_PREDICATE = text("published_at IS NULL AND sequence = 0")
+_OUTBOX_UNPUBLISHED_PREDICATE = text("published_at IS NULL")
 _OUTBOX_PAYLOAD_TYPE = JSON().with_variant(JSONB(), "postgresql")
 
 
@@ -463,6 +464,29 @@ class RealtimeAggregateVersionModel(Base):
     )
 
 
+class RealtimeStreamVersionModel(Base):
+    """Contador transaccional de secuencia para cada topic del tiempo real."""
+
+    __tablename__ = "realtime_stream_versions"
+    __table_args__ = (
+        CheckConstraint(
+            "version >= 0",
+            name="ck_realtime_stream_versions_version_nonnegative",
+        ),
+    )
+
+    topic: Mapped[str] = mapped_column(String(255), primary_key=True)
+    version: Mapped[int] = mapped_column(
+        BigInteger, default=0, server_default="0", nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+
 class RealtimeOutboxModel(Base):
     """Evento durable pendiente de publicación por el dispatcher."""
 
@@ -479,6 +503,11 @@ class RealtimeOutboxModel(Base):
             "aggregate_version",
             name="uq_realtime_outbox_aggregate_version",
         ),
+        UniqueConstraint(
+            "topic",
+            "stream_version",
+            name="uq_realtime_outbox_topic_stream_version",
+        ),
         CheckConstraint(
             "sequence >= 0",
             name="ck_realtime_outbox_sequence_nonnegative",
@@ -486,6 +515,10 @@ class RealtimeOutboxModel(Base):
         CheckConstraint(
             "aggregate_version >= 1",
             name="ck_realtime_outbox_aggregate_version_positive",
+        ),
+        CheckConstraint(
+            "stream_version >= 1",
+            name="ck_realtime_outbox_stream_version_positive",
         ),
         CheckConstraint(
             "attempts >= 0",
@@ -499,6 +532,13 @@ class RealtimeOutboxModel(Base):
             postgresql_where=_OUTBOX_PENDING_PREDICATE,
             sqlite_where=_OUTBOX_PENDING_PREDICATE,
         ),
+        Index(
+            "ix_realtime_outbox_pending_stream",
+            "topic",
+            "stream_version",
+            postgresql_where=_OUTBOX_UNPUBLISHED_PREDICATE,
+            sqlite_where=_OUTBOX_UNPUBLISHED_PREDICATE,
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -510,6 +550,7 @@ class RealtimeOutboxModel(Base):
     )
     event_type: Mapped[str] = mapped_column(String(64), nullable=False)
     topic: Mapped[str] = mapped_column(String(255), nullable=False)
+    stream_version: Mapped[int] = mapped_column(BigInteger, nullable=False)
     aggregate_type: Mapped[str] = mapped_column(String(32), nullable=False)
     aggregate_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
     aggregate_version: Mapped[int] = mapped_column(BigInteger, nullable=False)

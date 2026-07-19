@@ -16,6 +16,7 @@ from app.application.dto import PendingRealtimeEvent
 from app.infrastructure.db.models import (
     RealtimeAggregateVersionModel,
     RealtimeOutboxModel,
+    RealtimeStreamVersionModel,
 )
 from app.infrastructure.db.outbox import SqlAlchemyRealtimeOutbox
 from app.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
@@ -31,6 +32,7 @@ async def outbox_sessions() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with engine.begin() as connection:
         await connection.run_sync(RealtimeAggregateVersionModel.__table__.create)
+        await connection.run_sync(RealtimeStreamVersionModel.__table__.create)
         await connection.run_sync(RealtimeOutboxModel.__table__.create)
     try:
         yield factory
@@ -43,10 +45,11 @@ def _pending(
     event_type: str,
     *,
     aggregate_type: str = "ride",
+    topic: str | None = None,
 ) -> PendingRealtimeEvent:
     return PendingRealtimeEvent(
         event_type=event_type,
-        topic=f"ride:{aggregate_id}",
+        topic=topic or f"ride:{aggregate_id}",
         aggregate_type=aggregate_type,
         aggregate_id=aggregate_id,
         payload={"type": event_type, "data": {"ride_id": str(aggregate_id)}},
@@ -73,6 +76,7 @@ async def test_add_batch_asigna_lote_secuencia_y_versiones_consecutivas(
     assert [event.sequence for event in saved] == [0, 1, 2]
     assert len({event.batch_id for event in saved}) == 1
     assert [event.aggregate_version for event in saved] == [1, 2, 1]
+    assert [event.stream_version for event in saved] == [1, 2, 1]
     assert saved[1].payload["type"] == "offer_created"
 
     async with outbox_sessions() as session:
@@ -80,6 +84,56 @@ async def test_add_batch_asigna_lote_secuencia_y_versiones_consecutivas(
         next_batch = await outbox.add_batch([_pending(ride_id, "offer_expired")])
         await SqlAlchemyUnitOfWork(session).commit()
     assert next_batch[0].aggregate_version == 3
+    assert next_batch[0].stream_version == 3
+
+
+async def test_add_batch_agrupa_y_reserva_las_claves_en_orden_determinista(
+    outbox_sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    first_ride_id = uuid.UUID(int=1)
+    second_ride_id = uuid.UUID(int=2)
+    first_topic = "pool:delivery"
+    second_topic = "pool:taxi"
+
+    async with outbox_sessions() as session:
+        calls: list[tuple[str, str, int]] = []
+
+        class RecordingOutbox(SqlAlchemyRealtimeOutbox):
+            async def _reserve_aggregate_versions(
+                self,
+                aggregate_type: str,
+                aggregate_id: uuid.UUID,
+                count: int,
+            ) -> int:
+                calls.append(("aggregate", f"{aggregate_type}:{aggregate_id}", count))
+                return await super()._reserve_aggregate_versions(
+                    aggregate_type,
+                    aggregate_id,
+                    count,
+                )
+
+            async def _reserve_stream_versions(self, topic: str, count: int) -> int:
+                calls.append(("stream", topic, count))
+                return await super()._reserve_stream_versions(topic, count)
+
+        saved = await RecordingOutbox(session).add_batch(
+            [
+                _pending(second_ride_id, "second_ride_created", topic=second_topic),
+                _pending(first_ride_id, "first_ride_created", topic=second_topic),
+                _pending(second_ride_id, "second_ride_closed", topic=first_topic),
+                _pending(first_ride_id, "first_ride_closed", topic=first_topic),
+            ]
+        )
+        await SqlAlchemyUnitOfWork(session).commit()
+
+    assert calls == [
+        ("aggregate", f"ride:{first_ride_id}", 2),
+        ("aggregate", f"ride:{second_ride_id}", 2),
+        ("stream", first_topic, 2),
+        ("stream", second_topic, 2),
+    ]
+    assert [event.aggregate_version for event in saved] == [1, 1, 2, 2]
+    assert [event.stream_version for event in saved] == [1, 2, 1, 2]
 
 
 async def test_rollback_descarta_eventos_y_contadores(
@@ -96,8 +150,20 @@ async def test_rollback_descarta_eventos_y_contadores(
         version_count = await session.scalar(
             select(func.count(RealtimeAggregateVersionModel.aggregate_id))
         )
+        stream_version_count = await session.scalar(
+            select(func.count(RealtimeStreamVersionModel.topic))
+        )
     assert outbox_count == 0
     assert version_count == 0
+    assert stream_version_count == 0
+
+    async with outbox_sessions() as session:
+        saved = await SqlAlchemyRealtimeOutbox(session).add_batch(
+            [_pending(ride_id, "offer_created")]
+        )
+        await SqlAlchemyUnitOfWork(session).commit()
+    assert saved[0].aggregate_version == 1
+    assert saved[0].stream_version == 1
 
 
 async def test_claim_reintenta_el_lote_completo_y_luego_lo_marca_publicado(
@@ -153,6 +219,59 @@ async def test_claim_reintenta_el_lote_completo_y_luego_lo_marca_publicado(
     assert [row.attempts for row in rows] == [2, 2]
     assert [row.last_error for row in rows] == [None, None]
     assert all(row.published_at is not None for row in rows)
+
+
+async def test_claim_no_adelanta_un_stream_bloqueado_y_deja_progresar_otro(
+    outbox_sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    blocked_ride_id = uuid.uuid4()
+    independent_ride_id = uuid.uuid4()
+    now = datetime.now(UTC) + timedelta(seconds=1)
+    retry_at = now + timedelta(minutes=1)
+
+    async with outbox_sessions() as session:
+        outbox = SqlAlchemyRealtimeOutbox(session)
+        head = await outbox.add_batch([_pending(blocked_ride_id, "offer_created")])
+        await SqlAlchemyUnitOfWork(session).commit()
+    async with outbox_sessions() as session:
+        await SqlAlchemyRealtimeOutbox(session).add_batch(
+            [_pending(blocked_ride_id, "offer_withdrawn")]
+        )
+        await SqlAlchemyUnitOfWork(session).commit()
+    async with outbox_sessions() as session:
+        outbox = SqlAlchemyRealtimeOutbox(session)
+        claimed_head = await outbox.claim_next_batch(now)
+        assert claimed_head[0].batch_id == head[0].batch_id
+        await outbox.mark_batch_failed(head[0].batch_id, "contrato inválido", retry_at)
+        await SqlAlchemyUnitOfWork(session).commit()
+
+    async with outbox_sessions() as session:
+        independent = await SqlAlchemyRealtimeOutbox(session).add_batch(
+            [_pending(independent_ride_id, "offer_created")]
+        )
+        await SqlAlchemyUnitOfWork(session).commit()
+
+    async with outbox_sessions() as session:
+        outbox = SqlAlchemyRealtimeOutbox(session)
+        claimed_independent = await outbox.claim_next_batch(now)
+        assert claimed_independent[0].batch_id == independent[0].batch_id
+        await outbox.mark_batch_published(independent[0].batch_id, now)
+        await SqlAlchemyUnitOfWork(session).commit()
+
+    async with outbox_sessions() as session:
+        outbox = SqlAlchemyRealtimeOutbox(session)
+        assert await outbox.claim_next_batch(now) == []
+        retried_head = await outbox.claim_next_batch(retry_at)
+        assert retried_head[0].batch_id == head[0].batch_id
+        await outbox.mark_batch_published(head[0].batch_id, retry_at)
+        await SqlAlchemyUnitOfWork(session).commit()
+
+    async with outbox_sessions() as session:
+        next_same_stream = await SqlAlchemyRealtimeOutbox(session).claim_next_batch(
+            retry_at
+        )
+        assert next_same_stream[0].stream_version == 2
+        await SqlAlchemyUnitOfWork(session).rollback()
 
 
 async def test_add_batch_rechaza_un_lote_vacio(

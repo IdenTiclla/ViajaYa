@@ -23,6 +23,7 @@ def _event(
     sequence: int = 0,
     topic: str | None = None,
     aggregate_version: int = 1,
+    stream_version: int = 1,
     event_type: str = "ride_closed",
     payload: dict[str, object] | None = None,
 ) -> RealtimeOutboxEvent:
@@ -37,6 +38,7 @@ def _event(
         aggregate_type="ride",
         aggregate_id=ride_id,
         aggregate_version=aggregate_version,
+        stream_version=stream_version,
         payload=payload or {"type": "ride_closed", "data": {"ride_id": str(ride_id)}},
         created_at=now,
         next_attempt_at=now,
@@ -91,6 +93,23 @@ def test_rechaza_un_event_id_duplicado() -> None:
 def test_rechaza_aggregate_version_no_positiva(aggregate_version: int) -> None:
     with pytest.raises(InvalidRealtimeOutboxBatchError, match="aggregate_version"):
         validate_realtime_outbox_batch([_event(aggregate_version=aggregate_version)])
+
+
+@pytest.mark.parametrize("stream_version", [0, -1])
+def test_rechaza_stream_version_no_positiva(stream_version: int) -> None:
+    with pytest.raises(InvalidRealtimeOutboxBatchError, match="stream_version"):
+        validate_realtime_outbox_batch([_event(stream_version=stream_version)])
+
+
+def test_rechaza_versiones_no_contiguas_del_mismo_stream_en_un_lote() -> None:
+    batch_id = uuid.uuid4()
+    events = [
+        _event(batch_id=batch_id, sequence=0, stream_version=4),
+        _event(batch_id=batch_id, sequence=1, stream_version=6),
+    ]
+
+    with pytest.raises(InvalidRealtimeOutboxBatchError, match="stream.*contigua"):
+        validate_realtime_outbox_batch(events)
 
 
 @pytest.mark.parametrize(

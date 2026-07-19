@@ -18,6 +18,7 @@ from app.application.use_cases.dispatch_realtime_outbox_batch import (
 from app.infrastructure.db.models import (
     RealtimeAggregateVersionModel,
     RealtimeOutboxModel,
+    RealtimeStreamVersionModel,
 )
 from app.infrastructure.db.outbox import SqlAlchemyRealtimeOutbox
 from app.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
@@ -83,6 +84,7 @@ class ShadowRealtimeOutboxDispatcher:
                 # parcial a la que le falte alguna columna de la revisión 0018.
                 await session.execute(select(RealtimeOutboxModel).limit(1))
                 await session.execute(select(RealtimeAggregateVersionModel).limit(1))
+                await session.execute(select(RealtimeStreamVersionModel).limit(1))
             finally:
                 await session.rollback()
 

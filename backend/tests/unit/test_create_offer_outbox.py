@@ -316,6 +316,7 @@ async def test_create_offer_persists_business_and_outbox_in_one_commit(
     assert outbox_events[0].payload == expected_payload
     assert expected_payload["type"] == "offer_created"
     assert outbox_events[0].aggregate_version == 1
+    assert outbox_events[0].stream_version == 1
     assert version is not None
     assert version.version == 1
 

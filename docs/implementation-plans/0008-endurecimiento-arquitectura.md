@@ -59,8 +59,13 @@ infraestructura.
 ### Entrega al menos una vez
 
 Los eventos durables podrán entregarse más de una vez. Cada envelope tendrá
-`event_id`, `aggregate_id`, `aggregate_version`, `occurred_at`, `type` y `data`.
-El cliente aplicará eventos de forma idempotente y descartará versiones anteriores.
+`event_id`, `aggregate_id`, `aggregate_version`, `stream`, `stream_version`,
+`occurred_at`, `type` y `data`. La versión de agregado ordena eventos relacionados
+con el mismo agregado, incluso entre fanouts; la versión de stream ordena lo que
+ve cada topic y permite detectar huecos reales. El cliente deduplicará por
+`event_id`, solo aplicará la siguiente posición contigua del stream y pedirá un
+resnapshot ante un salto. Los snapshots llevarán un vector acotado de watermarks:
+uno para el pasajero y los pools más el topic personal para el conductor.
 
 ### Fallo seguro de presencia
 
@@ -213,8 +218,10 @@ Axios todavía continúe en segundo plano sin propagar `AbortSignal`.
 
 ### 3.1 Unidad de trabajo y outbox
 
-> **Progreso:** la migración `0018_realtime_outbox` crea la outbox, el contador
-> transaccional de versiones por agregado y el índice parcial de reclamación.
+> **Progreso:** `0018_realtime_outbox` crea la outbox y el contador transaccional
+> por agregado. `0019_realtime_stream_versions` añade un contador independiente
+> por topic, `stream_version`, su backfill determinista y los índices para
+> preservar el orden visible de cada stream.
 > `CreateOffer`/reemplazo es el primer productor: oferta, batch ordenado y
 > versiones se confirman en un solo commit mediante `UnitOfWork`; la publicación
 > directa reutiliza exactamente el payload persistido. El recorder está detrás
@@ -222,9 +229,9 @@ Axios todavía continúe en segundo plano sin propagar `AbortSignal`.
 > `REALTIME_OUTBOX_DISPATCH_MODE=off|shadow`, también apagado por defecto. El modo
 > sombra únicamente reclama, valida y marca batches: no entrega al hub WebSocket
 > ni a Redis. Esta vertical no incorpora modo `live` ni habilita múltiples
-> workers. El lifecycle ya realiza preflight de `0018`, usa una sesión nueva por
+> workers. El lifecycle ya realiza preflight del esquema actual, usa una sesión nueva por
 > iteración y detiene el loop de forma coordinada.
-> `0018` no se aplicó a la base local `viajaya`; sus pruebas PostgreSQL son
+> `0018`/`0019` no se aplicaron a la base local `viajaya`; sus pruebas PostgreSQL son
 > opt-in y CI las ejecutará sobre una base desechable.
 
 Para publicar un evento después de un commit sin ventana de pérdida, la mutación
@@ -237,6 +244,7 @@ Esquema actual de `realtime_outbox`:
 - `id UUID` (`event_id`);
 - `event_type`, `topic`;
 - `aggregate_type`, `aggregate_id`, `aggregate_version`;
+- `stream_version`, único y creciente dentro de cada `topic`;
 - `payload JSONB`;
 - `created_at`, `published_at`;
 - `attempts`, `last_error`.
@@ -245,6 +253,15 @@ La implementación añade además `batch_id` + `sequence` para preservar el orde
 de fanouts y `next_attempt_at` para evitar reintentos calientes. La tabla
 `realtime_aggregate_versions` asigna versiones dentro de la transacción; no se
 reutiliza `pool_version`, porque ese contador no cambia en todos los eventos.
+`realtime_stream_versions` reserva rangos por topic en la misma transacción. Los
+productores adquieren primero los contadores de agregados y luego los de streams,
+ambos en orden determinista, para evitar deadlocks en batches multi-topic.
+
+El claim solo considera un batch si ninguno de sus miembros tiene una fila
+anterior sin publicar en el mismo topic. `SKIP LOCKED` permite que otro dispatcher
+avance streams independientes, pero nunca que adelante una versión posterior del
+mismo stream. Un batch inválido bloquea deliberadamente sus streams; antes del
+modo live se debe implementar cuarentena o intervención terminal explícita.
 
 Un dispatcher reclamará filas con `FOR UPDATE SKIP LOCKED`, publicará en Redis y
 marcará `published_at`. Si muere después de publicar y antes de marcar, el evento
@@ -252,8 +269,8 @@ se repetirá; por eso la idempotencia del cliente es obligatoria.
 
 El primer dispatcher es deliberadamente **sombra** y no ejecuta esa publicación:
 certifica el claim, la validación y el lifecycle usando la outbox real, marca las
-filas procesadas y deja la entrega directa actual como única vía visible. No
-requiere una migración adicional; sí exige que `0018` esté aplicada antes de
+filas procesadas y deja la entrega directa actual como única vía visible. Exige
+que `0018` y `0019` estén aplicadas antes de
 habilitarlo. La secuencia de flags es:
 
 1. `off` + recording `false`: estado seguro y predeterminado;
@@ -279,6 +296,8 @@ Base ya cumplida por `93b9741`:
 - [x] Reutilizar el mismo builder canónico para outbox y WebSocket directo.
 - [x] Proteger el producer con un feature flag apagado por defecto para no crear
   un backlog histórico imposible de reproducir con seguridad.
+- [x] Añadir `0019`, reservar posiciones por stream sin deadlocks y evitar que
+  claims concurrentes adelanten un batch del mismo topic.
 
 Dispatcher sombra, sin Redis ni cambios de contrato/mobile:
 
@@ -286,13 +305,12 @@ Dispatcher sombra, sin Redis ni cambios de contrato/mobile:
 - [x] Validar antes de marcar que lote, secuencia, `event_id`, versión,
   `event_type`, topic y payload canónico coincidan, con error sanitizado y
   backoff.
-- [ ] Activarlo en un entorno con `0018`, depurar el backlog sombra y comparar
+- [ ] Activarlo en un entorno con `0018`/`0019`, depurar el backlog sombra y comparar
   sus batches con la publicación directa antes de habilitar entrega real.
 - [ ] Medir pendientes y edad máxima, y definir retención de filas publicadas.
-- [ ] No habilitar entrega real con múltiples dispatchers hasta que el envelope
-  lleve `event_id`/`aggregate_version` y mobile descarte duplicados y versiones
-  atrasadas; batches distintos del mismo agregado todavía pueden reclamarse en
-  paralelo.
+- [ ] No habilitar entrega real hasta que el envelope lleve `event_id`, versiones
+  de agregado/stream, mobile detecte duplicados/atrasados/huecos y exista una
+  salida terminal para batches inválidos.
 - [ ] Migrar aceptación y después pausa/cancelación, resolviendo versiones de
   los otros rides afectados por el fanout.
 
@@ -342,7 +360,7 @@ seguirán siendo la defensa final contra carreras.
 ## Despliegue incremental
 
 1. Publicar métricas y documentar el límite actual de un worker.
-2. Aplicar `0018` y desplegar las tablas de outbox sin consumidores.
+2. Aplicar `0018`/`0019` y desplegar las tablas de outbox sin consumidores.
 3. Desplegar el dispatcher en `off` y luego activar `shadow` con recording
    `false` para certificar lifecycle y drenar backlog.
 4. Activar recording en sombra y comparar batches, payloads y métricas contra la

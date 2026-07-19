@@ -3,19 +3,22 @@
 from __future__ import annotations
 
 import uuid
+from collections import Counter
 from collections.abc import Sequence
 from datetime import datetime
 
-from sqlalchemy import func, select, update
+from sqlalchemy import and_, func, literal, select, update
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.application.dto import PendingRealtimeEvent, RealtimeOutboxEvent
 from app.application.interfaces import RealtimeOutbox
 from app.infrastructure.db.models import (
     RealtimeAggregateVersionModel,
     RealtimeOutboxModel,
+    RealtimeStreamVersionModel,
 )
 
 
@@ -29,6 +32,7 @@ def _to_event(row: RealtimeOutboxModel) -> RealtimeOutboxEvent:
         aggregate_type=row.aggregate_type,
         aggregate_id=row.aggregate_id,
         aggregate_version=row.aggregate_version,
+        stream_version=row.stream_version,
         payload=dict(row.payload),
         created_at=row.created_at,
         next_attempt_at=row.next_attempt_at,
@@ -51,13 +55,42 @@ class SqlAlchemyRealtimeOutbox(RealtimeOutbox):
         if not events:
             raise ValueError("El lote de eventos no puede estar vacío.")
 
+        # Todos los productores adquieren locks en el mismo orden global para
+        # que dos lotes con las mismas claves invertidas no formen un deadlock.
+        # Los contadores de agregado siempre se reservan antes que los de topic.
+        aggregate_counts = Counter(
+            (event.aggregate_type, event.aggregate_id) for event in events
+        )
+        next_aggregate_versions: dict[tuple[str, uuid.UUID], int] = {}
+        for aggregate_type, aggregate_id in sorted(
+            aggregate_counts,
+            key=lambda key: (key[0], key[1].hex),
+        ):
+            count = aggregate_counts[(aggregate_type, aggregate_id)]
+            last_version = await self._reserve_aggregate_versions(
+                aggregate_type,
+                aggregate_id,
+                count,
+            )
+            next_aggregate_versions[(aggregate_type, aggregate_id)] = (
+                last_version - count + 1
+            )
+
+        stream_counts = Counter(event.topic for event in events)
+        next_stream_versions: dict[str, int] = {}
+        for topic in sorted(stream_counts):
+            count = stream_counts[topic]
+            last_version = await self._reserve_stream_versions(topic, count)
+            next_stream_versions[topic] = last_version - count + 1
+
         batch_id = uuid.uuid4()
         rows: list[RealtimeOutboxModel] = []
         for sequence, event in enumerate(events):
-            version = await self._next_aggregate_version(
-                event.aggregate_type,
-                event.aggregate_id,
-            )
+            aggregate_key = (event.aggregate_type, event.aggregate_id)
+            aggregate_version = next_aggregate_versions[aggregate_key]
+            stream_version = next_stream_versions[event.topic]
+            next_aggregate_versions[aggregate_key] += 1
+            next_stream_versions[event.topic] += 1
             row = RealtimeOutboxModel(
                 batch_id=batch_id,
                 sequence=sequence,
@@ -65,7 +98,8 @@ class SqlAlchemyRealtimeOutbox(RealtimeOutbox):
                 topic=event.topic,
                 aggregate_type=event.aggregate_type,
                 aggregate_id=event.aggregate_id,
-                aggregate_version=version,
+                aggregate_version=aggregate_version,
+                stream_version=stream_version,
                 payload=dict(event.payload),
             )
             self._session.add(row)
@@ -75,30 +109,51 @@ class SqlAlchemyRealtimeOutbox(RealtimeOutbox):
         return [_to_event(row) for row in rows]
 
     async def claim_next_batch(self, now: datetime) -> list[RealtimeOutboxEvent]:
-        anchor = (
+        anchor_row = aliased(RealtimeOutboxModel, name="anchor")
+        member = aliased(RealtimeOutboxModel, name="member")
+        prior = aliased(RealtimeOutboxModel, name="prior")
+        blocking_prior = (
+            select(literal(1))
+            .select_from(member)
+            .join(
+                prior,
+                and_(
+                    prior.topic == member.topic,
+                    prior.stream_version < member.stream_version,
+                    prior.batch_id != member.batch_id,
+                    prior.published_at.is_(None),
+                ),
+            )
+            .where(member.batch_id == anchor_row.batch_id)
+            .correlate(anchor_row)
+            .exists()
+        )
+
+        anchor_batch_id = (
             await self._session.execute(
-                select(RealtimeOutboxModel.batch_id)
+                select(anchor_row.batch_id)
                 .where(
-                    RealtimeOutboxModel.sequence == 0,
-                    RealtimeOutboxModel.published_at.is_(None),
-                    RealtimeOutboxModel.next_attempt_at <= now,
+                    anchor_row.sequence == 0,
+                    anchor_row.published_at.is_(None),
+                    anchor_row.next_attempt_at <= now,
+                    ~blocking_prior,
                 )
                 .order_by(
-                    RealtimeOutboxModel.next_attempt_at,
-                    RealtimeOutboxModel.created_at,
-                    RealtimeOutboxModel.id,
+                    anchor_row.next_attempt_at,
+                    anchor_row.created_at,
+                    anchor_row.id,
                 )
                 .limit(1)
-                .with_for_update(skip_locked=True)
+                .with_for_update(of=anchor_row, skip_locked=True)
             )
         ).scalar_one_or_none()
-        if anchor is None:
+        if anchor_batch_id is None:
             return []
 
         rows = (
             await self._session.execute(
                 select(RealtimeOutboxModel)
-                .where(RealtimeOutboxModel.batch_id == anchor)
+                .where(RealtimeOutboxModel.batch_id == anchor_batch_id)
                 .order_by(RealtimeOutboxModel.sequence)
                 .with_for_update()
                 .execution_options(populate_existing=True)
@@ -132,15 +187,16 @@ class SqlAlchemyRealtimeOutbox(RealtimeOutbox):
             .values(last_error=error, next_attempt_at=next_attempt_at)
         )
 
-    async def _next_aggregate_version(
+    async def _reserve_aggregate_versions(
         self,
         aggregate_type: str,
         aggregate_id: uuid.UUID,
+        count: int,
     ) -> int:
         values = {
             "aggregate_type": aggregate_type,
             "aggregate_id": aggregate_id,
-            "version": 1,
+            "version": count,
         }
         dialect_name = self._session.get_bind().dialect.name
         if dialect_name == "postgresql":
@@ -156,8 +212,27 @@ class SqlAlchemyRealtimeOutbox(RealtimeOutbox):
                 RealtimeAggregateVersionModel.aggregate_id,
             ],
             set_={
-                "version": RealtimeAggregateVersionModel.version + 1,
+                "version": RealtimeAggregateVersionModel.version + count,
                 "updated_at": func.now(),
             },
         ).returning(RealtimeAggregateVersionModel.version)
+        return int((await self._session.execute(statement)).scalar_one())
+
+    async def _reserve_stream_versions(self, topic: str, count: int) -> int:
+        values = {"topic": topic, "version": count}
+        dialect_name = self._session.get_bind().dialect.name
+        if dialect_name == "postgresql":
+            statement = postgresql_insert(RealtimeStreamVersionModel).values(**values)
+        elif dialect_name == "sqlite":
+            statement = sqlite_insert(RealtimeStreamVersionModel).values(**values)
+        else:  # pragma: no cover - los entornos soportados son PostgreSQL y SQLite
+            raise RuntimeError(f"Dialect de outbox no soportado: {dialect_name}")
+
+        statement = statement.on_conflict_do_update(
+            index_elements=[RealtimeStreamVersionModel.topic],
+            set_={
+                "version": RealtimeStreamVersionModel.version + count,
+                "updated_at": func.now(),
+            },
+        ).returning(RealtimeStreamVersionModel.version)
         return int((await self._session.execute(statement)).scalar_one())

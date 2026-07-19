@@ -180,6 +180,7 @@ def _outbox_rows(batch_id: uuid.UUID, count: int) -> list[dict[str, object]]:
             "aggregate_type": "ride",
             "aggregate_id": aggregate_id,
             "aggregate_version": sequence + 1,
+            "stream_version": sequence + 1,
             "payload": {"status": "accepted", "sequence": sequence},
         }
         for sequence in range(count)

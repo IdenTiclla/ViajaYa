@@ -18,7 +18,7 @@ from typing import Any
 
 from anyio import CancelScope
 
-from app.api.deps import build_cancel_ride_on_disconnect
+from app.api.deps import build_announce_open_ride, build_cancel_ride_on_disconnect
 from app.application.dto import Page
 from app.domain.entities import RideRequest, RideStatus
 from app.domain.repositories import OpenRideDetail
@@ -110,18 +110,22 @@ async def _revalidate_passenger_connect(
     if critical is not None and critical is not asyncio.current_task():
         await asyncio.shield(critical)
 
-    async with session_factory() as session:
-        rides = SqlAlchemyRideRequestRepository(session)
-        detail = await rides.open_ride_with_rider(ride_id)
+    try:
+        async with session_factory() as session:
+            detail = await build_announce_open_ride(
+                session,
+                get_settings(),
+            ).execute(ride_id)
 
-    if (
-        detail is not None
-        and detail.ride.status is RideStatus.SEARCHING
-        and not detail.ride.paused
-    ):
-        from app.api.v1 import events
+        if detail is not None:
+            from app.api.v1 import events
 
-        await events.publish_ride_created(detail)
+            await events.publish_ride_created(detail)
+    except Exception:
+        # La conexión viva sigue siendo una señal válida de presencia. Un fallo
+        # del anuncio no debe cerrar el socket y convertirlo en una ausencia;
+        # snapshots/polling conservan la convergencia mientras la outbox alerta.
+        logger.exception("No se pudo anunciar la presencia del viaje %s", ride_id)
 
 
 async def _revalidate_passenger_activity(

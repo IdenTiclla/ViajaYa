@@ -30,6 +30,7 @@ from app.application.dto import (
     SocialProfile,
 )
 from app.domain.entities import AuthProvider, RideStatus, UserRole
+from app.domain.repositories import OpenRideDetail
 
 
 class UnitOfWork(ABC):
@@ -160,6 +161,14 @@ class CancelRideEventRecorder(ABC):
     @abstractmethod
     async def record(self, result: CancelRideResult) -> None:
         """Añade a la outbox el estado terminal, cierre y rechazos."""
+
+
+class AnnounceOpenRideEventRecorder(ABC):
+    """Registra el anuncio de presencia de una solicitud abierta."""
+
+    @abstractmethod
+    async def record(self, detail: OpenRideDetail) -> None:
+        """Añade a la outbox el ``ride_created`` ya revalidado bajo lock."""
 
 
 class PasswordHasher(ABC):

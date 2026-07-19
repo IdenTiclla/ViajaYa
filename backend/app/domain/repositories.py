@@ -211,6 +211,17 @@ class RideRequestRepository(ABC):
         los datos del pasajero), o ``None`` si no existe."""
 
     @abstractmethod
+    async def lock_open_ride_with_rider_for_announcement(
+        self, ride_id: uuid.UUID
+    ) -> OpenRideDetail | None:
+        """Bloquea y devuelve una solicitud publicable, o ``None``.
+
+        La implementación debe revalidar bajo el lock que siga ``SEARCHING`` y
+        no esté pausada. El caller conserva la transacción hasta registrar el
+        anuncio realtime y confirmar ambos efectos en un único commit.
+        """
+
+    @abstractmethod
     async def list_by_driver(self, driver_id: uuid.UUID) -> list[RideRequest]:
         """Viajes asignados al conductor, del más reciente al más antiguo."""
 

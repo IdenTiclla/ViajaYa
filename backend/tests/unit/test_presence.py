@@ -151,13 +151,16 @@ async def test_reconnect_waits_for_critical_events_and_does_not_republish_cancel
                 cancelled_offers=[rejected_offer],
             )
 
-    class FakeRides:
-        def __init__(self, _session: object) -> None:
-            pass
-
-        async def open_ride_with_rider(self, _ride_id: uuid.UUID) -> OpenRideDetail:
+    class FakeAnnounceOpenRide:
+        async def execute(self, _ride_id: uuid.UUID) -> OpenRideDetail | None:
+            current_ride = state["ride"]
+            if (
+                current_ride.status is not RideStatus.SEARCHING
+                or current_ride.paused
+            ):
+                return None
             return OpenRideDetail(
-                ride=state["ride"],
+                ride=current_ride,
                 rider=RiderSummary(
                     full_name=rider.full_name,
                     rating=None,
@@ -191,7 +194,11 @@ async def test_reconnect_waits_for_critical_events_and_does_not_republish_cancel
         "build_cancel_ride_on_disconnect",
         lambda _session, _settings: FakeCancelRideOnDisconnect(),
     )
-    monkeypatch.setattr(presence, "SqlAlchemyRideRequestRepository", FakeRides)
+    monkeypatch.setattr(
+        presence,
+        "build_announce_open_ride",
+        lambda _session, _settings: FakeAnnounceOpenRide(),
+    )
     monkeypatch.setattr(events, "publish_ride_cancelled", publish_ride_cancelled)
     monkeypatch.setattr(events, "publish_ride_created", publish_ride_created)
 
@@ -213,3 +220,109 @@ async def test_reconnect_waits_for_critical_events_and_does_not_republish_cancel
     assert event_interrupted is False
     assert calls == ["ride_status", "ride_closed", "offer_rejected"]
     assert ride.id not in presence._critical_cancels
+
+
+async def test_each_valid_connect_announces_after_transaction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ride = _ride()
+    detail = OpenRideDetail(
+        ride=ride,
+        rider=RiderSummary(
+            full_name="Pasajero",
+            rating=None,
+            trips_completed=0,
+        ),
+    )
+    calls: list[str] = []
+
+    class FakeAnnounceOpenRide:
+        async def execute(self, _ride_id: uuid.UUID) -> OpenRideDetail:
+            calls.append("commit")
+            return detail
+
+    @asynccontextmanager
+    async def session_factory():
+        yield object()
+
+    async def publish_ride_created(_detail: OpenRideDetail) -> None:
+        calls.append("publish")
+
+    monkeypatch.setattr(
+        presence,
+        "build_announce_open_ride",
+        lambda _session, _settings: FakeAnnounceOpenRide(),
+    )
+    monkeypatch.setattr(events, "publish_ride_created", publish_ride_created)
+
+    await presence.on_passenger_connect(ride.id, session_factory)
+    await presence.on_passenger_connect(ride.id, session_factory)
+
+    assert calls == ["commit", "publish", "commit", "publish"]
+
+
+async def test_announcement_failure_does_not_turn_live_socket_into_absence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ride = _ride()
+
+    class FailingAnnounceOpenRide:
+        async def execute(self, _ride_id: uuid.UUID) -> None:
+            raise RuntimeError("outbox no disponible")
+
+    @asynccontextmanager
+    async def session_factory():
+        yield object()
+
+    monkeypatch.setattr(
+        presence,
+        "build_announce_open_ride",
+        lambda _session, _settings: FailingAnnounceOpenRide(),
+    )
+
+    await presence.on_passenger_connect(ride.id, session_factory)
+
+    assert ride.id not in presence._last_seen
+    assert ride.id not in presence._pending_cancels
+
+
+async def test_http_heartbeat_renews_grace_without_recording_announcement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ride = _ride()
+    detail = OpenRideDetail(
+        ride=ride,
+        rider=RiderSummary(
+            full_name="Pasajero",
+            rating=None,
+            trips_completed=0,
+        ),
+    )
+    renewed: list[uuid.UUID] = []
+
+    class FakeRides:
+        def __init__(self, _session: object) -> None:
+            pass
+
+        async def open_ride_with_rider(self, _ride_id: uuid.UUID) -> OpenRideDetail:
+            return detail
+
+    @asynccontextmanager
+    async def session_factory():
+        yield object()
+
+    def unexpected_builder(_session: object, _settings: object):
+        pytest.fail("El heartbeat HTTP no debe registrar ride_created")
+
+    monkeypatch.setattr(presence.hub, "has_subscribers", lambda _topic: False)
+    monkeypatch.setattr(presence, "SqlAlchemyRideRequestRepository", FakeRides)
+    monkeypatch.setattr(presence, "build_announce_open_ride", unexpected_builder)
+    monkeypatch.setattr(
+        presence,
+        "on_passenger_disconnect",
+        lambda ride_id, _session_factory: renewed.append(ride_id),
+    )
+
+    await presence.on_passenger_activity(ride.id, session_factory)
+
+    assert renewed == [ride.id]

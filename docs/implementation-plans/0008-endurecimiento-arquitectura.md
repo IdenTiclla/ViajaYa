@@ -278,7 +278,8 @@ Axios todavía continúe en segundo plano sin propagar `AbortSignal`.
 > las filas para auditoría; el hueco resultante obliga a resnapshot antes de
 > continuar el replay live.
 > `CreateOffer`/reemplazo, `AcceptOffer`, `PauseRideForEdit`, `CancelRide`, el
-> cierre automático por ausencia, `UpdateRideFare` y `EditRide` son los primeros
+> cierre automático por ausencia, `UpdateRideFare`, `EditRide` y
+> `AnnounceOpenRide` son los primeros
 > productores: mutación, batch ordenado y versiones se confirman en un solo commit mediante
 > `UnitOfWork`; la publicación directa reutiliza exactamente los payloads
 > persistidos. `CreateRideRequest` también delega el commit a la aplicación, pero
@@ -302,6 +303,11 @@ Axios todavía continúe en segundo plano sin propagar `AbortSignal`.
 > condición de rollout.
 > `0018`–`0020` no se aplicaron a la base local `viajaya`; sus pruebas PostgreSQL son
 > opt-in y CI las ejecutará sobre una base desechable.
+> El anuncio inicial y cada reanuncio por reconexión adquieren lock sobre el
+> ride, revalidan `SEARCHING && !paused` y registran un único `ride_created`
+> antes del commit. El heartbeat HTTP conserva su función de renovar la gracia y
+> no crea eventos periódicos. La publicación directa ocurre después del commit;
+> su orden de transporte sigue siendo best-effort hasta activar outbox v2 live.
 
 Para publicar un evento después de un commit sin ventana de pérdida, la mutación
 y el registro del evento deben pertenecer a la misma transacción. Se introdujo
@@ -400,7 +406,7 @@ Dispatcher sombra, sin Redis ni cambios de contrato/mobile:
   de agregado/stream en el socket vivo y el gate mobile esté integrado.
 - [x] Migrar cancelación con un único builder canónico y agregado `ride`; esta
   operación no muta otros rides y ordena sus rechazos por UUID de oferta.
-- [ ] Migrar el anuncio inicial/reanuncio de presencia con lock y revalidación
+- [x] Migrar el anuncio inicial/reanuncio de presencia con lock y revalidación
   `SEARCHING && !paused`; no registrar `ride_created` desde el POST de creación.
 
 Antes del modo `live`, hacer conmutativa en mobile la reducción de

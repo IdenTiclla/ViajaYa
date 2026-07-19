@@ -592,6 +592,29 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
             return None
         return OpenRideDetail(ride=ride, rider=rider)
 
+    async def lock_open_ride_with_rider_for_announcement(
+        self, ride_id: uuid.UUID
+    ) -> OpenRideDetail | None:
+        row = (
+            await self._session.execute(
+                select(RideRequestModel)
+                .where(
+                    RideRequestModel.id == ride_id,
+                    RideRequestModel.status == RideStatus.SEARCHING,
+                    RideRequestModel.paused.is_(False),
+                )
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            return None
+
+        rider = await self.rider_summary(row.rider_id)
+        if rider is None:
+            return None
+        return OpenRideDetail(ride=_ride_to_entity(row), rider=rider)
+
     async def list_by_driver(self, driver_id: uuid.UUID) -> list[RideRequest]:
         result = await self._session.execute(
             select(RideRequestModel)

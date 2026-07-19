@@ -15,11 +15,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.v1.realtime_outbox import (
     DisabledAcceptOfferEventRecorder,
+    DisabledAnnounceOpenRideEventRecorder,
     DisabledCancelRideEventRecorder,
     DisabledCreateOfferEventRecorder,
     DisabledPauseRideEventRecorder,
     DisabledRepublishRideEventRecorder,
     OutboxAcceptOfferEventRecorder,
+    OutboxAnnounceOpenRideEventRecorder,
     OutboxCancelRideEventRecorder,
     OutboxCreateOfferEventRecorder,
     OutboxPauseRideEventRecorder,
@@ -34,6 +36,7 @@ from app.application.interfaces import (
     TokenService,
 )
 from app.application.use_cases.accept_offer import AcceptOffer
+from app.application.use_cases.announce_open_ride import AnnounceOpenRide
 from app.application.use_cases.authenticate_user import AuthenticateUser
 from app.application.use_cases.authenticate_with_oauth import AuthenticateWithOAuth
 from app.application.use_cases.build_driver_realtime_snapshot import (
@@ -392,6 +395,23 @@ def build_cancel_ride_on_disconnect(
         SqlAlchemyUserRepository(session),
         SqlAlchemyUnitOfWork(session),
         _cancel_ride_recorder(session, settings),
+    )
+
+
+def build_announce_open_ride(
+    session: AsyncSession,
+    settings: Settings,
+) -> AnnounceOpenRide:
+    """Cablea el anuncio de presencia sobre una única sesión/UoW."""
+    recorder = (
+        OutboxAnnounceOpenRideEventRecorder(SqlAlchemyRealtimeOutbox(session))
+        if settings.realtime_outbox_recording_enabled
+        else DisabledAnnounceOpenRideEventRecorder()
+    )
+    return AnnounceOpenRide(
+        SqlAlchemyRideRequestRepository(session),
+        SqlAlchemyUnitOfWork(session),
+        recorder,
     )
 
 

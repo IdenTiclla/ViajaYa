@@ -299,6 +299,18 @@ class InMemoryRideRequestRepository(RideRequestRepository):
             return None
         return self._detail_for(ride)
 
+    async def lock_open_ride_with_rider_for_announcement(
+        self, ride_id: uuid.UUID
+    ) -> OpenRideDetail | None:
+        ride = await self.get_by_id(ride_id)
+        if (
+            ride is None
+            or ride.status is not RideStatus.SEARCHING
+            or ride.paused
+        ):
+            return None
+        return self._detail_for(ride)
+
     def _count_completed(self, rider_id: uuid.UUID) -> int:
         return sum(
             1

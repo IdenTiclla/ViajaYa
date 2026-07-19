@@ -7,6 +7,7 @@ from collections.abc import Sequence
 
 from app.api.v1.events import (
     build_accept_offer_events,
+    build_announce_open_ride_events,
     build_cancel_ride_events,
     build_create_offer_events,
     build_pause_ride_events,
@@ -29,6 +30,7 @@ from app.application.dto import (
 from app.application.exceptions import InvalidRealtimeOutboxBatchError
 from app.application.interfaces import (
     AcceptOfferEventRecorder,
+    AnnounceOpenRideEventRecorder,
     CancelRideEventRecorder,
     CreateOfferEventRecorder,
     PauseRideEventRecorder,
@@ -36,6 +38,7 @@ from app.application.interfaces import (
     RealtimeOutboxBatchValidator,
     RepublishRideEventRecorder,
 )
+from app.domain.repositories import OpenRideDetail
 
 _POOL_TOPICS = frozenset({"pool:taxi", "pool:moto", "pool:delivery"})
 _MAX_SAFE_JSON_INTEGER = 2**53 - 1
@@ -261,3 +264,20 @@ class DisabledRepublishRideEventRecorder(RepublishRideEventRecorder):
 
     async def record(self, result: RideRepublishedResult) -> None:
         del result
+
+
+class OutboxAnnounceOpenRideEventRecorder(AnnounceOpenRideEventRecorder):
+    """Registra el anuncio de presencia dentro de su transacción de lectura."""
+
+    def __init__(self, outbox: RealtimeOutbox) -> None:
+        self._outbox = outbox
+
+    async def record(self, detail: OpenRideDetail) -> None:
+        await self._outbox.add_batch(build_announce_open_ride_events(detail))
+
+
+class DisabledAnnounceOpenRideEventRecorder(AnnounceOpenRideEventRecorder):
+    """Recorder nulo mientras el anuncio durable está deshabilitado."""
+
+    async def record(self, detail: OpenRideDetail) -> None:
+        del detail

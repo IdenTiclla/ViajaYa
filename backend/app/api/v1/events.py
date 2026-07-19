@@ -310,16 +310,29 @@ def build_republish_ride_events(
     ]
 
 
+def build_announce_open_ride_events(
+    detail: OpenRideDetail,
+) -> list[PendingRealtimeEvent]:
+    """Construye el anuncio durable/directo al confirmar presencia."""
+    return [
+        _pending_realtime_event(
+            topic=pool_topic(detail.ride.service_type.value),
+            aggregate_type="ride",
+            aggregate_id=detail.ride.id,
+            message=RideCreatedMessage(
+                data=OpenRideResponse.from_open_ride(detail)
+            ),
+        )
+    ]
+
+
 async def publish_ride_created(detail: OpenRideDetail) -> None:
     """Una solicitud nueva (o renovada) aparece para los conductores del pool.
 
     Llega ya enriquecida con los datos del pasajero: el conductor los ve en la
     tarjeta desde el primer ``ride_created`` (no solo en el snapshot).
     """
-    await _broadcast(
-        pool_topic(detail.ride.service_type.value),
-        RideCreatedMessage(data=OpenRideResponse.from_open_ride(detail)),
-    )
+    await _broadcast_pending(build_announce_open_ride_events(detail))
 
 
 async def publish_ride_closed(ride_id: uuid.UUID, service_type: ServiceType) -> None:

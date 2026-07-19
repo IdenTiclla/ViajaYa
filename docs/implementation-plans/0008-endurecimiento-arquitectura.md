@@ -229,8 +229,9 @@ una escritura concurrente y demuestra que ambos permanecen en la versión
 anterior. Una captura nueva verá ambos valores nuevos. Los casos de uso derivan
 los streams autorizados y un adaptador API traduce los DTO enriquecidos al schema
 Pydantic sin IO adicional. El WebSocket todavía no invoca este reader ni emite
-los snapshots v2: presencia sigue en memoria y solo `CreateOffer` alimenta la
-outbox, por lo que activarlos aún daría watermarks incompletos.
+los snapshots v2: presencia sigue en memoria y solo creación/reemplazo y
+aceptación de ofertas alimentan la outbox, por lo que activarlos aún daría
+watermarks incompletos.
 
 Mobile incluye además un gate puro de replay. Decide `apply`, `drop` o `resync`
 sin adelantar cursores y solo los confirma después de que el handler complete la
@@ -275,9 +276,12 @@ Axios todavía continúe en segundo plano sin propagar `AbortSignal`.
 > todo el batch con un código estable, deja de bloquear sus streams y conserva
 > las filas para auditoría; el hueco resultante obliga a resnapshot antes de
 > continuar el replay live.
-> `CreateOffer`/reemplazo es el primer productor: oferta, batch ordenado y
-> versiones se confirman en un solo commit mediante `UnitOfWork`; la publicación
-> directa reutiliza exactamente el payload persistido. El recorder está detrás
+> `CreateOffer`/reemplazo y `AcceptOffer` son los primeros productores: mutación,
+> batch ordenado y versiones se confirman en un solo commit mediante
+> `UnitOfWork`; la publicación directa reutiliza exactamente los payloads
+> persistidos. El fanout de aceptación conserva `ride_status`, cierre del pool,
+> notificación/limpieza del ganador y retiros/rechazos de los afectados en un
+> único batch multistream. El recorder está detrás
 > de `REALTIME_OUTBOX_RECORDING_ENABLED=false` y el dispatcher se controla con
 > `REALTIME_OUTBOX_DISPATCH_MODE=off|shadow`, también apagado por defecto. El modo
 > sombra únicamente reclama, valida y marca batches: no entrega al hub WebSocket
@@ -363,6 +367,8 @@ Base ya cumplida por `93b9741`:
   mobile y gate puro de idempotencia sin cambiar la emisión actual.
 - [x] Capturar estado y watermarks v2 bajo una única transacción PostgreSQL
   `REPEATABLE READ READ ONLY`, sin mutaciones ni N+1 en las colecciones críticas.
+- [x] Migrar la aceptación atómica a `flush` + outbox + commit del UoW y
+  reutilizar el mismo batch canónico en la publicación directa.
 - [x] Añadir `0020` y cuarentena terminal atómica para batches inválidos, con
   códigos cerrados, índices que excluyen terminales y downgrade protegido.
 
@@ -377,8 +383,8 @@ Dispatcher sombra, sin Redis ni cambios de contrato/mobile:
 - [ ] Medir pendientes y edad máxima, y definir retención de filas publicadas.
 - [ ] No habilitar entrega real hasta que el envelope lleve `event_id`, versiones
   de agregado/stream en el socket vivo y el gate mobile esté integrado.
-- [ ] Migrar aceptación y después pausa/cancelación, resolviendo versiones de
-  los otros rides afectados por el fanout.
+- [ ] Migrar pausa y después cancelación, resolviendo versiones de los otros
+  rides afectados por cada fanout.
 
 ### 3.2 Bridge Redis y sockets locales
 

@@ -13,7 +13,6 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from app.application.dto import CreateOfferInput
-from app.application.use_cases.accept_offer import AcceptOffer
 from app.domain.entities import (
     Location,
     OfferStatus,
@@ -29,6 +28,7 @@ from tests.fakes import (
     InMemoryOfferRepository,
     InMemoryRideRequestRepository,
     InMemoryUserRepository,
+    accept_offer_use_case,
     create_offer_use_case,
 )
 
@@ -83,7 +83,10 @@ async def test_accept_withdraws_drivers_other_offers():
     )
 
     # El pasajero A acepta: el conductor se le asigna.
-    result = await AcceptOffer(rides, offers).execute(rider_a, offer_a.detail.offer.id)
+    result = await accept_offer_use_case(rides, offers).execute(
+        rider_a,
+        offer_a.detail.offer.id,
+    )
 
     assert result.detail.ride.driver_id == driver.id
     # La oferta del conductor al pasajero B se retiró y B aparece en la lista.
@@ -107,7 +110,7 @@ async def test_accept_returns_none_when_ride_already_assigned():
     )
 
     # El primer accept asigna el ride (y rechaza o2 en la misma transacción).
-    await AcceptOffer(rides, offers).execute(rider, o1.detail.offer.id)
+    await accept_offer_use_case(rides, offers).execute(rider, o1.detail.offer.id)
 
     # Reabrimos o2 como PENDING para simular la ventana previa al check atómico:
     # el ride ya está ACCEPTED → accept_atomically devuelve None.

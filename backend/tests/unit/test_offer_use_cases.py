@@ -9,7 +9,6 @@ from decimal import Decimal
 import pytest
 
 from app.application.dto import CreateOfferInput
-from app.application.use_cases.accept_offer import AcceptOffer
 from app.application.use_cases.cancel_ride import CancelRide
 from app.application.use_cases.expire_offer import ExpireOffer
 from app.application.use_cases.list_offers_for_ride import ListOffersForRide
@@ -37,6 +36,7 @@ from tests.fakes import (
     InMemoryOfferRepository,
     InMemoryRideRequestRepository,
     InMemoryUserRepository,
+    accept_offer_use_case,
     create_offer_use_case,
 )
 
@@ -110,7 +110,7 @@ async def test_taxi_and_moto_can_offer_and_be_assigned_delivery(
     created = await create_offer_use_case(rides, offers).execute(
         driver, ride.id, CreateOfferInput(accept_at_fare=True)
     )
-    accepted = await AcceptOffer(rides, offers).execute(
+    accepted = await accept_offer_use_case(rides, offers).execute(
         rider, created.detail.offer.id
     )
 
@@ -150,7 +150,7 @@ async def test_create_offer_blocked_after_ride_assigned():
     first = await create_offer_use_case(rides, offers).execute(
         driver, ride.id, CreateOfferInput(accept_at_fare=True)
     )
-    await AcceptOffer(rides, offers).execute(rider, first.detail.offer.id)
+    await accept_offer_use_case(rides, offers).execute(rider, first.detail.offer.id)
 
     with pytest.raises(InvalidRideTransitionError):
         await create_offer_use_case(rides, offers).execute(
@@ -240,7 +240,7 @@ async def test_accept_offer_assigns_ride_and_rejects_others():
         d2, ride.id, CreateOfferInput(accept_at_fare=False, price=Decimal("30.00"))
     )
 
-    result = await AcceptOffer(rides, offers).execute(rider, o1.detail.offer.id)
+    result = await accept_offer_use_case(rides, offers).execute(rider, o1.detail.offer.id)
 
     assert result.detail.ride.status is RideStatus.ACCEPTED
     assert result.detail.ride.driver_id == d1.id
@@ -268,10 +268,10 @@ async def test_accept_second_offer_after_assignment_fails():
         d2, ride.id, CreateOfferInput(accept_at_fare=True)
     )
 
-    await AcceptOffer(rides, offers).execute(rider, o1.detail.offer.id)
+    await accept_offer_use_case(rides, offers).execute(rider, o1.detail.offer.id)
 
     with pytest.raises(InvalidRideTransitionError):
-        await AcceptOffer(rides, offers).execute(rider, o2.detail.offer.id)
+        await accept_offer_use_case(rides, offers).execute(rider, o2.detail.offer.id)
 
 
 async def test_accept_rejects_foreign_passenger():
@@ -286,7 +286,10 @@ async def test_accept_rejects_foreign_passenger():
     )
 
     with pytest.raises(NotAuthorizedActionError):
-        await AcceptOffer(rides, offers).execute(intruder, offer.detail.offer.id)
+        await accept_offer_use_case(rides, offers).execute(
+            intruder,
+            offer.detail.offer.id,
+        )
 
 
 async def test_accept_rejects_expired_offer():
@@ -306,7 +309,10 @@ async def test_accept_rejects_expired_offer():
     )
 
     with pytest.raises(InvalidRideTransitionError):
-        await AcceptOffer(rides, offers).execute(rider, offer.detail.offer.id)
+        await accept_offer_use_case(rides, offers).execute(
+            rider,
+            offer.detail.offer.id,
+        )
 
 
 async def test_accept_fails_when_driver_already_busy():
@@ -328,7 +334,10 @@ async def test_accept_fails_when_driver_already_busy():
 
     # El pasajero A acepta: el conductor queda con un viaje activo y su oferta al
     # pasajero B se retiró (REJECTED) en la misma transacción.
-    await AcceptOffer(rides, offers).execute(rider_a, offer_a.detail.offer.id)
+    await accept_offer_use_case(rides, offers).execute(
+        rider_a,
+        offer_a.detail.offer.id,
+    )
     assert (await offers.get_by_id(offer_b.detail.offer.id)).status is OfferStatus.REJECTED
 
     # Simulamos la ventana de carrera: reabrimos la oferta B como PENDING (vigente)
@@ -336,7 +345,10 @@ async def test_accept_fails_when_driver_already_busy():
     (await offers.get_by_id(offer_b.detail.offer.id)).status = OfferStatus.PENDING
 
     with pytest.raises(DriverUnavailableError):
-        await AcceptOffer(rides, offers).execute(rider_b, offer_b.detail.offer.id)
+        await accept_offer_use_case(rides, offers).execute(
+            rider_b,
+            offer_b.detail.offer.id,
+        )
 
 
 async def test_withdraw_offer_kills_pending_offer():
@@ -540,7 +552,7 @@ async def test_list_offers_empty_after_accept():
     await create_offer_use_case(rides, offers).execute(
         d2, ride.id, CreateOfferInput(accept_at_fare=True)
     )
-    await AcceptOffer(rides, offers).execute(rider, o1.detail.offer.id)
+    await accept_offer_use_case(rides, offers).execute(rider, o1.detail.offer.id)
 
     listed = await ListOffersForRide(rides, offers, users).execute(rider, ride.id)
     assert listed == []
@@ -633,7 +645,10 @@ async def test_expire_offer_skips_already_resolved_offer():
     created = await create_offer_use_case(rides, offers).execute(
         driver, ride.id, CreateOfferInput(accept_at_fare=True)
     )
-    await AcceptOffer(rides, offers).execute(rider, created.detail.offer.id)
+    await accept_offer_use_case(rides, offers).execute(
+        rider,
+        created.detail.offer.id,
+    )
     (await offers.get_by_id(created.detail.offer.id)).created_at = datetime.now(UTC) - (
         OFFER_TTL + timedelta(seconds=1)
     )

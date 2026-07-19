@@ -352,10 +352,20 @@ def test_driver_receives_offer_accepted_on_passenger_accept(ws_client: TestClien
         )
         assert accepted.status_code == 200, accepted.text
 
-        # ride_closed (pool), offer_accepted y offers_withdrawn (canal personal)
-        # llegan al conductor; el que importa es offer_accepted.
-        types = {ws.receive_json()["type"] for _ in range(3)}
-        assert "offer_accepted" in types
+        # El orden del batch es parte del contrato: cerrar el pool, asignar el
+        # viaje y recién después limpiar las demás ofertas del ganador.
+        closed = ws.receive_json()
+        offer_accepted = ws.receive_json()
+        offers_withdrawn = ws.receive_json()
+        assert [
+            closed["type"],
+            offer_accepted["type"],
+            offers_withdrawn["type"],
+        ] == ["ride_closed", "offer_accepted", "offers_withdrawn"]
+        assert closed["data"] == {"ride_id": ride["id"]}
+        assert offer_accepted["data"]["id"] == ride["id"]
+        assert offer_accepted["data"]["status"] == "accepted"
+        assert offers_withdrawn["data"] == {"ride_ids": []}
 
 
 def test_passenger_sees_improved_offer_replace_old_one(ws_client: TestClient):

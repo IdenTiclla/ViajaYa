@@ -79,6 +79,22 @@ def _pending_offer_event(
     )
 
 
+def _pending_realtime_event(
+    *,
+    topic: str,
+    aggregate_type: str,
+    aggregate_id: uuid.UUID,
+    message: NegotiationMessage,
+) -> PendingRealtimeEvent:
+    return PendingRealtimeEvent(
+        event_type=message.type,
+        topic=topic,
+        aggregate_type=aggregate_type,
+        aggregate_id=aggregate_id,
+        payload=dump_negotiation_message(message),
+    )
+
+
 def build_create_offer_events(result: CreateOfferResult) -> list[PendingRealtimeEvent]:
     """Construye el batch durable/directo de crear o reemplazar una oferta."""
     detail = result.detail
@@ -103,6 +119,83 @@ def build_create_offer_events(result: CreateOfferResult) -> list[PendingRealtime
             OfferCreatedMessage(data=OfferResponse.from_detail(detail)),
         )
     )
+    return pending
+
+
+def build_accept_offer_events(result: AcceptOfferResult) -> list[PendingRealtimeEvent]:
+    """Construye el fanout durable/directo de una aceptación atómica."""
+    ride = result.detail.ride
+    driver = result.detail.driver
+    if driver is None:
+        raise ValueError("Una aceptación exitosa debe incluir al conductor elegido.")
+    ride_response = RideResponse.from_detail(result.detail)
+    pending = [
+        _pending_realtime_event(
+            topic=ride_topic(ride.id),
+            aggregate_type="ride",
+            aggregate_id=ride.id,
+            message=RideStatusMessage(data=ride_response),
+        ),
+        _pending_realtime_event(
+            topic=pool_topic(ride.service_type.value),
+            aggregate_type="ride",
+            aggregate_id=ride.id,
+            message=RideClosedMessage(data=RideClosedData(ride_id=ride.id)),
+        ),
+    ]
+    pending.extend(
+        [
+            _pending_realtime_event(
+                topic=driver_topic(driver.id),
+                aggregate_type="ride",
+                aggregate_id=ride.id,
+                message=OfferAcceptedMessage(data=ride_response),
+            ),
+            _pending_realtime_event(
+                topic=driver_topic(driver.id),
+                aggregate_type="driver",
+                aggregate_id=driver.id,
+                message=OffersWithdrawnMessage(
+                    data=OffersWithdrawnData(
+                        ride_ids=sorted(
+                            result.withdrawn_ride_ids,
+                            key=lambda item: item.hex,
+                        )
+                    )
+                ),
+            ),
+        ]
+    )
+    for other_ride_id in sorted(
+        result.withdrawn_ride_ids,
+        key=lambda item: item.hex,
+    ):
+        pending.append(
+            _pending_realtime_event(
+                topic=ride_topic(other_ride_id),
+                aggregate_type="ride",
+                aggregate_id=other_ride_id,
+                message=OfferWithdrawnMessage(
+                    data=OfferWithdrawnData(driver_id=driver.id)
+                )
+            )
+        )
+
+    for loser_id in sorted(result.losing_driver_ids, key=lambda item: item.hex):
+        pending.append(
+            _pending_realtime_event(
+                topic=driver_topic(loser_id),
+                aggregate_type="ride",
+                aggregate_id=ride.id,
+                message=OfferRejectedMessage(
+                    data=OfferRejectedData(
+                        ride_id=ride.id,
+                        offer_id=None,
+                        reason="ride_taken",
+                    )
+                ),
+            )
+        )
     return pending
 
 
@@ -293,40 +386,4 @@ async def publish_offer_accepted(result: AcceptOfferResult) -> None:
       conductor de su pantalla).
     - Al pool: la solicitud se cierra.
     """
-    ride = result.detail.ride
-    driver = result.detail.driver
-    ride_response = RideResponse.from_detail(result.detail)
-
-    await _broadcast(ride_topic(ride.id), RideStatusMessage(data=ride_response))
-    await publish_ride_closed(ride.id, ride.service_type)
-
-    if driver is not None:
-        await _broadcast(
-            driver_topic(driver.id),
-            OfferAcceptedMessage(data=ride_response),
-        )
-        await _broadcast(
-            driver_topic(driver.id),
-            OffersWithdrawnMessage(
-                data=OffersWithdrawnData(ride_ids=result.withdrawn_ride_ids)
-            ),
-        )
-        for other_ride_id in result.withdrawn_ride_ids:
-            await _broadcast(
-                ride_topic(other_ride_id),
-                OfferWithdrawnMessage(
-                    data=OfferWithdrawnData(driver_id=driver.id)
-                ),
-            )
-
-    for loser_id in result.losing_driver_ids:
-        await _broadcast(
-            driver_topic(loser_id),
-            OfferRejectedMessage(
-                data=OfferRejectedData(
-                    ride_id=ride.id,
-                    offer_id=None,
-                    reason="ride_taken",
-                )
-            ),
-        )
+    await _broadcast_pending(build_accept_offer_events(result))

@@ -14,7 +14,9 @@ from fastapi import Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.v1.realtime_outbox import (
+    DisabledAcceptOfferEventRecorder,
     DisabledCreateOfferEventRecorder,
+    OutboxAcceptOfferEventRecorder,
     OutboxCreateOfferEventRecorder,
 )
 from app.application.interfaces import (
@@ -288,9 +290,21 @@ def get_list_offers_for_ride(
 
 def get_accept_offer(
     rides: RideRequestRepositoryDep,
-    offers: OfferRepositoryDep,
+    session: SessionDep,
+    settings: SettingsDep,
 ) -> AcceptOffer:
-    return AcceptOffer(rides, offers)
+    offers = SqlAlchemyOfferRepository(session, commit_accept=False)
+    recorder = (
+        OutboxAcceptOfferEventRecorder(SqlAlchemyRealtimeOutbox(session))
+        if settings.realtime_outbox_recording_enabled
+        else DisabledAcceptOfferEventRecorder()
+    )
+    return AcceptOffer(
+        rides,
+        offers,
+        SqlAlchemyUnitOfWork(session),
+        recorder,
+    )
 
 
 def get_withdraw_offer(offers: OfferRepositoryDep) -> WithdrawOffer:

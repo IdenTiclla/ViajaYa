@@ -877,11 +877,13 @@ class SqlAlchemyOfferRepository(OfferRepository):
         session: AsyncSession,
         *,
         commit_create_or_supersede: bool = True,
+        commit_accept: bool = True,
     ) -> None:
         self._session = session
-        # Migración incremental: únicamente este método participa todavía del
-        # UnitOfWork; los demás conservan sus commits internos.
+        # Migración incremental: crear/reemplazar y aceptar participan del UoW;
+        # los demás métodos todavía conservan sus commits internos.
         self._commit_create_or_supersede = commit_create_or_supersede
+        self._commit_accept = commit_accept
 
     async def add(self, offer: Offer) -> Offer:
         row = OfferModel(
@@ -1355,8 +1357,11 @@ class SqlAlchemyOfferRepository(OfferRepository):
             await self._session.rollback()
             return None
         if is_offer_expired(_offer_to_entity(offer_row)):
-            offer_row.status = OfferStatus.EXPIRED
-            await self._session.commit()
+            # La expiración tiene su propio caso de uso. En el modo UoW de
+            # aceptación no se confirma un efecto lateral sin su evento durable.
+            if self._commit_accept:
+                offer_row.status = OfferStatus.EXPIRED
+                await self._session.commit()
             return None
 
         # El conductor debe estar libre: sin ningún viaje activo.
@@ -1418,7 +1423,10 @@ class SqlAlchemyOfferRepository(OfferRepository):
         ride_row.accepted_offer_id = offer_row.id
         ride_row.status = RideStatus.ACCEPTED
 
-        await self._session.commit()
+        if self._commit_accept:
+            await self._session.commit()
+        else:
+            await self._session.flush()
         await self._session.refresh(offer_row)
         await self._session.refresh(ride_row)
         await self._session.refresh(driver_row)

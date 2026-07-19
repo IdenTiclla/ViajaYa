@@ -5,19 +5,21 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 
-from app.api.v1.events import build_create_offer_events
+from app.api.v1.events import build_accept_offer_events, build_create_offer_events
 from app.api.v1.schemas.realtime import (
     RealtimeEventEnvelopeV2,
     parse_negotiation_message,
     validate_realtime_event_semantics,
 )
 from app.application.dto import (
+    AcceptOfferResult,
     CreateOfferResult,
     RealtimeOutboxEvent,
     RealtimeOutboxQuarantineCode,
 )
 from app.application.exceptions import InvalidRealtimeOutboxBatchError
 from app.application.interfaces import (
+    AcceptOfferEventRecorder,
     CreateOfferEventRecorder,
     RealtimeOutbox,
     RealtimeOutboxBatchValidator,
@@ -178,4 +180,21 @@ class DisabledCreateOfferEventRecorder(CreateOfferEventRecorder):
     """Recorder nulo mientras el productor de outbox está deshabilitado."""
 
     async def record(self, result: CreateOfferResult) -> None:
+        del result
+
+
+class OutboxAcceptOfferEventRecorder(AcceptOfferEventRecorder):
+    """Registra el fanout de aceptación dentro de su transacción de negocio."""
+
+    def __init__(self, outbox: RealtimeOutbox) -> None:
+        self._outbox = outbox
+
+    async def record(self, result: AcceptOfferResult) -> None:
+        await self._outbox.add_batch(build_accept_offer_events(result))
+
+
+class DisabledAcceptOfferEventRecorder(AcceptOfferEventRecorder):
+    """Recorder nulo mientras el productor de aceptación está deshabilitado."""
+
+    async def record(self, result: AcceptOfferResult) -> None:
         del result

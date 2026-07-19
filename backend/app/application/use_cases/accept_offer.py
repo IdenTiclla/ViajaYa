@@ -12,6 +12,7 @@ from __future__ import annotations
 import uuid
 
 from app.application.dto import AcceptOfferResult, RideDetail
+from app.application.interfaces import AcceptOfferEventRecorder, UnitOfWork
 from app.domain.entities import OfferStatus, RideStatus, User
 from app.domain.exceptions import (
     DriverUnavailableError,
@@ -29,11 +30,25 @@ class AcceptOffer:
         self,
         rides: RideRequestRepository,
         offers: OfferRepository,
+        unit_of_work: UnitOfWork,
+        event_recorder: AcceptOfferEventRecorder,
     ) -> None:
         self._rides = rides
         self._offers = offers
+        self._unit_of_work = unit_of_work
+        self._event_recorder = event_recorder
 
     async def execute(self, rider: User, offer_id: uuid.UUID) -> AcceptOfferResult:
+        try:
+            result = await self._mutate(rider, offer_id)
+            await self._event_recorder.record(result)
+            await self._unit_of_work.commit()
+            return result
+        except BaseException:
+            await self._unit_of_work.rollback()
+            raise
+
+    async def _mutate(self, rider: User, offer_id: uuid.UUID) -> AcceptOfferResult:
         offer = await self._offers.get_by_id(offer_id)
         if offer is None:
             raise OfferNotFoundError("La oferta no existe.")

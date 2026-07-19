@@ -12,6 +12,7 @@ from collections.abc import Sequence
 from datetime import datetime
 
 from app.application.dto import (
+    AcceptOfferResult,
     CreateOfferResult,
     DriverEarnings,
     DriverRealtimeSnapshot,
@@ -124,6 +125,14 @@ class CreateOfferEventRecorder(ABC):
     @abstractmethod
     async def record(self, result: CreateOfferResult) -> None:
         """Añade a la outbox el desenlace completo de la operación."""
+
+
+class AcceptOfferEventRecorder(ABC):
+    """Registra los eventos durables producidos al aceptar una oferta."""
+
+    @abstractmethod
+    async def record(self, result: AcceptOfferResult) -> None:
+        """Añade a la outbox todo el fanout atómico de la aceptación."""
 
 
 class PasswordHasher(ABC):

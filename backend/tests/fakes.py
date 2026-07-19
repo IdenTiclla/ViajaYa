@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 from app.application.dto import (
+    AcceptOfferResult,
     CreateOfferResult,
     DriverEarnings,
     EarningsItem,
@@ -19,6 +20,7 @@ from app.application.dto import (
     SocialProfile,
 )
 from app.application.interfaces import (
+    AcceptOfferEventRecorder,
     CreateOfferEventRecorder,
     PasswordHasher,
     RideReadRepository,
@@ -26,6 +28,7 @@ from app.application.interfaces import (
     TokenService,
     UnitOfWork,
 )
+from app.application.use_cases.accept_offer import AcceptOffer
 from app.application.use_cases.create_offer import CreateOffer
 from app.domain.entities import (
     ACTIVE_OFFER_STATUSES,
@@ -679,6 +682,7 @@ class InMemoryUnitOfWork(UnitOfWork):
         self,
         offers: InMemoryOfferRepository | None = None,
         *,
+        rides: InMemoryRideRequestRepository | None = None,
         operations: list[str] | None = None,
         commit_error: BaseException | None = None,
     ) -> None:
@@ -686,6 +690,8 @@ class InMemoryUnitOfWork(UnitOfWork):
         self.rollbacks = 0
         self._offers = offers
         self._offer_snapshot = deepcopy(offers.offers) if offers is not None else None
+        self._rides = rides
+        self._ride_snapshot = deepcopy(rides.rides) if rides is not None else None
         self._operations = operations
         self._commit_error = commit_error
 
@@ -702,6 +708,8 @@ class InMemoryUnitOfWork(UnitOfWork):
             self._operations.append("rollback")
         if self._offers is not None and self._offer_snapshot is not None:
             self._offers.offers[:] = deepcopy(self._offer_snapshot)
+        if self._rides is not None and self._ride_snapshot is not None:
+            self._rides.rides[:] = deepcopy(self._ride_snapshot)
 
 
 class InMemoryCreateOfferEventRecorder(CreateOfferEventRecorder):
@@ -721,6 +729,41 @@ class InMemoryCreateOfferEventRecorder(CreateOfferEventRecorder):
         if self._error is not None:
             raise self._error
         self.results.append(result)
+
+
+class InMemoryAcceptOfferEventRecorder(AcceptOfferEventRecorder):
+    def __init__(
+        self,
+        *,
+        operations: list[str] | None = None,
+        error: BaseException | None = None,
+    ) -> None:
+        self.results: list[AcceptOfferResult] = []
+        self._operations = operations
+        self._error = error
+
+    async def record(self, result: AcceptOfferResult) -> None:
+        if self._operations is not None:
+            self._operations.append("record")
+        if self._error is not None:
+            raise self._error
+        self.results.append(result)
+
+
+def accept_offer_use_case(
+    rides: InMemoryRideRequestRepository,
+    offers: InMemoryOfferRepository,
+    *,
+    unit_of_work: UnitOfWork | None = None,
+    event_recorder: AcceptOfferEventRecorder | None = None,
+) -> AcceptOffer:
+    """Cablea AcceptOffer con dobles transaccionales explícitos."""
+    return AcceptOffer(
+        rides,
+        offers,
+        unit_of_work or InMemoryUnitOfWork(offers, rides=rides),
+        event_recorder or InMemoryAcceptOfferEventRecorder(),
+    )
 
 
 def create_offer_use_case(

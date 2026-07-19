@@ -62,7 +62,7 @@ app/
 - **Transacciones migradas a outbox:** el repositorio hace `flush`, el caso de
   uso registra el batch y `UnitOfWork` decide el único `commit`. No conviertas
   otros repositorios mecánicamente: migra todos los call sites de una operación
-  en el mismo cambio. Por ahora solo `CreateOffer` usa este flujo.
+  en el mismo cambio. `CreateOffer` y `AcceptOffer` ya usan este flujo.
 
 ### Patrón para añadir un endpoint
 
@@ -214,9 +214,10 @@ offer_withdrawn, offer_accepted, offers_withdrawn (plural), offer_expired, ride_
 
 - `offers_withdrawn` (plural) → al conductor elegido: lista de `ride_ids` cuyas ofertas suyas se retiraron al ganar el viaje.
 - El polling del cliente queda **solo como respaldo lento**; la vía principal es el WS.
-- Crear/reemplazar oferta ya persiste antes del commit un batch ordenado en
-  `realtime_outbox` cuando `REALTIME_OUTBOX_RECORDING_ENABLED=true`; la entrega
-  directa reutiliza ese mismo payload `{type,data}`. El dispatcher controlado por
+- Crear/reemplazar y aceptar oferta ya persisten antes del commit sus batches
+  ordenados en `realtime_outbox` cuando
+  `REALTIME_OUTBOX_RECORDING_ENABLED=true`; la entrega directa reutiliza esos
+  mismos payloads `{type,data}`. El dispatcher controlado por
   `REALTIME_OUTBOX_DISPATCH_MODE=shadow` solo valida y marca la copia durable; la
   publicación directa continúa siendo la única entrega al cliente. El modo
   inicial es `off`, no existe entrega `live` por outbox y el backend sigue

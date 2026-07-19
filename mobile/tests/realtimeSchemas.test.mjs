@@ -382,7 +382,29 @@ test('driver_snapshot exige delivery, pool de vehículo y pertenencia al conduct
       active_ride: null,
     },
   });
+  const wrongPool = driverRealtimeMessageParser.safeParse({
+    schema_version: 2,
+    kind: 'snapshot',
+    type: 'driver_snapshot',
+    snapshot_id: snapshotId,
+    captured_at: occurredAt,
+    watermarks: [
+      { stream: 'pool:taxi', stream_version: 4 },
+      { stream: 'pool:delivery', stream_version: 2 },
+      { stream: `driver:${driverId}`, stream_version: 0 },
+    ],
+    data: {
+      open_rides: {
+        items: [{ ...openRide(), service_type: 'moto' }],
+        next_cursor: null,
+      },
+      paused_rides: [],
+      offers: [],
+      active_ride: null,
+    },
+  });
 
   assert.equal(missingDelivery.success, false);
   assert.equal(foreignDriver.success, false);
+  assert.equal(wrongPool.success, false);
 });

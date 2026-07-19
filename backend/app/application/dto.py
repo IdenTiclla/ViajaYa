@@ -22,6 +22,7 @@ from app.domain.entities import (
     ServiceType,
     User,
 )
+from app.domain.repositories import OpenRideDetail
 
 T = TypeVar("T")
 
@@ -202,6 +203,38 @@ class RideDetail:
     rider: User | None = None
     driver: User | None = None
     accepted_offer: Offer | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RealtimeStreamCheckpoint:
+    """Posición de stream incluida en una captura consistente de tiempo real."""
+
+    stream: str
+    stream_version: int
+
+
+@dataclass(frozen=True, slots=True)
+class PassengerRealtimeSnapshot:
+    """Proyección completa que recupera el pasajero al conectar su socket."""
+
+    snapshot_id: uuid.UUID
+    ride: RideDetail
+    offers: list[OfferDetail]
+    watermarks: tuple[RealtimeStreamCheckpoint, ...]
+    captured_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class DriverRealtimeSnapshot:
+    """Proyección unificada que recupera el conductor al conectar su socket."""
+
+    snapshot_id: uuid.UUID
+    open_rides: Page[OpenRideDetail]
+    paused_rides: list[OpenRideDetail]
+    offers: list[OfferDetail]
+    active_ride: RideDetail | None
+    watermarks: tuple[RealtimeStreamCheckpoint, ...]
+    captured_at: datetime
 
 
 @dataclass(frozen=True)

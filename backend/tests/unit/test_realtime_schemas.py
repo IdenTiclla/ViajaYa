@@ -369,3 +369,7 @@ def test_unified_driver_snapshot_requires_full_unique_watermark_vector() -> None
         DriverSnapshotMessageV2.model_validate(
             snapshot.model_dump() | {"watermarks": snapshot.model_dump()["watermarks"][:2]}
         )
+    wrong_pool = snapshot.model_dump()
+    wrong_pool["data"]["open_rides"]["items"][0]["service_type"] = "moto"
+    with pytest.raises(ValidationError, match="pools"):
+        DriverSnapshotMessageV2.model_validate(wrong_pool)

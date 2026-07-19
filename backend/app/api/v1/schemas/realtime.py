@@ -403,6 +403,17 @@ class DriverSnapshotMessageV2(_Message):
                 "El snapshot del conductor requiere su stream, delivery y un pool de vehículo."
             )
 
+        vehicle_service = next(iter(vehicle_pools)).partition(":")[2]
+        allowed_services = {vehicle_service, "delivery"}
+        visible_rides = [
+            *self.data.open_rides.items,
+            *self.data.paused_rides,
+        ]
+        if self.data.active_ride is not None:
+            visible_rides.append(self.data.active_ride)
+        if any(ride.service_type.value not in allowed_services for ride in visible_rides):
+            raise ValueError("Los rides del snapshot no pertenecen a los pools declarados.")
+
         driver_id = uuid.UUID(next(iter(driver_streams)).partition(":")[2])
         if any(offer.driver.id != driver_id for offer in self.data.offers):
             raise ValueError("Las ofertas no pertenecen al conductor del snapshot.")

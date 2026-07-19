@@ -14,8 +14,10 @@ from datetime import datetime
 from app.application.dto import (
     CreateOfferResult,
     DriverEarnings,
+    DriverRealtimeSnapshot,
     Page,
     PageCursor,
+    PassengerRealtimeSnapshot,
     PendingRealtimeEvent,
     RealtimeOutboxEvent,
     RideDetail,
@@ -67,6 +69,31 @@ class RealtimeOutbox(ABC):
         next_attempt_at: datetime,
     ) -> None:
         """Registra el fallo y programa el siguiente intento del lote."""
+
+
+class RealtimeSnapshotReader(ABC):
+    """Captura proyecciones y watermarks bajo un único corte de lectura.
+
+    El adaptador concreto es dueño de la sesión y de la transacción consistente.
+    Los streams siempre los decide el caso de uso para no trasladar reglas de
+    autorización o routing a infraestructura.
+    """
+
+    @abstractmethod
+    async def read_passenger(
+        self,
+        ride_id: uuid.UUID,
+        streams: Sequence[str],
+    ) -> PassengerRealtimeSnapshot | None:
+        """Captura ride, ofertas y posiciones, o ``None`` si el ride desapareció."""
+
+    @abstractmethod
+    async def read_driver(
+        self,
+        driver_id: uuid.UUID,
+        streams: Sequence[str],
+    ) -> DriverRealtimeSnapshot | None:
+        """Captura el estado del conductor o ``None`` si ya no existe."""
 
 
 class RealtimeOutboxBatchValidator(ABC):

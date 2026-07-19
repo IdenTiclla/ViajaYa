@@ -216,9 +216,21 @@ versiones y secuencias al máximo entero seguro de JSON.
 El snapshot del pasajero contiene `{ride, offers}` y un único watermark. El del
 conductor contiene `{open_rides, paused_rides, offers, active_ride}` y los tres
 streams que realmente consume. `snapshot_id` y `captured_at` identifican la
-captura. Estos snapshots aún no se construyen desde una transacción de lectura
-consistente ni se emiten; activar v2 antes de resolver eso abriría una ventana
-entre el estado y sus watermarks.
+captura. Un `RealtimeSnapshotReader` especializado ya construye ambas
+proyecciones con una sesión corta propia. En PostgreSQL, su primera sentencia
+fija `REPEATABLE READ READ ONLY`; estado, reloj de base y watermarks se leen bajo
+ese mismo corte, preservando el orden solicitado y usando versión `0` cuando el
+stream todavía no tiene contador. La captura solo filtra ofertas vencidas: no
+ejecuta DML ni mantenimiento, y sus consultas enriquecidas evitan N+1 en ofertas
+del pasajero y rides pausados del conductor.
+
+La prueba PostgreSQL opt-in pausa la captura entre estado y watermarks, confirma
+una escritura concurrente y demuestra que ambos permanecen en la versión
+anterior. Una captura nueva verá ambos valores nuevos. Los casos de uso derivan
+los streams autorizados y un adaptador API traduce los DTO enriquecidos al schema
+Pydantic sin IO adicional. El WebSocket todavía no invoca este reader ni emite
+los snapshots v2: presencia sigue en memoria y solo `CreateOffer` alimenta la
+outbox, por lo que activarlos aún daría watermarks incompletos.
 
 Mobile incluye además un gate puro de replay. Decide `apply`, `drop` o `resync`
 sin adelantar cursores y solo los confirma después de que el handler complete la
@@ -269,7 +281,9 @@ Axios todavía continúe en segundo plano sin propagar `AbortSignal`.
 > nueva por iteración y detiene el loop de forma coordinada. El contrato v2 y su
 > serializador ya pueden representar esos batches, y mobile ya puede validarlos y
 > decidir su replay de forma pura; ninguna de esas piezas está habilitada en el
-> socket vivo todavía.
+> socket vivo todavía. Los builders de snapshots ya disponen de un corte
+> consistente y read-only, pero siguen desacoplados del handshake por la misma
+> condición de rollout.
 > `0018`/`0019` no se aplicaron a la base local `viajaya`; sus pruebas PostgreSQL son
 > opt-in y CI las ejecutará sobre una base desechable.
 
@@ -339,6 +353,8 @@ Base ya cumplida por `93b9741`:
   claims concurrentes adelanten un batch del mismo topic.
 - [x] Definir y probar el envelope v2, snapshots con watermarks, parser dual
   mobile y gate puro de idempotencia sin cambiar la emisión actual.
+- [x] Capturar estado y watermarks v2 bajo una única transacción PostgreSQL
+  `REPEATABLE READ READ ONLY`, sin mutaciones ni N+1 en las colecciones críticas.
 
 Dispatcher sombra, sin Redis ni cambios de contrato/mobile:
 

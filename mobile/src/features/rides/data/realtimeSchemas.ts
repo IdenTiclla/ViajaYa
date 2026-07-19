@@ -473,6 +473,22 @@ export const driverVersionedSnapshotSchema = versionedSnapshotMetadataSchema.ext
   }
 
   const driverId = driverStreams[0]?.slice('driver:'.length);
+  const vehicleService = vehiclePools[0]?.slice('pool:'.length);
+  const allowedServices = new Set([vehicleService, 'delivery']);
+  const visibleRides = [
+    ...snapshot.data.open_rides.items,
+    ...snapshot.data.paused_rides,
+    ...(snapshot.data.active_ride === null ? [] : [snapshot.data.active_ride]),
+  ];
+  visibleRides.forEach((ride, index) => {
+    if (!allowedServices.has(ride.service_type)) {
+      context.addIssue({
+        code: 'custom',
+        message: 'El ride no pertenece a los pools declarados por el snapshot.',
+        path: ['data', 'rides', index, 'service_type'],
+      });
+    }
+  });
   snapshot.data.offers.forEach((offer, index) => {
     if (offer.driver.id !== driverId) {
       context.addIssue({

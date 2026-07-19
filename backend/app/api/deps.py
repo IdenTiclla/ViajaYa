@@ -11,16 +11,27 @@ from functools import lru_cache
 from typing import Annotated
 
 from fastapi import Depends, Header
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.v1.realtime_outbox import (
     DisabledCreateOfferEventRecorder,
     OutboxCreateOfferEventRecorder,
 )
-from app.application.interfaces import RideReadRepository, SocialIdentityVerifier, TokenService
+from app.application.interfaces import (
+    RealtimeSnapshotReader,
+    RideReadRepository,
+    SocialIdentityVerifier,
+    TokenService,
+)
 from app.application.use_cases.accept_offer import AcceptOffer
 from app.application.use_cases.authenticate_user import AuthenticateUser
 from app.application.use_cases.authenticate_with_oauth import AuthenticateWithOAuth
+from app.application.use_cases.build_driver_realtime_snapshot import (
+    BuildDriverRealtimeSnapshot,
+)
+from app.application.use_cases.build_passenger_realtime_snapshot import (
+    BuildPassengerRealtimeSnapshot,
+)
 from app.application.use_cases.cancel_ride import CancelRide
 from app.application.use_cases.create_offer import CreateOffer
 from app.application.use_cases.create_ride_request import CreateRideRequest
@@ -62,6 +73,7 @@ from app.domain.repositories import (
 )
 from app.infrastructure.config import Settings, get_settings
 from app.infrastructure.db.outbox import SqlAlchemyRealtimeOutbox
+from app.infrastructure.db.realtime_snapshots import SqlAlchemyRealtimeSnapshotReader
 from app.infrastructure.db.repositories import (
     SqlAlchemyOfferRepository,
     SqlAlchemyPendingRatingRepository,
@@ -83,7 +95,7 @@ SettingsDep = Annotated[Settings, Depends(get_settings)]
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
 
-def get_session_factory():
+def get_session_factory() -> async_sessionmaker[AsyncSession]:
     """Fábrica de sesiones para conexiones WebSocket (sesión corta por handshake).
 
     Los endpoints WS no usan ``get_session`` (que ata la sesión al ciclo de un
@@ -92,6 +104,25 @@ def get_session_factory():
     poder sustituirla en tests por la BD en memoria.
     """
     return async_session_factory
+
+
+SessionFactoryDep = Annotated[
+    async_sessionmaker[AsyncSession],
+    Depends(get_session_factory),
+]
+
+
+def get_realtime_snapshot_reader(
+    session_factory: SessionFactoryDep,
+) -> RealtimeSnapshotReader:
+    """Reader dueño de una sesión corta y consistente por snapshot."""
+    return SqlAlchemyRealtimeSnapshotReader(session_factory)
+
+
+RealtimeSnapshotReaderDep = Annotated[
+    RealtimeSnapshotReader,
+    Depends(get_realtime_snapshot_reader),
+]
 
 
 def get_user_repository(session: SessionDep) -> UserRepository:
@@ -180,13 +211,23 @@ def get_oauth_verifiers(settings: SettingsDep) -> dict[str, SocialIdentityVerifi
 # --- Casos de uso ---
 
 
+def get_build_passenger_realtime_snapshot(
+    snapshots: RealtimeSnapshotReaderDep,
+) -> BuildPassengerRealtimeSnapshot:
+    return BuildPassengerRealtimeSnapshot(snapshots)
+
+
+def get_build_driver_realtime_snapshot(
+    snapshots: RealtimeSnapshotReaderDep,
+) -> BuildDriverRealtimeSnapshot:
+    return BuildDriverRealtimeSnapshot(snapshots)
+
+
 def get_register_user(users: UserRepositoryDep, tokens: TokenServiceDep) -> RegisterUser:
     return RegisterUser(users, _hasher(), tokens)
 
 
-def get_authenticate_user(
-    users: UserRepositoryDep, tokens: TokenServiceDep
-) -> AuthenticateUser:
+def get_authenticate_user(users: UserRepositoryDep, tokens: TokenServiceDep) -> AuthenticateUser:
     return AuthenticateUser(users, _hasher(), tokens)
 
 
@@ -271,9 +312,7 @@ def get_update_ride_fare(rides: RideRequestRepositoryDep) -> UpdateRideFare:
     return UpdateRideFare(rides)
 
 
-def get_cancel_ride(
-    rides: RideRequestRepositoryDep, offers: OfferRepositoryDep
-) -> CancelRide:
+def get_cancel_ride(rides: RideRequestRepositoryDep, offers: OfferRepositoryDep) -> CancelRide:
     return CancelRide(rides, offers)
 
 
@@ -287,9 +326,7 @@ def get_edit_ride(rides: RideRequestRepositoryDep) -> EditRide:
     return EditRide(rides)
 
 
-def get_set_driver_online(
-    users: UserRepositoryDep, offers: OfferRepositoryDep
-) -> SetDriverOnline:
+def get_set_driver_online(users: UserRepositoryDep, offers: OfferRepositoryDep) -> SetDriverOnline:
     return SetDriverOnline(users, offers)
 
 

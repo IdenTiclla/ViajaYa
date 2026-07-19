@@ -18,6 +18,7 @@ from app.api.v1.realtime_outbox import (
     DisabledAnnounceOpenRideEventRecorder,
     DisabledCancelRideEventRecorder,
     DisabledCreateOfferEventRecorder,
+    DisabledExpireOfferEventRecorder,
     DisabledPauseRideEventRecorder,
     DisabledRejectOfferEventRecorder,
     DisabledRepublishRideEventRecorder,
@@ -26,6 +27,7 @@ from app.api.v1.realtime_outbox import (
     OutboxAnnounceOpenRideEventRecorder,
     OutboxCancelRideEventRecorder,
     OutboxCreateOfferEventRecorder,
+    OutboxExpireOfferEventRecorder,
     OutboxPauseRideEventRecorder,
     OutboxRejectOfferEventRecorder,
     OutboxRepublishRideEventRecorder,
@@ -57,6 +59,7 @@ from app.application.use_cases.create_saved_place import CreateSavedPlace
 from app.application.use_cases.delete_saved_place import DeleteSavedPlace
 from app.application.use_cases.dismiss_open_ride import DismissOpenRide
 from app.application.use_cases.edit_ride import EditRide
+from app.application.use_cases.expire_offer import ExpireOffer
 from app.application.use_cases.get_driver_active_ride import GetDriverActiveRide
 from app.application.use_cases.get_driver_earnings import GetDriverEarnings
 from app.application.use_cases.get_passenger_active_ride import GetPassengerActiveRide
@@ -355,6 +358,23 @@ def get_reject_offer(
     return RejectOffer(
         rides,
         SqlAlchemyOfferRepository(session, commit_reject_if_pending=False),
+        SqlAlchemyUnitOfWork(session),
+        recorder,
+    )
+
+
+def build_expire_offer(session: AsyncSession, settings: Settings) -> ExpireOffer:
+    """Cablea la expiración usada por tareas y handshakes fuera de HTTP DI."""
+    recorder = (
+        OutboxExpireOfferEventRecorder(SqlAlchemyRealtimeOutbox(session))
+        if settings.realtime_outbox_recording_enabled
+        else DisabledExpireOfferEventRecorder()
+    )
+    return ExpireOffer(
+        SqlAlchemyOfferRepository(
+            session,
+            commit_mark_expired_if_pending=False,
+        ),
         SqlAlchemyUnitOfWork(session),
         recorder,
     )

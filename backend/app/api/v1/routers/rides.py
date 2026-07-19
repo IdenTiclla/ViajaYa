@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Response, status
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.deps import (
     CurrentUserDep,
+    SessionFactoryDep,
+    SettingsDep,
+    build_expire_offer,
     get_accept_offer,
     get_cancel_ride,
     get_create_offer,
@@ -26,7 +31,6 @@ from app.api.deps import (
     get_pending_rating_ride,
     get_rate_ride,
     get_reject_offer,
-    get_session_factory,
     get_skip_ride_rating,
     get_update_ride_fare,
     get_update_ride_status,
@@ -60,7 +64,6 @@ from app.application.use_cases.create_offer import CreateOffer
 from app.application.use_cases.create_ride_request import CreateRideRequest
 from app.application.use_cases.dismiss_open_ride import DismissOpenRide
 from app.application.use_cases.edit_ride import EditRide
-from app.application.use_cases.expire_offer import ExpireOffer
 from app.application.use_cases.get_passenger_active_ride import GetPassengerActiveRide
 from app.application.use_cases.get_pending_rating_ride import GetPendingRatingRide
 from app.application.use_cases.get_ride import GetRide
@@ -77,13 +80,10 @@ from app.application.use_cases.update_ride_status import UpdateRideStatus
 from app.application.use_cases.withdraw_offer import WithdrawOffer
 from app.domain.entities import RideStatus
 from app.domain.ride_policy import OFFER_TTL
-from app.infrastructure.db.repositories import SqlAlchemyOfferRepository
-from app.infrastructure.db.session import async_session_factory
+from app.infrastructure.config import Settings
 
 router = APIRouter(prefix="/rides", tags=["rides"])
-
-SessionFactoryDep = Annotated[object, Depends(get_session_factory)]
-
+logger = logging.getLogger(__name__)
 
 def _to_location_input(point) -> LocationInput:
     return LocationInput(
@@ -100,7 +100,11 @@ def _to_location_input(point) -> LocationInput:
 _EXPIRY_TASKS: set[asyncio.Task[None]] = set()
 
 
-async def _expire_offer_after(offer_id: uuid.UUID) -> None:
+async def _expire_offer_after(
+    offer_id: uuid.UUID,
+    session_factory: async_sessionmaker[AsyncSession],
+    settings: Settings,
+) -> None:
     """Vence la oferta a los 30 s y avisa en tiempo real por WS a conductor y pasajero.
 
     Tarea diferida lanzada al crear la oferta, con una sesión nueva (la del
@@ -110,14 +114,13 @@ async def _expire_offer_after(offer_id: uuid.UUID) -> None:
     """
     try:
         await asyncio.sleep(OFFER_TTL.total_seconds())
-        async with async_session_factory() as session:
-            offers = SqlAlchemyOfferRepository(session)
-            offer = await ExpireOffer(offers).execute(offer_id)
+        async with session_factory() as session:
+            offer = await build_expire_offer(session, settings).execute(offer_id)
         if offer is not None:
             await events.publish_offer_expired(offer)
     except Exception:
-        # La expiración es de UX (notificación en vivo): no crítica.
-        pass
+        # La entrega directa es best-effort, pero el fallo debe ser observable.
+        logger.exception("No se pudo vencer la oferta %s", offer_id)
 
 
 @router.post("", response_model=RideRequestResponse, status_code=status.HTTP_201_CREATED)
@@ -318,6 +321,8 @@ async def create_offer(
     body: OfferCreate,
     current_user: CurrentUserDep,
     use_case: Annotated[CreateOffer, Depends(get_create_offer)],
+    session_factory: SessionFactoryDep,
+    settings: SettingsDep,
 ) -> OfferResponse:
     """El conductor oferta sobre un viaje (aceptar al precio, contraofertar o mejorar)."""
     result = await use_case.execute(
@@ -335,7 +340,13 @@ async def create_offer(
     else:
         await events.publish_offer_created(result.detail)
     # Avisa a conductor y pasajero si la oferta vence a los 30 s sin respuesta.
-    task = asyncio.create_task(_expire_offer_after(result.detail.offer.id))
+    task = asyncio.create_task(
+        _expire_offer_after(
+            result.detail.offer.id,
+            session_factory,
+            settings,
+        )
+    )
     _EXPIRY_TASKS.add(task)
     task.add_done_callback(_EXPIRY_TASKS.discard)
     return OfferResponse.from_detail(result.detail)

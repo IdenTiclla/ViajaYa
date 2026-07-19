@@ -918,6 +918,7 @@ class SqlAlchemyOfferRepository(OfferRepository):
         commit_pause: bool = True,
         commit_cancel: bool = True,
         commit_reject_if_pending: bool = True,
+        commit_mark_expired_if_pending: bool = True,
     ) -> None:
         self._session = session
         # Migración incremental: estas mutaciones participan del UoW; los demás
@@ -927,6 +928,7 @@ class SqlAlchemyOfferRepository(OfferRepository):
         self._commit_pause = commit_pause
         self._commit_cancel = commit_cancel
         self._commit_reject_if_pending = commit_reject_if_pending
+        self._commit_mark_expired_if_pending = commit_mark_expired_if_pending
 
     async def add(self, offer: Offer) -> Offer:
         row = OfferModel(
@@ -1500,7 +1502,10 @@ class SqlAlchemyOfferRepository(OfferRepository):
         # aquí no se toca). Bloqueo de fila para serializar contra accept_atomically.
         offer_row = (
             await self._session.execute(
-                select(OfferModel).where(OfferModel.id == offer_id).with_for_update()
+                select(OfferModel)
+                .where(OfferModel.id == offer_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
             )
         ).scalar_one_or_none()
         if (
@@ -1508,10 +1513,14 @@ class SqlAlchemyOfferRepository(OfferRepository):
             or offer_row.status is not OfferStatus.PENDING
             or not is_offer_expired(_offer_to_entity(offer_row))
         ):
-            await self._session.rollback()
+            if self._commit_mark_expired_if_pending:
+                await self._session.rollback()
             return None
         offer_row.status = OfferStatus.EXPIRED
-        await self._session.commit()
+        if self._commit_mark_expired_if_pending:
+            await self._session.commit()
+        else:
+            await self._session.flush()
         await self._session.refresh(offer_row)
         return _offer_to_entity(offer_row)
 

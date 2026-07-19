@@ -1143,10 +1143,10 @@ def test_passenger_receives_offer_expired(ws_client: TestClient, monkeypatch):
     import uuid as _uuid
     from datetime import timedelta
 
+    from app.api.deps import build_expire_offer
     from app.api.v1 import events
-    from app.application.use_cases.expire_offer import ExpireOffer
     from app.domain import ride_policy
-    from app.infrastructure.db.repositories import SqlAlchemyOfferRepository
+    from app.infrastructure.config import get_settings
 
     # Forzamos la expiración sin esperar los 30 s reales.
     monkeypatch.setattr(ride_policy, "OFFER_TTL", timedelta(seconds=0))
@@ -1169,8 +1169,10 @@ def test_passenger_receives_offer_expired(ws_client: TestClient, monkeypatch):
 
         async def expire() -> None:
             async with ws_client.factory() as session:  # type: ignore[attr-defined]
-                offers_repo = SqlAlchemyOfferRepository(session)
-                offer_entity = await ExpireOffer(offers_repo).execute(_uuid.UUID(offer["id"]))
+                offer_entity = await build_expire_offer(
+                    session,
+                    get_settings(),
+                ).execute(_uuid.UUID(offer["id"]))
             assert offer_entity is not None
             await events.publish_offer_expired(offer_entity)
 

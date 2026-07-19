@@ -15,7 +15,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 
-from app.api.deps import get_session_factory
+from app.api.deps import build_expire_offer, get_session_factory
 from app.api.v1 import events, presence
 from app.api.v1.schemas.offers import OfferResponse
 from app.api.v1.schemas.realtime import (
@@ -29,7 +29,6 @@ from app.api.v1.schemas.realtime import (
 )
 from app.api.v1.schemas.rides import OpenRidePageResponse, OpenRideResponse, RideResponse
 from app.application.dto import OfferDetail, Page
-from app.application.use_cases.expire_offer import ExpireOffer
 from app.application.use_cases.get_driver_active_ride import GetDriverActiveRide
 from app.application.use_cases.list_offers_for_ride import ListOffersForRide
 from app.application.use_cases.list_open_rides import ListOpenRides
@@ -178,7 +177,10 @@ async def driver_ws(
                 active_offers = []
                 for offer in await offers.list_active_by_driver(user.id):
                     if is_offer_expired(offer):
-                        done = await ExpireOffer(offers).execute(offer.id)
+                        done = await build_expire_offer(
+                            session,
+                            get_settings(),
+                        ).execute(offer.id)
                         if done is not None:
                             expired_offers.append(done)
                     else:

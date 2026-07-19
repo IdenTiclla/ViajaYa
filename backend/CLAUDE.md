@@ -64,7 +64,7 @@ app/
   otros repositorios mecánicamente: migra todos los call sites de una operación
   en el mismo cambio. `CreateOffer`, `AcceptOffer`, `PauseRideForEdit`,
   `CancelRide`, `CancelRideOnDisconnect`, `UpdateRideFare`, `EditRide`,
-  `AnnounceOpenRide`, `WithdrawOffer` y `RejectOffer` ya usan este flujo;
+  `AnnounceOpenRide`, `WithdrawOffer`, `RejectOffer` y `ExpireOffer` ya usan este flujo;
   `CreateRideRequest` delega el commit al UoW, pero no anuncia hasta que se
   confirma presencia.
 
@@ -192,7 +192,11 @@ offers vivas del conductor elegido en **otros rides** (`OfferAcceptance.withdraw
   durante la gracia. Mecanismo de ofertas: tarea fire-and-forget
   `asyncio.create_task(_expire_offer_after(offer_id))` en `rides.py` que duerme el TTL y llama
   `ExpireOffer` (race-safe: `mark_expired_if_pending` solo vence si sigue `PENDING`) + publica
-  `offer_expired`. Al (re)conectar el conductor, `driver_ws` barre y vence sus offers pasadas de TTL.
+  `offer_expired`. La mutación y sus dos destinos (`driver:*` y `ride:*`) se
+  confirman juntos en la outbox; el lock fuerza una lectura ORM fresca para no
+  sobrescribir una resolución concurrente. Al (re)conectar el conductor,
+  `driver_ws` barre y vence sus offers pasadas de TTL. El temporizador sigue en
+  memoria hasta implementar `scheduled_actions`.
 - **Calificación**: `POST /{id}/rating` crea `RideRating` (score 1–5, único por `(ride_id, rater_id)`)
   y recalcula el `rating` promedio del `User` calificado.
 
@@ -218,7 +222,7 @@ offer_withdrawn, offer_accepted, offers_withdrawn (plural), offer_expired, ride_
 
 - `offers_withdrawn` (plural) → al conductor elegido: lista de `ride_ids` cuyas ofertas suyas se retiraron al ganar el viaje.
 - El polling del cliente queda **solo como respaldo lento**; la vía principal es el WS.
-- Crear/reemplazar/retirar/rechazar oferta, aceptar oferta, pausar, cancelar,
+- Crear/reemplazar/retirar/rechazar/vencer oferta, aceptar oferta, pausar, cancelar,
   renovar el pool y anunciar presencia ya persisten antes del commit sus batches
   ordenados en `realtime_outbox` cuando
   `REALTIME_OUTBOX_RECORDING_ENABLED=true`; la entrega directa reutiliza esos

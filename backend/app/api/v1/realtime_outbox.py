@@ -10,6 +10,7 @@ from app.api.v1.events import (
     build_announce_open_ride_events,
     build_cancel_ride_events,
     build_create_offer_events,
+    build_expire_offer_events,
     build_pause_ride_events,
     build_reject_offer_events,
     build_republish_ride_events,
@@ -35,6 +36,7 @@ from app.application.interfaces import (
     AnnounceOpenRideEventRecorder,
     CancelRideEventRecorder,
     CreateOfferEventRecorder,
+    ExpireOfferEventRecorder,
     PauseRideEventRecorder,
     RealtimeOutbox,
     RealtimeOutboxBatchValidator,
@@ -317,6 +319,23 @@ class OutboxRejectOfferEventRecorder(RejectOfferEventRecorder):
 
 class DisabledRejectOfferEventRecorder(RejectOfferEventRecorder):
     """Recorder nulo mientras el rechazo durable está deshabilitado."""
+
+    async def record(self, offer: Offer) -> None:
+        del offer
+
+
+class OutboxExpireOfferEventRecorder(ExpireOfferEventRecorder):
+    """Registra el vencimiento dentro de su transacción de negocio."""
+
+    def __init__(self, outbox: RealtimeOutbox) -> None:
+        self._outbox = outbox
+
+    async def record(self, offer: Offer) -> None:
+        await self._outbox.add_batch(build_expire_offer_events(offer))
+
+
+class DisabledExpireOfferEventRecorder(ExpireOfferEventRecorder):
+    """Recorder nulo mientras la expiración durable está deshabilitada."""
 
     async def record(self, offer: Offer) -> None:
         del offer

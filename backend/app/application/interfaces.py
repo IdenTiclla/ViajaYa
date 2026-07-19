@@ -187,6 +187,14 @@ class RejectOfferEventRecorder(ABC):
         """Añade a la outbox el ``offer_rejected`` de la oferta mutada."""
 
 
+class ExpireOfferEventRecorder(ABC):
+    """Registra los eventos durables producidos al vencer una oferta."""
+
+    @abstractmethod
+    async def record(self, offer: Offer) -> None:
+        """Añade a la outbox el fanout ``offer_expired`` de la oferta vencida."""
+
+
 class PasswordHasher(ABC):
     @abstractmethod
     def hash(self, plain: str) -> str: ...

@@ -26,6 +26,7 @@ from app.application.interfaces import (
     AcceptOfferEventRecorder,
     CancelRideEventRecorder,
     CreateOfferEventRecorder,
+    ExpireOfferEventRecorder,
     PasswordHasher,
     PauseRideEventRecorder,
     RejectOfferEventRecorder,
@@ -42,6 +43,7 @@ from app.application.use_cases.cancel_ride_on_disconnect import CancelRideOnDisc
 from app.application.use_cases.create_offer import CreateOffer
 from app.application.use_cases.create_ride_request import CreateRideRequest
 from app.application.use_cases.edit_ride import EditRide
+from app.application.use_cases.expire_offer import ExpireOffer
 from app.application.use_cases.pause_ride_for_edit import PauseRideForEdit
 from app.application.use_cases.reject_offer import RejectOffer
 from app.application.use_cases.update_ride_fare import UpdateRideFare
@@ -854,6 +856,25 @@ class InMemoryRejectOfferEventRecorder(RejectOfferEventRecorder):
         self.offers.append(offer)
 
 
+class InMemoryExpireOfferEventRecorder(ExpireOfferEventRecorder):
+    def __init__(
+        self,
+        *,
+        operations: list[str] | None = None,
+        error: BaseException | None = None,
+    ) -> None:
+        self.offers: list[Offer] = []
+        self._operations = operations
+        self._error = error
+
+    async def record(self, offer: Offer) -> None:
+        if self._operations is not None:
+            self._operations.append("record")
+        if self._error is not None:
+            raise self._error
+        self.offers.append(offer)
+
+
 def create_ride_request_use_case(
     rides: InMemoryRideRequestRepository,
     *,
@@ -921,6 +942,20 @@ def reject_offer_use_case(
         offers,
         unit_of_work or InMemoryUnitOfWork(offers),
         event_recorder or InMemoryRejectOfferEventRecorder(),
+    )
+
+
+def expire_offer_use_case(
+    offers: InMemoryOfferRepository,
+    *,
+    unit_of_work: UnitOfWork | None = None,
+    event_recorder: ExpireOfferEventRecorder | None = None,
+) -> ExpireOffer:
+    """Cablea ExpireOffer con dobles transaccionales explícitos."""
+    return ExpireOffer(
+        offers,
+        unit_of_work or InMemoryUnitOfWork(offers),
+        event_recorder or InMemoryExpireOfferEventRecorder(),
     )
 
 

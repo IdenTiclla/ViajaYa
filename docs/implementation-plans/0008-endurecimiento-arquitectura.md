@@ -279,7 +279,7 @@ Axios todavía continúe en segundo plano sin propagar `AbortSignal`.
 > continuar el replay live.
 > `CreateOffer`/reemplazo, `AcceptOffer`, `PauseRideForEdit`, `CancelRide`, el
 > cierre automático por ausencia, `UpdateRideFare`, `EditRide`,
-> `AnnounceOpenRide`, `WithdrawOffer` y `RejectOffer` son los primeros
+> `AnnounceOpenRide`, `WithdrawOffer`, `RejectOffer` y `ExpireOffer` son los primeros
 > productores: mutación, batch ordenado y versiones se confirman en un solo commit mediante
 > `UnitOfWork`; la publicación directa reutiliza exactamente los payloads
 > persistidos. `CreateRideRequest` también delega el commit a la aplicación, pero
@@ -312,6 +312,11 @@ Axios todavía continúe en segundo plano sin propagar `AbortSignal`.
 > su único `offer_withdrawn` comparte builder entre la copia durable y el socket.
 > El rechazo explícito replica la misma frontera y registra un único
 > `offer_rejected(reason=declined)` en el stream personal del conductor.
+> La expiración registra en un único batch `offer_expired` primero en el stream
+> del conductor y luego en el del ride. Ambos eventos pertenecen al agregado
+> ride; una lectura fresca bajo lock evita que el barrido de una sesión ORM
+> obsoleta sobrescriba una aceptación, rechazo o retiro concurrente. El timer de
+> 30 s continúa en memoria y su durabilidad queda reservada a `scheduled_actions`.
 
 Para publicar un evento después de un commit sin ventana de pérdida, la mutación
 y el registro del evento deben pertenecer a la misma transacción. Se introdujo
@@ -416,6 +421,9 @@ Dispatcher sombra, sin Redis ni cambios de contrato/mobile:
   del UoW; conservar un único `offer_withdrawn` en el stream del ride.
 - [x] Migrar el rechazo explícito de oferta a compare-and-set + outbox + commit
   del UoW; conservar `offer_rejected(reason=declined)` en el stream del conductor.
+- [x] Migrar la expiración a UoW + outbox, conservar el batch
+  `driver:* → ride:*` y revalidar bajo lock una entidad ORM fresca antes de
+  marcar `EXPIRED`.
 
 Antes del modo `live`, hacer conmutativa en mobile la reducción de
 `ride_closed` y `offer_rejected`: pertenecen a streams distintos y Redis no
@@ -426,6 +434,10 @@ También antes de `live`, la proyección mobile debe ignorar `ride_created`
 duplicados o atrasados sin limpiar desenlaces locales y proteger el cruce
 `ride_closed` del pool anterior contra `ride_created` de un servicio nuevo. Los
 streams conservan orden individual, no orden relativo entre pools distintos.
+
+El consumidor conductor de `offer_expired` también debe comparar `offer_id`, no
+solo `ride_id`: un evento atrasado de una oferta anterior no puede vencer la
+oferta nueva del mismo ride, y un duplicado no debe repetir la notificación.
 
 ### 3.2 Bridge Redis y sockets locales
 

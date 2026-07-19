@@ -9,7 +9,6 @@ from decimal import Decimal
 import pytest
 
 from app.application.dto import CreateOfferInput
-from app.application.use_cases.expire_offer import ExpireOffer
 from app.application.use_cases.list_offers_for_ride import ListOffersForRide
 from app.application.use_cases.list_open_rides import ListOpenRides
 from app.application.use_cases.set_driver_online import SetDriverOnline
@@ -38,6 +37,7 @@ from tests.fakes import (
     accept_offer_use_case,
     cancel_ride_use_case,
     create_offer_use_case,
+    expire_offer_use_case,
     withdraw_offer_use_case,
 )
 
@@ -636,7 +636,7 @@ async def test_expire_offer_marks_expired_when_past_ttl():
         OFFER_TTL + timedelta(seconds=1)
     )
 
-    expired = await ExpireOffer(offers).execute(offer.id)
+    expired = await expire_offer_use_case(offers).execute(offer.id)
 
     assert expired is not None
     assert expired.status is OfferStatus.EXPIRED
@@ -662,5 +662,5 @@ async def test_expire_offer_skips_already_resolved_offer():
         OFFER_TTL + timedelta(seconds=1)
     )
 
-    assert await ExpireOffer(offers).execute(created.detail.offer.id) is None
+    assert await expire_offer_use_case(offers).execute(created.detail.offer.id) is None
     assert (await offers.get_by_id(created.detail.offer.id)).status is OfferStatus.ACCEPTED

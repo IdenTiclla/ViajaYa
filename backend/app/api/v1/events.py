@@ -371,6 +371,32 @@ def build_reject_offer_events(
     ]
 
 
+def build_expire_offer_events(offer: Offer) -> list[PendingRealtimeEvent]:
+    """Construye el fanout durable/directo de una oferta vencida."""
+    message = OfferExpiredMessage(
+        data=OfferExpiredData(
+            ride_id=offer.ride_id,
+            offer_id=offer.id,
+            driver_id=offer.driver_id,
+            reason="expired",
+        )
+    )
+    return [
+        _pending_realtime_event(
+            topic=driver_topic(offer.driver_id),
+            aggregate_type="ride",
+            aggregate_id=offer.ride_id,
+            message=message,
+        ),
+        _pending_realtime_event(
+            topic=ride_topic(offer.ride_id),
+            aggregate_type="ride",
+            aggregate_id=offer.ride_id,
+            message=message,
+        ),
+    ]
+
+
 async def publish_ride_created(detail: OpenRideDetail) -> None:
     """Una solicitud nueva (o renovada) aparece para los conductores del pool.
 
@@ -442,16 +468,7 @@ async def publish_offer_expired(offer: Offer) -> None:
     ``driver_id`` para que el cliente pueda leer el nombre del conductor de su
     caché antes de remover la tarjeta.
     """
-    message = OfferExpiredMessage(
-        data=OfferExpiredData(
-            ride_id=offer.ride_id,
-            offer_id=offer.id,
-            driver_id=offer.driver_id,
-            reason="expired",
-        )
-    )
-    await _broadcast(driver_topic(offer.driver_id), message)
-    await _broadcast(ride_topic(offer.ride_id), message)
+    await _broadcast_pending(build_expire_offer_events(offer))
 
 
 async def publish_offer_withdrawn_by_driver(

@@ -17,12 +17,14 @@ from app.application.dto import (
     PageCursor,
     RideDetail,
     RideHistoryItem,
+    RidePausedResult,
     SocialProfile,
 )
 from app.application.interfaces import (
     AcceptOfferEventRecorder,
     CreateOfferEventRecorder,
     PasswordHasher,
+    PauseRideEventRecorder,
     RideReadRepository,
     SocialIdentityVerifier,
     TokenService,
@@ -30,6 +32,7 @@ from app.application.interfaces import (
 )
 from app.application.use_cases.accept_offer import AcceptOffer
 from app.application.use_cases.create_offer import CreateOffer
+from app.application.use_cases.pause_ride_for_edit import PauseRideForEdit
 from app.domain.entities import (
     ACTIVE_OFFER_STATUSES,
     AuthProvider,
@@ -763,6 +766,33 @@ def accept_offer_use_case(
         offers,
         unit_of_work or InMemoryUnitOfWork(offers, rides=rides),
         event_recorder or InMemoryAcceptOfferEventRecorder(),
+    )
+
+
+class InMemoryPauseRideEventRecorder(PauseRideEventRecorder):
+    def __init__(self, *, error: BaseException | None = None) -> None:
+        self.results: list[RidePausedResult] = []
+        self._error = error
+
+    async def record(self, result: RidePausedResult) -> None:
+        if self._error is not None:
+            raise self._error
+        self.results.append(result)
+
+
+def pause_ride_use_case(
+    rides: InMemoryRideRequestRepository,
+    offers: InMemoryOfferRepository,
+    *,
+    unit_of_work: UnitOfWork | None = None,
+    event_recorder: PauseRideEventRecorder | None = None,
+) -> PauseRideForEdit:
+    """Cablea PauseRideForEdit con dobles transaccionales explícitos."""
+    return PauseRideForEdit(
+        rides,
+        offers,
+        unit_of_work or InMemoryUnitOfWork(offers, rides=rides),
+        event_recorder or InMemoryPauseRideEventRecorder(),
     )
 
 

@@ -401,14 +401,10 @@ async def pause_ride_for_edit(
     ride_id: uuid.UUID,
     current_user: CurrentUserDep,
     use_case: Annotated[PauseRideForEdit, Depends(get_pause_ride_for_edit)],
-    rides_repo: RideRequestRepositoryDep,
 ) -> RideResponse:
     """Pausa la solicitud para editarla (Modificar): la oculta del pool y retira ofertas."""
     result = await use_case.execute(current_user, ride_id)
-    # Necesitamos el detalle con el rider para que el conductor pueda re-insertar
-    # la tarjeta en su lista durante la edición (evento ``ride_paused`` con payload).
-    open_detail = await rides_repo.open_ride_with_rider(ride_id)
-    await events.publish_ride_paused(result, open_detail)
+    await events.publish_ride_paused(result)
     return RideResponse.from_detail(
         RideDetail(ride=result.ride, rider=current_user, driver=None, accepted_offer=None)
     )

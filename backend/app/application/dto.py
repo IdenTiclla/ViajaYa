@@ -261,6 +261,7 @@ class RidePausedResult:
 
     ride: RideRequest
     paused_offers: list[Offer]
+    open_detail: OpenRideDetail
 
 
 @dataclass(frozen=True)

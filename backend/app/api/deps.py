@@ -16,8 +16,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.api.v1.realtime_outbox import (
     DisabledAcceptOfferEventRecorder,
     DisabledCreateOfferEventRecorder,
+    DisabledPauseRideEventRecorder,
     OutboxAcceptOfferEventRecorder,
     OutboxCreateOfferEventRecorder,
+    OutboxPauseRideEventRecorder,
 )
 from app.application.interfaces import (
     RealtimeSnapshotReader,
@@ -331,9 +333,22 @@ def get_cancel_ride(rides: RideRequestRepositoryDep, offers: OfferRepositoryDep)
 
 
 def get_pause_ride_for_edit(
-    rides: RideRequestRepositoryDep, offers: OfferRepositoryDep
+    rides: RideRequestRepositoryDep,
+    session: SessionDep,
+    settings: SettingsDep,
 ) -> PauseRideForEdit:
-    return PauseRideForEdit(rides, offers)
+    offers = SqlAlchemyOfferRepository(session, commit_pause=False)
+    recorder = (
+        OutboxPauseRideEventRecorder(SqlAlchemyRealtimeOutbox(session))
+        if settings.realtime_outbox_recording_enabled
+        else DisabledPauseRideEventRecorder()
+    )
+    return PauseRideForEdit(
+        rides,
+        offers,
+        SqlAlchemyUnitOfWork(session),
+        recorder,
+    )
 
 
 def get_edit_ride(rides: RideRequestRepositoryDep) -> EditRide:

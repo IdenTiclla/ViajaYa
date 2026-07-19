@@ -878,12 +878,14 @@ class SqlAlchemyOfferRepository(OfferRepository):
         *,
         commit_create_or_supersede: bool = True,
         commit_accept: bool = True,
+        commit_pause: bool = True,
     ) -> None:
         self._session = session
-        # Migración incremental: crear/reemplazar y aceptar participan del UoW;
-        # los demás métodos todavía conservan sus commits internos.
+        # Migración incremental: crear/reemplazar, aceptar y pausar participan
+        # del UoW; los demás métodos todavía conservan sus commits internos.
         self._commit_create_or_supersede = commit_create_or_supersede
         self._commit_accept = commit_accept
+        self._commit_pause = commit_pause
 
     async def add(self, offer: Offer) -> Offer:
         row = OfferModel(
@@ -1240,7 +1242,10 @@ class SqlAlchemyOfferRepository(OfferRepository):
             row.status = OfferStatus.REJECTED
 
         updated_ride = _ride_to_entity(ride_row)
-        await self._session.commit()
+        if self._commit_pause:
+            await self._session.commit()
+        else:
+            await self._session.flush()
         return RideOffersTransition(
             ride=updated_ride,
             affected_offers=live_offers,

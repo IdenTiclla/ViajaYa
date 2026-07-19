@@ -24,6 +24,7 @@ from app.application.dto import (
     RealtimeOutboxQuarantineCode,
     RideDetail,
     RideHistoryItem,
+    RidePausedResult,
     SocialProfile,
 )
 from app.domain.entities import AuthProvider, RideStatus, UserRole
@@ -133,6 +134,14 @@ class AcceptOfferEventRecorder(ABC):
     @abstractmethod
     async def record(self, result: AcceptOfferResult) -> None:
         """Añade a la outbox todo el fanout atómico de la aceptación."""
+
+
+class PauseRideEventRecorder(ABC):
+    """Registra los eventos durables producidos al pausar una solicitud."""
+
+    @abstractmethod
+    async def record(self, result: RidePausedResult) -> None:
+        """Añade a la outbox el cierre, retiros y avisos de pausa."""
 
 
 class PasswordHasher(ABC):

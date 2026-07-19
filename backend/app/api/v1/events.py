@@ -199,6 +199,45 @@ def build_accept_offer_events(result: AcceptOfferResult) -> list[PendingRealtime
     return pending
 
 
+def build_pause_ride_events(result: RidePausedResult) -> list[PendingRealtimeEvent]:
+    """Construye el fanout durable/directo de pausar una solicitud."""
+    ride = result.ride
+    open_ride = OpenRideResponse.from_open_ride(result.open_detail)
+    pending = [
+        _pending_realtime_event(
+            topic=pool_topic(ride.service_type.value),
+            aggregate_type="ride",
+            aggregate_id=ride.id,
+            message=RideClosedMessage(data=RideClosedData(ride_id=ride.id)),
+        )
+    ]
+    for offer in sorted(result.paused_offers, key=lambda item: item.id.hex):
+        pending.extend(
+            [
+                _pending_realtime_event(
+                    topic=ride_topic(ride.id),
+                    aggregate_type="ride",
+                    aggregate_id=ride.id,
+                    message=OfferWithdrawnMessage(
+                        data=OfferWithdrawnData(
+                            driver_id=offer.driver_id,
+                            offer_id=offer.id,
+                        )
+                    ),
+                ),
+                _pending_realtime_event(
+                    topic=driver_topic(offer.driver_id),
+                    aggregate_type="ride",
+                    aggregate_id=ride.id,
+                    message=RidePausedMessage(
+                        data=RidePausedData.from_open_ride(open_ride, offer.id)
+                    ),
+                ),
+            ]
+        )
+    return pending
+
+
 async def publish_ride_created(detail: OpenRideDetail) -> None:
     """Una solicitud nueva (o renovada) aparece para los conductores del pool.
 
@@ -219,9 +258,7 @@ async def publish_ride_closed(ride_id: uuid.UUID, service_type: ServiceType) -> 
     )
 
 
-async def publish_ride_paused(
-    result: RidePausedResult, open_detail: OpenRideDetail | None
-) -> None:
+async def publish_ride_paused(result: RidePausedResult) -> None:
     """El pasajero pausó la solicitud para editarla: sale del pool y se retiran sus
     ofertas vivas.
 
@@ -232,33 +269,10 @@ async def publish_ride_paused(
       (banner "El pasajero está modificando su solicitud" + solo Quitar) **mientras
       dure la edición**. Reemplaza al viejo ``OFFER_REJECTED {ride_paused}`` que no
       transportaba los datos del ride y, sumado al ``RIDE_CLOSED``, hacía desaparecer
-      la tarjeta durante la edición (bug de timing). Si ``open_detail`` es ``None``
-      (no debería ocurrir: el ride y su rider acaban de validarse) se omite este
-      aviso y sólo queda el ``RIDE_CLOSED`` del pool.
+      la tarjeta durante la edición (bug de timing).
     - Al pasajero: ``OFFER_WITHDRAWN`` para que quite las tarjetas de ofertas.
     """
-    ride = result.ride
-    await publish_ride_closed(ride.id, ride.service_type)
-    for offer in result.paused_offers:
-        await _broadcast(
-            ride_topic(ride.id),
-            OfferWithdrawnMessage(
-                data=OfferWithdrawnData(
-                    driver_id=offer.driver_id,
-                    offer_id=offer.id,
-                )
-            ),
-        )
-        if open_detail is not None:
-            await _broadcast(
-                driver_topic(offer.driver_id),
-                RidePausedMessage(
-                    data=RidePausedData.from_open_ride(
-                        OpenRideResponse.from_open_ride(open_detail),
-                        offer.id,
-                    )
-                ),
-            )
+    await _broadcast_pending(build_pause_ride_events(result))
 
 
 async def publish_offer_created(detail: OfferDetail) -> None:

@@ -980,19 +980,32 @@ def test_driver_receives_ride_paused_on_pause_edit(ws_client: TestClient):
                 json={"accept_at_fare": True},
                 headers=_headers(driver_token),
             ).json()
+            assert rider_ws.receive_json()["type"] == "offer_created"
 
-        # El pasajero pausa para editar → al conductor le llegan ride_closed (pool)
-        # y ride_paused (personal, con el ride + offer_id). (También hay un
-        # ride_created previo encolado al abrir el pasajero su conexión.)
-        ws_client.post(f"{RIDES}/{ride['id']}/pause-edit", headers=_headers(rider_token))
-        events = [ws.receive_json() for _ in range(3)]
-        paused = next(e for e in events if e["type"] == "ride_paused")
+            paused_response = ws_client.post(
+                f"{RIDES}/{ride['id']}/pause-edit",
+                headers=_headers(rider_token),
+            )
+            assert paused_response.status_code == 200, paused_response.text
+            withdrawn = rider_ws.receive_json()
+            assert withdrawn["type"] == "offer_withdrawn"
+            assert withdrawn["data"]["offer_id"] == offer["id"]
+
+        # Había un ride_created previo en el pool. Después, el orden funcional
+        # exige cerrar la tarjeta y reinsertarla inmediatamente como pausada.
+        driver_events = [ws.receive_json() for _ in range(3)]
+        assert [event["type"] for event in driver_events] == [
+            "ride_created",
+            "ride_closed",
+            "ride_paused",
+        ]
+        paused = driver_events[2]
         assert paused["data"]["id"] == ride["id"]
         assert paused["data"]["offer_id"] == offer["id"]
         # Ya no debe llegar offer_rejected con razón ride_paused (evento reemplazado).
         assert not any(
             e.get("type") == "offer_rejected" and e.get("data", {}).get("reason") == "ride_paused"
-            for e in events
+            for e in driver_events
         )
 
 

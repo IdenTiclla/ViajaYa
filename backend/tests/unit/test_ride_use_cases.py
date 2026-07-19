@@ -11,7 +11,6 @@ from app.application.dto import CreateOfferInput, CreateRideRequestInput, Locati
 from app.application.use_cases.create_ride_request import CreateRideRequest
 from app.application.use_cases.edit_ride import EditRide
 from app.application.use_cases.list_recent_destinations import ListRecentDestinations
-from app.application.use_cases.pause_ride_for_edit import PauseRideForEdit
 from app.application.use_cases.update_ride_fare import UpdateRideFare
 from app.domain.entities import (
     OfferStatus,
@@ -32,8 +31,10 @@ from app.domain.exceptions import (
 from tests.fakes import (
     InMemoryOfferRepository,
     InMemoryRideRequestRepository,
+    InMemoryUnitOfWork,
     InMemoryUserRepository,
     create_offer_use_case,
+    pause_ride_use_case,
 )
 
 
@@ -290,7 +291,7 @@ async def test_pause_ride_hides_from_pool_and_kills_offers():
         driver, ride.id, CreateOfferInput(accept_at_fare=True)
     )
 
-    result = await PauseRideForEdit(rides, offers).execute(rider, ride.id)
+    result = await pause_ride_use_case(rides, offers).execute(rider, ride.id)
 
     assert result.ride.paused is True
     assert result.ride.status is RideStatus.SEARCHING
@@ -323,7 +324,11 @@ async def test_pause_ride_does_not_overwrite_concurrent_fare_increase():
     )
 
     with pytest.raises(InvalidRideTransitionError):
-        await PauseRideForEdit(rides, offers).execute(rider, ride.id)
+        await pause_ride_use_case(
+            rides,
+            offers,
+            unit_of_work=InMemoryUnitOfWork(offers),
+        ).execute(rider, ride.id)
 
     current = await rides.get_by_id(ride.id)
     assert current is not None
@@ -340,14 +345,17 @@ async def test_pause_ride_rejects_when_not_searching():
     await rides.update(ride)
 
     with pytest.raises(InvalidRideTransitionError):
-        await PauseRideForEdit(rides, InMemoryOfferRepository()).execute(rider, ride.id)
+        await pause_ride_use_case(rides, InMemoryOfferRepository()).execute(
+            rider,
+            ride.id,
+        )
 
 
 async def test_edit_ride_updates_fields_and_unpauses():
     rides = InMemoryRideRequestRepository()
     rider = _rider()
     ride = await CreateRideRequest(rides).execute(rider, _input(fare=Decimal("25.00")))
-    await PauseRideForEdit(rides, InMemoryOfferRepository(rides=rides)).execute(
+    await pause_ride_use_case(rides, InMemoryOfferRepository(rides=rides)).execute(
         rider, ride.id
     )
 
@@ -384,7 +392,7 @@ async def test_edit_ride_rejects_destination_outside_bolivia_without_mutating_ri
     rides = InMemoryRideRequestRepository()
     rider = _rider()
     ride = await CreateRideRequest(rides).execute(rider, _input())
-    await PauseRideForEdit(rides, InMemoryOfferRepository(rides=rides)).execute(
+    await pause_ride_use_case(rides, InMemoryOfferRepository(rides=rides)).execute(
         rider, ride.id
     )
 

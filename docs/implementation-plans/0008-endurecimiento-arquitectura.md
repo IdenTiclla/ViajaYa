@@ -229,9 +229,9 @@ una escritura concurrente y demuestra que ambos permanecen en la versión
 anterior. Una captura nueva verá ambos valores nuevos. Los casos de uso derivan
 los streams autorizados y un adaptador API traduce los DTO enriquecidos al schema
 Pydantic sin IO adicional. El WebSocket todavía no invoca este reader ni emite
-los snapshots v2: presencia sigue en memoria y solo creación/reemplazo y
-aceptación de ofertas alimentan la outbox, por lo que activarlos aún daría
-watermarks incompletos.
+los snapshots v2: presencia sigue en memoria y solo creación/reemplazo,
+aceptación de ofertas y pausa para edición alimentan la outbox, por lo que
+activarlos aún daría watermarks incompletos.
 
 Mobile incluye además un gate puro de replay. Decide `apply`, `drop` o `resync`
 sin adelantar cursores y solo los confirma después de que el handler complete la
@@ -276,8 +276,8 @@ Axios todavía continúe en segundo plano sin propagar `AbortSignal`.
 > todo el batch con un código estable, deja de bloquear sus streams y conserva
 > las filas para auditoría; el hueco resultante obliga a resnapshot antes de
 > continuar el replay live.
-> `CreateOffer`/reemplazo y `AcceptOffer` son los primeros productores: mutación,
-> batch ordenado y versiones se confirman en un solo commit mediante
+> `CreateOffer`/reemplazo, `AcceptOffer` y `PauseRideForEdit` son los primeros
+> productores: mutación, batch ordenado y versiones se confirman en un solo commit mediante
 > `UnitOfWork`; la publicación directa reutiliza exactamente los payloads
 > persistidos. El fanout de aceptación conserva `ride_status`, cierre del pool,
 > notificación/limpieza del ganador y retiros/rechazos de los afectados en un
@@ -369,6 +369,8 @@ Base ya cumplida por `93b9741`:
   `REPEATABLE READ READ ONLY`, sin mutaciones ni N+1 en las colecciones críticas.
 - [x] Migrar la aceptación atómica a `flush` + outbox + commit del UoW y
   reutilizar el mismo batch canónico en la publicación directa.
+- [x] Migrar pausa para edición al mismo UoW; capturar el detalle enriquecido
+  antes del commit y preservar `ride_closed → offer_withdrawn → ride_paused`.
 - [x] Añadir `0020` y cuarentena terminal atómica para batches inválidos, con
   códigos cerrados, índices que excluyen terminales y downgrade protegido.
 
@@ -383,8 +385,8 @@ Dispatcher sombra, sin Redis ni cambios de contrato/mobile:
 - [ ] Medir pendientes y edad máxima, y definir retención de filas publicadas.
 - [ ] No habilitar entrega real hasta que el envelope lleve `event_id`, versiones
   de agregado/stream en el socket vivo y el gate mobile esté integrado.
-- [ ] Migrar pausa y después cancelación, resolviendo versiones de los otros
-  rides afectados por cada fanout.
+- [ ] Migrar cancelación, resolviendo versiones de los otros rides afectados por
+  cada fanout.
 
 ### 3.2 Bridge Redis y sockets locales
 

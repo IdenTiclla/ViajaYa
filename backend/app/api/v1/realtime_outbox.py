@@ -5,7 +5,11 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 
-from app.api.v1.events import build_accept_offer_events, build_create_offer_events
+from app.api.v1.events import (
+    build_accept_offer_events,
+    build_create_offer_events,
+    build_pause_ride_events,
+)
 from app.api.v1.schemas.realtime import (
     RealtimeEventEnvelopeV2,
     parse_negotiation_message,
@@ -16,11 +20,13 @@ from app.application.dto import (
     CreateOfferResult,
     RealtimeOutboxEvent,
     RealtimeOutboxQuarantineCode,
+    RidePausedResult,
 )
 from app.application.exceptions import InvalidRealtimeOutboxBatchError
 from app.application.interfaces import (
     AcceptOfferEventRecorder,
     CreateOfferEventRecorder,
+    PauseRideEventRecorder,
     RealtimeOutbox,
     RealtimeOutboxBatchValidator,
 )
@@ -197,4 +203,21 @@ class DisabledAcceptOfferEventRecorder(AcceptOfferEventRecorder):
     """Recorder nulo mientras el productor de aceptación está deshabilitado."""
 
     async def record(self, result: AcceptOfferResult) -> None:
+        del result
+
+
+class OutboxPauseRideEventRecorder(PauseRideEventRecorder):
+    """Registra el fanout de pausa dentro de la transacción de negocio."""
+
+    def __init__(self, outbox: RealtimeOutbox) -> None:
+        self._outbox = outbox
+
+    async def record(self, result: RidePausedResult) -> None:
+        await self._outbox.add_batch(build_pause_ride_events(result))
+
+
+class DisabledPauseRideEventRecorder(PauseRideEventRecorder):
+    """Recorder nulo mientras el productor de pausa está deshabilitado."""
+
+    async def record(self, result: RidePausedResult) -> None:
         del result

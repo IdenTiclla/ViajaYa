@@ -131,6 +131,12 @@ Eventos que escuchan los hooks (WS → mutación de caché React Query + estado 
   `offer_accepted`, `offer_expired`, `offer_rejected` (`ride_taken`/`ride_cancelled`/`declined`),
   `offers_withdrawn`, `ride_status`, `driver_active_ride` (snapshot al reconectar).
 
+Los reducers de `ride_status` son monótonos y contrastan detalle + viaje activo;
+el mismo estado sí refresca el payload. `offer_expired` aplica por `offer_id`
+exacto y solo notifica si retiró la oferta vigente. `offers_withdrawn` elimina
+solo los `ride_ids` declarados; el éxito HTTP al pasar offline vacía además las
+ofertas vivas para tolerar una caída del WebSocket.
+
 ## Tema (design system)
 
 `core/theme/tokens.ts` (única fuente de verdad; reexportado por `index.ts`):

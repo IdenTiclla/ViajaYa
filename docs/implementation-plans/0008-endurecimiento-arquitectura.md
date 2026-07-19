@@ -451,19 +451,23 @@ duplicados o atrasados sin limpiar desenlaces locales y proteger el cruce
 `ride_closed` del pool anterior contra `ride_created` de un servicio nuevo. Los
 streams conservan orden individual, no orden relativo entre pools distintos.
 
-El consumidor conductor de `offer_expired` también debe comparar `offer_id`, no
-solo `ride_id`: un evento atrasado de una oferta anterior no puede vencer la
-oferta nueva del mismo ride, y un duplicado no debe repetir la notificación.
-
-El reducer de `ride_status` debe impedir regresiones no terminales según la
-secuencia `SEARCHING → ACCEPTED → ARRIVING → IN_PROGRESS → COMPLETED`, aunque
-permita el mismo estado para refrescar el payload. El gate v2 ordenará el stream,
-pero este guard también protege el cruce con respuestas HTTP todavía sin versión.
-
-El consumidor conductor de `offers_withdrawn(reason=driver_offline)` no debe
-vaciar ofertas creadas después de volver online. Antes de `live`, el contrato
-debe permitir reconciliar retiros por `offer_id` exacto y el éxito HTTP offline
-debe limpiar también el estado local si el WebSocket no está disponible.
+- [x] Hacer que el consumidor conductor de `offer_expired` compare `offer_id`:
+  un evento de una oferta anterior ya no vence la nueva del mismo ride y un
+  duplicado no repite estado ni notificación. El timer local usa el mismo CAS.
+- [x] Impedir regresiones de `ride_status` según
+  `SEARCHING → ACCEPTED → ARRIVING → IN_PROGRESS → COMPLETED`, conservando el
+  refresco del mismo estado y la salida lateral `CANCELLED` antes de iniciar. El
+  guard contrasta detalle + activo y protege también respuestas HTTP sin versión.
+- [x] Mitigar el resumen legacy `offers_withdrawn`: mobile elimina solo los
+  `ride_ids` declarados y el éxito HTTP offline limpia las ofertas vivas aunque
+  el WebSocket esté caído.
+- [ ] Extender `offers_withdrawn` antes de `live` con pares exactos
+  `{ride_id, offer_id}`. El wire actual no puede distinguir una oferta retirada
+  de una reoferta posterior sobre el mismo ride.
+- [ ] Arbitrar la carrera creación HTTP/evento WS: una respuesta tardía de
+  `createOffer` no debe ejecutar `markOffered` si esa misma `offer_id` ya recibió
+  rechazo, expiración o aceptación. El tombstone debe ser por oferta, no solo
+  por ride, para permitir una reoferta posterior legítima.
 
 ### 3.2 Bridge Redis y sockets locales
 

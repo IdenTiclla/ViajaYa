@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import { QueryClient } from '@tanstack/react-query';
 
+import { useDriverRequests } from '../src/features/driver/application/useDriverRequests.ts';
 import { reducePassengerOffers } from '../src/features/rides/application/passengerOffersReducer.ts';
 import {
   applyRideMutationResult,
@@ -58,6 +59,15 @@ function ride(id, status) {
     driver: null,
     acceptedPrice: null,
     acceptedEtaMin: null,
+  };
+}
+
+function sentOffer(id, price = 20) {
+  return {
+    id,
+    price,
+    etaMin: 5,
+    expiresAt: '2099-07-18T12:00:30Z',
   };
 }
 
@@ -148,6 +158,17 @@ test('una expiración elimina por id y describe la notificación', () => {
   assert.deepEqual(result.notice, { kind: 'expired', offer: expired });
 });
 
+test('una expiración atrasada no elimina la oferta nueva del mismo conductor', () => {
+  const replacement = offer('offer-2', 'driver-1');
+  const result = reducePassengerOffers([replacement], {
+    type: 'expired',
+    offerId: 'offer-1',
+  });
+
+  assert.deepEqual(result.offers, [replacement]);
+  assert.equal(result.notice, null);
+});
+
 test('un ride terminal no retrocede por un evento atrasado', () => {
   assert.equal(
     shouldApplyRideStatus(ride('ride-1', 'cancelled'), ride('ride-1', 'searching')),
@@ -160,6 +181,71 @@ test('un ride terminal no retrocede por un evento atrasado', () => {
   assert.equal(
     shouldApplyRideStatus(ride('ride-1', 'completed'), ride('ride-2', 'searching')),
     true,
+  );
+});
+
+test('los estados de ride avanzan de forma monótona y permiten refrescarse', () => {
+  const forwardTransitions = [
+    ['searching', 'accepted'],
+    ['accepted', 'arriving'],
+    ['arriving', 'in_progress'],
+    ['in_progress', 'completed'],
+    ['searching', 'in_progress'],
+  ];
+  for (const [current, incoming] of forwardTransitions) {
+    assert.equal(
+      shouldApplyRideStatus(ride('ride-1', current), ride('ride-1', incoming)),
+      true,
+      `${current} → ${incoming}`,
+    );
+  }
+
+  for (const status of ['searching', 'accepted', 'arriving', 'in_progress']) {
+    assert.equal(
+      shouldApplyRideStatus(ride('ride-1', status), ride('ride-1', status)),
+      true,
+      `refresco ${status}`,
+    );
+  }
+});
+
+test('los estados de ride rechazan retrocesos no terminales', () => {
+  const regressions = [
+    ['accepted', 'searching'],
+    ['arriving', 'accepted'],
+    ['in_progress', 'arriving'],
+    ['in_progress', 'searching'],
+  ];
+  for (const [current, incoming] of regressions) {
+    assert.equal(
+      shouldApplyRideStatus(ride('ride-1', current), ride('ride-1', incoming)),
+      false,
+      `${current} → ${incoming}`,
+    );
+  }
+});
+
+test('cancelled solo se acepta antes de iniciar el viaje', () => {
+  for (const status of ['searching', 'accepted', 'arriving']) {
+    assert.equal(
+      shouldApplyRideStatus(ride('ride-1', status), ride('ride-1', 'cancelled')),
+      true,
+      `${status} → cancelled`,
+    );
+  }
+  assert.equal(
+    shouldApplyRideStatus(
+      ride('ride-1', 'in_progress'),
+      ride('ride-1', 'cancelled'),
+    ),
+    false,
+  );
+  assert.equal(
+    shouldApplyRideStatus(
+      ride('ride-1', 'cancelled'),
+      ride('ride-1', 'completed'),
+    ),
+    false,
   );
 });
 
@@ -204,6 +290,26 @@ test('una respuesta HTTP normal avanza el ride no terminal', () => {
   assert.strictEqual(reduction.ride, accepted);
 });
 
+test('una respuesta HTTP atrasada respeta la caché activa más adelantada', () => {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const activeKey = ['driver-active-ride'];
+  const arriving = ride('ride-1', 'arriving');
+  queryClient.setQueryData(activeKey, arriving);
+
+  const applied = applyRideMutationResult(
+    queryClient,
+    ride('ride-1', 'accepted'),
+    activeKey,
+  );
+
+  assert.equal(applied, false);
+  assert.equal(queryClient.getQueryData(['ride', 'ride-1']), undefined);
+  assert.strictEqual(queryClient.getQueryData(activeKey), arriving);
+  queryClient.clear();
+});
+
 test('una respuesta HTTP del mismo estado terminal puede refrescar sus datos', () => {
   const cancelled = ride('ride-1', 'cancelled');
   const reduction = reduceRideMutationResult(
@@ -237,4 +343,46 @@ test('el activo del conductor solo cambia cuando coincide el ride', () => {
   assert.deepEqual(reduceDriverActiveRide(current, arriving), arriving);
   assert.strictEqual(reduceDriverActiveRide(current, other), current);
   assert.equal(reduceDriverActiveRide(null, arriving), null);
+});
+
+test('los reducers activos tampoco permiten retrocesos', () => {
+  const inProgress = ride('ride-1', 'in_progress');
+  const arriving = ride('ride-1', 'arriving');
+
+  assert.strictEqual(
+    reducePassengerActiveRide(inProgress, arriving),
+    inProgress,
+  );
+  assert.strictEqual(reduceDriverActiveRide(inProgress, arriving), inProgress);
+});
+
+test('la expiración del conductor compara offerId y es idempotente', () => {
+  const store = useDriverRequests.getState();
+  store.reset();
+  store.markOffered('ride-1', sentOffer('offer-1'), 18);
+  store.markOffered('ride-1', sentOffer('offer-2', 22), 19);
+
+  assert.equal(store.markExpired('ride-1', 'offer-1'), false);
+  assert.equal(useDriverRequests.getState().offered['ride-1'].offerId, 'offer-2');
+  assert.equal(useDriverRequests.getState().expired.has('ride-1'), false);
+
+  assert.equal(store.markExpired('ride-1', 'offer-2'), true);
+  assert.equal(store.markExpired('ride-1', 'offer-2'), false);
+  assert.equal(useDriverRequests.getState().offered['ride-1'], undefined);
+  assert.equal(useDriverRequests.getState().expired.has('ride-1'), true);
+  assert.equal(useDriverRequests.getState().expiredFares['ride-1'], 19);
+  store.reset();
+});
+
+test('el retiro resumido elimina solo los rides indicados y tolera duplicados', () => {
+  const store = useDriverRequests.getState();
+  store.reset();
+  store.markOffered('ride-1', sentOffer('offer-1'));
+  store.markOffered('ride-2', sentOffer('offer-2'));
+
+  assert.equal(store.withdrawOffered(['ride-1', 'ride-1']), 1);
+  assert.equal(store.withdrawOffered(['ride-1']), 0);
+  assert.equal(useDriverRequests.getState().offered['ride-1'], undefined);
+  assert.equal(useDriverRequests.getState().offered['ride-2'].offerId, 'offer-2');
+  store.reset();
 });

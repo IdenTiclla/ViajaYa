@@ -186,10 +186,16 @@ export function useNegotiationSocket(rideId: string | null, enabled = true): voi
             queryClient.cancelQueries({ queryKey: PASSENGER_ACTIVE_RIDE_KEY }),
           ]);
           const cachedRide = queryClient.getQueryData<Ride>(['ride', rideId]);
+          const activeRide = queryClient.getQueryData<Ride | null>(
+            PASSENGER_ACTIVE_RIDE_KEY,
+          );
 
-          // Los estados terminales son irreversibles. Un evento SEARCHING que
-          // quedo en vuelo antes del POST /cancel no puede revivir la solicitud.
-          if (!shouldApplyRideStatus(cachedRide, ride)) {
+          // Ninguna de las dos proyecciones puede retroceder. Esto protege tanto
+          // eventos fuera de orden como respuestas HTTP que sigan en vuelo.
+          if (
+            !shouldApplyRideStatus(cachedRide, ride) ||
+            !shouldApplyRideStatus(activeRide, ride)
+          ) {
             break;
           }
 
@@ -368,8 +374,11 @@ export function useDriverPoolSocket(enabled = true): void {
         }
         case 'offer_expired': {
           // Su oferta venció (30 s) sin respuesta del pasajero (aviso en vivo).
-          const { ride_id: rideId } = msg.data;
-          useDriverRequests.getState().markExpired(rideId);
+          const { ride_id: rideId, offer_id: offerId } = msg.data;
+          const applied = useDriverRequests
+            .getState()
+            .markExpired(rideId, offerId);
+          if (!applied) break;
           useDriverToasts.getState().push({
             kind: 'expired',
             rideId,
@@ -419,12 +428,14 @@ export function useDriverPoolSocket(enabled = true): void {
             toRide(msg.data),
           );
           break;
-        case 'offers_withdrawn':
+        case 'offers_withdrawn': {
           // Ganó otro viaje o pasó offline: el backend retiró todas sus ofertas
-          // pendientes. El snapshot vacío preserva dismissed y los desenlaces.
-          useDriverRequests.getState().reconcileOffered([]);
+          // pendientes conocidas. Un resumen atrasado no debe borrar ofertas de
+          // otros rides que se hayan creado después.
+          useDriverRequests.getState().withdrawOffered(msg.data.ride_ids);
           void queryClient.invalidateQueries({ queryKey: ['open-rides'] });
           break;
+        }
         case 'ride_status': {
           // Cambios del viaje asignado que no inició él (p. ej. el pasajero
           // canceló): refleja el estado en su viaje activo al instante. La
@@ -436,7 +447,13 @@ export function useDriverPoolSocket(enabled = true): void {
             queryClient.cancelQueries({ queryKey: DRIVER_ACTIVE_RIDE_KEY }),
           ]);
           const cachedRide = queryClient.getQueryData<Ride>(['ride', ride.id]);
-          if (!shouldApplyRideStatus(cachedRide, ride)) {
+          const activeRide = queryClient.getQueryData<Ride | null>(
+            DRIVER_ACTIVE_RIDE_KEY,
+          );
+          if (
+            !shouldApplyRideStatus(cachedRide, ride) ||
+            !shouldApplyRideStatus(activeRide, ride)
+          ) {
             break;
           }
           queryClient.setQueryData<Ride | null>(DRIVER_ACTIVE_RIDE_KEY, (prev) =>

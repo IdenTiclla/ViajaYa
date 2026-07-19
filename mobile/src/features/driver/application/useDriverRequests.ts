@@ -66,7 +66,10 @@ type DriverRequestsState = {
   ) => void;
   markRejected: (rideId: string) => void;
   markTaken: (rideId: string) => void;
-  markExpired: (rideId: string) => void;
+  /** Expira solo la oferta vigente esperada; devuelve si aplicó el cambio. */
+  markExpired: (rideId: string, offerId: string) => boolean;
+  /** Retira únicamente las ofertas de los rides incluidos; devuelve cuántas quitó. */
+  withdrawOffered: (rideIds: string[]) => number;
   markPaused: (rideId: string) => void;
   /** Saca una solicitud del set `paused` sin tocar el resto (al volver al pool). */
   clearPaused: (rideId: string) => void;
@@ -175,15 +178,35 @@ export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
       delete offered[rideId];
       return { offered, taken: new Set(s.taken).add(rideId) };
     }),
-  markExpired: (rideId) =>
+  markExpired: (rideId, offerId) => {
+    let applied = false;
     set((s) => {
+      const current = s.offered[rideId];
+      if (!current || current.offerId !== offerId) return s;
+
+      applied = true;
       const offered = { ...s.offered };
-      const rideFare = offered[rideId]?.rideFare;
       delete offered[rideId];
       const expiredFares = { ...s.expiredFares };
-      if (rideFare != null) expiredFares[rideId] = rideFare;
+      expiredFares[rideId] = current.rideFare;
       return { offered, expired: new Set(s.expired).add(rideId), expiredFares };
-    }),
+    });
+    return applied;
+  },
+  withdrawOffered: (rideIds) => {
+    let withdrawn = 0;
+    set((s) => {
+      let offered = s.offered;
+      for (const rideId of new Set(rideIds)) {
+        if (!offered[rideId]) continue;
+        if (offered === s.offered) offered = { ...s.offered };
+        delete offered[rideId];
+        withdrawn += 1;
+      }
+      return offered === s.offered ? s : { offered };
+    });
+    return withdrawn;
+  },
   markPaused: (rideId) =>
     set((s) => {
       const offered = { ...s.offered };
@@ -284,7 +307,7 @@ export function useAutoExpireOffers(): void {
           new Date(offer.expiresAt).getTime() <= now &&
           !state.expired.has(rideId)
         ) {
-          state.markExpired(rideId);
+          state.markExpired(rideId, offer.offerId);
         }
       }
     };

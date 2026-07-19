@@ -99,7 +99,7 @@ export function OfertaEnviadaScreen() {
   // mapa/lista coinciden en cuándo la oferta venció.
   useEffect(() => {
     if (rideId && sentOffer?.expiresAt && secondsLeft === 0 && !expiredRides.has(rideId)) {
-      markExpired(rideId);
+      markExpired(rideId, sentOffer.offerId);
     }
   }, [rideId, secondsLeft, sentOffer, expiredRides, markExpired]);
   const offerExpired = rideId != null && expiredRides.has(rideId);

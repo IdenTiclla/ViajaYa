@@ -160,6 +160,13 @@ async def test_builder_and_direct_delivery_share_exact_offline_fanout(
         "type": "offers_withdrawn",
         "data": {
             "ride_ids": [str(offer.ride_id) for offer in result.withdrawn_offers],
+            "offers": [
+                {
+                    "ride_id": str(offer.ride_id),
+                    "offer_id": str(offer.id),
+                }
+                for offer in result.withdrawn_offers
+            ],
             "reason": "driver_offline",
         },
     }

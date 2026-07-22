@@ -13,6 +13,7 @@ const rideId = '00000000-0000-4000-8000-000000000001';
 const riderId = '00000000-0000-4000-8000-000000000002';
 const driverId = '00000000-0000-4000-8000-000000000003';
 const offerId = '00000000-0000-4000-8000-000000000004';
+const secondOfferId = '00000000-0000-4000-8000-000000000008';
 const eventId = '00000000-0000-4000-8000-000000000005';
 const batchId = '00000000-0000-4000-8000-000000000006';
 const snapshotId = '00000000-0000-4000-8000-000000000007';
@@ -206,6 +207,60 @@ test('ride_closed v2 exige pool_version y reason aunque legacy los permita omiti
 
   assert.equal(missingMetadata.success, false);
   assert.equal(complete.success, true);
+});
+
+test('offers_withdrawn legacy tolera la ausencia de identidades exactas', () => {
+  const result = driverRealtimeMessageParser.safeParse({
+    type: 'offers_withdrawn',
+    data: { ride_ids: [rideId] },
+  });
+
+  assert.equal(result.success, true);
+});
+
+test('offers_withdrawn valida pares exactos y v2 los exige', () => {
+  const metadata = eventMetadata({
+    aggregate_type: 'driver',
+    aggregate_id: driverId,
+    stream: `driver:${driverId}`,
+  });
+  const missingExactOffers = driverRealtimeMessageParser.safeParse({
+    ...metadata,
+    type: 'offers_withdrawn',
+    data: { ride_ids: [rideId] },
+  });
+  const complete = driverRealtimeMessageParser.safeParse({
+    ...metadata,
+    type: 'offers_withdrawn',
+    data: {
+      ride_ids: [rideId, riderId],
+      offers: [
+        { ride_id: rideId, offer_id: offerId },
+        { ride_id: riderId, offer_id: secondOfferId },
+      ],
+    },
+  });
+
+  assert.equal(missingExactOffers.success, false);
+  assert.equal(complete.success, true);
+  assert.equal(complete.data.data.offers.length, 2);
+});
+
+test('offers_withdrawn rechaza ride_ids que no coincide exactamente con offers', () => {
+  for (const rideIds of [[rideId], [riderId, rideId]]) {
+    const result = driverRealtimeMessageParser.safeParse({
+      type: 'offers_withdrawn',
+      data: {
+        ride_ids: rideIds,
+        offers: [
+          { ride_id: rideId, offer_id: offerId },
+          { ride_id: riderId, offer_id: secondOfferId },
+        ],
+      },
+    });
+
+    assert.equal(result.success, false);
+  }
 });
 
 test('acepta un evento v2 completo y conserva sus campos wire', () => {

@@ -426,7 +426,7 @@ def test_driver_receives_offer_accepted_on_passenger_accept(ws_client: TestClien
         }
         assert offer_accepted["data"]["id"] == ride["id"]
         assert offer_accepted["data"]["status"] == "accepted"
-        assert offers_withdrawn["data"] == {"ride_ids": []}
+        assert offers_withdrawn["data"] == {"ride_ids": [], "offers": []}
 
 
 def test_passenger_sees_improved_offer_replace_old_one(ws_client: TestClient):
@@ -549,6 +549,9 @@ def test_driver_going_offline_withdraws_offer_and_prevents_accept(
             driver_event = driver_ws.receive_json()
             assert driver_event["type"] == "offers_withdrawn"
             assert driver_event["data"]["ride_ids"] == [ride_id]
+            assert driver_event["data"]["offers"] == [
+                {"ride_id": ride_id, "offer_id": offer.json()["id"]}
+            ]
             assert driver_event["data"]["reason"] == "driver_offline"
 
         offers = ws_client.get(f"{RIDES}/{ride_id}/offers", headers=_headers(rider_token))

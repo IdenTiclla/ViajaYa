@@ -38,6 +38,7 @@ from app.api.v1.schemas.realtime import (
     RideSnapshotMessageV2,
     RideStatusMessage,
     StreamWatermark,
+    WithdrawnOfferReferenceData,
     dump_negotiation_message,
     parse_negotiation_message,
 )
@@ -158,7 +159,17 @@ def _all_messages() -> list[NegotiationMessage]:
         ),
         OfferWithdrawnMessage(data=OfferWithdrawnData(driver_id=driver_id, offer_id=offer_id)),
         OfferAcceptedMessage(data=ride),
-        OffersWithdrawnMessage(data=OffersWithdrawnData(ride_ids=[ride_id])),
+        OffersWithdrawnMessage(
+            data=OffersWithdrawnData(
+                ride_ids=[ride_id],
+                offers=[
+                    WithdrawnOfferReferenceData(
+                        ride_id=ride_id,
+                        offer_id=offer_id,
+                    )
+                ],
+            )
+        ),
         OfferExpiredMessage(
             data=OfferExpiredData(
                 ride_id=ride_id,
@@ -238,6 +249,47 @@ def test_ride_closed_rejects_partial_versioned_fields(
             {
                 "type": "ride_closed",
                 "data": {"ride_id": str(uuid.uuid4()), **partial_data},
+            }
+        )
+
+
+def test_offers_withdrawn_legacy_accepts_absent_exact_references() -> None:
+    ride_id = uuid.uuid4()
+
+    parsed = parse_negotiation_message(
+        {
+            "type": "offers_withdrawn",
+            "data": {"ride_ids": [str(ride_id)]},
+        }
+    )
+
+    assert dump_negotiation_message(parsed) == {
+        "type": "offers_withdrawn",
+        "data": {"ride_ids": [str(ride_id)]},
+    }
+
+
+def test_offers_withdrawn_requires_matching_order_between_summary_and_offers() -> None:
+    first_ride_id = uuid.uuid4()
+    second_ride_id = uuid.uuid4()
+
+    with pytest.raises(ValidationError, match="coincidir en orden"):
+        parse_negotiation_message(
+            {
+                "type": "offers_withdrawn",
+                "data": {
+                    "ride_ids": [str(first_ride_id), str(second_ride_id)],
+                    "offers": [
+                        {
+                            "ride_id": str(second_ride_id),
+                            "offer_id": str(uuid.uuid4()),
+                        },
+                        {
+                            "ride_id": str(first_ride_id),
+                            "offer_id": str(uuid.uuid4()),
+                        },
+                    ],
+                },
             }
         )
 
@@ -355,6 +407,44 @@ def test_event_envelope_v2_is_strict_and_validates_type_data() -> None:
             RealtimeEventEnvelopeV2.model_validate(
                 dumped | {"data": incomplete_data}
             )
+
+
+def test_offers_withdrawn_v2_requires_exact_references() -> None:
+    driver_id = uuid.uuid4()
+    ride_id = uuid.uuid4()
+    offer_id = uuid.uuid4()
+    base = {
+        "schema_version": 2,
+        "kind": "event",
+        "event_id": str(uuid.uuid4()),
+        "batch_id": str(uuid.uuid4()),
+        "sequence": 0,
+        "aggregate_type": "driver",
+        "aggregate_id": str(driver_id),
+        "aggregate_version": 1,
+        "stream": f"driver:{driver_id}",
+        "stream_version": 1,
+        "occurred_at": datetime.now(UTC).isoformat(),
+        "type": "offers_withdrawn",
+        "data": {
+            "ride_ids": [str(ride_id)],
+            "offers": [
+                {
+                    "ride_id": str(ride_id),
+                    "offer_id": str(offer_id),
+                }
+            ],
+        },
+    }
+
+    parsed = RealtimeEventEnvelopeV2.model_validate(base)
+    assert parsed.data["offers"] == [
+        {"ride_id": str(ride_id), "offer_id": str(offer_id)}
+    ]
+
+    without_offers = base | {"data": {"ride_ids": [str(ride_id)]}}
+    with pytest.raises(ValidationError, match="requiere offers"):
+        RealtimeEventEnvelopeV2.model_validate(without_offers)
 
 
 def test_event_envelope_v2_correlates_aggregate_stream_and_payload() -> None:

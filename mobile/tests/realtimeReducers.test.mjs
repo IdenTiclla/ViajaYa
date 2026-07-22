@@ -645,6 +645,55 @@ test('el retiro voluntario de A no elimina una oferta B posterior', () => {
   store.reset();
 });
 
+test('el retiro exacto de A no invalida una reoferta B en vuelo', () => {
+  const store = useDriverRequests.getState();
+  store.reset();
+  applySentOffer(store, 'ride-1', sentOffer('offer-a'));
+  const attemptB = store.beginOfferAttempt('ride-1');
+
+  assert.equal(store.markWithdrawn('ride-1', 'offer-a'), true);
+  assert.equal(
+    store.markOffered('ride-1', sentOffer('offer-b'), undefined, attemptB),
+    true,
+  );
+  assert.equal(useDriverRequests.getState().offered['ride-1'].offerId, 'offer-b');
+  assert.equal(useDriverRequests.getState().settledOfferIds.has('offer-a'), true);
+  store.reset();
+});
+
+test('offers_withdrawn exacto hace CAS por offer_id y sus duplicados son idempotentes', () => {
+  const store = useDriverRequests.getState();
+  store.reset();
+  applySentOffer(store, 'ride-1', sentOffer('offer-a'));
+  applySentOffer(store, 'ride-1', sentOffer('offer-b'));
+
+  assert.equal(
+    store.withdrawExactOffers([{ rideId: 'ride-1', offerId: 'offer-a' }]),
+    0,
+  );
+  assert.equal(useDriverRequests.getState().offered['ride-1'].offerId, 'offer-b');
+  assert.equal(useDriverRequests.getState().settledOfferIds.has('offer-a'), true);
+
+  assert.equal(
+    store.withdrawExactOffers([{ rideId: 'ride-1', offerId: 'offer-b' }]),
+    1,
+  );
+  const afterWithdrawal = useDriverRequests.getState();
+  const tokenAfterWithdrawal = afterWithdrawal.offerAttemptTokens.get('ride-1');
+  assert.equal(afterWithdrawal.offered['ride-1'], undefined);
+  assert.equal(afterWithdrawal.settledOfferIds.has('offer-b'), true);
+
+  assert.equal(
+    store.withdrawExactOffers([{ rideId: 'ride-1', offerId: 'offer-b' }]),
+    0,
+  );
+  assert.equal(
+    useDriverRequests.getState().offerAttemptTokens.get('ride-1'),
+    tokenAfterWithdrawal,
+  );
+  store.reset();
+});
+
 test('dos intentos solapados solo aplican la respuesta más nueva', () => {
   const store = useDriverRequests.getState();
   store.reset();

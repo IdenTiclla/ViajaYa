@@ -465,9 +465,11 @@ Dispatcher sombra, sin Redis ni cambios de contrato/mobile:
 - [x] Mitigar el resumen legacy `offers_withdrawn`: mobile elimina solo los
   `ride_ids` declarados y el éxito HTTP offline limpia las ofertas vivas aunque
   el WebSocket esté caído.
-- [ ] Extender `offers_withdrawn` antes de `live` con pares exactos
-  `{ride_id, offer_id}`. El wire actual no puede distinguir una oferta retirada
-  de una reoferta posterior sobre el mismo ride.
+- [x] Extender `offers_withdrawn` antes de `live` con pares exactos
+  `{ride_id, offer_id}`. Los productores conservan `ride_ids` para clientes
+  legacy y añaden `offers` en el mismo orden; v2 exige esas identidades. Mobile
+  hace compare-and-set por `offer_id`, sella duplicados y eventos atrasados sin
+  retirar ni invalidar una reoferta posterior sobre el mismo ride.
 - [x] Arbitrar la carrera creación HTTP/evento WS con tombstones acotados por
   `offer_id`, token por intento, bloqueo por ride terminal y `markOffered` CAS.
   Una respuesta tardía ya no revive rechazo, expiración, pausa, aceptación,

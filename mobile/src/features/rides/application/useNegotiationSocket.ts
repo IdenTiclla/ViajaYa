@@ -473,9 +473,20 @@ export function useDriverPoolSocket(enabled = true): void {
         }
         case 'offers_withdrawn': {
           // Ganó otro viaje o pasó offline: el backend retiró todas sus ofertas
-          // pendientes conocidas. Un resumen atrasado no debe borrar ofertas de
-          // otros rides que se hayan creado después.
-          useDriverRequests.getState().withdrawOffered(msg.data.ride_ids);
+          // pendientes conocidas. Los productores nuevos identifican cada
+          // oferta: un resumen atrasado de A no puede borrar una reoferta B del
+          // mismo ride. `ride_ids` queda como fallback durante el rollout.
+          const store = useDriverRequests.getState();
+          if (msg.data.offers !== undefined) {
+            store.withdrawExactOffers(
+              msg.data.offers.map((offer) => ({
+                rideId: offer.ride_id,
+                offerId: offer.offer_id,
+              })),
+            );
+          } else {
+            store.withdrawOffered(msg.data.ride_ids);
+          }
           void queryClient.invalidateQueries({ queryKey: ['open-rides'] });
           break;
         }

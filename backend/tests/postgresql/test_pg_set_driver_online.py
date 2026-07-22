@@ -209,3 +209,24 @@ async def test_two_offline_requests_create_one_withdrawal_batch(pg_test_db) -> N
     ]
     assert len({row.batch_id for row in rows}) == 1
     assert [row.sequence for row in rows] == [0, 1]
+    assert rows[0].payload == {
+        "type": "offer_withdrawn",
+        "data": {
+            "driver_id": str(driver.id),
+            "offer_id": str(offer.id),
+            "reason": "driver_offline",
+        },
+    }
+    assert rows[1].payload == {
+        "type": "offers_withdrawn",
+        "data": {
+            "ride_ids": [str(ride.id)],
+            "offers": [
+                {
+                    "ride_id": str(ride.id),
+                    "offer_id": str(offer.id),
+                }
+            ],
+            "reason": "driver_offline",
+        },
+    }

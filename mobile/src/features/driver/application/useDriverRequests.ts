@@ -30,6 +30,11 @@ export type SentOffer = {
   expiresAt: string;
 };
 
+export type ExactWithdrawnOffer = {
+  rideId: string;
+  offerId: string;
+};
+
 const FALLBACK_TTL_MS = 30_000;
 const MAX_SETTLED_OFFERS = 512;
 const MAX_TERMINAL_RIDES = 256;
@@ -262,6 +267,8 @@ type DriverRequestsState = {
   markExpired: (rideId: string, offerId: string) => boolean;
   /** Retira únicamente las ofertas de los rides incluidos; devuelve cuántas quitó. */
   withdrawOffered: (rideIds: string[]) => number;
+  /** Retira por identidad exacta sin afectar una reoferta posterior del mismo ride. */
+  withdrawExactOffers: (offers: ExactWithdrawnOffer[]) => number;
   markPaused: (rideId: string, offerId?: string) => boolean;
   getOffer: (rideId: string) => SentOffer | null;
   isDismissed: (rideId: string) => boolean;
@@ -620,15 +627,12 @@ export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
       if (current && current.offerId !== offerId) return { settledOfferIds };
 
       applied = true;
-      const advanced = advanceOfferAttempt(
-        s.offerAttemptSequence,
-        s.offerAttemptTokens,
-        rideId,
-      );
-      if (!current) return { settledOfferIds, ...advanced };
+      // El tombstone exacto ya bloquea un 201 tardío de esta oferta. No se
+      // invalida el token del ride: puede pertenecer a una reoferta B en vuelo.
+      if (!current) return { settledOfferIds };
       const offered = { ...s.offered };
       delete offered[rideId];
-      return { offered, settledOfferIds, ...advanced };
+      return { offered, settledOfferIds };
     });
     return applied;
   },
@@ -686,6 +690,20 @@ export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
       if (rideIds.length === 0) return s;
       return { offered, offerAttemptSequence, offerAttemptTokens };
     });
+    return withdrawn;
+  },
+  withdrawExactOffers: (offers) => {
+    let withdrawn = 0;
+    for (const offer of offers) {
+      const current = get().offered[offer.rideId];
+      get().markWithdrawn(offer.rideId, offer.offerId);
+      if (
+        current?.offerId === offer.offerId &&
+        get().offered[offer.rideId] === undefined
+      ) {
+        withdrawn += 1;
+      }
+    }
     return withdrawn;
   },
   markPaused: (rideId, offerId) => {

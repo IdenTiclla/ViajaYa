@@ -86,6 +86,7 @@ from app.domain.repositories import (
     RiderSummary,
     SavedPlaceRepository,
     UserRepository,
+    WithdrawnOfferReference,
 )
 from app.domain.ride_policy import is_offer_expired
 
@@ -664,7 +665,7 @@ class InMemoryOfferRepository(OfferRepository):
             return None
 
         withdrawn = [
-            o.ride_id
+            WithdrawnOfferReference(ride_id=o.ride_id, offer_id=o.id)
             for o in self.offers
             if o.driver_id == driver.id
             and o.id != offer_id
@@ -694,7 +695,7 @@ class InMemoryOfferRepository(OfferRepository):
             ride=ride,
             accepted_offer=offer,
             driver=driver,
-            withdrawn_ride_ids=list(dict.fromkeys(withdrawn)),
+            withdrawn_offers=list(dict.fromkeys(withdrawn)),
             losing_driver_ids=list(dict.fromkeys(losers)),
         )
 

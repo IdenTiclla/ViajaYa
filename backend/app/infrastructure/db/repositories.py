@@ -50,6 +50,7 @@ from app.domain.repositories import (
     RiderSummary,
     SavedPlaceRepository,
     UserRepository,
+    WithdrawnOfferReference,
 )
 from app.domain.ride_policy import is_offer_expired
 from app.infrastructure.db.models import (
@@ -1186,7 +1187,7 @@ class SqlAlchemyOfferRepository(OfferRepository):
                     OfferModel.driver_id == driver_id,
                     OfferModel.status.in_(_ACTIVE_OFFER_STATUSES),
                 )
-                .order_by(OfferModel.created_at.desc())
+                .order_by(OfferModel.created_at.desc(), OfferModel.id)
                 .with_for_update()
                 .execution_options(populate_existing=True)
             )
@@ -1460,14 +1461,18 @@ class SqlAlchemyOfferRepository(OfferRepository):
         # avisa a esos pasajeros (excluimos la solicitud actual).
         others = (
             await self._session.execute(
-                select(OfferModel.ride_id).where(
+                select(OfferModel.id, OfferModel.ride_id).where(
                     OfferModel.driver_id == driver_row.id,
                     OfferModel.id != offer_id,
+                    OfferModel.ride_id != ride_row.id,
                     OfferModel.status.in_(_ACTIVE_OFFER_STATUSES),
-                )
+                ).order_by(OfferModel.ride_id, OfferModel.id)
             )
-        ).scalars().all()
-        withdrawn_ride_ids = [rid for rid in dict.fromkeys(others) if rid != ride_row.id]
+        ).all()
+        withdrawn_offers = [
+            WithdrawnOfferReference(ride_id=row.ride_id, offer_id=row.id)
+            for row in others
+        ]
 
         # Otros conductores con ofertas vivas en ESTE viaje: pierden la carrera y
         # hay que avisarles que el viaje ya fue tomado.
@@ -1511,7 +1516,7 @@ class SqlAlchemyOfferRepository(OfferRepository):
             ride=_ride_to_entity(ride_row),
             accepted_offer=_offer_to_entity(offer_row),
             driver=_to_entity(driver_row),
-            withdrawn_ride_ids=withdrawn_ride_ids,
+            withdrawn_offers=withdrawn_offers,
             losing_driver_ids=losing_driver_ids,
         )
 

@@ -73,9 +73,27 @@ class OfferWithdrawnData(_StrictPayload):
     reason: OfferWithdrawnReason | None = None
 
 
+class WithdrawnOfferReferenceData(_StrictPayload):
+    ride_id: uuid.UUID
+    offer_id: uuid.UUID
+
+
 class OffersWithdrawnData(_StrictPayload):
     ride_ids: list[uuid.UUID]
+    # Opcional solo para leer frames legacy y filas históricas de outbox. Los
+    # productores actuales lo completan y el envelope v2 lo exige.
+    offers: list[WithdrawnOfferReferenceData] | None = None
     reason: OffersWithdrawnReason | None = None
+
+    @model_validator(mode="after")
+    def validate_legacy_summary_matches_offers(self) -> OffersWithdrawnData:
+        if self.offers is not None and self.ride_ids != [
+            offer.ride_id for offer in self.offers
+        ]:
+            raise ValueError(
+                "ride_ids debe coincidir en orden con offers[*].ride_id."
+            )
+        return self
 
 
 class OfferExpiredData(_StrictPayload):
@@ -344,6 +362,8 @@ class RealtimeEventEnvelopeV2(_Message):
             raise ValueError(
                 "ride_closed v2 requiere pool_version y reason."
             )
+        if self.type == "offers_withdrawn" and message.data.offers is None:
+            raise ValueError("offers_withdrawn v2 requiere offers.")
 
         validate_realtime_event_semantics(
             event_type=self.type,

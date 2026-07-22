@@ -215,8 +215,20 @@ async def test_accept_builder_preserves_order_routing_aggregates_and_direct_payl
         "pool_version": accepted_ride.pool_version,
         "reason": "terminal",
     }
-    assert batch[3].payload["data"] == {"ride_ids": [str(other_ride.id)]}
-    assert batch[4].payload["data"] == {"driver_id": str(winner.id)}
+    withdrawn_offer = result.withdrawn_offers[0]
+    assert batch[3].payload["data"] == {
+        "ride_ids": [str(other_ride.id)],
+        "offers": [
+            {
+                "ride_id": str(other_ride.id),
+                "offer_id": str(withdrawn_offer.offer_id),
+            }
+        ],
+    }
+    assert batch[4].payload["data"] == {
+        "driver_id": str(winner.id),
+        "offer_id": str(withdrawn_offer.offer_id),
+    }
     assert batch[5].payload["data"] == {
         "ride_id": str(accepted_ride.id),
         "offer_id": None,
@@ -398,6 +410,9 @@ async def test_accept_persists_business_and_outbox_in_one_commit(session_factory
     assert aggregate_versions == 3
     assert stream_versions == 5
     assert result.withdrawn_ride_ids == [other_ride.id]
+    assert [(item.ride_id, item.offer_id) for item in result.withdrawn_offers] == [
+        (other_ride.id, other_offer.id)
+    ]
     assert result.losing_driver_ids == [loser.id]
 
 

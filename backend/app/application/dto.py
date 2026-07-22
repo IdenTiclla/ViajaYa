@@ -22,7 +22,7 @@ from app.domain.entities import (
     ServiceType,
     User,
 )
-from app.domain.repositories import OpenRideDetail
+from app.domain.repositories import OpenRideDetail, WithdrawnOfferReference
 
 T = TypeVar("T")
 
@@ -300,14 +300,19 @@ class CancelRideResult:
 @dataclass(frozen=True)
 class AcceptOfferResult:
     """Resultado de que el pasajero acepte una oferta (asignación del viaje):
-    el viaje asignado, los ``ride_id`` de otros pasajeros cuyas ofertas vivas del
-    mismo conductor quedaron retiradas, y los ``driver_id`` de los otros
-    conductores de este viaje que perdieron la carrera (la capa API difunde
+    el viaje asignado, las identidades exactas de otras ofertas vivas del mismo
+    conductor que quedaron retiradas, y los ``driver_id`` de los otros conductores
+    de este viaje que perdieron la carrera (la capa API difunde
     ``offer_withdrawn`` / ``offer_rejected`` con ellos)."""
 
     detail: RideDetail
-    withdrawn_ride_ids: list[uuid.UUID]
+    withdrawn_offers: list[WithdrawnOfferReference]
     losing_driver_ids: list[uuid.UUID]
+
+    @property
+    def withdrawn_ride_ids(self) -> list[uuid.UUID]:
+        """Compatibilidad temporal con el contrato legacy resumido por ride."""
+        return [offer.ride_id for offer in self.withdrawn_offers]
 
 
 @dataclass(frozen=True)

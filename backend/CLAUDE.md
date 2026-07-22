@@ -177,7 +177,7 @@ personales exigen coincidencia y ambos vehículos pueden atender encomiendas. Lo
 compatibles ofertan (`Offer` `PENDING`). **El pasajero decide**: `POST /offers/{id}/accept` =
 **asignación directa** — `OfferRepository.accept_atomically` usa `SELECT … FOR UPDATE` en
 Postgres: fija `driver_id`/`accepted_offer_id`, rechaza las demás offers del viaje y retira las
-offers vivas del conductor elegido en **otros rides** (`OfferAcceptance.withdrawn_ride_ids` /
+offers vivas del conductor elegido en **otros rides** (`OfferAcceptance.withdrawn_offers` /
 `losing_driver_ids`). **Regla de oro**: si el conductor ya fue asignado a otro viaje →
 `DriverUnavailableError` (HTTP 409).
 
@@ -222,7 +222,10 @@ ride_created, ride_closed, ride_paused, offer_created, offer_rejected,
 offer_withdrawn, offer_accepted, offers_withdrawn (plural), offer_expired, ride_status
 ```
 
-- `offers_withdrawn` (plural) → al conductor elegido: lista de `ride_ids` cuyas ofertas suyas se retiraron al ganar el viaje.
+- `offers_withdrawn` (plural) → al conductor elegido o desconectado: conserva
+  `ride_ids` para clientes legacy y añade `offers: [{ride_id, offer_id}]` para que
+  una entrega atrasada no retire una reoferta posterior. Los productores nuevos
+  emiten ambos campos en el mismo orden; el envelope v2 exige `offers`.
 - Todo productor actual de `ride_closed` incluye `pool_version` y
   `reason=paused|terminal`. Ambos solo son opcionales al leer legacy histórico;
   el envelope v2 los exige.

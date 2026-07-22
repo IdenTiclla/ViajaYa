@@ -219,10 +219,36 @@ const driverActiveRideMessageSchema = z.object({
 });
 const offersWithdrawnMessageSchema = z.object({
   type: z.literal('offers_withdrawn'),
-  data: z.object({
-    ride_ids: z.array(uuidSchema),
-    reason: z.literal('driver_offline').nullable().optional(),
-  }),
+  data: z
+    .object({
+      ride_ids: z.array(uuidSchema),
+      // Compatibilidad legacy: los productores nuevos añaden las identidades
+      // exactas para no retirar una reoferta posterior del mismo ride.
+      offers: z
+        .array(
+          z.object({
+            ride_id: uuidSchema,
+            offer_id: uuidSchema,
+          }),
+        )
+        .optional(),
+      reason: z.literal('driver_offline').nullable().optional(),
+    })
+    .superRefine((data, context) => {
+      if (data.offers === undefined) return;
+      const matchesExactly =
+        data.ride_ids.length === data.offers.length &&
+        data.ride_ids.every(
+          (rideId, index) => rideId === data.offers?.[index]?.ride_id,
+        );
+      if (!matchesExactly) {
+        context.addIssue({
+          code: 'custom',
+          message: 'ride_ids debe coincidir en orden con offers.',
+          path: ['ride_ids'],
+        });
+      }
+    }),
 });
 
 const driverEventMessageSchema = z.discriminatedUnion('type', [
@@ -374,6 +400,16 @@ function validateVersionedEventSemantics(
         path: ['data', 'reason'],
       });
     }
+  }
+  if (
+    event.type === 'offers_withdrawn' &&
+    data.offers === undefined
+  ) {
+    context.addIssue({
+      code: 'custom',
+      message: 'offers_withdrawn v2 requiere offers.',
+      path: ['data', 'offers'],
+    });
   }
 }
 

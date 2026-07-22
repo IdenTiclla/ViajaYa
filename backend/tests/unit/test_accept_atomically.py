@@ -91,6 +91,9 @@ async def test_accept_withdraws_drivers_other_offers():
     assert result.detail.ride.driver_id == driver.id
     # La oferta del conductor al pasajero B se retiró y B aparece en la lista.
     assert ride_b.id in result.withdrawn_ride_ids
+    assert [(item.ride_id, item.offer_id) for item in result.withdrawn_offers] == [
+        (ride_b.id, offer_b.detail.offer.id)
+    ]
     assert (await offers.get_by_id(offer_b.detail.offer.id)).status is OfferStatus.REJECTED
 
 

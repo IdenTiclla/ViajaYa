@@ -79,6 +79,6 @@ class AcceptOffer:
                 driver=acceptance.driver,
                 accepted_offer=acceptance.accepted_offer,
             ),
-            withdrawn_ride_ids=acceptance.withdrawn_ride_ids,
+            withdrawn_offers=acceptance.withdrawn_offers,
             losing_driver_ids=acceptance.losing_driver_ids,
         )

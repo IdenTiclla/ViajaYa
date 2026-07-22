@@ -78,6 +78,46 @@ def test_validador_acepta_ride_closed_historico_sin_generacion() -> None:
     validate_realtime_outbox_batch([legacy])
 
 
+def test_offers_withdrawn_historico_es_valido_pero_v2_exige_ofertas_exactas() -> None:
+    driver_id = uuid.uuid4()
+    ride_id = uuid.uuid4()
+    offer_id = uuid.uuid4()
+    base = replace(
+        _event(),
+        event_type="offers_withdrawn",
+        topic=f"driver:{driver_id}",
+        aggregate_type="driver",
+        aggregate_id=driver_id,
+        payload={
+            "type": "offers_withdrawn",
+            "data": {"ride_ids": [str(ride_id)]},
+        },
+    )
+
+    validate_realtime_outbox_batch([base])
+    with pytest.raises(ValueError, match="requiere offers"):
+        serialize_realtime_outbox_batch_v2([base])
+
+    exact = replace(
+        base,
+        payload={
+            "type": "offers_withdrawn",
+            "data": {
+                "ride_ids": [str(ride_id)],
+                "offers": [
+                    {
+                        "ride_id": str(ride_id),
+                        "offer_id": str(offer_id),
+                    }
+                ],
+            },
+        },
+    )
+
+    envelope = serialize_realtime_outbox_batch_v2([exact])[0]
+    assert envelope["data"] == exact.payload["data"]
+
+
 def test_rechaza_un_lote_vacio() -> None:
     with pytest.raises(InvalidRealtimeOutboxBatchError, match="vacío") as error:
         validate_realtime_outbox_batch([])

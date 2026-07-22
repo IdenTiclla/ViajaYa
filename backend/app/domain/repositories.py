@@ -28,21 +28,34 @@ from app.domain.entities import (
 
 
 @dataclass(frozen=True)
+class WithdrawnOfferReference:
+    """Identidad exacta de una oferta retirada durante una mutación atómica."""
+
+    ride_id: uuid.UUID
+    offer_id: uuid.UUID
+
+
+@dataclass(frozen=True)
 class OfferAcceptance:
     """Resultado de un despacho atómico exitoso.
 
     Agrega lo que el caso de uso y la capa de eventos necesitan tras asignar el
     conductor: el viaje actualizado, la oferta aceptada, el conductor, los
-    ``ride_id`` de **otros** pasajeros cuyas ofertas vivas de ese conductor se
-    retiraron, y los ``driver_id`` de los **otros** conductores de este viaje
-    cuyas ofertas quedaron rechazadas (para avisarles que el viaje ya fue tomado).
+    pares exactos de las ofertas vivas de ese conductor que se retiraron en
+    **otros** rides, y los ``driver_id`` de los **otros** conductores de este
+    viaje cuyas ofertas quedaron rechazadas (para avisarles que fue tomado).
     """
 
     ride: RideRequest
     accepted_offer: Offer
     driver: User
-    withdrawn_ride_ids: list[uuid.UUID]
+    withdrawn_offers: list[WithdrawnOfferReference]
     losing_driver_ids: list[uuid.UUID]
+
+    @property
+    def withdrawn_ride_ids(self) -> list[uuid.UUID]:
+        """Compatibilidad para consumidores que todavía resumen solo por ride."""
+        return [offer.ride_id for offer in self.withdrawn_offers]
 
 
 @dataclass(frozen=True)

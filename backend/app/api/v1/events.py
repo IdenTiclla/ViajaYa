@@ -32,6 +32,7 @@ from app.api.v1.schemas.realtime import (
     RidePausedData,
     RidePausedMessage,
     RideStatusMessage,
+    WithdrawnOfferReferenceData,
     dump_negotiation_message,
 )
 from app.api.v1.schemas.rides import OpenRideResponse, RideResponse
@@ -133,6 +134,10 @@ def build_accept_offer_events(result: AcceptOfferResult) -> list[PendingRealtime
     if driver is None:
         raise ValueError("Una aceptación exitosa debe incluir al conductor elegido.")
     ride_response = RideResponse.from_detail(result.detail)
+    withdrawn_offers = sorted(
+        result.withdrawn_offers,
+        key=lambda item: (item.ride_id.hex, item.offer_id.hex),
+    )
     pending = [
         _pending_realtime_event(
             topic=ride_topic(ride.id),
@@ -167,26 +172,30 @@ def build_accept_offer_events(result: AcceptOfferResult) -> list[PendingRealtime
                 aggregate_id=driver.id,
                 message=OffersWithdrawnMessage(
                     data=OffersWithdrawnData(
-                        ride_ids=sorted(
-                            result.withdrawn_ride_ids,
-                            key=lambda item: item.hex,
-                        )
+                        ride_ids=[offer.ride_id for offer in withdrawn_offers],
+                        offers=[
+                            WithdrawnOfferReferenceData(
+                                ride_id=offer.ride_id,
+                                offer_id=offer.offer_id,
+                            )
+                            for offer in withdrawn_offers
+                        ],
                     )
                 ),
             ),
         ]
     )
-    for other_ride_id in sorted(
-        result.withdrawn_ride_ids,
-        key=lambda item: item.hex,
-    ):
+    for withdrawn_offer in withdrawn_offers:
         pending.append(
             _pending_realtime_event(
-                topic=ride_topic(other_ride_id),
+                topic=ride_topic(withdrawn_offer.ride_id),
                 aggregate_type="ride",
-                aggregate_id=other_ride_id,
+                aggregate_id=withdrawn_offer.ride_id,
                 message=OfferWithdrawnMessage(
-                    data=OfferWithdrawnData(driver_id=driver.id)
+                    data=OfferWithdrawnData(
+                        driver_id=driver.id,
+                        offer_id=withdrawn_offer.offer_id,
+                    )
                 )
             )
         )
@@ -463,6 +472,13 @@ def build_driver_availability_events(
             message=OffersWithdrawnMessage(
                 data=OffersWithdrawnData(
                     ride_ids=[offer.ride_id for offer in offers],
+                    offers=[
+                        WithdrawnOfferReferenceData(
+                            ride_id=offer.ride_id,
+                            offer_id=offer.id,
+                        )
+                        for offer in offers
+                    ],
                     reason="driver_offline",
                 )
             ),

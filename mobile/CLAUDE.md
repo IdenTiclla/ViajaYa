@@ -133,8 +133,10 @@ Eventos que escuchan los hooks (WS → mutación de caché React Query + estado 
 Los reducers de `ride_status` son monótonos y contrastan detalle + viaje activo;
 el mismo estado sí refresca el payload. `offer_expired` aplica por `offer_id`
 exacto y solo notifica si retiró la oferta vigente. `offers_withdrawn` elimina
-solo los `ride_ids` declarados; el éxito HTTP al pasar offline vacía además las
-ofertas vivas para tolerar una caída del WebSocket.
+por los pares exactos `{ride_id, offer_id}` cuando están presentes, para que un
+resumen atrasado no borre una reoferta; `ride_ids` se conserva como fallback
+legacy. El éxito HTTP al pasar offline vacía además las ofertas vivas para
+tolerar una caída del WebSocket.
 
 El store del conductor conserva tombstones acotados por `offer_id`, rides
 terminales, generaciones del pool y un token por intento HTTP. `markOffered` es

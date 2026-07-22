@@ -14,9 +14,20 @@ import { AppState, type AppStateStatus } from 'react-native';
 
 import { env } from '@/core/config/env';
 import { tokenStorage } from '@/core/http/tokenStorage';
+import { createGenerationMessageQueue } from '@/core/realtime/socketQueue';
 
 export type SocketMessage = { type: string; data: unknown };
-export type SocketHandle = { close: () => void };
+export type SocketHandle = {
+  close: () => void;
+  /** Descarta la generación actual y fuerza un handshake nuevo. */
+  resync: () => void;
+};
+
+export type SocketLifecycleCallbacks = {
+  onConnection?: () => void;
+  onInvalidFrame?: (issue: SanitizedSocketIssue) => void;
+  onHandlerError?: () => void;
+};
 
 type ParserIssue = {
   code?: string;
@@ -140,16 +151,17 @@ export function openSocket<T extends SocketMessage>(
   path: string,
   onMessage: (msg: T) => void | Promise<void>,
   parser: SocketMessageParser<T>,
+  callbacks: SocketLifecycleCallbacks = {},
 ): SocketHandle {
   let ws: WebSocket | null = null;
   let attempt = 0;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let closedByUser = false;
-  let messageQueue: Promise<void> = Promise.resolve();
+  const messageQueue = createGenerationMessageQueue();
   // Cada reemplazo intencional invalida callbacks y aperturas en curso de la
   // generacion anterior. Esto evita dos sockets vivos si SecureStore tarda y la
   // app vuelve a foreground mientras el primer connect aun esta pendiente.
-  let generation = 0;
+  let generation = messageQueue.currentGeneration();
   let connectingGeneration: number | null = null;
 
   const clearTimer = () => {
@@ -201,6 +213,7 @@ export function openSocket<T extends SocketMessage>(
       socket.onopen = () => {
         if (ws !== socket || ownGeneration !== generation) return;
         attempt = 0;
+        callbacks.onConnection?.();
       };
       socket.onmessage = (event) => {
         if (ws !== socket || ownGeneration !== generation) return;
@@ -209,18 +222,21 @@ export function openSocket<T extends SocketMessage>(
           // Solo registra metadatos derivados del schema. Nunca el frame, el
           // payload ni la URL (que puede identificar un ride concreto).
           console.warn('Mensaje WebSocket descartado.', parsed.issue);
+          callbacks.onInvalidFrame?.(parsed.issue);
           return;
         }
 
         // Snapshot y deltas forman un stream ordenado. Serializar los handlers
         // evita que un snapshot con un `await` termine despues de un evento
         // posterior y pise una oferta recien recibida.
-        messageQueue = messageQueue
-          .then(() => {
+        messageQueue.enqueue(
+          ownGeneration,
+          () => {
             if (ws !== socket || ownGeneration !== generation) return;
             return onMessage(parsed.data);
-          })
-          .catch(() => undefined);
+          },
+          () => callbacks.onHandlerError?.(),
+        );
       };
       socket.onerror = () => {
         // El cierre subsecuente dispara la reconexion.
@@ -248,7 +264,7 @@ export function openSocket<T extends SocketMessage>(
     // Android puede conservar un objeto OPEN/CONNECTING aunque el transporte
     // haya muerto mientras JS estuvo suspendido. Al volver, reemplazamos siempre
     // la conexion: el backend cancela la gracia en cuanto entra el nuevo socket.
-    generation += 1;
+    generation = messageQueue.advanceGeneration();
     clearTimer();
     attempt = 0;
     const staleSocket = ws;
@@ -261,9 +277,19 @@ export function openSocket<T extends SocketMessage>(
   void connect();
 
   return {
+    resync() {
+      if (closedByUser) return;
+      generation = messageQueue.advanceGeneration();
+      clearTimer();
+      const socket = ws;
+      ws = null;
+      connectingGeneration = null;
+      socket?.close();
+      scheduleReconnect(generation);
+    },
     close() {
       closedByUser = true;
-      generation += 1;
+      generation = messageQueue.advanceGeneration();
       clearTimer();
       appStateSub.remove();
       const socket = ws;

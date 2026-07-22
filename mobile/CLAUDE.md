@@ -121,6 +121,13 @@ Infra: `core/realtime/socket.ts` — `openSocket(path, onMessage)`. Backoff expo
 reemplaza sockets suspendidos al volver a foreground (`AppState`) y procesa los mensajes en orden.
 **Solo bajada**: parsea `{type,data}` y lo pasa al callback.
 
+Los hooks usan parsers duales legacy/v2. Cada conexión debe completar primero
+su snapshot y no puede mezclar protocolos: un hueco, conflicto, frame inválido o
+fallo del handler descarta la generación del socket y fuerza otro handshake sin
+perder los cursores ya confirmados. El gate v2 confirma cada ticket solo después
+de actualizar React Query/Zustand; duplicados y posiciones antiguas no mutan ni
+repiten avisos.
+
 Eventos que escuchan los hooks (WS → mutación de caché React Query + estado Zustand + toast):
 
 - **Pasajero** (`/ws/rides/{rideId}`): `offers_snapshot`, `offer_created`, `offer_withdrawn`
@@ -148,6 +155,14 @@ no puede revivirla, ni una respuesta anterior ganar a otra petición. Los evento
 aplicable retira la tarjeta y la oferta visible, y un terminal domina una pausa
 de la misma generación. Un snapshot PostgreSQL `PENDING` sí corrige guards locales
 contradictorios, incluida una expiración por reloj adelantado.
+
+El snapshot v2 del pasajero reemplaza detalle, activo y ofertas bajo un único
+watermark `ride:*`. El del conductor reemplaza pool abierto, pausados, ofertas y
+`active_ride` (también cuando es `null`) con los watermarks de su vehículo,
+delivery y `driver:*`. Para arbitrar un `201` concurrente no se comparan fechas:
+PostgreSQL no ordena commits con `now()`. El store registra qué intentos locales
+ya estaban en vuelo al aplicar el snapshot; si uno ausente resuelve después,
+fuerza otro handshake que decide autoritativamente si sigue `PENDING`.
 
 ## Tema (design system)
 

@@ -208,3 +208,44 @@ test('reset elimina watermarks y deduplicación al cambiar de sesión', () => {
   assert.equal(gate.state().aggregates.size, 0);
   assert.equal(gate.state().rememberedEventIds, 0);
 });
+
+test('abort consume el ticket sin adelantar cursores', () => {
+  const gate = createReplayGate();
+  establish(gate);
+  const decision = gate.decideEvent(event());
+  assert.equal(decision.kind, 'apply');
+
+  gate.abort(decision.ticket);
+
+  assert.equal(gate.state().streams.get('ride:ride-1'), 10);
+  assert.throws(() => gate.commit(decision.ticket), /consumido/);
+  assert.throws(() => gate.abort(decision.ticket), /consumido/);
+});
+
+test('reset invalida tickets pendientes de la época anterior', () => {
+  const gate = createReplayGate();
+  const decision = gate.decideSnapshot(
+    [{ stream: 'ride:ride-1', version: 10 }],
+    ['ride:ride-1'],
+  );
+  assert.equal(decision.kind, 'apply');
+
+  gate.reset();
+
+  assert.throws(() => gate.commit(decision.ticket), /consumido/);
+});
+
+test('snapshot rechaza streams adicionales aunque incluya los requeridos', () => {
+  const gate = createReplayGate();
+
+  assert.deepEqual(
+    gate.decideSnapshot(
+      [
+        { stream: 'ride:ride-1', version: 10 },
+        { stream: 'driver:driver-1', version: 3 },
+      ],
+      ['ride:ride-1'],
+    ),
+    { kind: 'resync', reason: 'invalid_snapshot' },
+  );
+});

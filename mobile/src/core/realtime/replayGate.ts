@@ -50,7 +50,9 @@ export type ReplayTicket = {
   readonly event:
     | { id: string; fingerprint: string; seenAt: number }
     | null;
+  readonly epoch: number;
   committed: boolean;
+  aborted: boolean;
 };
 
 export type ReplayDecision =
@@ -71,6 +73,7 @@ export type ReplayGate = {
     requiredStreams: readonly string[],
   ) => ReplayDecision;
   commit: (ticket: ReplayTicket) => void;
+  abort: (ticket: ReplayTicket) => void;
   reset: () => void;
   state: () => ReplayGateState;
 };
@@ -123,6 +126,7 @@ export function createReplayGate(options: ReplayGateOptions = {}): ReplayGate {
   const streams = new Map<string, number>();
   const aggregates = new Map<string, number>();
   const rememberedEvents = new Map<string, RememberedEvent>();
+  let epoch = 0;
 
   const ticket = (
     streamUpdates: readonly CursorUpdate[],
@@ -134,7 +138,9 @@ export function createReplayGate(options: ReplayGateOptions = {}): ReplayGate {
     streamUpdates,
     aggregateUpdates,
     event,
+    epoch,
     committed: false,
+    aborted: false,
   });
 
   const pruneRememberedEvents = (at: number) => {
@@ -219,7 +225,10 @@ export function createReplayGate(options: ReplayGateOptions = {}): ReplayGate {
     if (new Set(requiredStreams).size !== requiredStreams.length) {
       return { kind: 'resync', reason: 'invalid_snapshot' };
     }
-    if (requiredStreams.some((stream) => !byStream.has(stream))) {
+    if (
+      byStream.size !== requiredStreams.length ||
+      requiredStreams.some((stream) => !byStream.has(stream))
+    ) {
       return { kind: 'resync', reason: 'invalid_snapshot' };
     }
 
@@ -235,8 +244,13 @@ export function createReplayGate(options: ReplayGateOptions = {}): ReplayGate {
   };
 
   const commit = (value: ReplayTicket) => {
-    if (value.owner !== owner || value.committed) {
-      throw new Error('El ticket realtime no pertenece a este gate o ya fue usado.');
+    if (
+      value.owner !== owner ||
+      value.epoch !== epoch ||
+      value.committed ||
+      value.aborted
+    ) {
+      throw new Error('El ticket realtime no pertenece a este gate o ya fue consumido.');
     }
     for (const update of value.streamUpdates) {
       if (streams.get(update.key) !== update.expected) {
@@ -266,7 +280,20 @@ export function createReplayGate(options: ReplayGateOptions = {}): ReplayGate {
     value.committed = true;
   };
 
+  const abort = (value: ReplayTicket) => {
+    if (
+      value.owner !== owner ||
+      value.epoch !== epoch ||
+      value.committed ||
+      value.aborted
+    ) {
+      throw new Error('El ticket realtime no pertenece a este gate o ya fue consumido.');
+    }
+    value.aborted = true;
+  };
+
   const reset = () => {
+    epoch += 1;
     streams.clear();
     aggregates.clear();
     rememberedEvents.clear();
@@ -278,5 +305,5 @@ export function createReplayGate(options: ReplayGateOptions = {}): ReplayGate {
     rememberedEventIds: rememberedEvents.size,
   });
 
-  return { decideEvent, decideSnapshot, commit, reset, state };
+  return { decideEvent, decideSnapshot, commit, abort, reset, state };
 }

@@ -589,6 +589,139 @@ test('el snapshot PENDING corrige una expiración local por reloj adelantado', (
   store.reset();
 });
 
+test('un intento cubierto pero ausente fuerza resnapshot y uno posterior se admite', () => {
+  const store = useDriverRequests.getState();
+  store.reset();
+  const oldAttempt = store.beginOfferAttempt('ride-old');
+  store.reconcileOffered([], store.beginOfferSnapshot());
+
+  assert.equal(
+    store.markOffered(
+      'ride-old',
+      sentOffer('offer-old'),
+      20,
+      oldAttempt,
+    ),
+    false,
+  );
+  assert.equal(useDriverRequests.getState().offered['ride-old'], undefined);
+  assert.equal(
+    useDriverRequests.getState().realtimeResyncSequence,
+    1,
+  );
+
+  const newAttempt = store.beginOfferAttempt('ride-new');
+  assert.equal(
+    store.markOffered(
+      'ride-new',
+      sentOffer('offer-new'),
+      20,
+      newAttempt,
+    ),
+    true,
+  );
+  assert.equal(
+    useDriverRequests.getState().offered['ride-new'].offerId,
+    'offer-new',
+  );
+  assert.equal(useDriverRequests.getState().realtimeResyncSequence, 1);
+  store.reset();
+});
+
+test('un 201 que resuelve durante el snapshot no queda borrado sin resync', () => {
+  const store = useDriverRequests.getState();
+  store.reset();
+  const attempt = store.beginOfferAttempt('ride-race');
+  const cut = store.beginOfferSnapshot();
+
+  assert.equal(
+    store.markOffered(
+      'ride-race',
+      sentOffer('offer-race'),
+      20,
+      attempt,
+    ),
+    true,
+  );
+  store.reconcileOffered([], cut);
+
+  assert.equal(useDriverRequests.getState().offered['ride-race'], undefined);
+  assert.equal(useDriverRequests.getState().realtimeResyncSequence, 1);
+  store.reset();
+});
+
+test('un 201 aplicado antes de crear el corte también fuerza resnapshot', () => {
+  const store = useDriverRequests.getState();
+  store.reset();
+  const attempt = store.beginOfferAttempt('ride-before-frame');
+  store.markOffered(
+    'ride-before-frame',
+    sentOffer('offer-before-frame'),
+    20,
+    attempt,
+  );
+  const cut = store.beginOfferSnapshot();
+
+  store.reconcileOffered([], cut);
+
+  assert.equal(
+    useDriverRequests.getState().offered['ride-before-frame'],
+    undefined,
+  );
+  assert.equal(useDriverRequests.getState().realtimeResyncSequence, 1);
+  store.reset();
+});
+
+test('una oferta iniciada después del corte fuerza confirmación con otro snapshot', () => {
+  const store = useDriverRequests.getState();
+  store.reset();
+  const cut = store.beginOfferSnapshot();
+  const attempt = store.beginOfferAttempt('ride-newer');
+  store.markOffered('ride-newer', sentOffer('offer-newer'), 20, attempt);
+
+  store.reconcileOffered([], cut);
+
+  assert.equal(useDriverRequests.getState().offered['ride-newer'], undefined);
+  assert.equal(useDriverRequests.getState().realtimeResyncSequence, 1);
+  store.reset();
+});
+
+test('una mejora ausente del snapshot fuerza resync aunque este avance el token', () => {
+  const store = useDriverRequests.getState();
+  store.reset();
+  const firstAttempt = store.beginOfferAttempt('ride-1');
+  store.markOffered('ride-1', sentOffer('offer-a'), 20, firstAttempt);
+  const cut = store.beginOfferSnapshot();
+  const improvedAttempt = store.beginOfferAttempt('ride-1');
+
+  store.reconcileOffered(
+    [
+      {
+        rideId: 'ride-1',
+        id: 'offer-a',
+        price: 20,
+        rideFare: 20,
+        etaMin: 5,
+        expiresAt: '2099-07-22T12:00:30Z',
+      },
+    ],
+    cut,
+  );
+
+  assert.equal(
+    store.markOffered(
+      'ride-1',
+      sentOffer('offer-b'),
+      20,
+      improvedAttempt,
+    ),
+    false,
+  );
+  assert.equal(useDriverRequests.getState().offered['ride-1'].offerId, 'offer-a');
+  assert.equal(useDriverRequests.getState().realtimeResyncSequence, 1);
+  store.reset();
+});
+
 test('una pausa de snapshot invalida el HTTP incluso después de reanudar', () => {
   const store = useDriverRequests.getState();
   store.reset();

@@ -10,7 +10,8 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 
-import { openSocket } from '@/core/realtime/socket';
+import { createReplayGate } from '@/core/realtime/replayGate';
+import { openSocket, type SocketHandle } from '@/core/realtime/socket';
 import { usePassengerToasts } from '@/features/booking/application/usePassengerToasts';
 import { useDriverRequests } from '@/features/driver/application/useDriverRequests';
 import { useDriverToasts } from '@/features/driver/application/useDriverToasts';
@@ -34,6 +35,14 @@ import {
   shouldApplyRideStatus,
 } from '@/features/rides/application/rideStatusReducer';
 import { writeRealtimeQueryData } from '@/features/rides/application/realtimeQueryCache';
+import {
+  createRealtimeReplayConsumer,
+  type RealtimeProtocolClassification,
+} from '@/features/rides/application/realtimeReplayConsumer';
+import {
+  applyDriverRealtimeSnapshot,
+  applyPassengerRealtimeSnapshot,
+} from '@/features/rides/application/realtimeSnapshots';
 import { formatBolivianos } from '@/features/rides/domain/money';
 import {
   type OfferDto,
@@ -43,10 +52,16 @@ import {
   toRide,
 } from '@/features/rides/data/ridesRepository';
 import {
-  driverSocketMessageSchema,
-  passengerSocketMessageSchema,
+  driverRealtimeMessageParser,
+  isVersionedSocketMessage,
+  passengerRealtimeMessageParser,
+  toReplayEventMetadata,
+  toReplayStreamCheckpoints,
+  type DriverRealtimeMessage,
+  type PassengerRealtimeMessage,
 } from '@/features/rides/data/realtimeSchemas';
 import type { Offer, OpenRide, Ride } from '@/features/rides/domain/types';
+import { useAuthStore } from '@/store/authStore';
 
 /** Pasajero: recibe en vivo las ofertas y los cambios de estado de su viaje. */
 export function useNegotiationSocket(rideId: string | null, enabled = true): void {
@@ -55,7 +70,8 @@ export function useNegotiationSocket(rideId: string | null, enabled = true): voi
   useEffect(() => {
     if (!enabled || !rideId) return;
 
-    const handle = openSocket(`/ws/rides/${rideId}`, async (msg) => {
+    const applyMessage = async (msg: PassengerRealtimeMessage) => {
+      let postCommitEffect: (() => void) | undefined;
       switch (msg.type) {
         case 'offers_snapshot':
           // Un GET iniciado antes del snapshot no puede resolver despues y
@@ -87,12 +103,13 @@ export function useNegotiationSocket(rideId: string | null, enabled = true): voi
           );
           // No repite el aviso si el backend reenvia exactamente la misma oferta.
           if (effect.received) {
-            usePassengerToasts.getState().push({
-              kind: 'offer_received',
-              rideId,
-              title: 'Nueva oferta',
-              message: `${offer.driver.fullName}: Bs ${formatBolivianos(offer.price)}`,
-            });
+            postCommitEffect = () =>
+              usePassengerToasts.getState().push({
+                kind: 'offer_received',
+                rideId,
+                title: 'Nueva oferta',
+                message: `${offer.driver.fullName}: Bs ${formatBolivianos(offer.price)}`,
+              });
           }
 
           // La oferta prueba que esta negociacion sigue vigente. Si el refetch de
@@ -140,12 +157,14 @@ export function useNegotiationSocket(rideId: string | null, enabled = true): voi
             },
           );
           if (effect.removed) {
-            usePassengerToasts.getState().push({
-              kind: 'offer_withdrawn',
-              rideId,
-              title: 'Oferta retirada',
-              message: `${effect.removed.driver.fullName} retiró su oferta.`,
-            });
+            const removed = effect.removed;
+            postCommitEffect = () =>
+              usePassengerToasts.getState().push({
+                kind: 'offer_withdrawn',
+                rideId,
+                title: 'Oferta retirada',
+                message: `${removed.driver.fullName} retiró su oferta.`,
+              });
           }
           break;
         }
@@ -170,12 +189,14 @@ export function useNegotiationSocket(rideId: string | null, enabled = true): voi
             },
           );
           if (effect.expired) {
-            usePassengerToasts.getState().push({
-              kind: 'offer_expired',
-              rideId,
-              title: 'Oferta expirada',
-              message: `La oferta de ${effect.expired.driver.fullName} expiró.`,
-            });
+            const expired = effect.expired;
+            postCommitEffect = () =>
+              usePassengerToasts.getState().push({
+                kind: 'offer_expired',
+                rideId,
+                title: 'Oferta expirada',
+                message: `La oferta de ${expired.driver.fullName} expiró.`,
+              });
           }
           break;
         }
@@ -209,20 +230,84 @@ export function useNegotiationSocket(rideId: string | null, enabled = true): voi
         default:
           break;
       }
-    }, passengerSocketMessageSchema);
+      return postCommitEffect;
+    };
 
-    return () => handle.close();
+    const gate = createReplayGate();
+    let handle: SocketHandle | null = null;
+    const consumer = createRealtimeReplayConsumer<PassengerRealtimeMessage>({
+      gate,
+      classify: (message): RealtimeProtocolClassification => {
+        if (!isVersionedSocketMessage(message)) {
+          return message.type === 'offers_snapshot'
+            ? { protocol: 'legacy', kind: 'snapshot', completesHandshake: true }
+            : { protocol: 'legacy', kind: 'event' };
+        }
+        return message.kind === 'snapshot'
+          ? {
+              protocol: 'v2',
+              kind: 'snapshot',
+              checkpoints: toReplayStreamCheckpoints(message),
+              requiredStreams: [`ride:${rideId}`],
+            }
+          : {
+              protocol: 'v2',
+              kind: 'event',
+              metadata: toReplayEventMetadata(message),
+            };
+      },
+      applyLegacy: applyMessage,
+      applyEvent: applyMessage,
+      applySnapshot: async (message) => {
+        if (
+          !isVersionedSocketMessage(message) ||
+          message.kind !== 'snapshot' ||
+          message.type !== 'ride_snapshot'
+        ) {
+          throw new Error('Snapshot de pasajero inválido.');
+        }
+        await applyPassengerRealtimeSnapshot(
+          queryClient,
+          PASSENGER_ACTIVE_RIDE_KEY,
+          {
+            ride: toRide(message.data.ride),
+            offers: message.data.offers.map(toOffer),
+          },
+        );
+      },
+      onResync: () => handle?.resync(),
+    });
+    handle = openSocket(
+      `/ws/rides/${rideId}`,
+      async (message) => {
+        await consumer.consume(message);
+      },
+      passengerRealtimeMessageParser,
+      {
+        onConnection: consumer.beginConnection,
+        onInvalidFrame: () => handle?.resync(),
+        onHandlerError: () => handle?.resync(),
+      },
+    );
+
+    return () => handle?.close();
   }, [enabled, rideId, queryClient]);
 }
 
 /** Conductor: recibe en vivo las solicitudes del pool y el aviso de ser elegido. */
 export function useDriverPoolSocket(enabled = true): void {
   const queryClient = useQueryClient();
+  const driverId = useAuthStore((state) => state.user?.id ?? null);
+  const vehicleType = useAuthStore((state) => state.user?.vehicleType ?? null);
+  const realtimeResyncSequence = useDriverRequests(
+    (state) => state.realtimeResyncSequence,
+  );
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || !driverId || !vehicleType) return;
 
-    const handle = openSocket('/ws/driver', async (msg) => {
+    const applyMessage = async (msg: DriverRealtimeMessage) => {
+      let postCommitEffect: (() => void) | undefined;
       switch (msg.type) {
         case 'open_rides_snapshot': {
           // El snapshot es autoritativo para el contenido de este corte/página,
@@ -253,6 +338,8 @@ export function useDriverPoolSocket(enabled = true): void {
           break;
         }
         case 'driver_offers_snapshot': {
+          const driverRequests = useDriverRequests.getState();
+          const offerCut = driverRequests.beginOfferSnapshot();
           const offers = (msg.data as OfferDto[]).map(toOffer);
           // El handshake entrega primero las solicitudes (abiertas y pausadas),
           // por lo que aquí ya conocemos la tarifa del pasajero. No se debe usar
@@ -265,8 +352,8 @@ export function useDriverPoolSocket(enabled = true): void {
           const rideFares = new Map(
             currentRides.map((ride) => [ride.id, ride.fare]),
           );
-          const currentOffers = useDriverRequests.getState().offered;
-          useDriverRequests.getState().reconcileOffered(
+          const currentOffers = driverRequests.offered;
+          driverRequests.reconcileOffered(
             offers.map((offer) => ({
               rideId: offer.rideId,
               id: offer.id,
@@ -280,6 +367,7 @@ export function useDriverPoolSocket(enabled = true): void {
               etaMin: offer.etaMin,
               expiresAt: offer.expiresAt,
             })),
+            offerCut,
           );
           break;
         }
@@ -387,12 +475,13 @@ export function useDriverPoolSocket(enabled = true): void {
           );
           const applied = driverRequests.markPaused(ride.id, msg.data.offer_id);
           if (applied) {
-            useDriverToasts.getState().push({
-              kind: 'paused',
-              rideId: ride.id,
-              title: 'Solicitud en modificación',
-              message: 'El pasajero está modificando su solicitud.',
-            });
+            postCommitEffect = () =>
+              useDriverToasts.getState().push({
+                kind: 'paused',
+                rideId: ride.id,
+                title: 'Solicitud en modificación',
+                message: 'El pasajero está modificando su solicitud.',
+              });
           }
           break;
         }
@@ -403,12 +492,13 @@ export function useDriverPoolSocket(enabled = true): void {
           await queryClient.cancelQueries({ queryKey: DRIVER_ACTIVE_RIDE_KEY });
           queryClient.setQueryData(DRIVER_ACTIVE_RIDE_KEY, ride);
           if (useDriverRequests.getState().markAssigned(ride.id)) {
-            useDriverToasts.getState().push({
-              kind: 'accepted',
-              rideId: ride.id,
-              title: '¡Viaje confirmado!',
-              message: 'El pasajero aceptó tu oferta.',
-            });
+            postCommitEffect = () =>
+              useDriverToasts.getState().push({
+                kind: 'accepted',
+                rideId: ride.id,
+                title: '¡Viaje confirmado!',
+                message: 'El pasajero aceptó tu oferta.',
+              });
           }
           break;
         }
@@ -419,45 +509,48 @@ export function useDriverPoolSocket(enabled = true): void {
             .getState()
             .markExpired(rideId, offerId);
           if (!applied) break;
-          useDriverToasts.getState().push({
-            kind: 'expired',
-            rideId,
-            title: 'Oferta expirada',
-            message: 'Pasaron 30 s sin respuesta del pasajero.',
-          });
+          postCommitEffect = () =>
+            useDriverToasts.getState().push({
+              kind: 'expired',
+              rideId,
+              title: 'Oferta expirada',
+              message: 'Pasaron 30 s sin respuesta del pasajero.',
+            });
           break;
         }
         case 'offer_rejected': {
           // Su oferta murió. La razón distingue el desenlace para el mensaje correcto.
           const { ride_id: rideId, offer_id: offerId, reason } = msg.data;
           const store = useDriverRequests.getState();
-          const toasts = useDriverToasts.getState();
           if (reason === 'ride_taken') {
             if (store.markTaken(rideId, offerId ?? undefined)) {
-              toasts.push({
-                kind: 'taken',
-                rideId,
-                title: 'Viaje tomado',
-                message: 'Otro conductor se quedó con este viaje.',
-              });
+              postCommitEffect = () =>
+                useDriverToasts.getState().push({
+                  kind: 'taken',
+                  rideId,
+                  title: 'Viaje tomado',
+                  message: 'Otro conductor se quedó con este viaje.',
+                });
             }
           } else if (reason === 'ride_cancelled') {
             if (store.markCancelled(rideId, offerId ?? undefined)) {
-              toasts.push({
-                kind: 'cancelled',
-                rideId,
-                title: 'Viaje cancelado',
-                message: 'El pasajero canceló la solicitud.',
-              });
+              postCommitEffect = () =>
+                useDriverToasts.getState().push({
+                  kind: 'cancelled',
+                  rideId,
+                  title: 'Viaje cancelado',
+                  message: 'El pasajero canceló la solicitud.',
+                });
             }
           } else {
             if (store.markRejected(rideId, offerId ?? undefined)) {
-              toasts.push({
-                kind: 'rejected',
-                rideId,
-                title: 'Oferta rechazada',
-                message: 'El pasajero rechazó tu oferta.',
-              });
+              postCommitEffect = () =>
+                useDriverToasts.getState().push({
+                  kind: 'rejected',
+                  rideId,
+                  title: 'Oferta rechazada',
+                  message: 'El pasajero rechazó tu oferta.',
+                });
             }
           }
           break;
@@ -487,7 +580,9 @@ export function useDriverPoolSocket(enabled = true): void {
           } else {
             store.withdrawOffered(msg.data.ride_ids);
           }
-          void queryClient.invalidateQueries({ queryKey: ['open-rides'] });
+          postCommitEffect = () => {
+            void queryClient.invalidateQueries({ queryKey: ['open-rides'] });
+          };
           break;
         }
         case 'ride_status': {
@@ -519,8 +614,92 @@ export function useDriverPoolSocket(enabled = true): void {
         default:
           break;
       }
-    }, driverSocketMessageSchema);
+      return postCommitEffect;
+    };
 
-    return () => handle.close();
-  }, [enabled, queryClient]);
+    const gate = createReplayGate();
+    let handle: SocketHandle | null = null;
+    const consumer = createRealtimeReplayConsumer<DriverRealtimeMessage>({
+      gate,
+      classify: (message): RealtimeProtocolClassification => {
+        if (!isVersionedSocketMessage(message)) {
+          if (
+            message.type === 'open_rides_snapshot' ||
+            message.type === 'paused_rides_snapshot' ||
+            message.type === 'driver_offers_snapshot' ||
+            message.type === 'driver_active_ride'
+          ) {
+            return {
+              protocol: 'legacy',
+              kind: 'snapshot',
+              completesHandshake: message.type === 'driver_offers_snapshot',
+            };
+          }
+          return { protocol: 'legacy', kind: 'event' };
+        }
+        return message.kind === 'snapshot'
+          ? {
+              protocol: 'v2',
+              kind: 'snapshot',
+              checkpoints: toReplayStreamCheckpoints(message),
+              requiredStreams: [
+                `pool:${vehicleType}`,
+                'pool:delivery',
+                `driver:${driverId}`,
+              ],
+            }
+          : {
+              protocol: 'v2',
+              kind: 'event',
+              metadata: toReplayEventMetadata(message),
+            };
+      },
+      applyLegacy: applyMessage,
+      applyEvent: applyMessage,
+      applySnapshot: async (message) => {
+        if (
+          !isVersionedSocketMessage(message) ||
+          message.kind !== 'snapshot' ||
+          message.type !== 'driver_snapshot'
+        ) {
+          throw new Error('Snapshot de conductor inválido.');
+        }
+        await applyDriverRealtimeSnapshot(
+          queryClient,
+          DRIVER_ACTIVE_RIDE_KEY,
+          useDriverRequests.getState(),
+          {
+            openRides: toOpenRidePage(message.data.open_rides),
+            pausedRides: message.data.paused_rides.map(toOpenRide),
+            offers: message.data.offers.map(toOffer),
+            activeRide:
+              message.data.active_ride == null
+                ? null
+                : toRide(message.data.active_ride),
+          },
+        );
+      },
+      onResync: () => handle?.resync(),
+    });
+    handle = openSocket(
+      '/ws/driver',
+      async (message) => {
+        await consumer.consume(message);
+      },
+      driverRealtimeMessageParser,
+      {
+        onConnection: consumer.beginConnection,
+        onInvalidFrame: () => handle?.resync(),
+        onHandlerError: () => handle?.resync(),
+      },
+    );
+
+    return () => handle?.close();
+  }, [
+    driverId,
+    enabled,
+    queryClient,
+    realtimeResyncSequence,
+    vehicleType,
+  ]);
 }

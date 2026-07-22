@@ -28,11 +28,23 @@ export type SentOffer = {
   rideFare: number;
   etaMin: number | null;
   expiresAt: string;
+  /** Intento local que la confirmó; ausente cuando procede de un snapshot. */
+  attemptToken?: number;
+};
+
+export type OfferSnapshotCut = {
+  attemptSequence: number;
 };
 
 export type ExactWithdrawnOffer = {
   rideId: string;
   offerId: string;
+};
+
+export type DriverPoolSnapshotRide = {
+  rideId: string;
+  poolVersion: number;
+  phase: 'open' | 'paused';
 };
 
 const FALLBACK_TTL_MS = 30_000;
@@ -235,13 +247,28 @@ type DriverRequestsState = {
   /** Token vigente de la última petición de oferta iniciada por ride. */
   offerAttemptTokens: Map<string, number>;
   offerAttemptSequence: number;
+  /** Secuencia local de intentos ya cubierta por el último snapshot de ofertas. */
+  offerSnapshotAttemptSequence: number | null;
+  /** Secuencia luego de que el snapshot invalidó intentos de rides incluidos. */
+  offerSnapshotAppliedAttemptSequence: number | null;
+  offerIdsAtSnapshot: Set<string>;
+  /** Solicita al hook WS un handshake nuevo ante una carrera HTTP ambigua. */
+  realtimeResyncSequence: number;
   applyPoolEvent: (event: DriverPoolEvent) => DriverPoolReduction;
+  reconcilePoolSnapshot: (rides: DriverPoolSnapshotRide[]) => void;
   dismiss: (rideId: string, poolVersion: number) => void;
   beginOfferAttempt: (rideId: string) => number;
+  beginOfferSnapshot: () => OfferSnapshotCut;
   invalidateAllOfferAttempts: () => void;
   markOffered: (
     rideId: string,
-    offer: { id: string; price: number; etaMin: number | null; expiresAt: string | null },
+    offer: {
+      id: string;
+      price: number;
+      etaMin: number | null;
+      expiresAt: string | null;
+      createdAt?: string | null;
+    },
     rideFare: number | undefined,
     attemptToken: number,
   ) => boolean;
@@ -256,6 +283,7 @@ type DriverRequestsState = {
       etaMin: number | null;
       expiresAt: string | null;
     }[],
+    cut?: OfferSnapshotCut,
   ) => void;
   markRejected: (rideId: string, offerId?: string) => boolean;
   markTaken: (rideId: string, offerId?: string) => boolean;
@@ -289,6 +317,10 @@ export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
   terminalRideIds: new Set(),
   offerAttemptTokens: new Map(),
   offerAttemptSequence: 0,
+  offerSnapshotAttemptSequence: null,
+  offerSnapshotAppliedAttemptSequence: null,
+  offerIdsAtSnapshot: new Set(),
+  realtimeResyncSequence: 0,
   applyPoolEvent: (event) => {
     let result: DriverPoolReduction | null = null;
     set((s) => {
@@ -349,6 +381,53 @@ export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
     }
     return result;
   },
+  reconcilePoolSnapshot: (rides) =>
+    set((s) => {
+      let poolProjection: DriverPoolProjection = new Map();
+      const paused = new Set<string>();
+      const visibleRideIds = new Set<string>();
+      const openVersions = new Map<string, number>();
+      for (const ride of rides) {
+        poolProjection = rememberPoolCycle(poolProjection, ride.rideId, {
+          poolVersion: ride.poolVersion,
+          phase: ride.phase,
+        });
+        visibleRideIds.add(ride.rideId);
+        if (ride.phase === 'paused') paused.add(ride.rideId);
+        else openVersions.set(ride.rideId, ride.poolVersion);
+      }
+
+      const rejected = new Set(s.rejected);
+      const taken = new Set(s.taken);
+      const expired = new Set(s.expired);
+      const expiredFares = { ...s.expiredFares };
+      const terminalRideIds = new Set(s.terminalRideIds);
+      for (const rideId of visibleRideIds) {
+        rejected.delete(rideId);
+        taken.delete(rideId);
+        expired.delete(rideId);
+        delete expiredFares[rideId];
+        terminalRideIds.delete(rideId);
+      }
+
+      const dismissed = new Map(s.dismissed);
+      for (const [rideId, poolVersion] of openVersions) {
+        const dismissedVersion = dismissed.get(rideId);
+        if (dismissedVersion != null && dismissedVersion < poolVersion) {
+          dismissed.delete(rideId);
+        }
+      }
+      return {
+        poolProjection,
+        dismissed,
+        rejected,
+        taken,
+        expired,
+        expiredFares,
+        paused,
+        terminalRideIds,
+      };
+    }),
   dismiss: (rideId, poolVersion) =>
     set((s) => ({ dismissed: new Map(s.dismissed).set(rideId, poolVersion) })),
   beginOfferAttempt: (rideId) => {
@@ -364,6 +443,9 @@ export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
     });
     return token;
   },
+  beginOfferSnapshot: () => ({
+    attemptSequence: get().offerAttemptSequence,
+  }),
   invalidateAllOfferAttempts: () =>
     set((s) => {
       let offerAttemptSequence = s.offerAttemptSequence;
@@ -382,8 +464,34 @@ export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
   markOffered: (rideId, offer, rideFare, attemptToken) => {
     let applied = false;
     set((s) => {
+      if (s.offerAttemptTokens.get(rideId) !== attemptToken) {
+        if (
+          s.offerSnapshotAppliedAttemptSequence != null &&
+          attemptToken <= s.offerSnapshotAppliedAttemptSequence &&
+          (s.offerAttemptTokens.get(rideId) ?? 0) <=
+            s.offerSnapshotAppliedAttemptSequence &&
+          !s.offerIdsAtSnapshot.has(offer.id) &&
+          !s.settledOfferIds.has(offer.id) &&
+          !s.terminalRideIds.has(rideId)
+        ) {
+          return { realtimeResyncSequence: s.realtimeResyncSequence + 1 };
+        }
+        return s;
+      }
       if (
-        s.offerAttemptTokens.get(rideId) !== attemptToken ||
+        s.offerSnapshotAttemptSequence != null &&
+        attemptToken <= s.offerSnapshotAttemptSequence
+      ) {
+        return {
+          realtimeResyncSequence: s.realtimeResyncSequence + 1,
+          ...advanceOfferAttempt(
+            s.offerAttemptSequence,
+            s.offerAttemptTokens,
+            rideId,
+          ),
+        };
+      }
+      if (
         s.settledOfferIds.has(offer.id) ||
         s.terminalRideIds.has(rideId) ||
         s.paused.has(rideId)
@@ -413,6 +521,7 @@ export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
             etaMin: offer.etaMin,
             // Sin fecha del backend, asumimos la ventana de oferta (30 s) desde ahora.
             expiresAt: offer.expiresAt ?? new Date(Date.now() + FALLBACK_TTL_MS).toISOString(),
+            attemptToken,
           },
         },
         rejected,
@@ -429,7 +538,7 @@ export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
     });
     return applied;
   },
-  reconcileOffered: (snapshot) =>
+  reconcileOffered: (snapshot, cut) =>
     set((s) => {
       const offered: Record<string, SentOffer> = {};
       const liveRideIds = new Set<string>();
@@ -466,6 +575,27 @@ export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
         };
       }
 
+      const offerIdsAtSnapshot = cut != null
+        ? new Set(snapshot.map((offer) => offer.id))
+        : s.offerIdsAtSnapshot;
+      const missingLocalOffer =
+        cut != null &&
+        Object.values(s.offered).some(
+          (current) =>
+            current.attemptToken != null &&
+            !offerIdsAtSnapshot.has(current.offerId),
+        );
+
+      // No se comparan timestamps del servidor: PostgreSQL ``now()`` ordena
+      // inicios de transacción, no commits. El corte local detecta tanto un 201
+      // posterior como uno que resolvió mientras se aplicaba el snapshot.
+      const offerSnapshotAttemptSequence = cut != null
+        ? cut.attemptSequence
+        : s.offerSnapshotAttemptSequence;
+      const offerSnapshotAppliedAttemptSequence = cut != null
+        ? offerAttemptSequence
+        : s.offerSnapshotAppliedAttemptSequence;
+
       // El snapshot PENDING limpia desenlaces visuales viejos del mismo ride.
       const rejected = new Set(s.rejected);
       const taken = new Set(s.taken);
@@ -490,6 +620,12 @@ export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
         terminalRideIds,
         offerAttemptSequence,
         offerAttemptTokens,
+        offerSnapshotAttemptSequence,
+        offerSnapshotAppliedAttemptSequence,
+        offerIdsAtSnapshot,
+        realtimeResyncSequence: missingLocalOffer
+          ? s.realtimeResyncSequence + 1
+          : s.realtimeResyncSequence,
       };
     }),
   // Cada desenlace limpia la entrada de `offered` (sin zombies) y crea sets nuevos
@@ -762,6 +898,10 @@ export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
       terminalRideIds: new Set(),
       offerAttemptTokens: new Map(),
       offerAttemptSequence: 0,
+      offerSnapshotAttemptSequence: null,
+      offerSnapshotAppliedAttemptSequence: null,
+      offerIdsAtSnapshot: new Set(),
+      realtimeResyncSequence: 0,
     }),
 }));
 

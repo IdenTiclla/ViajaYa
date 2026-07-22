@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
 
-from app.application.dto import ScheduledAction
+from app.application.dto import (
+    ExecuteExpireOfferScheduledActionResult,
+    ScheduledAction,
+)
 from app.application.exceptions import InvalidScheduledActionError
 from app.application.interfaces import (
     ExpireOfferEventRecorder,
@@ -32,7 +34,7 @@ class ExecuteExpireOfferScheduledAction:
         self,
         action: ScheduledAction,
         completed_at: datetime,
-    ) -> Literal["succeeded", "lost_lease"]:
+    ) -> ExecuteExpireOfferScheduledActionResult:
         if (
             action.action_type != "expire_offer"
             or action.payload != {"offer_id": str(action.aggregate_id)}
@@ -53,9 +55,12 @@ class ExecuteExpireOfferScheduledAction:
             )
             if not completed:
                 await self._unit_of_work.rollback()
-                return "lost_lease"
+                return ExecuteExpireOfferScheduledActionResult(status="lost_lease")
             await self._unit_of_work.commit()
-            return "succeeded"
+            return ExecuteExpireOfferScheduledActionResult(
+                status="succeeded",
+                expired_offer=offer,
+            )
         except BaseException:
             await self._unit_of_work.rollback()
             raise

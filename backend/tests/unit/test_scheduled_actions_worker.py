@@ -99,6 +99,13 @@ class _FailingExecutor(ScheduledActionExecutor):
         raise TimeoutError("detalle que no debe persistirse")
 
 
+def _fixed_clock(moment: datetime):
+    async def now(_session: AsyncSession) -> datetime:
+        return moment
+
+    return now
+
+
 def _worker(
     sessions: async_sessionmaker[AsyncSession],
     executor: ScheduledActionExecutor,
@@ -116,7 +123,7 @@ def _worker(
         max_attempts=max_attempts,
         retry_base_seconds=1,
         retry_max_seconds=60,
-        clock=lambda: now,
+        clock=_fixed_clock(now),
     )
 
 
@@ -157,6 +164,44 @@ async def test_error_transitorio_solo_persiste_codigo_y_backoff(
     assert row.next_attempt_at.replace(tzinfo=UTC) == now + timedelta(seconds=1)
     assert "detalle" not in (row.last_error or "")
     assert worker.retried_count == 1
+
+
+async def test_claim_y_retry_usan_instantes_leidos_en_sesiones_distintas(
+    action_sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    claim_at = datetime.now(UTC)
+    failure_at = claim_at + timedelta(seconds=7)
+    await _schedule(action_sessions, claim_at)
+    moments = iter((claim_at, failure_at))
+    sessions_seen: list[AsyncSession] = []
+
+    async def advancing_clock(session: AsyncSession) -> datetime:
+        sessions_seen.append(session)
+        return next(moments)
+
+    worker = ScheduledActionsWorker(
+        action_sessions,
+        _FailingExecutor(),
+        poll_interval_seconds=30,
+        lease_seconds=30,
+        handler_timeout_seconds=10,
+        max_attempts=5,
+        retry_base_seconds=1,
+        retry_max_seconds=60,
+        clock=advancing_clock,
+    )
+
+    result = await worker.dispatch_once()
+
+    async with action_sessions() as session:
+        row = await session.scalar(select(ScheduledActionModel))
+    assert result.status == "retried"
+    assert row is not None
+    assert row.locked_at is None
+    assert row.updated_at.replace(tzinfo=UTC) == failure_at
+    assert row.next_attempt_at.replace(tzinfo=UTC) == failure_at + timedelta(seconds=1)
+    assert len(sessions_seen) == 2
+    assert sessions_seen[0] is not sessions_seen[1]
 
 
 async def test_ultimo_intento_termina_dead(
@@ -236,8 +281,46 @@ async def test_run_se_detiene_durante_polling_sin_tarea_huerfana(
     assert worker.running is False
 
 
+async def test_reconciliacion_se_limita_al_intervalo_de_polling(
+    action_sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    now = datetime.now(UTC)
+    calls = 0
+
+    class CountingReconciler:
+        def __init__(self, _session: AsyncSession) -> None:
+            pass
+
+        async def reconcile(self, action_limit: int) -> int:
+            nonlocal calls
+            assert action_limit == 1000
+            calls += 1
+            return 0
+
+    worker = ScheduledActionsWorker(
+        action_sessions,
+        _SucceedingExecutor(action_sessions, now),
+        poll_interval_seconds=30,
+        lease_seconds=30,
+        handler_timeout_seconds=10,
+        max_attempts=5,
+        retry_base_seconds=1,
+        retry_max_seconds=60,
+        clock=_fixed_clock(now),
+        reconciler_factory=CountingReconciler,
+    )
+
+    assert (await worker.dispatch_once()).status == "empty"
+    assert (await worker.dispatch_once()).status == "empty"
+    assert calls == 1
+
+
 def test_settings_define_rollout_independiente_y_seguro() -> None:
-    assert Settings(_env_file=None).scheduled_actions_mode == "off"
+    defaults = Settings(_env_file=None)
+    assert defaults.scheduled_actions_mode == "off"
+    assert defaults.scheduled_actions_terminal_retention_days == 30
+    assert defaults.scheduled_actions_retention_interval_seconds == 60
+    assert defaults.scheduled_actions_retention_batch_limit == 1000
     assert (
         Settings(_env_file=None, scheduled_actions_mode="shadow").scheduled_actions_mode
         == "shadow"
@@ -275,10 +358,43 @@ async def test_lifecycle_live_inicia_y_detiene_scheduler_antes_del_dispatcher(
     async with app.router.lifespan_context(app):
         worker = app.state.scheduled_actions_worker
         task = app.state.scheduled_actions_task
+        retention_worker = app.state.scheduled_actions_retention_worker
+        retention_task = app.state.scheduled_actions_retention_task
         assert isinstance(worker, ScheduledActionsWorker)
         assert worker.running is True
         assert task is not None and not task.done()
+        assert retention_worker.running is True
+        assert retention_task is not None and not retention_task.done()
 
     assert worker.running is False
     assert task.done()
+    assert retention_worker.running is False
+    assert retention_task.done()
     assert app.state.realtime_outbox_dispatcher.running is False
+
+
+async def test_lifecycle_shadow_ejecuta_scheduler_y_conserva_timer_legacy(
+    session_factory,
+) -> None:
+    settings = Settings(
+        _env_file=None,
+        scheduled_actions_mode="shadow",
+        scheduled_actions_poll_interval_seconds=30,
+    )
+    app = create_app(settings=settings, session_factory=session_factory)
+
+    async with app.router.lifespan_context(app):
+        worker = app.state.scheduled_actions_worker
+        task = app.state.scheduled_actions_task
+        retention_worker = app.state.scheduled_actions_retention_worker
+        retention_task = app.state.scheduled_actions_retention_task
+        assert isinstance(worker, ScheduledActionsWorker)
+        assert worker.running is True
+        assert task is not None and not task.done()
+        assert retention_worker.running is True
+        assert retention_task is not None and not retention_task.done()
+
+    assert worker.running is False
+    assert task.done()
+    assert retention_worker.running is False
+    assert retention_task.done()

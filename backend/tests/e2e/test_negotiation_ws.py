@@ -108,16 +108,16 @@ def ws_client(tmp_path):
         async with factory() as session:
             yield session
 
-    app = create_app()
-    app.dependency_overrides[get_session] = override_get_session
-    app.dependency_overrides[get_session_factory] = lambda: factory
-
     async def create_tables() -> None:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
 
+    asyncio.run(create_tables())
+    app = create_app(session_factory=factory)
+    app.dependency_overrides[get_session] = override_get_session
+    app.dependency_overrides[get_session_factory] = lambda: factory
+
     with TestClient(app) as client:
-        client.portal.call(create_tables)
         client.factory = factory  # type: ignore[attr-defined]
         try:
             yield client

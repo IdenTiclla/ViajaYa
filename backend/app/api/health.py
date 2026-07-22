@@ -31,6 +31,7 @@ class HealthResponse(BaseModel):
 class ReadinessChecksResponse(BaseModel):
     database: Literal["ok", "error"]
     scheduled_actions_worker: Literal["ok", "error", "disabled"]
+    scheduled_actions_retention: Literal["ok", "error", "disabled"]
     realtime_outbox_dispatcher: Literal["ok", "error", "disabled"]
     realtime_outbox_process_lock: Literal["ok", "error", "disabled"]
     realtime_outbox_retention: Literal["ok", "error", "disabled"]
@@ -85,6 +86,8 @@ class ScheduledActionsHealthResponse(BaseModel):
     retried_count: int | None = None
     dead_count: int | None = None
     recovered_lease_count: int | None = None
+    retention_days: int | None = None
+    retention_deleted_action_count: int | None = None
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -170,7 +173,7 @@ async def readiness(
 
     scheduled_ready = True
     scheduled_status: Literal["ok", "error", "disabled"] = "disabled"
-    if settings.scheduled_actions_mode == "live":
+    if settings.scheduled_actions_mode in {"shadow", "live"}:
         scheduled_worker = request.app.state.scheduled_actions_worker
         scheduled_task = request.app.state.scheduled_actions_task
         scheduled_ready = bool(
@@ -181,18 +184,32 @@ async def readiness(
         )
         scheduled_status = "ok" if scheduled_ready else "error"
 
+    scheduled_retention_ready = True
+    scheduled_retention_status: Literal["ok", "error", "disabled"] = "disabled"
+    scheduled_retention_worker = request.app.state.scheduled_actions_retention_worker
+    scheduled_retention_task = request.app.state.scheduled_actions_retention_task
+    scheduled_retention_ready = bool(
+        scheduled_retention_worker is not None
+        and scheduled_retention_worker.running
+        and scheduled_retention_task is not None
+        and not scheduled_retention_task.done()
+    )
+    scheduled_retention_status = "ok" if scheduled_retention_ready else "error"
+
     ready = (
         database_ready
         and dispatcher_ready
         and process_lock_ready
         and retention_ready
         and scheduled_ready
+        and scheduled_retention_ready
     )
     response = ReadinessResponse(
         status="ok" if ready else "unavailable",
         checks=ReadinessChecksResponse(
             database="ok" if database_ready else "error",
             scheduled_actions_worker=scheduled_status,
+            scheduled_actions_retention=scheduled_retention_status,
             realtime_outbox_dispatcher=dispatcher_status,
             realtime_outbox_process_lock=process_lock_status,
             realtime_outbox_retention=retention_status,
@@ -311,6 +328,7 @@ async def scheduled_actions_health(
         )
 
     worker = request.app.state.scheduled_actions_worker
+    retention_worker = request.app.state.scheduled_actions_retention_worker
     return ScheduledActionsHealthResponse(
         status="ok",
         mode=mode,
@@ -336,5 +354,11 @@ async def scheduled_actions_health(
         dead_count=worker.dead_count if worker is not None else 0,
         recovered_lease_count=(
             worker.recovered_lease_count if worker is not None else 0
+        ),
+        retention_days=settings.scheduled_actions_terminal_retention_days,
+        retention_deleted_action_count=(
+            retention_worker.deleted_action_count
+            if retention_worker is not None
+            else 0
         ),
     )

@@ -53,6 +53,7 @@ from app.domain.repositories import (
     WithdrawnOfferReference,
 )
 from app.domain.ride_policy import is_offer_expired
+from app.infrastructure.db.clock import DatabaseClock, database_utc_now
 from app.infrastructure.db.models import (
     DriverRideDismissalModel,
     OfferModel,
@@ -932,6 +933,7 @@ class SqlAlchemyOfferRepository(OfferRepository):
         commit_reject_if_pending: bool = True,
         commit_mark_expired_if_pending: bool = True,
         commit_set_driver_offline: bool = True,
+        clock: DatabaseClock = database_utc_now,
     ) -> None:
         self._session = session
         # Migración incremental: estas mutaciones participan del UoW; los demás
@@ -943,6 +945,7 @@ class SqlAlchemyOfferRepository(OfferRepository):
         self._commit_reject_if_pending = commit_reject_if_pending
         self._commit_mark_expired_if_pending = commit_mark_expired_if_pending
         self._commit_set_driver_offline = commit_set_driver_offline
+        self._clock = clock
 
     async def add(self, offer: Offer) -> Offer:
         row = OfferModel(
@@ -1434,7 +1437,14 @@ class SqlAlchemyOfferRepository(OfferRepository):
         if offer_row is None or offer_row.status is not OfferStatus.PENDING:
             await self._session.rollback()
             return None
-        if is_offer_expired(_offer_to_entity(offer_row)):
+        # La decisión monetaria se toma con el mismo reloj autoritativo que el
+        # scheduler y después de adquirir todos los locks de la aceptación.
+        now = (
+            await self._clock(self._session)
+            if self._session.get_bind().dialect.name == "postgresql"
+            else datetime.now(UTC)
+        )
+        if is_offer_expired(_offer_to_entity(offer_row), now):
             # La expiración tiene su propio caso de uso. En el modo UoW de
             # aceptación no se confirma un efecto lateral sin su evento durable.
             if self._commit_accept:
@@ -1532,11 +1542,16 @@ class SqlAlchemyOfferRepository(OfferRepository):
                 .execution_options(populate_existing=True)
             )
         ).scalar_one_or_none()
-        if (
-            offer_row is None
-            or offer_row.status is not OfferStatus.PENDING
-            or not is_offer_expired(_offer_to_entity(offer_row))
-        ):
+        if offer_row is None or offer_row.status is not OfferStatus.PENDING:
+            if self._commit_mark_expired_if_pending:
+                await self._session.rollback()
+            return None
+
+        # Debe leerse después del ``FOR UPDATE``. Si esta consulta esperó a
+        # otra transacción, usar el inicio de la transacción podría considerar
+        # fresca una oferta cuyo TTL venció mientras esperaba el bloqueo.
+        now = await self._clock(self._session)
+        if not is_offer_expired(_offer_to_entity(offer_row), now):
             if self._commit_mark_expired_if_pending:
                 await self._session.rollback()
             return None

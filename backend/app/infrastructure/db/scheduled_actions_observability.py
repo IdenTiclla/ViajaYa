@@ -78,7 +78,7 @@ class SqlAlchemyScheduledActionsOperationalReader(
                         0,
                     ),
                     func.min(ScheduledActionModel.execute_at).filter(due),
-                    func.min(ScheduledActionModel.execute_at).filter(
+                    func.min(ScheduledActionModel.next_attempt_at).filter(
                         ScheduledActionModel.status == "pending"
                     ),
                     func.max(ScheduledActionModel.terminal_at).filter(

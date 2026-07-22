@@ -7,11 +7,17 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy import delete, func, select, update
-from sqlalchemy.ext.asyncio import async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.api.deps import build_expire_offer, get_create_offer
+from app.api.deps import (
+    build_expire_offer_and_complete_scheduled_action,
+    get_create_offer,
+)
 from app.api.v1.scheduled_actions import ApplicationScheduledActionExecutor
 from app.application.dto import CreateOfferInput
+from app.application.use_cases.reconcile_missing_offer_scheduled_actions import (
+    ReconcileMissingOfferScheduledActions,
+)
 from app.domain.entities import (
     Location,
     OfferStatus,
@@ -35,6 +41,10 @@ from app.infrastructure.db.repositories import (
 from app.infrastructure.db.scheduled_actions import (
     SqlAlchemyScheduledActionRepository,
 )
+from app.infrastructure.db.scheduled_actions_reconciliation import (
+    SqlAlchemyMissingOfferScheduledActionsReconciler,
+)
+from app.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from app.infrastructure.scheduled_actions.worker import ScheduledActionsWorker
 
 
@@ -100,13 +110,20 @@ async def _make_due(sessions, offer_id: uuid.UUID, now: datetime) -> None:
         await session.commit()
 
 
-def _worker(sessions, settings: Settings, now: datetime) -> ScheduledActionsWorker:
+def _worker(
+    sessions,
+    settings: Settings,
+    now: datetime,
+) -> ScheduledActionsWorker:
+    async def fixed_clock(_session: AsyncSession) -> datetime:
+        return now
+
     return ScheduledActionsWorker(
         sessions,
         ApplicationScheduledActionExecutor(
             sessions,
             settings,
-            clock=lambda: now,
+            clock=fixed_clock,
         ),
         poll_interval_seconds=30,
         lease_seconds=30,
@@ -114,7 +131,7 @@ def _worker(sessions, settings: Settings, now: datetime) -> ScheduledActionsWork
         max_attempts=5,
         retry_base_seconds=1,
         retry_max_seconds=60,
-        clock=lambda: now,
+        clock=fixed_clock,
     )
 
 
@@ -186,10 +203,13 @@ async def test_timer_shadow_y_worker_compiten_sin_duplicar_outbox(
     try:
         # El timer legado gana durante shadow.
         async with sessions() as session:
-            expired = await build_expire_offer(session, settings).execute(offer.id)
+            expired = await build_expire_offer_and_complete_scheduled_action(
+                session,
+                settings,
+            ).execute(offer.id, now)
             assert expired is not None
 
-        # Al activar el worker, la acción converge como no-op exitoso.
+        # El worker ya no reclama la acción completada por el timer.
         result = await _worker(sessions, settings, now).dispatch_once()
 
         async with sessions() as session:
@@ -203,8 +223,91 @@ async def test_timer_shadow_y_worker_compiten_sin_duplicar_outbox(
                     RealtimeOutboxModel.aggregate_id == ride.id
                 )
             )
-        assert result.status == "succeeded"
+        assert result.status == "empty"
         assert action_status == "succeeded"
         assert outbox_count == 3
+    finally:
+        await _delete_action(sessions, offer.id)
+
+
+async def test_oferta_creada_off_se_recupera_al_promover_a_shadow(
+    pg_test_db,
+) -> None:
+    sessions = async_sessionmaker(pg_test_db.engine, expire_on_commit=False)
+    off_settings = Settings(_env_file=None, scheduled_actions_mode="off")
+    _, _, _, offer = await _create_scheduled_offer(sessions, off_settings)
+    now = datetime.now(UTC)
+    await _make_due(sessions, offer.id, now)
+    shadow_settings = Settings(
+        _env_file=None,
+        realtime_outbox_dispatch_mode="shadow",
+        realtime_outbox_recording_enabled=True,
+        scheduled_actions_mode="shadow",
+    )
+    try:
+        result = await _worker(sessions, shadow_settings, now).dispatch_once()
+
+        async with sessions() as session:
+            offer_status = await session.scalar(
+                select(OfferModel.status).where(OfferModel.id == offer.id)
+            )
+            action_status = await session.scalar(
+                select(ScheduledActionModel.status).where(
+                    ScheduledActionModel.aggregate_id == offer.id
+                )
+            )
+
+        assert result.status == "succeeded"
+        assert offer_status is OfferStatus.EXPIRED
+        assert action_status == "succeeded"
+    finally:
+        await _delete_action(sessions, offer.id)
+
+
+async def test_shadow_reconcilia_oferta_creada_despues_del_backfill(
+    pg_test_db,
+) -> None:
+    sessions = async_sessionmaker(pg_test_db.engine, expire_on_commit=False)
+    settings = _settings(mode="shadow")
+    _, _, _, offer = await _create_scheduled_offer(sessions, settings)
+    now = datetime.now(UTC)
+    await _delete_action(sessions, offer.id)
+    async with sessions() as session:
+        await session.execute(
+            update(OfferModel)
+            .where(OfferModel.id == offer.id)
+            .values(created_at=now - OFFER_TTL - timedelta(seconds=1))
+        )
+        await session.commit()
+
+    try:
+        async with sessions() as session:
+            reconciled = await ReconcileMissingOfferScheduledActions(
+                SqlAlchemyMissingOfferScheduledActionsReconciler(session),
+                SqlAlchemyUnitOfWork(session),
+            ).execute(1000)
+            await session.execute(
+                delete(ScheduledActionModel).where(
+                    ScheduledActionModel.aggregate_id != offer.id
+                )
+            )
+            await session.commit()
+
+        result = await _worker(sessions, settings, now).dispatch_once()
+
+        async with sessions() as session:
+            offer_status = await session.scalar(
+                select(OfferModel.status).where(OfferModel.id == offer.id)
+            )
+            action = await session.scalar(
+                select(ScheduledActionModel).where(
+                    ScheduledActionModel.aggregate_id == offer.id
+                )
+            )
+
+        assert result.status == "succeeded"
+        assert reconciled >= 1
+        assert offer_status is OfferStatus.EXPIRED
+        assert action is not None and action.status == "succeeded"
     finally:
         await _delete_action(sessions, offer.id)

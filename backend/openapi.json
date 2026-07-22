@@ -846,6 +846,15 @@
             "title": "Realtime Outbox Retention",
             "type": "string"
           },
+          "scheduled_actions_retention": {
+            "enum": [
+              "ok",
+              "error",
+              "disabled"
+            ],
+            "title": "Scheduled Actions Retention",
+            "type": "string"
+          },
           "scheduled_actions_worker": {
             "enum": [
               "ok",
@@ -859,6 +868,7 @@
         "required": [
           "database",
           "scheduled_actions_worker",
+          "scheduled_actions_retention",
           "realtime_outbox_dispatcher",
           "realtime_outbox_process_lock",
           "realtime_outbox_retention"
@@ -1855,6 +1865,28 @@
               }
             ],
             "title": "Recovered Lease Count"
+          },
+          "retention_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retention Days"
+          },
+          "retention_deleted_action_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retention Deleted Action Count"
           },
           "retried_count": {
             "anyOf": [

@@ -82,6 +82,15 @@ class ScheduledActionQueue(ScheduledActionScheduler):
         """Confirma el éxito solo si el caller todavía posee el lease."""
 
     @abstractmethod
+    async def mark_succeeded_if_pending(
+        self,
+        dedupe_key: str,
+        generation: int,
+        terminal_at: datetime,
+    ) -> bool:
+        """Completa el timer legacy solo si ningún worker reclamó la acción."""
+
+    @abstractmethod
     async def mark_failed(
         self,
         action_id: uuid.UUID,
@@ -114,6 +123,26 @@ class ScheduledActionsOperationalReader(ABC):
         stale_before: datetime,
     ) -> ScheduledActionsOperationalState:
         """Cuenta acciones vencidas, leases y terminales bajo un corte corto."""
+
+
+class TerminalScheduledActionsRetention(ABC):
+    """Elimina acciones exitosas o canceladas después de su retención."""
+
+    @abstractmethod
+    async def purge(
+        self,
+        cutoff: datetime,
+        action_limit: int,
+    ) -> int:
+        """Marca para borrado un chunk acotado y devuelve cuántas filas eliminó."""
+
+
+class MissingOfferScheduledActionsReconciler(ABC):
+    """Repara ofertas legacy que todavía no tienen una expiración durable."""
+
+    @abstractmethod
+    async def reconcile(self, action_limit: int) -> int:
+        """Agenda un chunk de expiraciones ausentes y devuelve cuántas creó."""
 
 
 class RealtimeOutbox(ABC):

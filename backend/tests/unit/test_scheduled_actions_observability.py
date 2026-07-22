@@ -49,6 +49,7 @@ def _row(
     status: str,
     action_type: str = "expire_offer",
     execute_offset: int = -10,
+    next_attempt_offset: int | None = None,
     attempts: int = 0,
     locked_offset: int | None = None,
     terminal_offset: int | None = None,
@@ -73,7 +74,14 @@ def _row(
         payload={"dato_privado": "no-exponer"},
         status=status,
         attempts=attempts,
-        next_attempt_at=now + timedelta(seconds=execute_offset),
+        next_attempt_at=now
+        + timedelta(
+            seconds=(
+                next_attempt_offset
+                if next_attempt_offset is not None
+                else execute_offset
+            )
+        ),
         locked_at=locked_at,
         lock_token=uuid.uuid4() if locked_at is not None else None,
         last_error="RuntimeError" if attempts else None,
@@ -138,6 +146,29 @@ async def test_snapshot_cuenta_due_retries_leases_y_dead_sin_payloads(
     assert "dato_privado" not in repr(snapshot)
 
 
+async def test_next_due_respeta_el_backoff_y_no_el_deadline_original(sessions) -> None:
+    now = datetime.now(UTC)
+    async with sessions() as session:
+        session.add(
+            _row(
+                now=now,
+                status="pending",
+                execute_offset=-30,
+                next_attempt_offset=45,
+                attempts=1,
+            )
+        )
+        await session.commit()
+
+    async with sessions() as session:
+        snapshot = await GetScheduledActionsOperationalSnapshot(
+            SqlAlchemyScheduledActionsOperationalReader(session)
+        ).execute(now, lease_seconds=30)
+
+    assert snapshot.due_count == 0
+    assert snapshot.next_due_at == now + timedelta(seconds=45)
+
+
 async def test_health_scheduled_actions_off_no_exige_tabla() -> None:
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     sessions = async_sessionmaker(engine, expire_on_commit=False)
@@ -165,8 +196,7 @@ async def test_health_shadow_expone_solo_agregados(sessions) -> None:
         session_factory=sessions,
     )
 
-    async with app.router.lifespan_context(app):
-        response = await _get(app, "/health/scheduled-actions")
+    response = await _get(app, "/health/scheduled-actions")
 
     assert response.status_code == 200
     payload = response.json()
@@ -179,6 +209,8 @@ async def test_health_shadow_expone_solo_agregados(sessions) -> None:
         {"action_type": "tipo_desconocido", "action_count": 1},
     ]
     assert payload["claimed_count"] == 0
+    assert payload["retention_days"] == 30
+    assert payload["retention_deleted_action_count"] == 0
     assert "payload" not in response.text
     assert "dedupe" not in response.text
     assert "dato_privado" not in response.text

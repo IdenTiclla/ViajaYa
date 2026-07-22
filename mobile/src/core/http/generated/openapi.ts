@@ -1003,6 +1003,11 @@ export interface components {
              */
             realtime_outbox_retention: "ok" | "error" | "disabled";
             /**
+             * Scheduled Actions Retention
+             * @enum {string}
+             */
+            scheduled_actions_retention: "ok" | "error" | "disabled";
+            /**
              * Scheduled Actions Worker
              * @enum {string}
              */
@@ -1312,6 +1317,10 @@ export interface components {
             pending_count?: number | null;
             /** Recovered Lease Count */
             recovered_lease_count?: number | null;
+            /** Retention Days */
+            retention_days?: number | null;
+            /** Retention Deleted Action Count */
+            retention_deleted_action_count?: number | null;
             /** Retried Count */
             retried_count?: number | null;
             /** Retrying Count */

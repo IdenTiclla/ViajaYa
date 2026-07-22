@@ -5,8 +5,9 @@ Con `OPENMETRICS_ENABLED=true`, la API expone `/metrics` en formato OpenMetrics
 informa únicamente la configuración y los contadores locales; en `shadow` o
 `live_local` añade el corte persistido de la outbox.
 Cuando `SCHEDULED_ACTIONS_MODE=shadow|live`, el mismo documento añade backlog,
-leases y contadores del scheduler; `/health/scheduled-actions` ofrece el corte
-JSON equivalente para diagnóstico.
+leases, ejecución y retención del scheduler; `/health/scheduled-actions` ofrece
+el corte JSON equivalente para diagnóstico. Shadow ejecuta el worker además del
+timer legacy, por lo que no debe acumular acciones `due` como comportamiento normal.
 
 Prometheus debe usar un job cuyo nombre comience con `viajaya-backend` y cargar
 `viajaya-realtime.rules.yml` mediante `rule_files`. Ejemplo mínimo:
@@ -74,7 +75,10 @@ Staging o producción deben añadir una regla sobre
   de PostgreSQL. Esta gauge describe el último batch, no un percentil ni un SLO.
 - Scheduler: una acción `due` envejecida indica ejecución atrasada; un lease
   `stale` debe recuperarse automáticamente. No borres acciones `dead`: conserva
-  su código sanitizado y corrige el handler antes de reprogramarlas.
+  su código sanitizado y corrige el handler antes de reprogramarlas. La retención
+  automática solo elimina `succeeded/cancelled` después del TTL configurado. La
+  alerta crítica observa nuevas transiciones a `dead` en una ventana de 10 min y
+  se resuelve al cesar el incidente; la gauge `dead_persisted` conserva el inventario.
 
 La automatización del receptor, silencios y escalamiento pertenece a
 Alertmanager del entorno. No hay un acknowledgement persistido para cuarentenas;

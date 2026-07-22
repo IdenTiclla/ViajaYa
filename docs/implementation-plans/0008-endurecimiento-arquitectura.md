@@ -621,7 +621,9 @@ seguirán siendo la defensa final contra carreras.
 > deduplicación, generación, lease recuperable y `lock_token` de fencing; además
 > hace backfill de las ofertas `PENDING` respetando `created_at + 30 s`. La
 > creación de una oferta ya persiste `expire_offer` en su misma UoW y el rollout
-> `off|shadow|live` permite comparar primero el dual-write. En `live`, el worker
+> `off|shadow|live` permite comparar primero el dual-write. La acción se registra
+> en los tres modos; `off` conserva el timer, `shadow` ejecuta worker + timer y
+> mantiene la entrega legacy, y `live` depende exclusivamente del worker. En live, el worker
 > reemplaza el timer local, confirma oferta expirada + outbox + ack de acción en
 > una transacción y recupera claims abandonados con `FOR UPDATE SKIP LOCKED`.
 > PostgreSQL certifica dos claimers, token obsoleto, `SIGKILL` real tras confirmar
@@ -632,11 +634,16 @@ seguirán siendo la defensa final contra carreras.
 > procesos. `/health/scheduled-actions` y `/metrics` exponen únicamente conteos,
 > edades y tipos acotados; Prometheus alerta worker detenido, backlog vencido,
 > leases estancados y acciones `dead` sin publicar payloads ni identificadores.
+> Claims, leases, retries y validación del TTL usan `clock_timestamp()` de
+> PostgreSQL. Una retención obligatoria elimina por lotes únicamente acciones
+> `succeeded/cancelled`; `dead` se conserva indefinidamente. El arranque y cada
+> ciclo del consumidor reconcilian ofertas que un pod anterior pudo crear después
+> del backfill, y la publicación legacy shadow se desacopla del timeout del handler.
 
 ## Despliegue incremental
 
 1. Publicar métricas y documentar el límite actual de un worker.
-2. Aplicar `0018`–`0021` y desplegar las tablas de outbox sin consumidores.
+2. Aplicar `0018`–`0022` y desplegar las tablas durables antes del backend productor.
 3. Desplegar el dispatcher en `off` y luego activar `shadow` con recording
    `false` para certificar lifecycle y drenar backlog.
 4. Activar recording en sombra y comparar batches, payloads y métricas contra la

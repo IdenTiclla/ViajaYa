@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Response, status
@@ -14,7 +15,7 @@ from app.api.deps import (
     CurrentUserDep,
     SessionFactoryDep,
     SettingsDep,
-    build_expire_offer,
+    build_expire_offer_and_complete_scheduled_action,
     get_accept_offer,
     get_cancel_ride,
     get_create_offer,
@@ -125,7 +126,10 @@ async def _expire_offer_after(
     try:
         await asyncio.sleep(OFFER_TTL.total_seconds())
         async with session_factory() as session:
-            offer = await build_expire_offer(session, settings).execute(offer_id)
+            offer = await build_expire_offer_and_complete_scheduled_action(
+                session,
+                settings,
+            ).execute(offer_id, datetime.now(UTC))
         if offer is not None:
             await events.publish_offer_expired(offer)
     except Exception:

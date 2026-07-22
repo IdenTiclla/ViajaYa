@@ -95,6 +95,14 @@ class DispatchScheduledActionResult:
 
 
 @dataclass(frozen=True, slots=True)
+class ExecuteExpireOfferScheduledActionResult:
+    """Efecto confirmado de ``expire_offer`` y resultado de su fencing."""
+
+    status: Literal["succeeded", "lost_lease"]
+    expired_offer: Offer | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class ScheduledActionDeadCount:
     """Cantidad de acciones terminales agrupada por tipo estable."""
 

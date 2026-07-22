@@ -20,15 +20,25 @@ from app.api.v1.realtime_outbox import (
     LocalHubRealtimeOutboxBatchPublisher,
 )
 from app.api.v1.routers import auth, drivers, rides, saved_places
-from app.api.v1.scheduled_actions import ApplicationScheduledActionExecutor
+from app.api.v1.scheduled_actions import (
+    ApplicationScheduledActionExecutor,
+    shutdown_shadow_scheduled_action_publications,
+)
 from app.api.v1.ws import negotiation
 from app.application.interfaces import (
     RealtimeOutboxBatchPublisher,
     RealtimeOutboxBatchValidator,
 )
+from app.application.use_cases.reconcile_missing_offer_scheduled_actions import (
+    ReconcileMissingOfferScheduledActions,
+)
 from app.infrastructure.config import Settings, get_settings
 from app.infrastructure.db.advisory_lock import PostgreSQLLiveLocalProcessLock
+from app.infrastructure.db.scheduled_actions_reconciliation import (
+    SqlAlchemyMissingOfferScheduledActionsReconciler,
+)
 from app.infrastructure.db.session import async_session_factory, get_session
+from app.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from app.infrastructure.realtime.hub import hub
 from app.infrastructure.realtime.outbox_dispatcher import (
     LocalRealtimeOutboxDispatcher,
@@ -36,6 +46,9 @@ from app.infrastructure.realtime.outbox_dispatcher import (
 )
 from app.infrastructure.realtime.outbox_retention import (
     PublishedRealtimeOutboxRetentionWorker,
+)
+from app.infrastructure.scheduled_actions.retention import (
+    TerminalScheduledActionsRetentionWorker,
 )
 from app.infrastructure.scheduled_actions.worker import ScheduledActionsWorker
 
@@ -67,6 +80,8 @@ def create_app(
         retention_task: asyncio.Task[None] | None = None
         scheduled_worker: ScheduledActionsWorker | None = None
         scheduled_task: asyncio.Task[None] | None = None
+        scheduled_retention_worker: TerminalScheduledActionsRetentionWorker | None = None
+        scheduled_retention_task: asyncio.Task[None] | None = None
         process_lock: PostgreSQLLiveLocalProcessLock | None = None
         app.state.realtime_outbox_dispatcher = None
         app.state.realtime_outbox_dispatcher_task = None
@@ -75,6 +90,8 @@ def create_app(
         app.state.realtime_outbox_retention_task = None
         app.state.scheduled_actions_worker = None
         app.state.scheduled_actions_task = None
+        app.state.scheduled_actions_retention_worker = None
+        app.state.scheduled_actions_retention_task = None
         previous_legacy_delivery = hub.legacy_delivery_enabled
         mode = resolved_settings.realtime_outbox_dispatch_mode
         try:
@@ -163,6 +180,32 @@ def create_app(
                 await asyncio.sleep(0)
 
             scheduled_mode = resolved_settings.scheduled_actions_mode
+
+            # La cola se escribe incluso en off; su esquema, reconciliación y
+            # retención son obligatorios en los tres modos. Repetir la reparación
+            # al arrancar cierra ofertas creadas por la versión anterior después
+            # del backfill de 0022.
+            scheduled_retention_worker = TerminalScheduledActionsRetentionWorker(
+                resolved_session_factory,
+                retention_days=(
+                    resolved_settings.scheduled_actions_terminal_retention_days
+                ),
+                interval_seconds=(
+                    resolved_settings.scheduled_actions_retention_interval_seconds
+                ),
+                action_limit=(
+                    resolved_settings.scheduled_actions_retention_batch_limit
+                ),
+            )
+            await scheduled_retention_worker.preflight()
+            async with resolved_session_factory() as reconciliation_session:
+                await ReconcileMissingOfferScheduledActions(
+                    SqlAlchemyMissingOfferScheduledActionsReconciler(
+                        reconciliation_session
+                    ),
+                    SqlAlchemyUnitOfWork(reconciliation_session),
+                ).execute(resolved_settings.scheduled_actions_retention_batch_limit)
+
             if scheduled_mode in {"shadow", "live"}:
                 scheduled_worker = ScheduledActionsWorker(
                     resolved_session_factory,
@@ -184,16 +227,32 @@ def create_app(
                     retry_max_seconds=(
                         resolved_settings.scheduled_actions_retry_max_seconds
                     ),
+                    reconciler_factory=(
+                        SqlAlchemyMissingOfferScheduledActionsReconciler
+                    ),
+                    reconciliation_batch_limit=(
+                        resolved_settings.scheduled_actions_retention_batch_limit
+                    ),
                 )
                 await scheduled_worker.preflight()
-                if scheduled_mode == "live":
-                    scheduled_task = asyncio.create_task(
-                        scheduled_worker.run(),
-                        name="scheduled-actions-worker",
-                    )
-                    app.state.scheduled_actions_worker = scheduled_worker
-                    app.state.scheduled_actions_task = scheduled_task
-                    await asyncio.sleep(0)
+                # Shadow conserva el timer legacy, pero también ejecuta la copia
+                # durable. La carrera es idempotente y evita acumular un backlog
+                # que bloquearía la promoción o un rollback desde live.
+                scheduled_task = asyncio.create_task(
+                    scheduled_worker.run(),
+                    name=f"scheduled-actions-{scheduled_mode}-worker",
+                )
+                app.state.scheduled_actions_worker = scheduled_worker
+                app.state.scheduled_actions_task = scheduled_task
+                await asyncio.sleep(0)
+
+            scheduled_retention_task = asyncio.create_task(
+                scheduled_retention_worker.run(),
+                name="scheduled-actions-terminal-retention",
+            )
+            app.state.scheduled_actions_retention_worker = scheduled_retention_worker
+            app.state.scheduled_actions_retention_task = scheduled_retention_task
+            await asyncio.sleep(0)
 
             yield
         finally:
@@ -204,21 +263,40 @@ def create_app(
             await presence.shutdown_presence_tasks()
             # El scheduler puede producir outbox: se detiene y espera antes de
             # cerrar el dispatcher que entrega sus eventos.
-            if scheduled_task is not None and scheduled_worker is not None:
+            if scheduled_worker is not None:
                 scheduled_worker.stop()
+            if scheduled_retention_worker is not None:
+                scheduled_retention_worker.stop()
+            scheduled_background_tasks = [
+                task
+                for task in (scheduled_task, scheduled_retention_task)
+                if task is not None
+            ]
+            if scheduled_background_tasks:
                 try:
                     await asyncio.wait_for(
-                        scheduled_task,
+                        asyncio.gather(
+                            *scheduled_background_tasks,
+                            return_exceptions=True,
+                        ),
                         timeout=(
                             resolved_settings.scheduled_actions_shutdown_timeout_seconds
                         ),
                     )
                 except TimeoutError:
                     logger.error(
-                        "El worker de scheduled_actions excedió el tiempo de apagado."
+                        "Los workers de scheduled_actions excedieron el tiempo de apagado."
                     )
-                    scheduled_task.cancel()
-                    await asyncio.gather(scheduled_task, return_exceptions=True)
+                    for task in scheduled_background_tasks:
+                        if not task.done():
+                            task.cancel()
+                    await asyncio.gather(
+                        *scheduled_background_tasks,
+                        return_exceptions=True,
+                    )
+            await shutdown_shadow_scheduled_action_publications(
+                resolved_settings.scheduled_actions_shutdown_timeout_seconds
+            )
             if dispatcher is not None:
                 dispatcher.stop()
             if retention_worker is not None:
@@ -258,6 +336,8 @@ def create_app(
     app.state.realtime_outbox_retention_task = None
     app.state.scheduled_actions_worker = None
     app.state.scheduled_actions_task = None
+    app.state.scheduled_actions_retention_worker = None
+    app.state.scheduled_actions_retention_task = None
 
     async def resolved_get_session() -> AsyncIterator[AsyncSession]:
         async with resolved_session_factory() as session:

@@ -20,9 +20,11 @@ from app.application.dto import (
 )
 from app.infrastructure.config import Settings
 from app.infrastructure.db.models import (
+    OfferModel,
     RealtimeAggregateVersionModel,
     RealtimeOutboxModel,
     RealtimeStreamVersionModel,
+    ScheduledActionModel,
 )
 from app.main import create_app
 
@@ -50,6 +52,8 @@ async def outbox_sessions(
         await connection.run_sync(RealtimeAggregateVersionModel.__table__.create)
         await connection.run_sync(RealtimeStreamVersionModel.__table__.create)
         await connection.run_sync(RealtimeOutboxModel.__table__.create)
+        await connection.run_sync(OfferModel.__table__.create)
+        await connection.run_sync(ScheduledActionModel.__table__.create)
     yield sessions
 
 
@@ -184,6 +188,10 @@ def test_renderer_exporta_labels_y_contadores_sin_campos_sensibles() -> None:
         scheduled_retried_count=2,
         scheduled_dead_count=1,
         scheduled_recovered_lease_count=3,
+        scheduled_retention_running=True,
+        scheduled_retention_error=False,
+        scheduled_retention_days=30,
+        scheduled_retention_deleted_action_count=5,
         scheduled_snapshot=scheduled_snapshot,
         scheduled_scrape_success=True,
     )
@@ -209,6 +217,12 @@ def test_renderer_exporta_labels_y_contadores_sin_campos_sensibles() -> None:
     assert "viajaya_scheduled_actions_stale 1.0" in content
     assert "viajaya_scheduled_actions_claimed_total 9.0" in content
     assert "viajaya_scheduled_actions_recovered_leases_total 3.0" in content
+    assert "viajaya_scheduled_actions_retention_running 1.0" in content
+    assert "viajaya_scheduled_actions_retention_error 0.0" in content
+    assert "viajaya_scheduled_actions_retention_days 30.0" in content
+    assert (
+        "viajaya_scheduled_actions_retention_deleted_actions_total 5.0" in content
+    )
     assert 'action_type="expire_offer"} 4.0' in content
     assert 'action_type="unknown"} 2.0' in content
     assert "tipo_privado" not in content

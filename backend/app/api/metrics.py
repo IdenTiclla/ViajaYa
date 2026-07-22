@@ -82,6 +82,10 @@ def render_realtime_openmetrics(
     scheduled_retried_count: int = 0,
     scheduled_dead_count: int = 0,
     scheduled_recovered_lease_count: int = 0,
+    scheduled_retention_running: bool = False,
+    scheduled_retention_error: bool = False,
+    scheduled_retention_days: int = 30,
+    scheduled_retention_deleted_action_count: int = 0,
     scheduled_snapshot: ScheduledActionsOperationalSnapshot | None = None,
     scheduled_scrape_success: bool = True,
 ) -> str:
@@ -175,7 +179,7 @@ def render_realtime_openmetrics(
         "viajaya_scheduled_actions_worker_enabled",
         "Indica si la configuración requiere ejecutar el worker.",
         "gauge",
-        [({}, int(scheduled_mode == "live"))],
+        [({}, int(scheduled_mode in {"shadow", "live"}))],
     )
     document.metric(
         "viajaya_scheduled_actions_worker_running",
@@ -188,6 +192,31 @@ def render_realtime_openmetrics(
         "Indica si el worker conserva un fallo operativo sin recuperar.",
         "gauge",
         [({}, int(scheduled_worker_error))],
+    )
+    document.metric(
+        "viajaya_scheduled_actions_retention_running",
+        "Indica si la retención requerida está ejecutándose en este proceso.",
+        "gauge",
+        [({}, int(scheduled_retention_running))],
+    )
+    document.metric(
+        "viajaya_scheduled_actions_retention_error",
+        "Indica si la retención conserva un fallo operativo sin recuperar.",
+        "gauge",
+        [({}, int(scheduled_retention_error))],
+    )
+    document.metric(
+        "viajaya_scheduled_actions_retention_days",
+        "TTL de acciones succeeded/cancelled; las acciones dead se conservan.",
+        "gauge",
+        [({}, scheduled_retention_days)],
+    )
+    document.metric(
+        "viajaya_scheduled_actions_retention_deleted_actions",
+        "Acciones terminales eliminadas por este proceso desde su arranque.",
+        "counter",
+        [({}, scheduled_retention_deleted_action_count)],
+        sample_name="viajaya_scheduled_actions_retention_deleted_actions_total",
     )
     for name, help_text, value in (
         (
@@ -410,6 +439,18 @@ async def metrics(
     scheduled_worker_error = bool(
         scheduled_worker is not None and scheduled_worker.last_error is not None
     )
+    scheduled_retention_worker = request.app.state.scheduled_actions_retention_worker
+    scheduled_retention_task = request.app.state.scheduled_actions_retention_task
+    scheduled_retention_running = bool(
+        scheduled_retention_worker is not None
+        and scheduled_retention_worker.running
+        and scheduled_retention_task is not None
+        and not scheduled_retention_task.done()
+    )
+    scheduled_retention_error = bool(
+        scheduled_retention_worker is not None
+        and scheduled_retention_worker.last_error is not None
+    )
 
     now = datetime.now(UTC)
     snapshot: RealtimeOutboxOperationalSnapshot | None = None
@@ -473,6 +514,16 @@ async def metrics(
             scheduled_recovered_lease_count=(
                 scheduled_worker.recovered_lease_count
                 if scheduled_worker is not None
+                else 0
+            ),
+            scheduled_retention_running=scheduled_retention_running,
+            scheduled_retention_error=scheduled_retention_error,
+            scheduled_retention_days=(
+                settings.scheduled_actions_terminal_retention_days
+            ),
+            scheduled_retention_deleted_action_count=(
+                scheduled_retention_worker.deleted_action_count
+                if scheduled_retention_worker is not None
                 else 0
             ),
             scheduled_snapshot=scheduled_snapshot,

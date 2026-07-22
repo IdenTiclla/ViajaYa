@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import replace
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
@@ -19,7 +20,7 @@ from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from app.api.deps import (
     SessionFactoryDep,
     SettingsDep,
-    build_expire_offer,
+    build_expire_offer_and_complete_scheduled_action,
     get_build_driver_realtime_snapshot,
     get_build_passenger_realtime_snapshot,
 )
@@ -198,10 +199,10 @@ async def driver_ws(
                 active_offers = []
                 for offer in await offers.list_active_by_driver(user.id):
                     if is_offer_expired(offer):
-                        done = await build_expire_offer(
+                        done = await build_expire_offer_and_complete_scheduled_action(
                             session,
                             settings,
-                        ).execute(offer.id)
+                        ).execute(offer.id, datetime.now(UTC))
                         if done is not None:
                             expired_offers.append(done)
                     else:

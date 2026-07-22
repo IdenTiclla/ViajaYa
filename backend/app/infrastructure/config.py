@@ -78,6 +78,23 @@ class Settings(BaseSettings):
         gt=0,
         le=600,
     )
+    # Los éxitos/cancelaciones no son evidencia de fallo y se purgan siempre;
+    # ``dead`` queda fuera de esta política para conservar el diagnóstico.
+    scheduled_actions_terminal_retention_days: int = Field(
+        default=30,
+        ge=1,
+        le=3650,
+    )
+    scheduled_actions_retention_interval_seconds: float = Field(
+        default=60,
+        gt=0,
+        le=86400,
+    )
+    scheduled_actions_retention_batch_limit: int = Field(
+        default=1000,
+        ge=1,
+        le=10000,
+    )
 
     @model_validator(mode="after")
     def validate_realtime_outbox_rollout(self) -> Settings:

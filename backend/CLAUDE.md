@@ -137,7 +137,10 @@ SCHEDULED_ACTIONS_HANDLER_TIMEOUT_SECONDS (10),
 SCHEDULED_ACTIONS_MAX_ATTEMPTS (5),
 SCHEDULED_ACTIONS_RETRY_BASE_SECONDS (1),
 SCHEDULED_ACTIONS_RETRY_MAX_SECONDS (60),
-SCHEDULED_ACTIONS_SHUTDOWN_TIMEOUT_SECONDS (12)
+SCHEDULED_ACTIONS_SHUTDOWN_TIMEOUT_SECONDS (12),
+SCHEDULED_ACTIONS_TERMINAL_RETENTION_DAYS (30),
+SCHEDULED_ACTIONS_RETENTION_INTERVAL_SECONDS (60),
+SCHEDULED_ACTIONS_RETENTION_BATCH_LIMIT (1000)
 ```
 
 Accede a la config con `get_settings()` (cacheado con `@lru_cache`); **no leas `os.environ` directo**.
@@ -165,6 +168,19 @@ despliegue inseguro, pero no lo convierte en multiworker: con dos procesos,
 para sockets del otro proceso. No escales workers/réplicas hasta incorporar el
 bridge Redis. SQLite solo omite esta exclusión en pruebas de un proceso. El valor
 predeterminado continúa siendo `off`.
+
+La migración `0022_scheduled_actions` debe aplicarse antes de desplegar el código
+que crea ofertas. La acción `expire_offer` se persiste en los tres modos. `off`
+mantiene el timer local sin consumir la cola; `shadow` ejecuta simultáneamente el
+worker durable y el timer, conservando la entrega legacy para quien gane la
+carrera; `live` retira el timer y depende de la outbox `live_local`. Así, los
+reinicios y los cambios de modo no dejan ofertas sin recuperación ni acumulan un
+backlog antes del cutover. El arranque y cada ciclo consumidor reconcilian por
+lotes cualquier oferta que la versión anterior haya creado después del backfill
+de la migración. Deadlines, leases, backoff y la revalidación atómica al aceptar
+usan el reloj de PostgreSQL.
+Las acciones `succeeded/cancelled` se purgan por lotes después de 30 días; las
+acciones `dead` se conservan para intervención manual.
 
 `GET /health` y `GET /health/live` son liveness sin dependencias. `GET
 /health/ready` comprueba PostgreSQL y que los workers habilitados continúen
@@ -237,14 +253,14 @@ offers vivas del conductor elegido en **otros rides** (`OfferAcceptance.withdraw
   (`ride_created` con el monto nuevo).
 - **Expiración**: la oferta caduca a los 30 s (`OFFER_TTL` en `domain/ride_policy.py`); la solicitud
   no caduca mientras el pasajero siga presente, pero se cancela si desaparecen WS y heartbeat HTTP
-  durante la gracia. Mecanismo de ofertas: tarea fire-and-forget
-  `asyncio.create_task(_expire_offer_after(offer_id))` en `rides.py` que duerme el TTL y llama
-  `ExpireOffer` (race-safe: `mark_expired_if_pending` solo vence si sigue `PENDING`) + publica
-  `offer_expired`. La mutación y sus dos destinos (`driver:*` y `ride:*`) se
-  confirman juntos en la outbox; el lock fuerza una lectura ORM fresca para no
-  sobrescribir una resolución concurrente. Al (re)conectar el conductor,
-  `driver_ws` barre y vence sus offers pasadas de TTL. El temporizador sigue en
-  memoria hasta implementar `scheduled_actions`.
+  durante la gracia. La creación persiste `expire_offer` en su misma transacción.
+  En `off` el timer local sigue siendo la vía activa; en `shadow` compite de forma
+  idempotente con el worker durable y se conserva la publicación legacy; en
+  `live` solo ejecuta el worker. `mark_expired_if_pending` bloquea la fila y usa el
+  reloj PostgreSQL; `accept_atomically` revalida el mismo TTL con ese reloj después
+  de sus locks, por lo que aceptación/rechazo/retiro siguen siendo race-safe.
+  La mutación, sus dos destinos (`driver:*` y `ride:*`) y el ack se confirman juntos
+  en live. Al (re)conectar el conductor, `driver_ws` conserva el barrido defensivo.
 - **Calificación**: `POST /{id}/rating` crea `RideRating` (score 1–5, único por `(ride_id, rater_id)`)
   y recalcula el `rating` promedio del `User` calificado.
 
@@ -302,8 +318,8 @@ cerrar la app o perder ambos canales durante toda la gracia cancela la búsqueda
 ## Migraciones (Alembic)
 
 - Config: `alembic.ini` + `migrations/env.py` (engine **async** con `async_engine_from_config`).
-- **21 migraciones** en `migrations/versions/` (`0001_create_users` …
-  `0021_realtime_outbox_batch_size`).
+- **22 migraciones** en `migrations/versions/` (`0001_create_users` …
+  `0022_scheduled_actions`).
 - Importante: los enums se persisten por **valor** minúsculo vía `values_callable=_enum_values`
   en `infrastructure/db/models.py` (migración `0006_normalize_enum_values`). No rompas esa convención
   o se caerán columnas existentes.

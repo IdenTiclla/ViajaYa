@@ -95,6 +95,7 @@ sanitizado de logcat. Nunca debe conservar JWT, payloads, DSN ni datos personale
   tests. Fuerza `SIGKILL` y restart de un único proceso `live_local`, pero no
   cubre caída del host o PostgreSQL, Redis, multiworker, frame inválido ni el
   hook React Native.
-- No certifica que la expiración de ofertas ni la cancelación por ausencia
-  sobrevivan al restart; esos timers siguen en memoria hasta implementar
-  `scheduled_actions` durable.
+- Certifica la recuperación durable de expiración de ofertas en la suite
+  PostgreSQL específica de `scheduled_actions`; este smoke de realtime no
+  vuelve a ejecutar ese escenario. La cancelación por ausencia conserva su
+  mecanismo independiente de presencia y gracia documentado en el plan 0007.

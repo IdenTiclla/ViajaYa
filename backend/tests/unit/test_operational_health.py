@@ -13,9 +13,11 @@ from sqlalchemy.pool import StaticPool
 
 from app.infrastructure.config import Settings
 from app.infrastructure.db.models import (
+    OfferModel,
     RealtimeAggregateVersionModel,
     RealtimeOutboxModel,
     RealtimeStreamVersionModel,
+    ScheduledActionModel,
 )
 from app.main import create_app
 
@@ -28,6 +30,9 @@ async def sessions() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
         connect_args={"check_same_thread": False},
     )
     factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as connection:
+        await connection.run_sync(OfferModel.__table__.create)
+        await connection.run_sync(ScheduledActionModel.__table__.create)
     try:
         yield factory
     finally:
@@ -71,7 +76,8 @@ async def test_readiness_checks_database_and_reports_disabled_dispatcher(
 ) -> None:
     app = create_app(session_factory=sessions)
 
-    response = await _get(app, "/health/ready")
+    async with app.router.lifespan_context(app):
+        response = await _get(app, "/health/ready")
 
     assert response.status_code == 200
     assert response.json() == {
@@ -79,6 +85,7 @@ async def test_readiness_checks_database_and_reports_disabled_dispatcher(
         "checks": {
             "database": "ok",
             "scheduled_actions_worker": "disabled",
+            "scheduled_actions_retention": "ok",
             "realtime_outbox_dispatcher": "disabled",
             "realtime_outbox_process_lock": "disabled",
             "realtime_outbox_retention": "disabled",
@@ -119,6 +126,7 @@ async def test_readiness_sanitizes_database_errors(
         "checks": {
             "database": "error",
             "scheduled_actions_worker": "disabled",
+            "scheduled_actions_retention": "error",
             "realtime_outbox_dispatcher": "disabled",
             "realtime_outbox_process_lock": "disabled",
             "realtime_outbox_retention": "disabled",
@@ -159,6 +167,7 @@ async def test_readiness_requires_a_running_dispatcher_in_shadow_mode(
         assert stopped.json()["checks"] == {
             "database": "ok",
             "scheduled_actions_worker": "disabled",
+            "scheduled_actions_retention": "ok",
             "realtime_outbox_dispatcher": "error",
             "realtime_outbox_process_lock": "ok",
             "realtime_outbox_retention": "disabled",

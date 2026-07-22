@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -12,9 +13,14 @@ from sqlalchemy import func, select, update
 from app.api.deps import (
     build_execute_expire_offer_scheduled_action,
     build_expire_offer,
+    build_expire_offer_and_complete_scheduled_action,
 )
 from app.api.v1 import events
 from app.api.v1.realtime_outbox import OutboxExpireOfferEventRecorder
+from app.api.v1.scheduled_actions import (
+    ApplicationScheduledActionExecutor,
+    shutdown_shadow_scheduled_action_publications,
+)
 from app.application.dto import PendingScheduledAction
 from app.application.use_cases.expire_offer import ExpireOffer
 from app.domain.entities import (
@@ -297,11 +303,150 @@ async def test_scheduled_expiration_confirma_negocio_outbox_y_ack_en_un_commit(
         outbox_count = await session.scalar(
             select(func.count(RealtimeOutboxModel.id))
         )
-    assert outcome == "succeeded"
+    assert outcome.status == "succeeded"
+    assert outcome.expired_offer is not None
     assert offer_status is OfferStatus.EXPIRED
     assert action is not None and action.status == "succeeded"
     assert action.terminal_at is not None
     assert outbox_count == 2
+
+
+async def test_scheduler_shadow_publica_legacy_si_gana_la_carrera_al_timer(
+    session_factory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime.now(UTC)
+    async with session_factory() as session:
+        offer = await _sql_scenario(session)
+        actions = SqlAlchemyScheduledActionRepository(session)
+        await actions.schedule(
+            PendingScheduledAction(
+                dedupe_key=f"expire_offer:{offer.id}",
+                action_type="expire_offer",
+                aggregate_id=offer.id,
+                generation=1,
+                execute_at=now,
+                payload={"offer_id": str(offer.id)},
+            )
+        )
+        await session.commit()
+        claimed = await actions.claim_due(now, now - timedelta(minutes=1))
+        assert claimed is not None
+        await session.commit()
+
+    published: list[uuid.UUID] = []
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def capture(expired_offer: Offer) -> None:
+        started.set()
+        await release.wait()
+        published.append(expired_offer.id)
+
+    monkeypatch.setattr(events, "publish_offer_expired", capture)
+    outcome = await asyncio.wait_for(
+        ApplicationScheduledActionExecutor(
+            session_factory,
+            Settings(_env_file=None, scheduled_actions_mode="shadow"),
+        ).execute(claimed),
+        timeout=0.5,
+    )
+
+    assert outcome == "succeeded"
+    await asyncio.wait_for(started.wait(), timeout=0.5)
+    assert published == []
+    release.set()
+    await shutdown_shadow_scheduled_action_publications(0.5)
+    assert published == [offer.id]
+
+
+async def test_timer_legacy_expira_y_completa_la_accion_en_un_commit(
+    session_factory,
+) -> None:
+    completed_at = datetime.now(UTC)
+    async with session_factory() as session:
+        offer = await _sql_scenario(session)
+        await SqlAlchemyScheduledActionRepository(session).schedule(
+            PendingScheduledAction(
+                dedupe_key=f"expire_offer:{offer.id}",
+                action_type="expire_offer",
+                aggregate_id=offer.id,
+                generation=1,
+                execute_at=completed_at,
+                payload={"offer_id": str(offer.id)},
+            )
+        )
+        await session.commit()
+        expired = await build_expire_offer_and_complete_scheduled_action(
+            session,
+            _settings(),
+        ).execute(offer.id, completed_at)
+
+    async with session_factory() as session:
+        action = await session.scalar(select(ScheduledActionModel))
+        outbox_count = await session.scalar(select(func.count(RealtimeOutboxModel.id)))
+    assert expired is not None and expired.status is OfferStatus.EXPIRED
+    assert action is not None and action.status == "succeeded"
+    assert action.attempts == 0
+    assert outbox_count == 2
+
+
+async def test_timer_legacy_repara_accion_ausente_del_productor_anterior(
+    session_factory,
+) -> None:
+    completed_at = datetime.now(UTC)
+    async with session_factory() as session:
+        offer = await _sql_scenario(session)
+        expired = await build_expire_offer_and_complete_scheduled_action(
+            session,
+            _settings(),
+        ).execute(offer.id, completed_at)
+
+    async with session_factory() as session:
+        action = await session.scalar(select(ScheduledActionModel))
+        outbox_count = await session.scalar(select(func.count(RealtimeOutboxModel.id)))
+    assert expired is not None and expired.status is OfferStatus.EXPIRED
+    assert action is not None and action.status == "succeeded"
+    assert action.attempts == 0
+    assert outbox_count == 2
+
+
+async def test_timer_legacy_revierte_si_un_worker_ya_reclamo_la_accion(
+    session_factory,
+) -> None:
+    now = datetime.now(UTC)
+    async with session_factory() as session:
+        offer = await _sql_scenario(session)
+        actions = SqlAlchemyScheduledActionRepository(session)
+        await actions.schedule(
+            PendingScheduledAction(
+                dedupe_key=f"expire_offer:{offer.id}",
+                action_type="expire_offer",
+                aggregate_id=offer.id,
+                generation=1,
+                execute_at=now,
+                payload={"offer_id": str(offer.id)},
+            )
+        )
+        await session.commit()
+        claimed = await actions.claim_due(now, now - timedelta(minutes=1))
+        assert claimed is not None
+        await session.commit()
+        expired = await build_expire_offer_and_complete_scheduled_action(
+            session,
+            _settings(),
+        ).execute(offer.id, now)
+
+    async with session_factory() as session:
+        offer_status = await session.scalar(
+            select(OfferModel.status).where(OfferModel.id == offer.id)
+        )
+        action = await session.scalar(select(ScheduledActionModel))
+        outbox_count = await session.scalar(select(func.count(RealtimeOutboxModel.id)))
+    assert expired is None
+    assert offer_status is OfferStatus.PENDING
+    assert action is not None and action.status == "running"
+    assert outbox_count == 0
 
 
 async def test_disabled_recording_preserves_expiration_without_backlog(

@@ -35,9 +35,11 @@ from app.application.interfaces import (
 )
 from app.infrastructure.config import Settings
 from app.infrastructure.db.models import (
+    OfferModel,
     RealtimeAggregateVersionModel,
     RealtimeOutboxModel,
     RealtimeStreamVersionModel,
+    ScheduledActionModel,
 )
 from app.infrastructure.db.outbox import SqlAlchemyRealtimeOutbox
 from app.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
@@ -61,6 +63,8 @@ async def outbox_sessions() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
         await connection.run_sync(RealtimeAggregateVersionModel.__table__.create)
         await connection.run_sync(RealtimeStreamVersionModel.__table__.create)
         await connection.run_sync(RealtimeOutboxModel.__table__.create)
+        await connection.run_sync(OfferModel.__table__.create)
+        await connection.run_sync(ScheduledActionModel.__table__.create)
     try:
         yield factory
     finally:

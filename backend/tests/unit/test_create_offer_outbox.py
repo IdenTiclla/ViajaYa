@@ -263,7 +263,7 @@ def test_get_create_offer_enables_outbox_and_disables_repository_autocommit():
     assert use_case._scheduled_actions._session is session
 
 
-def test_get_create_offer_keeps_outbox_disabled_by_default():
+def test_get_create_offer_keeps_outbox_disabled_but_records_action_by_default():
     session = Mock(spec=AsyncSession)
 
     use_case = get_create_offer(
@@ -273,7 +273,8 @@ def test_get_create_offer_keeps_outbox_disabled_by_default():
     )
 
     assert isinstance(use_case._event_recorder, DisabledCreateOfferEventRecorder)
-    assert use_case._scheduled_actions is None
+    assert isinstance(use_case._scheduled_actions, SqlAlchemyScheduledActionRepository)
+    assert use_case._scheduled_actions._session is session
 
 
 async def _persist_sqlalchemy_scenario(session: AsyncSession):
@@ -332,6 +333,31 @@ async def test_create_offer_persists_business_and_outbox_in_one_commit(
     assert scheduled_action.dedupe_key == f"expire_offer:{result.detail.offer.id}"
     assert scheduled_action.payload == {"offer_id": str(result.detail.offer.id)}
     assert scheduled_action.execute_at > result.detail.offer.created_at
+
+
+async def test_create_offer_off_tambien_persiste_recuperacion_durable(
+    session_factory,
+) -> None:
+    async with session_factory() as session:
+        rides, driver, ride = await _persist_sqlalchemy_scenario(session)
+
+        result = await get_create_offer(
+            rides,
+            session,
+            Settings(_env_file=None, scheduled_actions_mode="off"),
+        ).execute(
+            driver,
+            ride.id,
+            CreateOfferInput(accept_at_fare=True),
+        )
+
+        scheduled_action = await session.scalar(select(ScheduledActionModel))
+        outbox_count = await session.scalar(select(func.count(RealtimeOutboxModel.id)))
+
+    assert scheduled_action is not None
+    assert scheduled_action.aggregate_id == result.detail.offer.id
+    assert scheduled_action.status == "pending"
+    assert outbox_count == 0
 
 
 async def test_error_after_scheduling_rolls_back_offer_outbox_and_action(

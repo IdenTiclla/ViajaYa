@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import and_, or_, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -179,6 +179,11 @@ class SqlAlchemyScheduledActionRepository(ScheduledActionQueue):
         lock_token: uuid.UUID,
         terminal_at: datetime,
     ) -> bool:
+        written_at = (
+            func.clock_timestamp()
+            if self._session.get_bind().dialect.name == "postgresql"
+            else terminal_at
+        )
         result = await self._session.execute(
             update(ScheduledActionModel)
             .where(
@@ -192,8 +197,8 @@ class SqlAlchemyScheduledActionRepository(ScheduledActionQueue):
                 locked_at=None,
                 lock_token=None,
                 last_error=None,
-                terminal_at=terminal_at,
-                updated_at=terminal_at,
+                terminal_at=written_at,
+                updated_at=written_at,
             )
         )
         return bool(result.rowcount)
@@ -211,14 +216,19 @@ class SqlAlchemyScheduledActionRepository(ScheduledActionQueue):
     ) -> bool:
         if not 1 <= len(error_code.strip()) <= 64:
             raise ValueError("El código de error no es válido.")
+        written_at = (
+            func.clock_timestamp()
+            if self._session.get_bind().dialect.name == "postgresql"
+            else terminal_at
+        )
         values: dict[str, object | None] = {
             "status": "dead" if terminal else "pending",
             "locked_at": None,
             "lock_token": None,
             "last_error": error_code,
             "next_attempt_at": next_attempt_at,
-            "terminal_at": terminal_at if terminal else None,
-            "updated_at": terminal_at,
+            "terminal_at": written_at if terminal else None,
+            "updated_at": written_at,
         }
         result = await self._session.execute(
             update(ScheduledActionModel)
@@ -229,5 +239,34 @@ class SqlAlchemyScheduledActionRepository(ScheduledActionQueue):
                 ScheduledActionModel.lock_token == lock_token,
             )
             .values(**values)
+        )
+        return bool(result.rowcount)
+
+    async def mark_succeeded_if_pending(
+        self,
+        dedupe_key: str,
+        generation: int,
+        terminal_at: datetime,
+    ) -> bool:
+        written_at = (
+            func.clock_timestamp()
+            if self._session.get_bind().dialect.name == "postgresql"
+            else terminal_at
+        )
+        result = await self._session.execute(
+            update(ScheduledActionModel)
+            .where(
+                ScheduledActionModel.dedupe_key == dedupe_key,
+                ScheduledActionModel.generation == generation,
+                ScheduledActionModel.status == "pending",
+            )
+            .values(
+                status="succeeded",
+                locked_at=None,
+                lock_token=None,
+                last_error=None,
+                terminal_at=written_at,
+                updated_at=written_at,
+            )
         )
         return bool(result.rowcount)

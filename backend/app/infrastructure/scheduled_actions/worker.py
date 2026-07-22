@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Callable
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 
 from sqlalchemy import inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -15,11 +15,18 @@ from app.application.exceptions import (
     InvalidScheduledActionError,
     UnsupportedScheduledActionError,
 )
-from app.application.interfaces import ScheduledActionExecutor
+from app.application.interfaces import (
+    MissingOfferScheduledActionsReconciler,
+    ScheduledActionExecutor,
+)
 from app.application.use_cases.claim_scheduled_action import ClaimScheduledAction
+from app.application.use_cases.reconcile_missing_offer_scheduled_actions import (
+    ReconcileMissingOfferScheduledActions,
+)
 from app.application.use_cases.record_scheduled_action_failure import (
     RecordScheduledActionFailure,
 )
+from app.infrastructure.db.clock import DatabaseClock, database_utc_now
 from app.infrastructure.db.models import ScheduledActionModel
 from app.infrastructure.db.scheduled_actions import (
     SqlAlchemyScheduledActionRepository,
@@ -27,10 +34,6 @@ from app.infrastructure.db.scheduled_actions import (
 from app.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 
 logger = logging.getLogger(__name__)
-
-
-def _utc_now() -> datetime:
-    return datetime.now(UTC)
 
 
 class ScheduledActionsWorker:
@@ -47,7 +50,11 @@ class ScheduledActionsWorker:
         max_attempts: int,
         retry_base_seconds: float,
         retry_max_seconds: float,
-        clock: Callable[[], datetime] = _utc_now,
+        clock: DatabaseClock = database_utc_now,
+        reconciler_factory: (
+            Callable[[AsyncSession], MissingOfferScheduledActionsReconciler] | None
+        ) = None,
+        reconciliation_batch_limit: int = 1000,
     ) -> None:
         if poll_interval_seconds <= 0:
             raise ValueError("El intervalo de polling debe ser positivo.")
@@ -59,6 +66,8 @@ class ScheduledActionsWorker:
             raise ValueError("La cantidad máxima de intentos debe ser positiva.")
         if retry_base_seconds <= 0 or retry_max_seconds < retry_base_seconds:
             raise ValueError("El backoff configurado no es válido.")
+        if reconciliation_batch_limit <= 0:
+            raise ValueError("El límite de reconciliación debe ser positivo.")
         self._session_factory = session_factory
         self._executor = executor
         self._poll_interval_seconds = poll_interval_seconds
@@ -68,6 +77,9 @@ class ScheduledActionsWorker:
         self._retry_base_seconds = retry_base_seconds
         self._retry_max_seconds = retry_max_seconds
         self._clock = clock
+        self._reconciler_factory = reconciler_factory
+        self._reconciliation_batch_limit = reconciliation_batch_limit
+        self._next_reconciliation_at = 0.0
         self._stop_event = asyncio.Event()
         self._running = False
         self._last_error: str | None = None
@@ -132,11 +144,8 @@ class ScheduledActionsWorker:
                 await session.rollback()
 
     async def dispatch_once(self) -> DispatchScheduledActionResult:
-        claim_at = self._clock()
-        action = await self._claim(
-            claim_at,
-            claim_at - timedelta(seconds=self._lease_seconds),
-        )
+        await self._reconcile_missing_offer_actions()
+        action = await self._claim()
         if action is None:
             return DispatchScheduledActionResult(status="empty")
 
@@ -147,7 +156,6 @@ class ScheduledActionsWorker:
             return await self._record_failure(
                 action,
                 "LeaseAttemptsExhausted",
-                self._clock(),
                 force_terminal=True,
             )
 
@@ -163,14 +171,12 @@ class ScheduledActionsWorker:
             return await self._record_failure(
                 action,
                 type(error).__name__,
-                self._clock(),
                 force_terminal=True,
             )
         except Exception as error:  # noqa: BLE001 - retry durable y sanitizado
             return await self._record_failure(
                 action,
                 type(error).__name__,
-                self._clock(),
             )
 
         if outcome == "lost_lease":
@@ -226,26 +232,47 @@ class ScheduledActionsWorker:
     def stop(self) -> None:
         self._stop_event.set()
 
-    async def _claim(
-        self,
-        now: datetime,
-        stale_before: datetime,
-    ) -> ScheduledAction | None:
+    async def _claim(self) -> ScheduledAction | None:
         async with self._session_factory() as session:
+            now = await self._clock(session)
             return await ClaimScheduledAction(
                 SqlAlchemyScheduledActionRepository(session),
                 SqlAlchemyUnitOfWork(session),
-            ).execute(now, stale_before)
+            ).execute(
+                now,
+                now - timedelta(seconds=self._lease_seconds),
+            )
+
+    async def _reconcile_missing_offer_actions(self) -> None:
+        if self._reconciler_factory is None:
+            return
+        loop = asyncio.get_running_loop()
+        loop_now = loop.time()
+        if loop_now < self._next_reconciliation_at:
+            return
+        # Durante un backlog el loop consume sin dormir. Limitar la consulta al
+        # intervalo de polling evita escanear ofertas antes de cada claim.
+        self._next_reconciliation_at = loop_now + self._poll_interval_seconds
+        async with self._session_factory() as session:
+            created_count = await ReconcileMissingOfferScheduledActions(
+                self._reconciler_factory(session),
+                SqlAlchemyUnitOfWork(session),
+            ).execute(self._reconciliation_batch_limit)
+        if created_count:
+            logger.warning(
+                "Reconciliación reparó %s expiraciones durables ausentes.",
+                created_count,
+            )
 
     async def _record_failure(
         self,
         action: ScheduledAction,
         error_code: str,
-        now: datetime,
         *,
         force_terminal: bool = False,
     ) -> DispatchScheduledActionResult:
         async with self._session_factory() as session:
+            now = await self._clock(session)
             result = await RecordScheduledActionFailure(
                 SqlAlchemyScheduledActionRepository(session),
                 SqlAlchemyUnitOfWork(session),

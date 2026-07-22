@@ -67,6 +67,9 @@ from app.application.use_cases.execute_expire_offer_scheduled_action import (
     ExecuteExpireOfferScheduledAction,
 )
 from app.application.use_cases.expire_offer import ExpireOffer
+from app.application.use_cases.expire_offer_and_complete_scheduled_action import (
+    ExpireOfferAndCompleteScheduledAction,
+)
 from app.application.use_cases.get_driver_active_ride import GetDriverActiveRide
 from app.application.use_cases.get_driver_earnings import GetDriverEarnings
 from app.application.use_cases.get_passenger_active_ride import GetPassengerActiveRide
@@ -106,6 +109,7 @@ from app.domain.repositories import (
     UserRepository,
 )
 from app.infrastructure.config import Settings, get_settings
+from app.infrastructure.db.clock import database_utc_now
 from app.infrastructure.db.outbox import SqlAlchemyRealtimeOutbox
 from app.infrastructure.db.outbox_observability import (
     SqlAlchemyRealtimeOutboxOperationalReader,
@@ -349,11 +353,7 @@ def get_create_offer(
         offers,
         SqlAlchemyUnitOfWork(session),
         recorder,
-        (
-            SqlAlchemyScheduledActionRepository(session)
-            if settings.scheduled_actions_mode != "off"
-            else None
-        ),
+        SqlAlchemyScheduledActionRepository(session),
     )
 
 
@@ -381,6 +381,7 @@ def get_accept_offer(
         offers,
         SqlAlchemyUnitOfWork(session),
         recorder,
+        clock=lambda: database_utc_now(session),
     )
 
 
@@ -430,6 +431,27 @@ def build_expire_offer(session: AsyncSession, settings: Settings) -> ExpireOffer
             session,
             commit_mark_expired_if_pending=False,
         ),
+        SqlAlchemyUnitOfWork(session),
+        recorder,
+    )
+
+
+def build_expire_offer_and_complete_scheduled_action(
+    session: AsyncSession,
+    settings: Settings,
+) -> ExpireOfferAndCompleteScheduledAction:
+    """Cablea timer/barrido legacy con el ack durable en la misma UoW."""
+    recorder = (
+        OutboxExpireOfferEventRecorder(SqlAlchemyRealtimeOutbox(session))
+        if settings.realtime_outbox_recording_enabled
+        else DisabledExpireOfferEventRecorder()
+    )
+    return ExpireOfferAndCompleteScheduledAction(
+        SqlAlchemyOfferRepository(
+            session,
+            commit_mark_expired_if_pending=False,
+        ),
+        SqlAlchemyScheduledActionRepository(session),
         SqlAlchemyUnitOfWork(session),
         recorder,
     )

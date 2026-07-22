@@ -47,6 +47,13 @@ jobs:
       - name: Verificar contrato realtime mobile
         run: python -m scripts.export_realtime_contract --check
 
+      - name: Validar reglas Prometheus
+        run: >-
+          docker run --rm --entrypoint /bin/promtool
+          -v "${{ github.workspace }}/ops/monitoring/prometheus:/rules:ro"
+          prom/prometheus:v3.11.3
+          check rules /rules/viajaya-realtime.rules.yml
+
       - name: Ejecutar pruebas rápidas
         run: python -m pytest -q
 

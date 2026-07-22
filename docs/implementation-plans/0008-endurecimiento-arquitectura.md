@@ -515,8 +515,12 @@ Endurecimiento antes de promover la canary:
   coordinado. Las cuarentenas y los contadores nunca se podan. La suite
   PostgreSQL opt-in certifica dos purgas concurrentes con `SKIP LOCKED`, sin
   doble conteo ni fragmentación, y continuidad de versiones después del purge.
-- [ ] Exportar estas señales a OpenMetrics/Prometheus y configurar alertas del
-  entorno; `/health/realtime` ya ofrece la fuente sanitaria, no el scraper.
+- [x] Exportar estas señales a OpenMetrics 1.0 detrás de un opt-in, con labels
+  acotados, fallo sanitizado y reglas PromQL versionadas y validadas por
+  `promtool` en CI. `/health/realtime` conserva su contrato JSON para
+  diagnóstico humano.
+- [ ] Conectar el scrape y Alertmanager del entorno, restringir `/metrics` por
+  red y ajustar umbrales con tráfico de staging.
 - [x] Ejecutar pruebas de contrato backend JSON → parsers mobile mediante un
   fixture determinista generado por los serializadores productivos y verificado
   contra ambos parsers Zod en CI.

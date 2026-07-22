@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.api import health
+from app.api import health, metrics
 from app.api.deps import get_session_factory
 from app.api.errors import register_exception_handlers
 from app.api.v1.realtime_outbox import (
@@ -199,6 +199,8 @@ def create_app(
     app.include_router(saved_places.router, prefix="/api/v1")
     app.include_router(negotiation.router, prefix="/api/v1")
     app.include_router(health.router)
+    if resolved_settings.openmetrics_enabled:
+        app.include_router(metrics.router)
 
     return app
 

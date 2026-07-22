@@ -1,0 +1,110 @@
+groups:
+  - name: viajaya-realtime
+    rules:
+      - alert: ViajaYaRealtimeScrapeCaido
+        expr: >-
+          up{job=~"viajaya-backend.*"} == 0
+          or
+          absent(up{job=~"viajaya-backend.*"})
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Prometheus no puede consultar una instancia ViajaYa"
+          description: "El endpoint /metrics lleva al menos 2 minutos ausente o sin responder correctamente."
+
+      - alert: ViajaYaRealtimeDispatcherDetenido
+        expr: >-
+          viajaya_realtime_outbox_dispatcher_enabled == 1
+          and on(job, instance)
+          viajaya_realtime_outbox_dispatcher_running == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "El dispatcher realtime requerido está detenido"
+          description: "La configuración exige consumir la outbox, pero el proceso no ejecuta el dispatcher."
+
+      - alert: ViajaYaRealtimeColeccionFallida
+        expr: >-
+          viajaya_realtime_outbox_collection_success == 0
+          or
+          (up{job=~"viajaya-backend.*"} == 1
+          unless on(job, instance)
+          viajaya_realtime_outbox_collection_success)
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "ViajaYa no puede recolectar el estado de la outbox"
+          description: "El endpoint responde, pero la lectura operativa lleva al menos 2 minutos fallando."
+
+      - alert: ViajaYaRealtimeWorkerConError
+        expr: >-
+          viajaya_realtime_outbox_dispatcher_error == 1
+          or
+          viajaya_realtime_outbox_retention_error == 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Un worker realtime conserva un error operativo"
+          description: "El dispatcher o la retención no han recuperado su último ciclo fallido."
+
+      - alert: ViajaYaRealtimeRetencionDetenida
+        expr: >-
+          viajaya_realtime_outbox_retention_enabled == 1
+          and on(job, instance)
+          viajaya_realtime_outbox_retention_running == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "La retención realtime requerida está detenida"
+          description: "La configuración habilita retención, pero su worker no está ejecutándose."
+
+      - alert: ViajaYaRealtimeBacklogEnvejecido
+        expr: >-
+          max without(instance, pod)
+          (viajaya_realtime_outbox_max_pending_age_seconds) > 120
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "La outbox realtime acumula eventos antiguos"
+          description: "El evento pendiente más antiguo supera 120 segundos desde hace 5 minutos."
+
+      - alert: ViajaYaRealtimeReintentosPersistentes
+        expr: >-
+          max without(instance, pod)
+          (viajaya_realtime_outbox_retrying_batches) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Persisten batches realtime en reintento"
+          description: "Uno o más batches continúan reintentándose durante al menos 10 minutos."
+
+      - alert: ViajaYaRealtimeNuevaCuarentena
+        expr: >-
+          max without(instance, pod)
+          (delta(viajaya_realtime_outbox_quarantined_batches[5m])) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "Un batch realtime entró en cuarentena"
+          description: "Aumentó la cuarentena terminal para el código {{ $labels.code }}."
+
+      - alert: ViajaYaRealtimePublicacionLenta
+        expr: >-
+          max without(instance, pod) (
+            (viajaya_realtime_outbox_latest_publish_delay_seconds > 10)
+            and on(job, instance)
+            ((time() - viajaya_realtime_outbox_latest_published_timestamp_seconds) < 300)
+          ) > 10
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "La publicación realtime está lenta"
+          description: "Una publicación observada en los últimos 5 minutos superó 10 segundos de demora."

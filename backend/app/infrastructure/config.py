@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     facebook_app_id: str = ""
     facebook_app_secret: str = ""
 
+    # El endpoint operativo se publica solo cuando el despliegue puede
+    # restringirlo a la red de monitoreo.
+    openmetrics_enabled: bool = False
+
     # El recorder queda apagado hasta desplegar un consumidor shadow/live que
     # drene los batches sin dejar un backlog histórico abandonado.
     realtime_outbox_recording_enabled: bool = False

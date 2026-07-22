@@ -120,6 +120,7 @@ JWT_SECRET, JWT_ALGORITHM (HS256),
 ACCESS_TOKEN_EXPIRE_MINUTES (30), REFRESH_TOKEN_EXPIRE_DAYS (14),
 CORS_ORIGINS (lista separada por comas; helper .cors_origins_list),
 GOOGLE_CLIENT_ID, FACEBOOK_APP_ID, FACEBOOK_APP_SECRET,
+OPENMETRICS_ENABLED (false por defecto; publica `/metrics` solo con opt-in),
 REALTIME_OUTBOX_DISPATCH_MODE (off|shadow|live_local; off por defecto),
 REALTIME_OUTBOX_RECORDING_ENABLED (false por defecto),
 REALTIME_OUTBOX_POLL_INTERVAL_SECONDS (1),
@@ -162,6 +163,10 @@ predeterminado continúa siendo `off`.
 activos. `GET /health/realtime` expone únicamente agregados sanitizados de
 pendientes, reintentos, cuarentenas, edad y demora conservadora
 `created_at → published_at`; nunca incluye topics ni payloads.
+`GET /metrics` expone el mismo corte en OpenMetrics 1.0 únicamente cuando
+`OPENMETRICS_ENABLED=true`; el despliegue debe restringirlo a la red de
+monitoreo. Las reglas versionadas y el runbook viven en
+`ops/monitoring/prometheus/`.
 
 La retención de publicados es opt-in (`...RETENTION_DAYS=0` por defecto) y
 trabaja por batches completos, con una transacción y un chunk acotado por

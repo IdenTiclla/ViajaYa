@@ -10,6 +10,7 @@ import uuid
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from datetime import datetime
+from typing import Literal
 
 from app.application.dto import (
     AcceptOfferResult,
@@ -92,6 +93,14 @@ class ScheduledActionQueue(ScheduledActionScheduler):
         terminal_at: datetime,
     ) -> bool:
         """Reprograma o agota una acción conservando ownership por CAS."""
+
+
+class ScheduledActionExecutor(ABC):
+    """Ejecuta el caso de uso asociado y confirma la acción en su misma UoW."""
+
+    @abstractmethod
+    async def execute(self, action: ScheduledAction) -> Literal["succeeded", "lost_lease"]:
+        """Procesa una acción reclamada sin exponer detalles de infraestructura."""
 
 
 class RealtimeOutbox(ABC):

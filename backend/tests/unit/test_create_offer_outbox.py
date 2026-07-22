@@ -38,12 +38,16 @@ from app.infrastructure.db.models import (
     OfferModel,
     RealtimeAggregateVersionModel,
     RealtimeOutboxModel,
+    ScheduledActionModel,
 )
 from app.infrastructure.db.outbox import SqlAlchemyRealtimeOutbox
 from app.infrastructure.db.repositories import (
     SqlAlchemyOfferRepository,
     SqlAlchemyRideRequestRepository,
     SqlAlchemyUserRepository,
+)
+from app.infrastructure.db.scheduled_actions import (
+    SqlAlchemyScheduledActionRepository,
 )
 from app.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from app.infrastructure.realtime.hub import ride_topic
@@ -247,6 +251,7 @@ def test_get_create_offer_enables_outbox_and_disables_repository_autocommit():
     settings = Settings(
         realtime_outbox_dispatch_mode="shadow",
         realtime_outbox_recording_enabled=True,
+        scheduled_actions_mode="shadow",
     )
 
     use_case = get_create_offer(rides, session, settings)  # type: ignore[arg-type]
@@ -255,6 +260,7 @@ def test_get_create_offer_enables_outbox_and_disables_repository_autocommit():
     assert use_case._offers._commit_create_or_supersede is False
     assert use_case._unit_of_work._session is session
     assert use_case._event_recorder._outbox._session is session
+    assert use_case._scheduled_actions._session is session
 
 
 def test_get_create_offer_keeps_outbox_disabled_by_default():
@@ -267,6 +273,7 @@ def test_get_create_offer_keeps_outbox_disabled_by_default():
     )
 
     assert isinstance(use_case._event_recorder, DisabledCreateOfferEventRecorder)
+    assert use_case._scheduled_actions is None
 
 
 async def _persist_sqlalchemy_scenario(session: AsyncSession):
@@ -292,6 +299,7 @@ async def test_create_offer_persists_business_and_outbox_in_one_commit(
             Settings(
                 realtime_outbox_dispatch_mode="shadow",
                 realtime_outbox_recording_enabled=True,
+                scheduled_actions_mode="shadow",
             ),
         ).execute(
             driver,
@@ -309,6 +317,7 @@ async def test_create_offer_persists_business_and_outbox_in_one_commit(
             RealtimeAggregateVersionModel,
             {"aggregate_type": "ride", "aggregate_id": ride.id},
         )
+        scheduled_action = await session.scalar(select(ScheduledActionModel))
 
     assert offer_count == 1
     assert len(outbox_events) == 1
@@ -319,6 +328,48 @@ async def test_create_offer_persists_business_and_outbox_in_one_commit(
     assert outbox_events[0].stream_version == 1
     assert version is not None
     assert version.version == 1
+    assert scheduled_action is not None
+    assert scheduled_action.dedupe_key == f"expire_offer:{result.detail.offer.id}"
+    assert scheduled_action.payload == {"offer_id": str(result.detail.offer.id)}
+    assert scheduled_action.execute_at > result.detail.offer.created_at
+
+
+async def test_error_after_scheduling_rolls_back_offer_outbox_and_action(
+    session_factory,
+):
+    async with session_factory() as session:
+        rides, driver, ride = await _persist_sqlalchemy_scenario(session)
+        scheduled_actions = SqlAlchemyScheduledActionRepository(session)
+
+        class ScheduleThenFail:
+            async def schedule(self, action):
+                await scheduled_actions.schedule(action)
+                raise RuntimeError("fallo después de agendar")
+
+        use_case = CreateOffer(
+            rides,
+            SqlAlchemyOfferRepository(session, commit_create_or_supersede=False),
+            SqlAlchemyUnitOfWork(session),
+            OutboxCreateOfferEventRecorder(SqlAlchemyRealtimeOutbox(session)),
+            ScheduleThenFail(),  # type: ignore[arg-type]
+        )
+
+        with pytest.raises(RuntimeError, match="después de agendar"):
+            await use_case.execute(
+                driver,
+                ride.id,
+                CreateOfferInput(accept_at_fare=True),
+            )
+
+        offer_count = await session.scalar(select(func.count(OfferModel.id)))
+        event_count = await session.scalar(select(func.count(RealtimeOutboxModel.id)))
+        action_count = await session.scalar(
+            select(func.count(ScheduledActionModel.id))
+        )
+
+    assert offer_count == 0
+    assert event_count == 0
+    assert action_count == 0
 
 
 async def test_error_after_inserting_outbox_rolls_back_offer_event_and_version(

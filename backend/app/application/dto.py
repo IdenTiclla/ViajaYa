@@ -80,6 +80,18 @@ class ScheduledAction:
     terminal_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    lease_recovered: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class DispatchScheduledActionResult:
+    """Resultado sanitizado de procesar como máximo una acción diferida."""
+
+    status: Literal["empty", "succeeded", "retried", "dead", "lost_lease"]
+    action_id: uuid.UUID | None = None
+    action_type: str | None = None
+    attempts: int = 0
+    lease_recovered: bool = False
 
 
 @dataclass(frozen=True, slots=True)

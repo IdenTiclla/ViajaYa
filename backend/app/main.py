@@ -20,6 +20,7 @@ from app.api.v1.realtime_outbox import (
     LocalHubRealtimeOutboxBatchPublisher,
 )
 from app.api.v1.routers import auth, drivers, rides, saved_places
+from app.api.v1.scheduled_actions import ApplicationScheduledActionExecutor
 from app.api.v1.ws import negotiation
 from app.application.interfaces import (
     RealtimeOutboxBatchPublisher,
@@ -36,6 +37,7 @@ from app.infrastructure.realtime.outbox_dispatcher import (
 from app.infrastructure.realtime.outbox_retention import (
     PublishedRealtimeOutboxRetentionWorker,
 )
+from app.infrastructure.scheduled_actions.worker import ScheduledActionsWorker
 
 logger = logging.getLogger(__name__)
 
@@ -63,12 +65,16 @@ def create_app(
         dispatcher_task: asyncio.Task[None] | None = None
         retention_worker: PublishedRealtimeOutboxRetentionWorker | None = None
         retention_task: asyncio.Task[None] | None = None
+        scheduled_worker: ScheduledActionsWorker | None = None
+        scheduled_task: asyncio.Task[None] | None = None
         process_lock: PostgreSQLLiveLocalProcessLock | None = None
         app.state.realtime_outbox_dispatcher = None
         app.state.realtime_outbox_dispatcher_task = None
         app.state.live_local_process_lock = None
         app.state.realtime_outbox_retention_worker = None
         app.state.realtime_outbox_retention_task = None
+        app.state.scheduled_actions_worker = None
+        app.state.scheduled_actions_task = None
         previous_legacy_delivery = hub.legacy_delivery_enabled
         mode = resolved_settings.realtime_outbox_dispatch_mode
         try:
@@ -156,6 +162,39 @@ def create_app(
                 app.state.realtime_outbox_retention_task = retention_task
                 await asyncio.sleep(0)
 
+            scheduled_mode = resolved_settings.scheduled_actions_mode
+            if scheduled_mode in {"shadow", "live"}:
+                scheduled_worker = ScheduledActionsWorker(
+                    resolved_session_factory,
+                    ApplicationScheduledActionExecutor(
+                        resolved_session_factory,
+                        resolved_settings,
+                    ),
+                    poll_interval_seconds=(
+                        resolved_settings.scheduled_actions_poll_interval_seconds
+                    ),
+                    lease_seconds=resolved_settings.scheduled_actions_lease_seconds,
+                    handler_timeout_seconds=(
+                        resolved_settings.scheduled_actions_handler_timeout_seconds
+                    ),
+                    max_attempts=resolved_settings.scheduled_actions_max_attempts,
+                    retry_base_seconds=(
+                        resolved_settings.scheduled_actions_retry_base_seconds
+                    ),
+                    retry_max_seconds=(
+                        resolved_settings.scheduled_actions_retry_max_seconds
+                    ),
+                )
+                await scheduled_worker.preflight()
+                if scheduled_mode == "live":
+                    scheduled_task = asyncio.create_task(
+                        scheduled_worker.run(),
+                        name="scheduled-actions-worker",
+                    )
+                    app.state.scheduled_actions_worker = scheduled_worker
+                    app.state.scheduled_actions_task = scheduled_task
+                    await asyncio.sleep(0)
+
             yield
         finally:
             # Los timers HTTP/WS pueden sobrevivir a su request original. Se
@@ -163,6 +202,23 @@ def create_app(
             # escribiendo en la outbox durante el apagado.
             await rides.shutdown_expiry_tasks()
             await presence.shutdown_presence_tasks()
+            # El scheduler puede producir outbox: se detiene y espera antes de
+            # cerrar el dispatcher que entrega sus eventos.
+            if scheduled_task is not None and scheduled_worker is not None:
+                scheduled_worker.stop()
+                try:
+                    await asyncio.wait_for(
+                        scheduled_task,
+                        timeout=(
+                            resolved_settings.scheduled_actions_shutdown_timeout_seconds
+                        ),
+                    )
+                except TimeoutError:
+                    logger.error(
+                        "El worker de scheduled_actions excedió el tiempo de apagado."
+                    )
+                    scheduled_task.cancel()
+                    await asyncio.gather(scheduled_task, return_exceptions=True)
             if dispatcher is not None:
                 dispatcher.stop()
             if retention_worker is not None:
@@ -200,6 +256,8 @@ def create_app(
     app.state.live_local_process_lock = None
     app.state.realtime_outbox_retention_worker = None
     app.state.realtime_outbox_retention_task = None
+    app.state.scheduled_actions_worker = None
+    app.state.scheduled_actions_task = None
 
     async def resolved_get_session() -> AsyncIterator[AsyncSession]:
         async with resolved_session_factory() as session:

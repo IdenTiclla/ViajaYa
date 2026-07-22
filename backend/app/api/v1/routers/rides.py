@@ -354,16 +354,18 @@ async def create_offer(
         await events.publish_offer_superseded(result.superseded_offer_id, result.detail)
     else:
         await events.publish_offer_created(result.detail)
-    # Avisa a conductor y pasajero si la oferta vence a los 30 s sin respuesta.
-    task = asyncio.create_task(
-        _expire_offer_after(
-            result.detail.offer.id,
-            session_factory,
-            settings,
+    # En shadow se conserva el timer para comparar el dual-write. En live, la
+    # acción durable ya fue insertada en la misma transacción que la oferta.
+    if settings.scheduled_actions_mode != "live":
+        task = asyncio.create_task(
+            _expire_offer_after(
+                result.detail.offer.id,
+                session_factory,
+                settings,
+            )
         )
-    )
-    _EXPIRY_TASKS.add(task)
-    task.add_done_callback(_EXPIRY_TASKS.discard)
+        _EXPIRY_TASKS.add(task)
+        task.add_done_callback(_EXPIRY_TASKS.discard)
     return OfferResponse.from_detail(result.detail)
 
 

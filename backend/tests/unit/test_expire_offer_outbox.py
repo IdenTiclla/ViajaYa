@@ -9,9 +9,13 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import func, select, update
 
-from app.api.deps import build_expire_offer
+from app.api.deps import (
+    build_execute_expire_offer_scheduled_action,
+    build_expire_offer,
+)
 from app.api.v1 import events
 from app.api.v1.realtime_outbox import OutboxExpireOfferEventRecorder
+from app.application.dto import PendingScheduledAction
 from app.application.use_cases.expire_offer import ExpireOffer
 from app.domain.entities import (
     Location,
@@ -30,12 +34,16 @@ from app.infrastructure.db.models import (
     RealtimeAggregateVersionModel,
     RealtimeOutboxModel,
     RealtimeStreamVersionModel,
+    ScheduledActionModel,
 )
 from app.infrastructure.db.outbox import SqlAlchemyRealtimeOutbox
 from app.infrastructure.db.repositories import (
     SqlAlchemyOfferRepository,
     SqlAlchemyRideRequestRepository,
     SqlAlchemyUserRepository,
+)
+from app.infrastructure.db.scheduled_actions import (
+    SqlAlchemyScheduledActionRepository,
 )
 from app.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from app.infrastructure.realtime.hub import driver_topic, ride_topic
@@ -248,6 +256,52 @@ async def test_expiration_and_outbox_persist_in_one_commit(session_factory) -> N
         assert await verification_session.scalar(
             select(func.count(RealtimeStreamVersionModel.topic))
         ) == 2
+
+
+async def test_scheduled_expiration_confirma_negocio_outbox_y_ack_en_un_commit(
+    session_factory,
+) -> None:
+    completed_at = datetime.now(UTC)
+    async with session_factory() as session:
+        offer = await _sql_scenario(session)
+        actions = SqlAlchemyScheduledActionRepository(session)
+        await actions.schedule(
+            PendingScheduledAction(
+                dedupe_key=f"expire_offer:{offer.id}",
+                action_type="expire_offer",
+                aggregate_id=offer.id,
+                generation=1,
+                execute_at=completed_at,
+                payload={"offer_id": str(offer.id)},
+            )
+        )
+        await session.commit()
+        claimed = await actions.claim_due(
+            completed_at,
+            completed_at - timedelta(minutes=1),
+        )
+        assert claimed is not None
+        await session.commit()
+
+    async with session_factory() as session:
+        outcome = await build_execute_expire_offer_scheduled_action(
+            session,
+            _settings(),
+        ).execute(claimed, completed_at)
+
+    async with session_factory() as session:
+        offer_status = await session.scalar(
+            select(OfferModel.status).where(OfferModel.id == offer.id)
+        )
+        action = await session.scalar(select(ScheduledActionModel))
+        outbox_count = await session.scalar(
+            select(func.count(RealtimeOutboxModel.id))
+        )
+    assert outcome == "succeeded"
+    assert offer_status is OfferStatus.EXPIRED
+    assert action is not None and action.status == "succeeded"
+    assert action.terminal_at is not None
+    assert outbox_count == 2
 
 
 async def test_disabled_recording_preserves_expiration_without_backlog(

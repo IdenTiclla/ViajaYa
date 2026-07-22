@@ -21,7 +21,11 @@ def _aware(value: datetime | None) -> datetime | None:
     return value
 
 
-def _to_action(row: ScheduledActionModel) -> ScheduledAction:
+def _to_action(
+    row: ScheduledActionModel,
+    *,
+    lease_recovered: bool = False,
+) -> ScheduledAction:
     execute_at = _aware(row.execute_at)
     next_attempt_at = _aware(row.next_attempt_at)
     created_at = _aware(row.created_at)
@@ -47,6 +51,7 @@ def _to_action(row: ScheduledActionModel) -> ScheduledAction:
         terminal_at=_aware(row.terminal_at),
         created_at=created_at,
         updated_at=updated_at,
+        lease_recovered=lease_recovered,
     )
 
 
@@ -156,6 +161,7 @@ class SqlAlchemyScheduledActionRepository(ScheduledActionQueue):
         if row is None:
             return None
 
+        lease_recovered = row.status == "running"
         row.status = "running"
         row.attempts += 1
         row.locked_at = now
@@ -164,7 +170,7 @@ class SqlAlchemyScheduledActionRepository(ScheduledActionQueue):
         row.terminal_at = None
         await self._session.flush()
         await self._session.refresh(row)
-        return _to_action(row)
+        return _to_action(row, lease_recovered=lease_recovered)
 
     async def mark_succeeded(
         self,

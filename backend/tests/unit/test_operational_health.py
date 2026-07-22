@@ -78,6 +78,7 @@ async def test_readiness_checks_database_and_reports_disabled_dispatcher(
         "status": "ok",
         "checks": {
             "database": "ok",
+            "scheduled_actions_worker": "disabled",
             "realtime_outbox_dispatcher": "disabled",
             "realtime_outbox_process_lock": "disabled",
             "realtime_outbox_retention": "disabled",
@@ -117,6 +118,7 @@ async def test_readiness_sanitizes_database_errors(
         "status": "unavailable",
         "checks": {
             "database": "error",
+            "scheduled_actions_worker": "disabled",
             "realtime_outbox_dispatcher": "disabled",
             "realtime_outbox_process_lock": "disabled",
             "realtime_outbox_retention": "disabled",
@@ -156,6 +158,7 @@ async def test_readiness_requires_a_running_dispatcher_in_shadow_mode(
         assert stopped.status_code == 503
         assert stopped.json()["checks"] == {
             "database": "ok",
+            "scheduled_actions_worker": "disabled",
             "realtime_outbox_dispatcher": "error",
             "realtime_outbox_process_lock": "ok",
             "realtime_outbox_retention": "disabled",

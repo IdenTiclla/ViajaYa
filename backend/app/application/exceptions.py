@@ -15,3 +15,11 @@ class InvalidRealtimeOutboxBatchError(ValueError):
     ) -> None:
         super().__init__(message)
         self.code = code
+
+
+class InvalidScheduledActionError(ValueError):
+    """La acción persistida no cumple el contrato de su tipo."""
+
+
+class UnsupportedScheduledActionError(ValueError):
+    """No existe un handler desplegado para el tipo de acción reclamado."""

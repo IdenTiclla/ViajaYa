@@ -845,10 +845,20 @@
             ],
             "title": "Realtime Outbox Retention",
             "type": "string"
+          },
+          "scheduled_actions_worker": {
+            "enum": [
+              "ok",
+              "error",
+              "disabled"
+            ],
+            "title": "Scheduled Actions Worker",
+            "type": "string"
           }
         },
         "required": [
           "database",
+          "scheduled_actions_worker",
           "realtime_outbox_dispatcher",
           "realtime_outbox_process_lock",
           "realtime_outbox_retention"

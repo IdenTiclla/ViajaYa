@@ -11,6 +11,7 @@ import pytest
 import pytest_asyncio
 from alembic import command
 from alembic.config import Config
+from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlalchemy.pool import NullPool
@@ -88,3 +89,25 @@ async def pg_test_db() -> PostgreSQLTestDatabase:
     finally:
         await engine.dispose()
         await database.migrate_async("downgrade", "base")
+
+
+async def _clean_scheduled_actions_if_present(
+    database: PostgreSQLTestDatabase,
+) -> None:
+    """Aísla backfills 0022 creados al re-upgradear fixtures de revisiones viejas."""
+    async with database.engine.begin() as connection:
+        exists = await connection.scalar(
+            text("SELECT to_regclass('scheduled_actions') IS NOT NULL")
+        )
+        if exists:
+            await connection.execute(text("DELETE FROM scheduled_actions"))
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def isolate_scheduled_actions(pg_test_db: PostgreSQLTestDatabase):
+    """Limpia solo la cola de la base desechable entre casos PostgreSQL."""
+    await _clean_scheduled_actions_if_present(pg_test_db)
+    try:
+        yield
+    finally:
+        await _clean_scheduled_actions_if_present(pg_test_db)

@@ -617,6 +617,19 @@ actividad de presencia hará upsert de `cancel_absent_ride`. Workers concurrente
 reclamarán acciones con `FOR UPDATE SKIP LOCKED`; los casos de uso atómicos
 seguirán siendo la defensa final contra carreras.
 
+> **Progreso 2026-07-22:** `0022_scheduled_actions` crea la cola durable con
+> deduplicación, generación, lease recuperable y `lock_token` de fencing; además
+> hace backfill de las ofertas `PENDING` respetando `created_at + 30 s`. La
+> creación de una oferta ya persiste `expire_offer` en su misma UoW y el rollout
+> `off|shadow|live` permite comparar primero el dual-write. En `live`, el worker
+> reemplaza el timer local, confirma oferta expirada + outbox + ack de acción en
+> una transacción y recupera claims abandonados con `FOR UPDATE SKIP LOCKED`.
+> PostgreSQL certifica dos claimers, token obsoleto, restart tras claim y carrera
+> entre timer shadow y worker sin duplicar la outbox. `cancel_absent_ride` sigue
+> pendiente: no se migrará hasta que Redis aporte leases de presencia compartidos
+> y una generación durable; hacerlo antes permitiría cancelaciones falsas entre
+> procesos.
+
 ## Despliegue incremental
 
 1. Publicar métricas y documentar el límite actual de un worker.

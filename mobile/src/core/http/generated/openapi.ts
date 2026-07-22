@@ -982,6 +982,11 @@ export interface components {
              * @enum {string}
              */
             realtime_outbox_retention: "ok" | "error" | "disabled";
+            /**
+             * Scheduled Actions Worker
+             * @enum {string}
+             */
+            scheduled_actions_worker: "ok" | "error" | "disabled";
         };
         /** ReadinessResponse */
         ReadinessResponse: {

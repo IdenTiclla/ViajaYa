@@ -29,6 +29,7 @@ class HealthResponse(BaseModel):
 
 class ReadinessChecksResponse(BaseModel):
     database: Literal["ok", "error"]
+    scheduled_actions_worker: Literal["ok", "error", "disabled"]
     realtime_outbox_dispatcher: Literal["ok", "error", "disabled"]
     realtime_outbox_process_lock: Literal["ok", "error", "disabled"]
     realtime_outbox_retention: Literal["ok", "error", "disabled"]
@@ -141,16 +142,31 @@ async def readiness(
         )
         retention_status = "ok" if retention_ready else "error"
 
+    scheduled_ready = True
+    scheduled_status: Literal["ok", "error", "disabled"] = "disabled"
+    if settings.scheduled_actions_mode == "live":
+        scheduled_worker = request.app.state.scheduled_actions_worker
+        scheduled_task = request.app.state.scheduled_actions_task
+        scheduled_ready = bool(
+            scheduled_worker is not None
+            and scheduled_worker.running
+            and scheduled_task is not None
+            and not scheduled_task.done()
+        )
+        scheduled_status = "ok" if scheduled_ready else "error"
+
     ready = (
         database_ready
         and dispatcher_ready
         and process_lock_ready
         and retention_ready
+        and scheduled_ready
     )
     response = ReadinessResponse(
         status="ok" if ready else "unavailable",
         checks=ReadinessChecksResponse(
             database="ok" if database_ready else "error",
+            scheduled_actions_worker=scheduled_status,
             realtime_outbox_dispatcher=dispatcher_status,
             realtime_outbox_process_lock=process_lock_status,
             realtime_outbox_retention=retention_status,

@@ -56,6 +56,29 @@ class Settings(BaseSettings):
         le=1000,
     )
 
+    # Rollout independiente del scheduler: shadow hace dual-write pero conserva
+    # el timer local; live entrega la ejecución al worker durable.
+    scheduled_actions_mode: Literal["off", "shadow", "live"] = "off"
+    scheduled_actions_poll_interval_seconds: float = Field(
+        default=1.0,
+        gt=0,
+        le=60,
+    )
+    scheduled_actions_lease_seconds: float = Field(default=30.0, gt=1, le=3600)
+    scheduled_actions_handler_timeout_seconds: float = Field(
+        default=10.0,
+        gt=0,
+        le=600,
+    )
+    scheduled_actions_max_attempts: int = Field(default=5, ge=1, le=100)
+    scheduled_actions_retry_base_seconds: float = Field(default=1.0, gt=0, le=3600)
+    scheduled_actions_retry_max_seconds: float = Field(default=60.0, gt=0, le=86400)
+    scheduled_actions_shutdown_timeout_seconds: float = Field(
+        default=12.0,
+        gt=0,
+        le=600,
+    )
+
     @model_validator(mode="after")
     def validate_realtime_outbox_rollout(self) -> Settings:
         if (
@@ -80,6 +103,28 @@ class Settings(BaseSettings):
         ):
             raise ValueError(
                 "El backoff máximo de la outbox no puede ser menor al base."
+            )
+        if self.scheduled_actions_mode == "live" and (
+            not self.realtime_outbox_recording_enabled
+            or self.realtime_outbox_dispatch_mode != "live_local"
+        ):
+            raise ValueError(
+                "SCHEDULED_ACTIONS_MODE=live requiere outbox recording en "
+                "modo live_local."
+            )
+        if (
+            self.scheduled_actions_retry_max_seconds
+            < self.scheduled_actions_retry_base_seconds
+        ):
+            raise ValueError(
+                "El backoff máximo de scheduled_actions no puede ser menor al base."
+            )
+        if (
+            self.scheduled_actions_handler_timeout_seconds
+            >= self.scheduled_actions_lease_seconds
+        ):
+            raise ValueError(
+                "El timeout del handler debe ser menor al lease de scheduled_actions."
             )
         return self
 

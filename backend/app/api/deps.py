@@ -63,6 +63,9 @@ from app.application.use_cases.create_saved_place import CreateSavedPlace
 from app.application.use_cases.delete_saved_place import DeleteSavedPlace
 from app.application.use_cases.dismiss_open_ride import DismissOpenRide
 from app.application.use_cases.edit_ride import EditRide
+from app.application.use_cases.execute_expire_offer_scheduled_action import (
+    ExecuteExpireOfferScheduledAction,
+)
 from app.application.use_cases.expire_offer import ExpireOffer
 from app.application.use_cases.get_driver_active_ride import GetDriverActiveRide
 from app.application.use_cases.get_driver_earnings import GetDriverEarnings
@@ -114,6 +117,9 @@ from app.infrastructure.db.repositories import (
     SqlAlchemyRideRequestRepository,
     SqlAlchemySavedPlaceRepository,
     SqlAlchemyUserRepository,
+)
+from app.infrastructure.db.scheduled_actions import (
+    SqlAlchemyScheduledActionRepository,
 )
 from app.infrastructure.db.session import async_session_factory, get_session
 from app.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
@@ -323,6 +329,11 @@ def get_create_offer(
         offers,
         SqlAlchemyUnitOfWork(session),
         recorder,
+        (
+            SqlAlchemyScheduledActionRepository(session)
+            if settings.scheduled_actions_mode != "off"
+            else None
+        ),
     )
 
 
@@ -399,6 +410,28 @@ def build_expire_offer(session: AsyncSession, settings: Settings) -> ExpireOffer
             session,
             commit_mark_expired_if_pending=False,
         ),
+        SqlAlchemyUnitOfWork(session),
+        recorder,
+    )
+
+
+def build_execute_expire_offer_scheduled_action(
+    session: AsyncSession,
+    settings: Settings,
+) -> ExecuteExpireOfferScheduledAction:
+    """Cablea expiración y ack durable sobre una única sesión/UoW."""
+    recorder = (
+        OutboxExpireOfferEventRecorder(SqlAlchemyRealtimeOutbox(session))
+        if settings.realtime_outbox_recording_enabled
+        else DisabledExpireOfferEventRecorder()
+    )
+    actions = SqlAlchemyScheduledActionRepository(session)
+    return ExecuteExpireOfferScheduledAction(
+        SqlAlchemyOfferRepository(
+            session,
+            commit_mark_expired_if_pending=False,
+        ),
+        actions,
         SqlAlchemyUnitOfWork(session),
         recorder,
     )

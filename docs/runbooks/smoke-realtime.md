@@ -12,7 +12,9 @@ Define `VIAJAYA_TEST_DATABASE_URL` con una base PostgreSQL desechable y ejecuta:
 
 ```bash
 cd backend
-.venv/bin/pytest tests/postgresql/test_pg_realtime_network_smoke.py -q
+.venv/bin/pytest \
+  tests/postgresql/test_pg_realtime_network_smoke.py \
+  tests/postgresql/test_pg_realtime_fault_smoke.py -q
 ```
 
 La guarda compartida de la suite rechaza drivers distintos de
@@ -44,9 +46,10 @@ usar un dev build —nunca Expo Go— y observar que el hook productivo:
 - se recupera de un frame inválido;
 - recibe el cierre `1012` posterior a una cuarentena confirmada y converge.
 
-Ese pase requiere un emulador o dispositivo solicitado expresamente y un
-orquestador de fallos limitado a una base desechable. No se deben añadir
-endpoints administrativos ni flags de corrupción al artefacto productivo.
+Ese pase requiere un emulador o dispositivo solicitado expresamente. El arnés
+one-shot de los tests puede reutilizarse al diseñar el proxy o runner móvil, pero
+no se deben añadir endpoints administrativos ni flags de corrupción al artefacto
+productivo.
 
 La evidencia manual debe registrar commit, dispositivo o AVD, estado de
 `/health/ready` y `/health/realtime`, resultado por escenario y un extracto
@@ -59,4 +62,6 @@ sanitizado de logcat. Nunca debe conservar JWT, payloads, DSN ni datos personale
 - Usa el cliente Python `websockets`, no el WebSocket nativo de React Native.
 - Cierra y abre explícitamente otra conexión; no prueba backoff, AppState ni red
   móvil.
-- Todavía no inyecta caída, duplicado, hueco, frame inválido ni cuarentena.
+- Inyecta duplicado, hueco y cuarentena solo mediante el arnés one-shot de
+  tests. Todavía no fuerza crash/restart del proceso, no inyecta un frame
+  inválido y no ejecuta el hook React Native.

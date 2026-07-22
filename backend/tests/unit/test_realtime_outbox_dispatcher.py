@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
@@ -24,7 +24,15 @@ from app.api.v1.realtime_outbox import (
     CanonicalRealtimeOutboxBatchValidator,
     LocalHubRealtimeOutboxBatchPublisher,
 )
-from app.application.dto import DispatchRealtimeOutboxResult, PendingRealtimeEvent
+from app.application.dto import (
+    DispatchRealtimeOutboxResult,
+    PendingRealtimeEvent,
+    RealtimeOutboxEvent,
+)
+from app.application.interfaces import (
+    RealtimeOutboxBatchPublisher,
+    RealtimeOutboxBatchValidator,
+)
 from app.infrastructure.config import Settings
 from app.infrastructure.db.models import (
     RealtimeAggregateVersionModel,
@@ -367,6 +375,55 @@ async def test_app_lifecycle_live_local_disables_legacy_and_restores_policy(
 
     assert dispatcher.running is False
     assert realtime_hub_module.hub.legacy_delivery_enabled is previous_policy
+
+
+class _InjectedValidator(RealtimeOutboxBatchValidator):
+    def validate(self, events: Sequence[RealtimeOutboxEvent]) -> None:
+        del events
+
+
+class _InjectedPublisher(RealtimeOutboxBatchPublisher):
+    async def publish(self, events: Sequence[RealtimeOutboxEvent]) -> None:
+        del events
+
+    async def force_resync(self, streams: Sequence[str]) -> None:
+        del streams
+
+
+async def test_app_lifecycle_usa_los_adaptadores_realtime_inyectados(
+    outbox_sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    settings = Settings(
+        _env_file=None,
+        realtime_outbox_dispatch_mode="live_local",
+        realtime_outbox_recording_enabled=True,
+        realtime_outbox_poll_interval_seconds=30,
+    )
+    validator = _InjectedValidator()
+    publisher = _InjectedPublisher()
+    app = create_app(
+        settings=settings,
+        session_factory=outbox_sessions,
+        realtime_outbox_batch_validator=validator,
+        realtime_outbox_batch_publisher=publisher,
+    )
+
+    async with app.router.lifespan_context(app):
+        dispatcher = app.state.realtime_outbox_dispatcher
+        assert isinstance(dispatcher, LocalRealtimeOutboxDispatcher)
+        assert dispatcher._validator is validator
+        assert dispatcher._publisher is publisher
+
+
+def test_app_rechaza_publisher_inyectado_fuera_de_live_local(
+    outbox_sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    with pytest.raises(ValueError, match="requiere el modo live_local"):
+        create_app(
+            settings=Settings(_env_file=None),
+            session_factory=outbox_sessions,
+            realtime_outbox_batch_publisher=_InjectedPublisher(),
+        )
 
 
 def test_settings_keep_shadow_dispatcher_disabled_by_default() -> None:

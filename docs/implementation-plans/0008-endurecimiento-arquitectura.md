@@ -314,6 +314,12 @@ Axios todavía continúe en segundo plano sin propagar `AbortSignal`.
 > cierre 1012/resnapshot de todos sus sockets. El lifecycle realiza preflight,
 > usa una sesión nueva por iteración y detiene el loop de forma coordinada. Este
 > modo no habilita múltiples workers: es una canary local previa al bridge Redis.
+> La suite PostgreSQL dispone además de inyección one-shot exclusiva de tests,
+> fuera del artefacto productivo. Por WebSocket TCP real certifica una entrega
+> duplicada, un salto de versión intencional, la continuidad posterior del
+> stream, una cuarentena confirmada, el cierre `1012` y un nuevo snapshot
+> autoritativo. Este smoke no ejecuta el cliente React Native ni fuerza la caída
+> del proceso API.
 > `0018`–`0021` no se aplicaron a la base local `viajaya`; sus pruebas PostgreSQL son
 > opt-in y CI las ejecutará sobre una base desechable.
 > El anuncio inicial y cada reanuncio por reconexión adquieren lock sobre el
@@ -528,10 +534,18 @@ Endurecimiento antes de promover la canary:
   reales en `live_local`: snapshot v2, delta durable, cierre controlado, nuevo
   handshake, snapshot autoritativo y drenado final se certifican en la suite
   PostgreSQL de CI.
-- [ ] Extender el smoke headless con fallos one-shot fuera del artefacto
-  productivo para caída, duplicado, hueco y cuarentena.
+- [x] Extender el smoke headless con inyección one-shot exclusiva de tests,
+  fuera del artefacto productivo: entrega duplicada por TCP, salto de versión
+  observable, continuidad posterior del stream, batch puesto en cuarentena
+  después del commit, cierre `1012` y nuevo snapshot cuyo watermark salta el
+  evento no publicado.
+- [ ] Añadir un smoke de crash/restart que termine abruptamente el proceso entre
+  el commit durable y la confirmación de `published_at`, levante otra instancia
+  contra la misma base y compruebe que no se pierde la notificación. El cierre
+  controlado o forzado de un WebSocket no cubre este caso.
 - [ ] Ejecutar el pase del hook productivo en un dev build React Native frente
-  a esos fallos y conservar la evidencia indicada en
+  a duplicado, hueco, frame inválido y cuarentena/cierre `1012`, y conservar la
+  evidencia indicada en
   `docs/runbooks/smoke-realtime.md`.
 - [x] Hacer indivisible la aplicación de snapshots entre React Query y Zustand,
   e impedir que un handler ya iniciado emita efectos después de invalidar su

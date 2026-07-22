@@ -21,6 +21,10 @@ from app.api.v1.realtime_outbox import (
 )
 from app.api.v1.routers import auth, drivers, rides, saved_places
 from app.api.v1.ws import negotiation
+from app.application.interfaces import (
+    RealtimeOutboxBatchPublisher,
+    RealtimeOutboxBatchValidator,
+)
 from app.infrastructure.config import Settings, get_settings
 from app.infrastructure.db.advisory_lock import PostgreSQLLiveLocalProcessLock
 from app.infrastructure.db.session import async_session_factory, get_session
@@ -40,9 +44,18 @@ def create_app(
     *,
     settings: Settings | None = None,
     session_factory: async_sessionmaker[AsyncSession] | None = None,
+    realtime_outbox_batch_validator: RealtimeOutboxBatchValidator | None = None,
+    realtime_outbox_batch_publisher: RealtimeOutboxBatchPublisher | None = None,
 ) -> FastAPI:
     resolved_settings = settings or get_settings()
     resolved_session_factory = session_factory or async_session_factory
+    if (
+        realtime_outbox_batch_publisher is not None
+        and resolved_settings.realtime_outbox_dispatch_mode != "live_local"
+    ):
+        raise ValueError(
+            "Un publisher realtime inyectado requiere el modo live_local."
+        )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -73,6 +86,11 @@ def create_app(
                 hub.set_legacy_delivery_enabled(False)
 
             if mode in {"shadow", "live_local"}:
+                batch_validator = (
+                    realtime_outbox_batch_validator
+                    if realtime_outbox_batch_validator is not None
+                    else CanonicalRealtimeOutboxBatchValidator()
+                )
                 dispatcher_options = {
                     "poll_interval_seconds": (
                         resolved_settings.realtime_outbox_poll_interval_seconds
@@ -88,14 +106,18 @@ def create_app(
                 if mode == "live_local":
                     dispatcher = LocalRealtimeOutboxDispatcher(
                         resolved_session_factory,
-                        CanonicalRealtimeOutboxBatchValidator(),
-                        LocalHubRealtimeOutboxBatchPublisher(),
+                        batch_validator,
+                        (
+                            realtime_outbox_batch_publisher
+                            if realtime_outbox_batch_publisher is not None
+                            else LocalHubRealtimeOutboxBatchPublisher()
+                        ),
                         **dispatcher_options,
                     )
                 else:
                     dispatcher = ShadowRealtimeOutboxDispatcher(
                         resolved_session_factory,
-                        CanonicalRealtimeOutboxBatchValidator(),
+                        batch_validator,
                         **dispatcher_options,
                     )
                 # Una base sin 0018–0021 es un error de despliegue y debe impedir

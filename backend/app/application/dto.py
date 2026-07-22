@@ -39,6 +39,48 @@ RealtimeOutboxQuarantineCode: TypeAlias = Literal[
     "invalid_routing",
 ]
 
+ScheduledActionStatus: TypeAlias = Literal[
+    "pending",
+    "running",
+    "succeeded",
+    "cancelled",
+    "dead",
+]
+
+
+@dataclass(frozen=True, slots=True)
+class PendingScheduledAction:
+    """Acción diferida que debe persistirse junto con la mutación productora."""
+
+    dedupe_key: str
+    action_type: str
+    aggregate_id: uuid.UUID
+    generation: int
+    execute_at: datetime
+    payload: dict[str, object]
+
+
+@dataclass(frozen=True, slots=True)
+class ScheduledAction:
+    """Estado durable de una acción, incluido su lease cuando está reclamada."""
+
+    id: uuid.UUID
+    dedupe_key: str
+    action_type: str
+    aggregate_id: uuid.UUID
+    generation: int
+    execute_at: datetime
+    payload: dict[str, object]
+    status: ScheduledActionStatus
+    attempts: int
+    next_attempt_at: datetime
+    locked_at: datetime | None
+    lock_token: uuid.UUID | None
+    last_error: str | None
+    terminal_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
 
 @dataclass(frozen=True, slots=True)
 class PendingRealtimeEvent:

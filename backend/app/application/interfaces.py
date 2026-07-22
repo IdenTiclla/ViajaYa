@@ -22,6 +22,7 @@ from app.application.dto import (
     PageCursor,
     PassengerRealtimeSnapshot,
     PendingRealtimeEvent,
+    PendingScheduledAction,
     PublishedRealtimeOutboxRetentionResult,
     RealtimeOutboxEvent,
     RealtimeOutboxOperationalState,
@@ -30,6 +31,7 @@ from app.application.dto import (
     RideHistoryItem,
     RidePausedResult,
     RideRepublishedResult,
+    ScheduledAction,
     SocialProfile,
 )
 from app.domain.entities import AuthProvider, Offer, RideStatus, UserRole
@@ -46,6 +48,50 @@ class UnitOfWork(ABC):
     @abstractmethod
     async def rollback(self) -> None:
         """Descarta todo lo realizado por la operación actual."""
+
+
+class ScheduledActionScheduler(ABC):
+    """Persiste acciones diferidas dentro de la transacción productora."""
+
+    @abstractmethod
+    async def schedule(self, action: PendingScheduledAction) -> ScheduledAction:
+        """Inserta o renueva una acción por una generación estrictamente mayor."""
+
+
+class ScheduledActionQueue(ScheduledActionScheduler):
+    """Reclama y finaliza acciones mediante leases recuperables."""
+
+    @abstractmethod
+    async def claim_due(
+        self,
+        now: datetime,
+        stale_before: datetime,
+    ) -> ScheduledAction | None:
+        """Reclama una acción vencida o recupera un lease abandonado."""
+
+    @abstractmethod
+    async def mark_succeeded(
+        self,
+        action_id: uuid.UUID,
+        generation: int,
+        lock_token: uuid.UUID,
+        terminal_at: datetime,
+    ) -> bool:
+        """Confirma el éxito solo si el caller todavía posee el lease."""
+
+    @abstractmethod
+    async def mark_failed(
+        self,
+        action_id: uuid.UUID,
+        generation: int,
+        lock_token: uuid.UUID,
+        *,
+        error_code: str,
+        next_attempt_at: datetime,
+        terminal: bool,
+        terminal_at: datetime,
+    ) -> bool:
+        """Reprograma o agota una acción conservando ownership por CAS."""
 
 
 class RealtimeOutbox(ABC):

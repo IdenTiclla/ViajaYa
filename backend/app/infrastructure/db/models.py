@@ -65,6 +65,11 @@ _OUTBOX_PUBLISHED_RETENTION_PREDICATE = text(
     "published_at IS NOT NULL AND sequence = 0"
 )
 _OUTBOX_PAYLOAD_TYPE = JSON().with_variant(JSONB(), "postgresql")
+_SCHEDULED_ACTION_DUE_PREDICATE = text("status = 'pending'")
+_SCHEDULED_ACTION_STALE_PREDICATE = text("status = 'running'")
+_SCHEDULED_ACTION_TERMINAL_PREDICATE = text(
+    "status IN ('succeeded', 'cancelled')"
+)
 
 
 class UserModel(Base):
@@ -617,3 +622,108 @@ class RealtimeOutboxModel(Base):
         Integer, default=0, server_default="0", nullable=False
     )
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class ScheduledActionModel(Base):
+    """Acción diferida durable, reclamada mediante un lease con fencing."""
+
+    __tablename__ = "scheduled_actions"
+    __table_args__ = (
+        CheckConstraint(
+            "generation >= 1",
+            name="ck_scheduled_actions_generation_positive",
+        ),
+        CheckConstraint(
+            "attempts >= 0",
+            name="ck_scheduled_actions_attempts_nonnegative",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'running', 'succeeded', 'cancelled', 'dead')",
+            name="ck_scheduled_actions_status",
+        ),
+        CheckConstraint(
+            "(status = 'running') = (locked_at IS NOT NULL AND lock_token IS NOT NULL)",
+            name="ck_scheduled_actions_lease_complete",
+        ),
+        CheckConstraint(
+            "(status IN ('succeeded', 'cancelled', 'dead')) = "
+            "(terminal_at IS NOT NULL)",
+            name="ck_scheduled_actions_terminal_complete",
+        ),
+        CheckConstraint(
+            "length(trim(dedupe_key)) BETWEEN 1 AND 255",
+            name="ck_scheduled_actions_dedupe_key_length",
+        ),
+        CheckConstraint(
+            "length(trim(action_type)) BETWEEN 1 AND 64",
+            name="ck_scheduled_actions_action_type_length",
+        ),
+        CheckConstraint(
+            "last_error IS NULL OR length(trim(last_error)) BETWEEN 1 AND 64",
+            name="ck_scheduled_actions_last_error_length",
+        ),
+        Index(
+            "ix_scheduled_actions_due",
+            "next_attempt_at",
+            "execute_at",
+            "id",
+            postgresql_where=_SCHEDULED_ACTION_DUE_PREDICATE,
+            sqlite_where=_SCHEDULED_ACTION_DUE_PREDICATE,
+        ),
+        Index(
+            "ix_scheduled_actions_stale",
+            "locked_at",
+            "id",
+            postgresql_where=_SCHEDULED_ACTION_STALE_PREDICATE,
+            sqlite_where=_SCHEDULED_ACTION_STALE_PREDICATE,
+        ),
+        Index(
+            "ix_scheduled_actions_terminal_retention",
+            "terminal_at",
+            "id",
+            postgresql_where=_SCHEDULED_ACTION_TERMINAL_PREDICATE,
+            sqlite_where=_SCHEDULED_ACTION_TERMINAL_PREDICATE,
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    dedupe_key: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    action_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    aggregate_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    generation: Mapped[int] = mapped_column(
+        BigInteger, default=1, server_default="1", nullable=False
+    )
+    execute_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    payload: Mapped[dict[str, object]] = mapped_column(
+        _OUTBOX_PAYLOAD_TYPE, nullable=False
+    )
+    status: Mapped[str] = mapped_column(
+        String(20), default="pending", server_default="pending", nullable=False
+    )
+    attempts: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
+    next_attempt_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    locked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    lock_token: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), nullable=True
+    )
+    last_error: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    terminal_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )

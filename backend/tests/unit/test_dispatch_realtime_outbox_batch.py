@@ -310,6 +310,33 @@ async def test_live_quarantines_before_forcing_resync_after_commit() -> None:
     assert publisher.resynced == [(event.topic,)]
 
 
+async def test_transport_limit_is_quarantined_instead_of_retried() -> None:
+    now = datetime.now(UTC)
+    event = _event(attempts=3)
+    outbox = RecordingOutbox([event])
+    unit_of_work = RecordingUnitOfWork()
+    publisher = RecordingPublisher(
+        InvalidRealtimeOutboxBatchError(
+            "transport_limit",
+            "batch demasiado grande",
+        )
+    )
+    use_case = DispatchRealtimeOutboxBatch(
+        outbox,
+        unit_of_work,
+        ConfigurableValidator(),
+        publisher,
+    )
+
+    result = await use_case.execute(now)
+
+    assert result.status == "quarantined"
+    assert result.quarantine_code == "transport_limit"
+    assert outbox.quarantined == [(event.batch_id, "transport_limit", now)]
+    assert outbox.failed == []
+    assert unit_of_work.commits == 1
+
+
 async def test_cancel_after_quarantine_commit_waits_for_forced_resync() -> None:
     entered = asyncio.Event()
     release = asyncio.Event()

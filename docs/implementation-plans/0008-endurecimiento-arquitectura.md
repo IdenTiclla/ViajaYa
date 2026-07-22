@@ -307,7 +307,7 @@ Axios todavía continúe en segundo plano sin propagar `AbortSignal`.
 > notificación/limpieza del ganador y retiros/rechazos de los afectados en un
 > único batch multistream. El recorder está detrás
 > de `REALTIME_OUTBOX_RECORDING_ENABLED=false` y el dispatcher se controla con
-> `REALTIME_OUTBOX_DISPATCH_MODE=off|shadow|live_local`, apagado por defecto. El
+> `REALTIME_OUTBOX_DISPATCH_MODE=off|shadow|live_local|live_redis`, apagado por defecto. El
 > modo sombra únicamente reclama, valida y marca batches. `live_local` exige
 > recording, pre-serializa el batch v2 completo, lo entrega en orden al hub del
 > proceso y solo después marca `published_at`; simultáneamente apaga la ruta
@@ -316,6 +316,12 @@ Axios todavía continúe en segundo plano sin propagar `AbortSignal`.
 > cierre 1012/resnapshot de todos sus sockets. El lifecycle realiza preflight,
 > usa una sesión nueva por iteración y detiene el loop de forma coordinada. Este
 > modo no habilita múltiples workers: es una canary local previa al bridge Redis.
+> `live_redis` conserva los mismos envelopes y snapshots, pero publica cada batch
+> a un canal compartido y mantiene un suscriptor por proceso. Pub/Sub no reemplaza
+> la durabilidad de PostgreSQL: una desconexión expulsa sockets con 1012 y un
+> publish sin suscriptores reintenta la fila. La clave advisory legada mantiene
+> `live_redis` exclusivo de un worker y evita mezclar binarios durante rolling
+> deploy hasta completar la presencia compartida.
 > La suite PostgreSQL dispone además de inyección one-shot exclusiva de tests,
 > fuera del artefacto productivo. Por WebSocket TCP real certifica una entrega
 > duplicada, un salto de versión intencional, la continuidad posterior del
@@ -326,8 +332,8 @@ Axios todavía continúe en segundo plano sin propagar `AbortSignal`.
 > revierte el claim inconcluso y libera el advisory lock; otra instancia sobre
 > la misma base publica o reentrega la misma identidad durable según la ventana,
 > confirma `published_at` y devuelve un snapshot cuyo watermark cubre el evento.
-> Esta certificación sigue limitada a `live_local` con un proceso y deberá
-> repetirse al introducir Redis.
+> Esta certificación de crash sigue limitada a `live_local` con un proceso y
+> deberá repetirse sobre `live_redis`.
 > `0018`–`0021` no se aplicaron a la base local `viajaya`; sus pruebas PostgreSQL son
 > opt-in y CI las ejecutará sobre una base desechable.
 > El anuncio inicial y cada reanuncio por reconexión adquieren lock sobre el
@@ -391,7 +397,8 @@ no se reutilizan; el hueco obliga a un cliente live a solicitar otro snapshot.
 Un dispatcher reclama filas con `FOR UPDATE SKIP LOCKED`, publica al transporte y
 marca `published_at`. Si muere después de publicar y antes de marcar, el evento
 se repite; por eso la idempotencia del cliente es obligatoria. El transporte
-actual de `live_local` es el hub del mismo proceso; Redis sigue pendiente.
+de `live_local` sigue siendo el hub del proceso. El modo `live_redis` publica el
+batch completo por Pub/Sub y cada réplica lo entrega a su propio hub local.
 
 El dispatcher **sombra** no ejecuta publicación: certifica claim, validación y
 lifecycle usando la outbox real, marca las filas procesadas y deja la entrega
@@ -404,15 +411,18 @@ Ambos exigen `0018`–`0021`. La secuencia de flags es:
 3. `shadow` + recording `true`: registrar y depurar en sombra mientras se compara
    con la publicación directa;
 4. `live_local` + recording `true`: solo después de drenar el backlog, entregar
-   envelopes/snapshots v2 con exactamente un worker.
+   envelopes/snapshots v2 con exactamente un worker;
+5. `live_redis` + recording `true`: activar el transporte Redis con un solo
+   worker hasta completar leases de presencia y `cancel_absent_ride` durable.
 
 `off` + recording `true` no es una combinación desplegable. Antes de activar la
-entrega local se debe comprobar que no quede backlog sombra reproducible. Cambiar
-estos flags no permite aumentar el número de workers API.
+entrega live se debe comprobar que no quede backlog sombra reproducible. El modo
+Redis elimina el límite técnico del hub, pero el lock rechaza un segundo worker
+hasta compartir presencia; un smoke de negociación no sustituye esa dependencia.
 
 La publicación directa permanece disponible para `off|shadow`; el lifecycle la
-deshabilita globalmente durante `live_local`, evitando una entrega doble al mismo
-socket.
+deshabilita globalmente durante `live_local|live_redis`, evitando una entrega
+doble al mismo socket.
 
 Base ya cumplida por `93b9741`:
 
@@ -516,11 +526,11 @@ Dispatcher sombra y canary local, todavía sin Redis:
 
 Endurecimiento antes de promover la canary:
 
-- [x] Impedir en runtime que consumidores PostgreSQL `shadow` y `live_local`
-  convivan contra la misma base: sombra toma un advisory lock compartido y live
-  uno exclusivo. El dispatcher sondea la misma sesión propietaria y se detiene
-  fail-closed si la pierde. Sigue pendiente
-  reemplazar esta exclusión por el bridge Redis para admitir dos workers.
+- [x] Impedir en runtime que consumidores PostgreSQL de modos incompatibles
+  convivan contra la misma base. La clave de la versión anterior permanece como
+  barrera de rolling deploy: varios shadow pueden convivir, pero live_local y
+  live_redis son exclusivos. El dispatcher sondea la sesión propietaria y se
+  detiene fail-closed si la pierde.
 - [x] Añadir liveness/readiness y un snapshot sanitario de backlog, edad,
   reintentos, cuarentenas y demora de publicación; la lectura no expone payload,
   topic, DSN ni errores internos.
@@ -576,16 +586,27 @@ Endurecimiento antes de promover la canary:
 
 ### 3.2 Bridge Redis y sockets locales
 
-- Cada proceso mantiene únicamente sus sockets locales.
-- Un suscriptor Redis por proceso recibe eventos y los entrega al hub local.
-- Los topics lógicos existentes (`ride:*`, `driver:*`, `pool:*`) se conservan.
-- La barrera de snapshot se toma después de registrar la suscripción local; los
-  duplicados que coincidan con el snapshot se resuelven por versión.
-- Reconectar Redis tiene backoff, métricas y resnapshot del cliente por el flujo
-  WebSocket existente.
+- [x] Cada proceso mantiene únicamente sus sockets locales.
+- [x] Un suscriptor Redis por proceso recibe batches v2 validados y los entrega
+  al hub local, conservando `ride:*`, `driver:*` y `pool:*`.
+- [x] El publisher exige al menos un suscriptor confirmado; un fallo conserva el
+  batch PostgreSQL para retry y no marca `published_at`.
+- [x] Perder Pub/Sub o recibir un mensaje inválido cierra todos los sockets
+  locales con 1012; el handshake posterior recupera snapshot y watermarks. Los
+  timers de ausencia esperan mientras el transporte compartido no esté sano.
+- [x] Reconectar Redis tiene backoff, readiness y métricas sanitizadas.
+- [x] La suite prueba dos hubs con broker simulado y con Redis real en CI; fuerza
+  además la caída de suscriptores, el cierre 1012 y la reconexión.
+- [x] Rechazar el segundo proceso Uvicorn `live_redis` mientras la presencia siga
+  local; el fanout entre hubs se certifica sin habilitar un despliegue inseguro.
+- [x] Publicar batches canónicos de más de 1000 eventos cuando caben en el frame;
+  si exceden bytes, cuarentena `transport_limit` + resnapshot evita retry infinito.
+- [x] Reiniciar un servidor Redis dedicado entre commit y publicación: el socket
+  cierra 1012, el batch queda pendiente y el replay conserva `event_id`,
+  `batch_id`, secuencia y versión después de la reconexión.
 
-Solo después de pasar las pruebas multiworker se permitirá configurar más de un
-worker API.
+Solo después de implementar la sección 3.3 y migrar `cancel_absent_ride` se
+permitirá configurar más de un worker API y ejecutar la negociación multiproceso.
 
 ### 3.3 Presencia compartida
 
@@ -650,11 +671,13 @@ seguirán siendo la defensa final contra carreras.
    publicación directa, todavía con un worker.
 5. Emitir envelopes versionados y actualizar mobile para idempotencia y
    watermarks.
-6. Activar Redis bridge con un worker API y comparar eventos/snapshots.
+6. Activar `live_redis` con un worker API y comparar eventos/snapshots.
 7. Desactivar temporizadores y publicación directa mediante feature flags.
-8. Probar reinicios forzados de API, Redis y workers. La API `live_local` ya está
-   certificada; Redis y workers siguen pendientes.
-9. Habilitar dos workers API en staging; luego producción.
+8. Probar reinicios forzados de API, Redis y workers. El crash API `live_local`,
+   el restart total de Redis con replay y el crash del scheduler durable están
+   certificados en procesos/contenedores reales.
+9. Implementar presencia compartida y recién entonces habilitar dos workers API
+   en staging; luego producción.
 
 Cada paso debe tener un feature flag y rollback que no revierta migraciones ni
 borre eventos pendientes.
@@ -677,7 +700,7 @@ personales sin redacción.
 
 - Pasajero y conductor conectados a procesos distintos reciben todos los eventos.
 - Matar la API después del commit no pierde la notificación: certificado para
-  `live_local` uniproceso; deberá recertificarse al introducir Redis.
+  `live_local` uniproceso; deberá recertificarse sobre `live_redis`.
 - Reiniciar workers no evita que una oferta venza ni deja una búsqueda abandonada.
 - Redis caído no provoca cancelaciones falsas.
 - Duplicar o reordenar eventos no revierte estados terminales en mobile.
@@ -699,5 +722,5 @@ npx tsc --noEmit
 npm run lint
 ```
 
-Las fases de Redis/outbox añadirán pruebas de integración y un smoke test que
-fuerce a pasajero y conductor a procesos distintos.
+La suite de Redis/outbox incluye integración real y un smoke que fuerza a
+pasajero y conductor a procesos Uvicorn distintos.

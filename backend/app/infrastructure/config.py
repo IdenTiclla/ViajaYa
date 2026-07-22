@@ -32,7 +32,12 @@ class Settings(BaseSettings):
     # El recorder queda apagado hasta desplegar un consumidor shadow/live que
     # drene los batches sin dejar un backlog histórico abandonado.
     realtime_outbox_recording_enabled: bool = False
-    realtime_outbox_dispatch_mode: Literal["off", "shadow", "live_local"] = "off"
+    realtime_outbox_dispatch_mode: Literal[
+        "off",
+        "shadow",
+        "live_local",
+        "live_redis",
+    ] = "off"
     realtime_outbox_poll_interval_seconds: float = Field(default=1.0, gt=0, le=60)
     realtime_outbox_retry_base_seconds: float = Field(default=1.0, gt=0, le=3600)
     realtime_outbox_retry_max_seconds: float = Field(default=60.0, gt=0, le=86400)
@@ -54,6 +59,30 @@ class Settings(BaseSettings):
         default=100,
         ge=1,
         le=1000,
+    )
+    # Redis solo participa en el fanout efímero. PostgreSQL conserva eventos,
+    # versiones y snapshots autoritativos para recuperar cualquier desconexión.
+    realtime_redis_url: str = "redis://localhost:6379/0"
+    realtime_redis_channel: str = Field(
+        default="viajaya:realtime:v2",
+        min_length=1,
+        max_length=255,
+        pattern=r"^[A-Za-z0-9:._-]+$",
+    )
+    realtime_redis_connect_timeout_seconds: float = Field(
+        default=2.0,
+        gt=0,
+        le=30,
+    )
+    realtime_redis_reconnect_base_seconds: float = Field(
+        default=0.5,
+        gt=0,
+        le=60,
+    )
+    realtime_redis_reconnect_max_seconds: float = Field(
+        default=30.0,
+        gt=0,
+        le=600,
     )
 
     # Rollout independiente del scheduler: shadow hace dual-write pero conserva
@@ -104,15 +133,27 @@ class Settings(BaseSettings):
         ):
             raise ValueError(
                 "REALTIME_OUTBOX_RECORDING_ENABLED requiere "
-                "REALTIME_OUTBOX_DISPATCH_MODE=shadow|live_local."
+                "REALTIME_OUTBOX_DISPATCH_MODE=shadow|live_local|live_redis."
             )
         if (
-            self.realtime_outbox_dispatch_mode == "live_local"
+            self.realtime_outbox_dispatch_mode in {"live_local", "live_redis"}
             and not self.realtime_outbox_recording_enabled
         ):
             raise ValueError(
-                "REALTIME_OUTBOX_DISPATCH_MODE=live_local requiere "
+                f"{self.realtime_outbox_dispatch_mode} requiere "
                 "REALTIME_OUTBOX_RECORDING_ENABLED=true."
+            )
+        if (
+            self.realtime_outbox_dispatch_mode == "live_redis"
+            and not self.realtime_redis_url.strip()
+        ):
+            raise ValueError("REALTIME_REDIS_URL es obligatorio en modo live_redis.")
+        if (
+            self.realtime_redis_reconnect_max_seconds
+            < self.realtime_redis_reconnect_base_seconds
+        ):
+            raise ValueError(
+                "El backoff máximo de Redis no puede ser menor al base."
             )
         if (
             self.realtime_outbox_retry_max_seconds
@@ -123,11 +164,12 @@ class Settings(BaseSettings):
             )
         if self.scheduled_actions_mode == "live" and (
             not self.realtime_outbox_recording_enabled
-            or self.realtime_outbox_dispatch_mode != "live_local"
+            or self.realtime_outbox_dispatch_mode
+            not in {"live_local", "live_redis"}
         ):
             raise ValueError(
                 "SCHEDULED_ACTIONS_MODE=live requiere outbox recording en "
-                "modo live_local."
+                "modo live_local o live_redis."
             )
         if (
             self.scheduled_actions_retry_max_seconds

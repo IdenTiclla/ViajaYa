@@ -30,6 +30,7 @@ from app.application.dto import (
     RealtimeOutboxEvent,
 )
 from app.application.interfaces import (
+    RealtimeDeliveryBridge,
     RealtimeOutboxBatchPublisher,
     RealtimeOutboxBatchValidator,
 )
@@ -394,6 +395,56 @@ class _InjectedPublisher(RealtimeOutboxBatchPublisher):
         del streams
 
 
+class _InjectedBridge(RealtimeDeliveryBridge):
+    def __init__(self) -> None:
+        self._running = False
+        self._connected = False
+        self._last_error: str | None = None
+        self._ready = asyncio.Event()
+        self._stop = asyncio.Event()
+        self.closed = False
+
+    @property
+    def running(self) -> bool:
+        return self._running
+
+    @property
+    def connected(self) -> bool:
+        return self._connected
+
+    @property
+    def last_error(self) -> str | None:
+        return self._last_error
+
+    async def preflight(self) -> None:
+        pass
+
+    async def wait_until_ready(self, timeout_seconds: float) -> None:
+        await asyncio.wait_for(self._ready.wait(), timeout=timeout_seconds)
+
+    async def publish(self, events: Sequence[RealtimeOutboxEvent]) -> None:
+        del events
+
+    async def force_resync(self, streams: Sequence[str]) -> None:
+        del streams
+
+    async def run(self) -> None:
+        self._running = True
+        self._connected = True
+        self._ready.set()
+        try:
+            await self._stop.wait()
+        finally:
+            self._connected = False
+            self._running = False
+
+    def stop(self) -> None:
+        self._stop.set()
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
 async def test_app_lifecycle_usa_los_adaptadores_realtime_inyectados(
     outbox_sessions: async_sessionmaker[AsyncSession],
 ) -> None:
@@ -419,6 +470,40 @@ async def test_app_lifecycle_usa_los_adaptadores_realtime_inyectados(
         assert dispatcher._publisher is publisher
 
 
+async def test_app_lifecycle_live_redis_inicia_bridge_antes_del_dispatcher(
+    outbox_sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    settings = Settings(
+        _env_file=None,
+        realtime_outbox_dispatch_mode="live_redis",
+        realtime_outbox_recording_enabled=True,
+        realtime_outbox_poll_interval_seconds=30,
+    )
+    bridge = _InjectedBridge()
+    app = create_app(
+        settings=settings,
+        session_factory=outbox_sessions,
+        realtime_redis_bridge=bridge,
+    )
+    previous_policy = realtime_hub_module.hub.legacy_delivery_enabled
+
+    async with app.router.lifespan_context(app):
+        dispatcher = app.state.realtime_outbox_dispatcher
+        assert isinstance(dispatcher, LocalRealtimeOutboxDispatcher)
+        assert dispatcher._publisher is bridge
+        assert app.state.realtime_redis_bridge is bridge
+        process_lock = app.state.live_local_process_lock
+        assert process_lock.dialect_name == "sqlite"
+        assert process_lock.enforced is False
+        assert bridge.running is True
+        assert bridge.connected is True
+        assert realtime_hub_module.hub.legacy_delivery_enabled is False
+
+    assert bridge.running is False
+    assert bridge.closed is True
+    assert realtime_hub_module.hub.legacy_delivery_enabled is previous_policy
+
+
 def test_app_rechaza_publisher_inyectado_fuera_de_live_local(
     outbox_sessions: async_sessionmaker[AsyncSession],
 ) -> None:
@@ -427,6 +512,17 @@ def test_app_rechaza_publisher_inyectado_fuera_de_live_local(
             settings=Settings(_env_file=None),
             session_factory=outbox_sessions,
             realtime_outbox_batch_publisher=_InjectedPublisher(),
+        )
+
+
+def test_app_rechaza_bridge_redis_inyectado_fuera_de_live_redis(
+    outbox_sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    with pytest.raises(ValueError, match="requiere el modo live_redis"):
+        create_app(
+            settings=Settings(_env_file=None),
+            session_factory=outbox_sessions,
+            realtime_redis_bridge=_InjectedBridge(),
         )
 
 
@@ -475,3 +571,19 @@ def test_settings_accept_live_local_only_with_recording() -> None:
 
     assert settings.realtime_outbox_dispatch_mode == "live_local"
     assert settings.realtime_outbox_recording_enabled is True
+
+
+def test_settings_accept_live_redis_only_with_recording() -> None:
+    with pytest.raises(ValidationError, match="live_redis requiere"):
+        Settings(
+            _env_file=None,
+            realtime_outbox_dispatch_mode="live_redis",
+            realtime_outbox_recording_enabled=False,
+        )
+
+    settings = Settings(
+        _env_file=None,
+        realtime_outbox_dispatch_mode="live_redis",
+        realtime_outbox_recording_enabled=True,
+    )
+    assert settings.realtime_outbox_dispatch_mode == "live_redis"

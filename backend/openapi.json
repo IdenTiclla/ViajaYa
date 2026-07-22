@@ -846,6 +846,15 @@
             "title": "Realtime Outbox Retention",
             "type": "string"
           },
+          "realtime_redis_bridge": {
+            "enum": [
+              "ok",
+              "error",
+              "disabled"
+            ],
+            "title": "Realtime Redis Bridge",
+            "type": "string"
+          },
           "scheduled_actions_retention": {
             "enum": [
               "ok",
@@ -870,6 +879,7 @@
           "scheduled_actions_worker",
           "scheduled_actions_retention",
           "realtime_outbox_dispatcher",
+          "realtime_redis_bridge",
           "realtime_outbox_process_lock",
           "realtime_outbox_retention"
         ],
@@ -949,7 +959,8 @@
             "enum": [
               "off",
               "shadow",
-              "live_local"
+              "live_local",
+              "live_redis"
             ],
             "title": "Mode",
             "type": "string"
@@ -989,6 +1000,94 @@
               }
             ],
             "title": "Quarantined Batches"
+          },
+          "redis_connected": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Redis Connected"
+          },
+          "redis_invalid_message_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Redis Invalid Message Count"
+          },
+          "redis_last_publish_subscriber_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Redis Last Publish Subscriber Count"
+          },
+          "redis_published_batch_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Redis Published Batch Count"
+          },
+          "redis_received_batch_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Redis Received Batch Count"
+          },
+          "redis_received_event_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Redis Received Event Count"
+          },
+          "redis_reconnect_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Redis Reconnect Count"
+          },
+          "redis_resync_message_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Redis Resync Message Count"
           },
           "retention_days": {
             "title": "Retention Days",

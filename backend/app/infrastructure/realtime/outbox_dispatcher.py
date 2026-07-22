@@ -230,6 +230,7 @@ class LocalRealtimeOutboxDispatcher(ShadowRealtimeOutboxDispatcher):
         retry_max_seconds: float,
         clock: Callable[[], datetime] = _utc_now,
         process_guard: Callable[[], Awaitable[bool]] | None = None,
+        mode_label: str = "live_local",
     ) -> None:
         super().__init__(
             session_factory,
@@ -241,4 +242,4 @@ class LocalRealtimeOutboxDispatcher(ShadowRealtimeOutboxDispatcher):
             process_guard=process_guard,
         )
         self._publisher = publisher
-        self._mode_label = "live_local"
+        self._mode_label = mode_label

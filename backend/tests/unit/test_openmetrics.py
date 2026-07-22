@@ -170,7 +170,7 @@ def test_renderer_exporta_labels_y_contadores_sin_campos_sensibles() -> None:
     )
 
     content = render_realtime_openmetrics(
-        mode="live_local",
+        mode="live_redis",
         retention_days=30,
         dispatcher_running=True,
         dispatcher_error=False,
@@ -180,6 +180,16 @@ def test_renderer_exporta_labels_y_contadores_sin_campos_sensibles() -> None:
         retention_deleted_event_count=11,
         snapshot=snapshot,
         scrape_success=True,
+        redis_connected=True,
+        redis_error=False,
+        redis_published_batch_count=4,
+        redis_received_batch_count=8,
+        redis_received_event_count=13,
+        redis_resync_message_count=2,
+        redis_reconnect_count=1,
+        redis_invalid_message_count=3,
+        redis_last_publish_subscriber_count=2,
+        redis_local_socket_count=5,
         scheduled_mode="live",
         scheduled_worker_running=True,
         scheduled_worker_error=False,
@@ -211,6 +221,17 @@ def test_renderer_exporta_labels_y_contadores_sin_campos_sensibles() -> None:
     assert "viajaya_realtime_outbox_retention_enabled 1.0" in content
     assert "viajaya_realtime_outbox_retention_running 1.0" in content
     assert "viajaya_realtime_outbox_retention_error 0.0" in content
+    assert "viajaya_realtime_redis_bridge_enabled 1.0" in content
+    assert "viajaya_realtime_redis_bridge_connected 1.0" in content
+    assert "viajaya_realtime_redis_bridge_error 0.0" in content
+    assert "viajaya_realtime_redis_published_batches_total 4.0" in content
+    assert "viajaya_realtime_redis_received_batches_total 8.0" in content
+    assert "viajaya_realtime_redis_received_events_total 13.0" in content
+    assert "viajaya_realtime_redis_resync_messages_total 2.0" in content
+    assert "viajaya_realtime_redis_reconnects_total 1.0" in content
+    assert "viajaya_realtime_redis_invalid_messages_total 3.0" in content
+    assert "viajaya_realtime_redis_last_publish_subscribers 2.0" in content
+    assert "viajaya_realtime_local_sockets 5.0" in content
     assert 'viajaya_scheduled_actions_info{mode="live"} 1.0' in content
     assert "viajaya_scheduled_actions_pending 5.0" in content
     assert "viajaya_scheduled_actions_due 2.0" in content

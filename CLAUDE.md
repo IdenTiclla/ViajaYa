@@ -11,7 +11,7 @@ ViajaYa/
 ├── backend/                 # API FastAPI (Python 3.11+, async, PostgreSQL). Ver backend/CLAUDE.md
 ├── mobile/                  # App Expo + React Native + TypeScript. Ver mobile/CLAUDE.md
 ├── docs/implementation-plans/   # Planes de implementación por fases (0001-…)
-├── docker-compose.yml       # PostgreSQL para desarrollo
+├── docker-compose.yml       # PostgreSQL + Redis para desarrollo
 └── README.md                # Estado del producto y contexto de negocio
 ```
 
@@ -30,8 +30,8 @@ ViajaYa/
 ## Arranque rápido
 
 ```bash
-# 1) Base de datos (PostgreSQL en Docker)
-docker compose up -d db
+# 1) Infraestructura local (PostgreSQL + Redis en Docker)
+docker compose up -d db redis
 
 # 2) Backend
 cd backend

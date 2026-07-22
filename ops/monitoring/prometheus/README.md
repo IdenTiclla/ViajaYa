@@ -2,8 +2,10 @@
 
 Con `OPENMETRICS_ENABLED=true`, la API expone `/metrics` en formato OpenMetrics
 1.0. El endpoint no publica payloads, topics, DSN ni errores internos. En `off`
-informa únicamente la configuración y los contadores locales; en `shadow` o
-`live_local` añade el corte persistido de la outbox.
+informa únicamente la configuración y los contadores locales; en `shadow`,
+`live_local` o `live_redis` añade el corte persistido de la outbox. En
+`live_redis` expone además conexión, reconexiones, mensajes inválidos, fanout y
+cantidad de sockets locales, sin publicar canales ni payloads.
 Cuando `SCHEDULED_ACTIONS_MODE=shadow|live`, el mismo documento añade backlog,
 leases, ejecución y retención del scheduler; `/health/scheduled-actions` ofrece
 el corte JSON equivalente para diagnóstico. Shadow ejecuta el worker además del
@@ -40,7 +42,7 @@ docker run --rm --entrypoint /bin/promtool \
 
 Las reglas asumen un scrape cada 30–60 s. Los umbrales de 120 s para
 backlog, 10 s para publicación y 10 min para reintentos son valores canary:
-deben ajustarse con datos de staging antes de promover `live_local`.
+deben ajustarse con datos de staging antes de promover cada modo live.
 
 `ViajaYaRealtimeNuevaCuarentena` usa el incremento de una gauge durable porque
 las cuarentenas nunca son podadas por la retención. Puede perder un incremento
@@ -58,7 +60,7 @@ señales de procesos (`up`, dispatcher y retención) sí permanecen por instanci
 
 El modo esperado depende del entorno y no se codifica en las reglas comunes.
 Staging o producción deben añadir una regla sobre
-`viajaya_realtime_outbox_info{mode="live_local"}` cuando esa fase sea obligatoria.
+`viajaya_realtime_outbox_info{mode="live_redis"}` cuando esa fase sea obligatoria.
 
 ## Diagnóstico rápido
 
@@ -67,6 +69,9 @@ Staging o producción deben añadir una regla sobre
   migraciones `0018`–`0022`.
 - Dispatcher o retención detenidos: revisa readiness y logs sanitizados del
   proceso; no reinicies otro consumidor hasta confirmar el advisory lock.
+- Redis desconectado o inestable: confirma `PING`, red y ACL. El proceso debe
+  quedar fuera de readiness y cerrar sus sockets con 1012; no fuerces `published_at`
+  porque PostgreSQL conserva el batch para retry cuando el publish falla.
 - Backlog o reintentos: compara edad, batches y último publish. Conserva las
   filas pendientes para replay; no las marques manualmente como publicadas.
 - Cuarentena: registra el código, identifica el productor incompatible y fuerza

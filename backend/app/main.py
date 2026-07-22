@@ -19,6 +19,7 @@ from app.api.v1.realtime_outbox import (
     CanonicalRealtimeOutboxBatchValidator,
     LocalHubRealtimeOutboxBatchPublisher,
 )
+from app.api.v1.redis_realtime import RedisRealtimeBridge
 from app.api.v1.routers import auth, drivers, rides, saved_places
 from app.api.v1.scheduled_actions import (
     ApplicationScheduledActionExecutor,
@@ -26,6 +27,7 @@ from app.api.v1.scheduled_actions import (
 )
 from app.api.v1.ws import negotiation
 from app.application.interfaces import (
+    RealtimeDeliveryBridge,
     RealtimeOutboxBatchPublisher,
     RealtimeOutboxBatchValidator,
 )
@@ -61,6 +63,7 @@ def create_app(
     session_factory: async_sessionmaker[AsyncSession] | None = None,
     realtime_outbox_batch_validator: RealtimeOutboxBatchValidator | None = None,
     realtime_outbox_batch_publisher: RealtimeOutboxBatchPublisher | None = None,
+    realtime_redis_bridge: RealtimeDeliveryBridge | None = None,
 ) -> FastAPI:
     resolved_settings = settings or get_settings()
     resolved_session_factory = session_factory or async_session_factory
@@ -71,11 +74,23 @@ def create_app(
         raise ValueError(
             "Un publisher realtime inyectado requiere el modo live_local."
         )
+    if (
+        realtime_redis_bridge is not None
+        and resolved_settings.realtime_outbox_dispatch_mode != "live_redis"
+    ):
+        raise ValueError("Un bridge Redis inyectado requiere el modo live_redis.")
+    if (
+        realtime_outbox_batch_publisher is not None
+        and realtime_redis_bridge is not None
+    ):
+        raise ValueError("No se pueden inyectar dos transportes realtime live.")
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         dispatcher: ShadowRealtimeOutboxDispatcher | None = None
         dispatcher_task: asyncio.Task[None] | None = None
+        redis_bridge: RealtimeDeliveryBridge | None = None
+        redis_bridge_task: asyncio.Task[None] | None = None
         retention_worker: PublishedRealtimeOutboxRetentionWorker | None = None
         retention_task: asyncio.Task[None] | None = None
         scheduled_worker: ScheduledActionsWorker | None = None
@@ -85,6 +100,8 @@ def create_app(
         process_lock: PostgreSQLLiveLocalProcessLock | None = None
         app.state.realtime_outbox_dispatcher = None
         app.state.realtime_outbox_dispatcher_task = None
+        app.state.realtime_redis_bridge = None
+        app.state.realtime_redis_bridge_task = None
         app.state.live_local_process_lock = None
         app.state.realtime_outbox_retention_worker = None
         app.state.realtime_outbox_retention_task = None
@@ -93,22 +110,52 @@ def create_app(
         app.state.scheduled_actions_retention_worker = None
         app.state.scheduled_actions_retention_task = None
         previous_legacy_delivery = hub.legacy_delivery_enabled
+        previous_shared_transport_health = hub.shared_transport_healthy
         mode = resolved_settings.realtime_outbox_dispatch_mode
         try:
-            if mode in {"shadow", "live_local"}:
+            if mode in {"shadow", "live_local", "live_redis"}:
                 process_lock = PostgreSQLLiveLocalProcessLock(
                     resolved_session_factory,
-                    exclusive=mode == "live_local",
+                    mode=mode,
                 )
                 app.state.live_local_process_lock = process_lock
                 await process_lock.acquire()
 
-            if mode == "live_local":
+            if mode in {"live_local", "live_redis"}:
                 # El mismo cambio de modo que activa snapshots/eventos v2 apaga
                 # la ruta directa. Nunca se entregan ambos protocolos al socket.
                 hub.set_legacy_delivery_enabled(False)
 
-            if mode in {"shadow", "live_local"}:
+            if mode == "live_redis":
+                redis_bridge = (
+                    realtime_redis_bridge
+                    if realtime_redis_bridge is not None
+                    else RedisRealtimeBridge.from_url(
+                        resolved_settings.realtime_redis_url,
+                        channel=resolved_settings.realtime_redis_channel,
+                        connect_timeout_seconds=(
+                            resolved_settings.realtime_redis_connect_timeout_seconds
+                        ),
+                        reconnect_base_seconds=(
+                            resolved_settings.realtime_redis_reconnect_base_seconds
+                        ),
+                        reconnect_max_seconds=(
+                            resolved_settings.realtime_redis_reconnect_max_seconds
+                        ),
+                    )
+                )
+                await redis_bridge.preflight()
+                redis_bridge_task = asyncio.create_task(
+                    redis_bridge.run(),
+                    name="realtime-redis-bridge",
+                )
+                app.state.realtime_redis_bridge = redis_bridge
+                app.state.realtime_redis_bridge_task = redis_bridge_task
+                await redis_bridge.wait_until_ready(
+                    resolved_settings.realtime_redis_connect_timeout_seconds
+                )
+
+            if mode in {"shadow", "live_local", "live_redis"}:
                 batch_validator = (
                     realtime_outbox_batch_validator
                     if realtime_outbox_batch_validator is not None
@@ -126,15 +173,22 @@ def create_app(
                     ),
                     "process_guard": process_lock.check if process_lock else None,
                 }
-                if mode == "live_local":
-                    dispatcher = LocalRealtimeOutboxDispatcher(
-                        resolved_session_factory,
-                        batch_validator,
-                        (
+                if mode in {"live_local", "live_redis"}:
+                    publisher = (
+                        redis_bridge
+                        if mode == "live_redis"
+                        else (
                             realtime_outbox_batch_publisher
                             if realtime_outbox_batch_publisher is not None
                             else LocalHubRealtimeOutboxBatchPublisher()
-                        ),
+                        )
+                    )
+                    assert publisher is not None
+                    dispatcher = LocalRealtimeOutboxDispatcher(
+                        resolved_session_factory,
+                        batch_validator,
+                        publisher,
+                        mode_label=mode,
                         **dispatcher_options,
                     )
                 else:
@@ -324,6 +378,23 @@ def create_app(
                         if not task.done():
                             task.cancel()
                     await asyncio.gather(*background_tasks, return_exceptions=True)
+            if redis_bridge is not None:
+                redis_bridge.stop()
+            if redis_bridge_task is not None:
+                try:
+                    await asyncio.wait_for(
+                        redis_bridge_task,
+                        timeout=(
+                            resolved_settings.realtime_outbox_shutdown_timeout_seconds
+                        ),
+                    )
+                except TimeoutError:
+                    logger.error("El bridge Redis excedió el tiempo de apagado.")
+                    redis_bridge_task.cancel()
+                    await asyncio.gather(redis_bridge_task, return_exceptions=True)
+            if redis_bridge is not None:
+                await redis_bridge.aclose()
+            hub.set_shared_transport_healthy(previous_shared_transport_health)
             hub.set_legacy_delivery_enabled(previous_legacy_delivery)
             if process_lock is not None:
                 await process_lock.release()
@@ -331,6 +402,8 @@ def create_app(
     app = FastAPI(title="ViajaYa API", version="0.1.0", lifespan=lifespan)
     app.state.realtime_outbox_dispatcher = None
     app.state.realtime_outbox_dispatcher_task = None
+    app.state.realtime_redis_bridge = None
+    app.state.realtime_redis_bridge_task = None
     app.state.live_local_process_lock = None
     app.state.realtime_outbox_retention_worker = None
     app.state.realtime_outbox_retention_task = None
@@ -345,7 +418,7 @@ def create_app(
 
     # ``create_app`` es la raíz de composición. Sus argumentos deben gobernar
     # también las dependencias HTTP/WS; de otro modo el lifecycle podría estar
-    # en live_local mientras los recorders y el handshake siguen en ``off``.
+    # en live mientras los recorders y el handshake siguen en ``off``.
     app.dependency_overrides[get_settings] = lambda: resolved_settings
     app.dependency_overrides[get_session_factory] = lambda: resolved_session_factory
     app.dependency_overrides[get_session] = resolved_get_session

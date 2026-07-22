@@ -33,6 +33,7 @@ class ReadinessChecksResponse(BaseModel):
     scheduled_actions_worker: Literal["ok", "error", "disabled"]
     scheduled_actions_retention: Literal["ok", "error", "disabled"]
     realtime_outbox_dispatcher: Literal["ok", "error", "disabled"]
+    realtime_redis_bridge: Literal["ok", "error", "disabled"]
     realtime_outbox_process_lock: Literal["ok", "error", "disabled"]
     realtime_outbox_retention: Literal["ok", "error", "disabled"]
 
@@ -49,7 +50,7 @@ class QuarantinedBatchCountResponse(BaseModel):
 
 class RealtimeHealthResponse(BaseModel):
     status: Literal["ok", "disabled", "unavailable"]
-    mode: Literal["off", "shadow", "live_local"]
+    mode: Literal["off", "shadow", "live_local", "live_redis"]
     retention_days: int
     captured_at: datetime | None = None
     pending_event_count: int | None = None
@@ -61,6 +62,14 @@ class RealtimeHealthResponse(BaseModel):
     latest_published_at: datetime | None = None
     retention_deleted_batch_count: int | None = None
     retention_deleted_event_count: int | None = None
+    redis_connected: bool | None = None
+    redis_published_batch_count: int | None = None
+    redis_received_batch_count: int | None = None
+    redis_received_event_count: int | None = None
+    redis_resync_message_count: int | None = None
+    redis_reconnect_count: int | None = None
+    redis_invalid_message_count: int | None = None
+    redis_last_publish_subscriber_count: int | None = None
 
 
 class ScheduledActionDeadCountResponse(BaseModel):
@@ -130,7 +139,7 @@ async def readiness(
     dispatcher_ready = True
     dispatcher_status: Literal["ok", "error", "disabled"] = "disabled"
     dispatcher = None
-    if mode in {"shadow", "live_local"}:
+    if mode in {"shadow", "live_local", "live_redis"}:
         dispatcher = request.app.state.realtime_outbox_dispatcher
         dispatcher_task = request.app.state.realtime_outbox_dispatcher_task
         dispatcher_ready = bool(
@@ -141,9 +150,24 @@ async def readiness(
         )
         dispatcher_status = "ok" if dispatcher_ready else "error"
 
+    redis_ready = True
+    redis_status: Literal["ok", "error", "disabled"] = "disabled"
+    if mode == "live_redis":
+        redis_bridge = request.app.state.realtime_redis_bridge
+        redis_bridge_task = request.app.state.realtime_redis_bridge_task
+        redis_ready = bool(
+            redis_bridge is not None
+            and redis_bridge.running
+            and redis_bridge.connected
+            and redis_bridge.last_error is None
+            and redis_bridge_task is not None
+            and not redis_bridge_task.done()
+        )
+        redis_status = "ok" if redis_ready else "error"
+
     process_lock_ready = True
     process_lock_status: Literal["ok", "error", "disabled"] = "disabled"
-    if mode in {"shadow", "live_local"}:
+    if mode in {"shadow", "live_local", "live_redis"}:
         process_lock = request.app.state.live_local_process_lock
         try:
             process_lock_ready = bool(
@@ -199,6 +223,7 @@ async def readiness(
     ready = (
         database_ready
         and dispatcher_ready
+        and redis_ready
         and process_lock_ready
         and retention_ready
         and scheduled_ready
@@ -211,6 +236,7 @@ async def readiness(
             scheduled_actions_worker=scheduled_status,
             scheduled_actions_retention=scheduled_retention_status,
             realtime_outbox_dispatcher=dispatcher_status,
+            realtime_redis_bridge=redis_status,
             realtime_outbox_process_lock=process_lock_status,
             realtime_outbox_retention=retention_status,
         ),
@@ -260,8 +286,18 @@ async def realtime_health(
         )
 
     retention_worker = request.app.state.realtime_outbox_retention_worker
-    return RealtimeHealthResponse(
-        status="ok",
+    redis_bridge = request.app.state.realtime_redis_bridge
+    redis_healthy = bool(
+        mode != "live_redis"
+        or (
+            redis_bridge is not None
+            and redis_bridge.running
+            and redis_bridge.connected
+            and redis_bridge.last_error is None
+        )
+    )
+    response = RealtimeHealthResponse(
+        status="ok" if redis_healthy else "unavailable",
         mode=mode,
         captured_at=snapshot.captured_at,
         pending_event_count=snapshot.pending_event_count,
@@ -288,6 +324,50 @@ async def realtime_health(
             if retention_worker is not None
             else 0
         ),
+        redis_connected=(
+            redis_bridge.connected if redis_bridge is not None else None
+        ),
+        redis_published_batch_count=(
+            getattr(redis_bridge, "published_batch_count", 0)
+            if redis_bridge is not None
+            else None
+        ),
+        redis_received_batch_count=(
+            getattr(redis_bridge, "received_batch_count", 0)
+            if redis_bridge is not None
+            else None
+        ),
+        redis_received_event_count=(
+            getattr(redis_bridge, "received_event_count", 0)
+            if redis_bridge is not None
+            else None
+        ),
+        redis_resync_message_count=(
+            getattr(redis_bridge, "resync_message_count", 0)
+            if redis_bridge is not None
+            else None
+        ),
+        redis_reconnect_count=(
+            getattr(redis_bridge, "reconnect_count", 0)
+            if redis_bridge is not None
+            else None
+        ),
+        redis_invalid_message_count=(
+            getattr(redis_bridge, "invalid_message_count", 0)
+            if redis_bridge is not None
+            else None
+        ),
+        redis_last_publish_subscriber_count=(
+            getattr(redis_bridge, "last_publish_subscriber_count", 0)
+            if redis_bridge is not None
+            else None
+        ),
+    )
+    if redis_healthy:
+        return response
+    return JSONResponse(
+        status_code=503,
+        content=response.model_dump(mode="json", exclude_none=True),
     )
 
 

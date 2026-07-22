@@ -1003,6 +1003,11 @@ export interface components {
              */
             realtime_outbox_retention: "ok" | "error" | "disabled";
             /**
+             * Realtime Redis Bridge
+             * @enum {string}
+             */
+            realtime_redis_bridge: "ok" | "error" | "disabled";
+            /**
              * Scheduled Actions Retention
              * @enum {string}
              */
@@ -1036,13 +1041,29 @@ export interface components {
              * Mode
              * @enum {string}
              */
-            mode: "off" | "shadow" | "live_local";
+            mode: "off" | "shadow" | "live_local" | "live_redis";
             /** Pending Batch Count */
             pending_batch_count?: number | null;
             /** Pending Event Count */
             pending_event_count?: number | null;
             /** Quarantined Batches */
             quarantined_batches?: components["schemas"]["QuarantinedBatchCountResponse"][] | null;
+            /** Redis Connected */
+            redis_connected?: boolean | null;
+            /** Redis Invalid Message Count */
+            redis_invalid_message_count?: number | null;
+            /** Redis Last Publish Subscriber Count */
+            redis_last_publish_subscriber_count?: number | null;
+            /** Redis Published Batch Count */
+            redis_published_batch_count?: number | null;
+            /** Redis Received Batch Count */
+            redis_received_batch_count?: number | null;
+            /** Redis Received Event Count */
+            redis_received_event_count?: number | null;
+            /** Redis Reconnect Count */
+            redis_reconnect_count?: number | null;
+            /** Redis Resync Message Count */
+            redis_resync_message_count?: number | null;
             /** Retention Days */
             retention_days: number;
             /** Retention Deleted Batch Count */

@@ -10,7 +10,7 @@ ViajaYa/
 ├── backend/                 # API FastAPI (Clean Architecture)
 ├── mobile/                  # App Expo + React Native + TypeScript
 ├── docs/implementation-plans/
-└── docker-compose.yml       # PostgreSQL para desarrollo
+└── docker-compose.yml       # PostgreSQL + Redis para desarrollo
 ```
 
 ## Requisitos
@@ -21,8 +21,8 @@ ViajaYa/
 ## Puesta en marcha del backend
 
 ```bash
-# 1. Levantar PostgreSQL
-docker compose up -d db
+# 1. Levantar PostgreSQL y Redis
+docker compose up -d db redis
 
 # 2. Crear entorno e instalar dependencias
 cd backend

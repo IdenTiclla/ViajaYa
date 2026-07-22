@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 
 import pytest
 import pytest_asyncio
@@ -11,6 +11,8 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
+from app.application.dto import RealtimeOutboxEvent
+from app.application.interfaces import RealtimeDeliveryBridge
 from app.infrastructure.config import Settings
 from app.infrastructure.db.models import (
     OfferModel,
@@ -20,6 +22,55 @@ from app.infrastructure.db.models import (
     ScheduledActionModel,
 )
 from app.main import create_app
+
+
+class _HealthBridge(RealtimeDeliveryBridge):
+    def __init__(self) -> None:
+        self._running = False
+        self._connected = False
+        self._last_error: str | None = None
+        self._ready = asyncio.Event()
+        self._stop = asyncio.Event()
+
+    @property
+    def running(self) -> bool:
+        return self._running
+
+    @property
+    def connected(self) -> bool:
+        return self._connected
+
+    @property
+    def last_error(self) -> str | None:
+        return self._last_error
+
+    async def preflight(self) -> None:
+        pass
+
+    async def wait_until_ready(self, timeout_seconds: float) -> None:
+        await asyncio.wait_for(self._ready.wait(), timeout=timeout_seconds)
+
+    async def publish(self, events: Sequence[RealtimeOutboxEvent]) -> None:
+        del events
+
+    async def force_resync(self, streams: Sequence[str]) -> None:
+        del streams
+
+    async def run(self) -> None:
+        self._running = True
+        self._connected = True
+        self._ready.set()
+        try:
+            await self._stop.wait()
+        finally:
+            self._connected = False
+            self._running = False
+
+    def stop(self) -> None:
+        self._stop.set()
+
+    async def aclose(self) -> None:
+        pass
 
 
 @pytest_asyncio.fixture
@@ -87,6 +138,7 @@ async def test_readiness_checks_database_and_reports_disabled_dispatcher(
             "scheduled_actions_worker": "disabled",
             "scheduled_actions_retention": "ok",
             "realtime_outbox_dispatcher": "disabled",
+            "realtime_redis_bridge": "disabled",
             "realtime_outbox_process_lock": "disabled",
             "realtime_outbox_retention": "disabled",
         },
@@ -128,6 +180,7 @@ async def test_readiness_sanitizes_database_errors(
             "scheduled_actions_worker": "disabled",
             "scheduled_actions_retention": "error",
             "realtime_outbox_dispatcher": "disabled",
+            "realtime_redis_bridge": "disabled",
             "realtime_outbox_process_lock": "disabled",
             "realtime_outbox_retention": "disabled",
         },
@@ -169,9 +222,49 @@ async def test_readiness_requires_a_running_dispatcher_in_shadow_mode(
             "scheduled_actions_worker": "disabled",
             "scheduled_actions_retention": "ok",
             "realtime_outbox_dispatcher": "error",
+            "realtime_redis_bridge": "disabled",
             "realtime_outbox_process_lock": "ok",
             "realtime_outbox_retention": "disabled",
         }
+
+
+async def test_readiness_live_redis_exige_dispatcher_y_suscripcion(
+    outbox_sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    settings = Settings(
+        _env_file=None,
+        realtime_outbox_dispatch_mode="live_redis",
+        realtime_outbox_recording_enabled=True,
+        realtime_outbox_poll_interval_seconds=30,
+    )
+    bridge = _HealthBridge()
+    app = create_app(
+        settings=settings,
+        session_factory=outbox_sessions,
+        realtime_redis_bridge=bridge,
+    )
+
+    before_startup = await _get(app, "/health/ready")
+    assert before_startup.status_code == 503
+    assert before_startup.json()["checks"]["realtime_redis_bridge"] == "error"
+
+    async with app.router.lifespan_context(app):
+        healthy = await _get(app, "/health/ready")
+        assert healthy.status_code == 200
+        assert healthy.json()["checks"]["realtime_outbox_dispatcher"] == "ok"
+        assert healthy.json()["checks"]["realtime_redis_bridge"] == "ok"
+        assert healthy.json()["checks"]["realtime_outbox_process_lock"] == "ok"
+        realtime = await _get(app, "/health/realtime")
+        assert realtime.status_code == 200
+        assert realtime.json()["redis_connected"] is True
+
+        bridge._last_error = "ConnectionError"
+        unhealthy = await _get(app, "/health/ready")
+        assert unhealthy.status_code == 503
+        assert unhealthy.json()["checks"]["realtime_redis_bridge"] == "error"
+        realtime_unhealthy = await _get(app, "/health/realtime")
+        assert realtime_unhealthy.status_code == 503
+        assert realtime_unhealthy.json()["status"] == "unavailable"
 
 
 async def test_readiness_stops_dispatcher_when_process_lock_is_lost(

@@ -39,6 +39,9 @@ class RealtimeHub:
         # barrera, suscribirse y enviar snapshots sin que un evento vivo se cuele.
         self._send_locks: dict[WebSocket, asyncio.Lock] = {}
         self._legacy_delivery_enabled = True
+        # Solo ``live_redis`` conmuta esta señal. Los demás modos no dependen
+        # de un transporte compartido y permanecen fail-safe por defecto.
+        self._shared_transport_healthy = True
 
     @property
     def legacy_delivery_enabled(self) -> bool:
@@ -48,6 +51,15 @@ class RealtimeHub:
     def set_legacy_delivery_enabled(self, enabled: bool) -> None:
         """Conmuta la ruta legacy; no afecta snapshots ni envelopes durables v2."""
         self._legacy_delivery_enabled = enabled
+
+    @property
+    def shared_transport_healthy(self) -> bool:
+        """Indica si es seguro decidir ausencia bajo el fanout compartido."""
+        return self._shared_transport_healthy
+
+    def set_shared_transport_healthy(self, healthy: bool) -> None:
+        """Actualiza la salud usada por presencia sin exponer detalles Redis."""
+        self._shared_transport_healthy = healthy
 
     def _is_subscribed(self, ws: WebSocket) -> bool:
         return any(ws in subscribers for subscribers in self._topics.values())
@@ -85,6 +97,17 @@ class RealtimeHub:
         """``True`` si algún WebSocket sigue suscrito al topic (presencia viva)."""
         return bool(self._topics.get(topic))
 
+    @property
+    def subscribed_socket_count(self) -> int:
+        """Cantidad de sockets locales únicos, sin exponer sus topics."""
+        return len(
+            {
+                websocket
+                for subscribers in self._topics.values()
+                for websocket in subscribers
+            }
+        )
+
     async def broadcast(self, topic: str, message: dict[str, object]) -> None:
         """Entrega directa legacy si la política del proceso la mantiene activa."""
         if not self._legacy_delivery_enabled:
@@ -105,6 +128,17 @@ class RealtimeHub:
             websocket
             for topic in topics
             for websocket in self._topics.get(topic, ())
+        }
+        await asyncio.gather(
+            *(self._close_for_resync(websocket) for websocket in sockets),
+        )
+
+    async def force_resync_all(self) -> None:
+        """Cierra todos los sockets locales tras perder el fanout compartido."""
+        sockets = {
+            websocket
+            for subscribers in self._topics.values()
+            for websocket in subscribers
         }
         await asyncio.gather(
             *(self._close_for_resync(websocket) for websocket in sockets),

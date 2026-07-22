@@ -28,7 +28,7 @@ app/
 │   ├── db/                    # SQLAlchemy: models, repos, UnitOfWork y outbox durable
 │   ├── security/              # bcrypt_hasher, jwt_service
 │   ├── oauth/                 # google_verifier, facebook_verifier
-│   └── realtime/              # hub (singleton pub/sub por topic), ws_auth (subprotocol seguro)
+│   └── realtime/              # hub local, dispatcher y coordinación de transporte
 └── api/                     # Capa HTTP (FastAPI).
     ├── deps.py                # Inyección: ÚNICO cableo infra→app (factories get_*, *Dep)
     ├── errors.py              # DomainError → HTTP (map _STATUS_MAP, sin HTTPException disperso)
@@ -88,8 +88,8 @@ app/
 cd backend
 source .venv/bin/activate         # entorno virtual (o usa uv; ver nota en el README del monorepo)
 
-# Levantar DB (desde la raíz del repo)
-docker compose up -d db
+# Levantar PostgreSQL + Redis (desde la raíz del repo)
+docker compose up -d db redis
 
 # Migraciones (Alembic)
 alembic upgrade head              # aplicar
@@ -121,7 +121,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES (30), REFRESH_TOKEN_EXPIRE_DAYS (14),
 CORS_ORIGINS (lista separada por comas; helper .cors_origins_list),
 GOOGLE_CLIENT_ID, FACEBOOK_APP_ID, FACEBOOK_APP_SECRET,
 OPENMETRICS_ENABLED (false por defecto; publica `/metrics` solo con opt-in),
-REALTIME_OUTBOX_DISPATCH_MODE (off|shadow|live_local; off por defecto),
+REALTIME_OUTBOX_DISPATCH_MODE (off|shadow|live_local|live_redis; off por defecto),
 REALTIME_OUTBOX_RECORDING_ENABLED (false por defecto),
 REALTIME_OUTBOX_POLL_INTERVAL_SECONDS (1),
 REALTIME_OUTBOX_RETRY_BASE_SECONDS (1),
@@ -130,6 +130,11 @@ REALTIME_OUTBOX_SHUTDOWN_TIMEOUT_SECONDS (5),
 REALTIME_OUTBOX_PUBLISHED_RETENTION_DAYS (0, desactivada),
 REALTIME_OUTBOX_RETENTION_INTERVAL_SECONDS (3600),
 REALTIME_OUTBOX_RETENTION_BATCH_LIMIT (100),
+REALTIME_REDIS_URL (redis://localhost:6379/0),
+REALTIME_REDIS_CHANNEL (viajaya:realtime:v2),
+REALTIME_REDIS_CONNECT_TIMEOUT_SECONDS (2),
+REALTIME_REDIS_RECONNECT_BASE_SECONDS (0.5),
+REALTIME_REDIS_RECONNECT_MAX_SECONDS (30),
 SCHEDULED_ACTIONS_MODE (off|shadow|live; off por defecto),
 SCHEDULED_ACTIONS_POLL_INTERVAL_SECONDS (1),
 SCHEDULED_ACTIONS_LEASE_SECONDS (30),
@@ -147,8 +152,9 @@ Accede a la config con `get_settings()` (cacheado con `@lru_cache`); **no leas `
 CORS se aplica en `main.py` con `cors_origins_list`.
 
 El rollout de la outbox sigue obligatoriamente esta secuencia: `off+false` ->
-`shadow+false` -> `shadow+true` -> `live_local+true`. No uses `off+true` y no
-actives `live_local` sin drenar y revisar antes el backlog sombra. Antes de salir
+`shadow+false` -> `shadow+true` -> `live_local+true` -> `live_redis+true`. No
+uses `off+true` ni actives un modo live sin drenar y revisar antes el backlog
+sombra. Antes de salir
 de `off` deben estar aplicadas `0018_realtime_outbox`,
 `0019_realtime_stream_versions`, `0020_realtime_outbox_quarantine` y
 `0021_realtime_outbox_batch_size`. `shadow`
@@ -159,21 +165,28 @@ y usa los snapshots unificados v2. Una cuarentena live cierra con 1012 los
 sockets de sus streams después del commit para forzar otro snapshot.
 
 `live_local` es exclusivamente una vertical canary de **un solo worker API**.
-En PostgreSQL, `shadow` toma un advisory lock compartido y `live_local` uno
-exclusivo, ambos derivados de la base y sondeados por el dispatcher. Una mezcla
-de consumidores falla antes de reclamar eventos y perder la sesión propietaria
-detiene el loop. Esto impide el
-despliegue inseguro, pero no lo convierte en multiworker: con dos procesos,
-`SKIP LOCKED` repartiría batches entre hubs locales y perdería notificaciones
-para sockets del otro proceso. No escales workers/réplicas hasta incorporar el
-bridge Redis. SQLite solo omite esta exclusión en pruebas de un proceso. El valor
-predeterminado continúa siendo `off`.
+`live_redis` publica el batch v2 completo en Redis y cada proceso mantiene un
+suscriptor que lo entrega solo a sus sockets locales. Pub/Sub es efímero: perder
+la suscripción cierra todos los sockets locales con 1012 para que el nuevo
+handshake recupere snapshot y watermarks desde PostgreSQL. Mientras Redis no
+está sano, los timers locales aplazan la cancelación por ausencia. Un publish sin
+ningún suscriptor falla y conserva el batch para retry; un batch que supera el
+límite de bytes se aparta con `transport_limit` y fuerza snapshot en vez de
+reintentarse para siempre. Los advisory locks conservan la clave legada durante
+rolling deploy: varios `shadow` pueden convivir, pero `live_local` y `live_redis`
+son exclusivos y nunca se mezclan con shadow ni con binarios anteriores. Perder
+la sesión propietaria detiene el dispatcher. SQLite omite esta exclusión solo en
+pruebas. El gate PostgreSQL exige que un segundo proceso `live_redis` falle hasta
+implementar leases compartidos de presencia. Otro smoke detiene un Redis dedicado
+entre commit y publish, exige cierre 1012 y certifica el replay de la misma
+identidad durable después del restart.
 
 La migración `0022_scheduled_actions` debe aplicarse antes de desplegar el código
 que crea ofertas. La acción `expire_offer` se persiste en los tres modos. `off`
 mantiene el timer local sin consumir la cola; `shadow` ejecuta simultáneamente el
 worker durable y el timer, conservando la entrega legacy para quien gane la
-carrera; `live` retira el timer y depende de la outbox `live_local`. Así, los
+carrera; `live` retira el timer y depende de la outbox
+`live_local|live_redis`. Así, los
 reinicios y los cambios de modo no dejan ofertas sin recuperación ni acumulan un
 backlog antes del cutover. El arranque y cada ciclo consumidor reconcilian por
 lotes cualquier oferta que la versión anterior haya creado después del backfill
@@ -183,8 +196,8 @@ Las acciones `succeeded/cancelled` se purgan por lotes después de 30 días; las
 acciones `dead` se conservan para intervención manual.
 
 `GET /health` y `GET /health/live` son liveness sin dependencias. `GET
-/health/ready` comprueba PostgreSQL y que los workers habilitados continúen
-activos. `GET /health/realtime` expone únicamente agregados sanitizados de
+/health/ready` comprueba PostgreSQL, Redis cuando corresponde y que los workers
+habilitados continúen activos. `GET /health/realtime` expone únicamente agregados sanitizados de
 pendientes, reintentos, cuarentenas, edad y demora conservadora
 `created_at → published_at`; nunca incluye topics ni payloads.
 `GET /metrics` expone el mismo corte en OpenMetrics 1.0 únicamente cuando
@@ -277,7 +290,7 @@ fuera de la URL y los access logs; cierre 1008 si es inválido):
   ventana ciega entre snapshot y suscripción. `open_rides_snapshot.data` usa
   `{items, next_cursor}`; `paused_rides_snapshot.data` conserva su lista.
 
-Con `REALTIME_OUTBOX_DISPATCH_MODE=live_local`, cada socket recibe en cambio un
+Con `REALTIME_OUTBOX_DISPATCH_MODE=live_local|live_redis`, cada socket recibe en cambio un
 único snapshot v2 (`ride_snapshot` o `driver_snapshot`) con watermarks, seguido
 exclusivamente por envelopes v2 durables. La barrera local suscribe antes de la
 captura; los deltas ya incluidos quedan por debajo del watermark y el cliente
@@ -306,9 +319,10 @@ offer_withdrawn, offer_accepted, offers_withdrawn (plural), offer_expired, ride_
   `REALTIME_OUTBOX_RECORDING_ENABLED=true`; la entrega directa reutiliza esos
   mismos payloads `{type,data}`. El dispatcher `shadow` solo valida y marca la
   copia durable; la publicación directa continúa siendo la única entrega al
-  cliente. `live_local` cambia ambas piezas de forma atómica: el dispatcher
+  cliente. Ambos modos live cambian ambas piezas de forma atómica: el dispatcher
   entrega metadata durable v2 y el hub bloquea la ruta directa legacy durante
-  todo el lifespan. El backend continúa limitado a un worker.
+  todo el lifespan. `live_redis` prepara fanout entre hubs, pero el lock conserva
+  un solo worker hasta compartir presencia y `cancel_absent_ride` entre procesos.
 
 Presencia (`api/v1/presence.py`): la solicitud aparece en `/rides/open` mientras el pasajero esté
 conectado al WS o dentro de la ventana de gracia (`PRESENCE_GRACE_SECONDS = 120`). Minimizar/cambiar

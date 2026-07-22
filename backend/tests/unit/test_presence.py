@@ -23,6 +23,7 @@ from app.domain.entities import (
     User,
 )
 from app.domain.repositories import OpenRideDetail, RiderSummary
+from app.infrastructure.config import Settings
 from tests.fakes import (
     InMemoryOfferRepository,
     InMemoryRideRequestRepository,
@@ -55,6 +56,7 @@ async def _reset_presence_state():
         presence._critical_cancels.clear()
         presence._CANCEL_TASKS.clear()
         presence._last_seen.clear()
+        presence.hub.set_shared_transport_healthy(True)
 
     await clear()
     yield
@@ -326,3 +328,45 @@ async def test_http_heartbeat_renews_grace_without_recording_announcement(
     await presence.on_passenger_activity(ride.id, session_factory)
 
     assert renewed == [ride.id]
+
+
+async def test_live_redis_defers_absence_while_transport_is_unhealthy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ride = _ride()
+    cancellation_started = asyncio.Event()
+
+    class FakeCancelRideOnDisconnect:
+        async def execute(self, _ride_id: uuid.UUID) -> None:
+            cancellation_started.set()
+
+    @asynccontextmanager
+    async def session_factory():
+        yield object()
+
+    monkeypatch.setattr(presence, "PRESENCE_GRACE_SECONDS", 0.05)
+    monkeypatch.setattr(presence, "TRANSPORT_HEALTH_RECHECK_SECONDS", 0.01)
+    monkeypatch.setattr(presence.hub, "has_subscribers", lambda _topic: False)
+    monkeypatch.setattr(
+        presence,
+        "build_cancel_ride_on_disconnect",
+        lambda _session, _settings: FakeCancelRideOnDisconnect(),
+    )
+    presence.hub.set_shared_transport_healthy(False)
+    settings = Settings(
+        _env_file=None,
+        realtime_outbox_dispatch_mode="live_redis",
+        realtime_outbox_recording_enabled=True,
+    )
+
+    presence.on_passenger_disconnect(ride.id, session_factory, settings)
+    await asyncio.sleep(0.07)
+
+    assert not cancellation_started.is_set()
+    assert ride.id in presence._pending_cancels
+
+    presence.hub.set_shared_transport_healthy(True)
+    await asyncio.sleep(0.01)
+    assert not cancellation_started.is_set()
+    assert presence.is_ride_present(ride) is True
+    await asyncio.wait_for(cancellation_started.wait(), timeout=1)

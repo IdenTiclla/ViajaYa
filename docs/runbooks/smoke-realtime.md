@@ -35,6 +35,45 @@ Este smoke forma parte del job `Backend · PostgreSQL real` de CI porque vive en
 `tests/postgresql/`; no requiere cuentas seed ni un backend levantado de
 antemano.
 
+## Bridge Redis
+
+El mismo job levanta Redis y define `VIAJAYA_TEST_REDIS_URL`. La prueba
+`test_pg_redis_realtime_bridge.py` abre dos clientes y dos hubs locales sobre un
+canal aleatorio, publica un envelope durable y exige la misma identidad en ambos
+procesos simulados. Después mata las conexiones Pub/Sub, exige cierre 1012 de los
+sockets y espera la reconexión de ambos bridges.
+
+`test_pg_redis_multiworker_smoke.py` levanta un proceso Uvicorn sano e intenta
+arrancar un segundo contra la misma base. El segundo debe fallar: el transporte
+Redis está preparado, pero presencia y cancelación por ausencia aún son locales.
+El fanout a dos hubs se certifica en `test_pg_redis_realtime_bridge.py` sin abrir
+la puerta a un despliegue multiworker inseguro.
+
+`test_pg_redis_restart_smoke.py` usa exclusivamente el servicio con perfil
+`redis_restart_test`: detiene Redis después del commit y antes del publish,
+comprueba el cierre 1012 y el retry pendiente, levanta el mismo contenedor y
+exige replay con idénticos `event_id`, `batch_id`, secuencia y versión. Rechaza
+URLs no loopback, bases distintas de 15 y contenedores sin marca `test|ci`.
+Localmente:
+
+```bash
+docker compose up -d redis
+docker compose --profile restart-smoke up -d redis_restart_test
+cd backend
+VIAJAYA_TEST_DATABASE_URL=postgresql+asyncpg://viajaya:viajaya@localhost:5432/test_viajaya \
+VIAJAYA_TEST_REDIS_URL=redis://localhost:6379/15 \
+VIAJAYA_TEST_REDIS_RESTART_URL=redis://localhost:6380/15 \
+VIAJAYA_TEST_REDIS_RESTART_CONTAINER=viajaya_redis_restart_test \
+.venv/bin/pytest \
+  tests/postgresql/test_pg_redis_realtime_bridge.py \
+  tests/postgresql/test_pg_redis_multiworker_smoke.py \
+  tests/postgresql/test_pg_redis_restart_smoke.py -q
+```
+
+Estas pruebas certifican transporte, restart/replay y el gate de un solo worker;
+complementan los casos unitarios de mensaje inválido y ausencia de suscriptores.
+El Redis normal de desarrollo/CI no se interrumpe durante el restart smoke.
+
 ## Crash/restart multiproceso
 
 El smoke de crash usa dos procesos Uvicorn consecutivos, el mismo socket
@@ -87,14 +126,15 @@ sanitizado de logcat. Nunca debe conservar JWT, payloads, DSN ni datos personale
 ## Límites del smoke headless
 
 - Usa loopback sin TLS, proxy inverso ni balanceador.
-- Certifica un único proceso `live_local` con hub en memoria, no multiworker.
+- El smoke base certifica un proceso `live_local`; Redis permanece limitado a un
+  proceso hasta implementar leases de presencia y cancelación durable.
 - Usa el cliente Python `websockets`, no el WebSocket nativo de React Native.
 - Cierra y abre explícitamente otra conexión; no prueba backoff, AppState ni red
   móvil.
 - Inyecta duplicado, hueco y cuarentena solo mediante el arnés one-shot de
   tests. Fuerza `SIGKILL` y restart de un único proceso `live_local`, pero no
-  cubre caída del host o PostgreSQL, Redis, multiworker, frame inválido ni el
-  hook React Native.
+  cubre caída del host o PostgreSQL, crash API durante `live_redis`, frame
+  inválido por TCP ni el hook React Native.
 - Certifica la recuperación durable de expiración de ofertas en la suite
   PostgreSQL específica de `scheduled_actions`; este smoke de realtime no
   vuelve a ejecutar ese escenario. La cancelación por ausencia conserva su

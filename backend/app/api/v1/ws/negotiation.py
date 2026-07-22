@@ -127,7 +127,10 @@ async def passenger_ws(
             async with hub.delivery_barrier(websocket):
                 hub.subscribe(topic, websocket)
                 subscribed = True
-                if settings.realtime_outbox_dispatch_mode == "live_local":
+                if settings.realtime_outbox_dispatch_mode in {
+                    "live_local",
+                    "live_redis",
+                }:
                     snapshot = await snapshot_builder.execute(user, ride_id)
                     await websocket.send_json(
                         build_passenger_snapshot_message_v2(snapshot).model_dump(
@@ -208,7 +211,10 @@ async def driver_ws(
                     else:
                         active_offers.append(offer)
 
-                if settings.realtime_outbox_dispatch_mode == "live_local":
+                if settings.realtime_outbox_dispatch_mode in {
+                    "live_local",
+                    "live_redis",
+                }:
                     captured = await snapshot_builder.execute(user)
                     captured = replace(
                         captured,

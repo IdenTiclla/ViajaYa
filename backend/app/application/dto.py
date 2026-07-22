@@ -37,6 +37,7 @@ RealtimeOutboxQuarantineCode: TypeAlias = Literal[
     "event_type_mismatch",
     "invalid_payload",
     "invalid_routing",
+    "transport_limit",
 ]
 
 ScheduledActionStatus: TypeAlias = Literal[

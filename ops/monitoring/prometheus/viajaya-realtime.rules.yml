@@ -51,6 +51,37 @@ groups:
           summary: "Un worker realtime conserva un error operativo"
           description: "El dispatcher o la retención no han recuperado su último ciclo fallido."
 
+      - alert: ViajaYaRealtimeRedisDesconectado
+        expr: >-
+          viajaya_realtime_redis_bridge_enabled == 1
+          and on(job, instance)
+          viajaya_realtime_redis_bridge_connected == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Un proceso perdió el fanout Redis realtime"
+          description: "El proceso no recibe eventos compartidos; readiness debe retirarlo y sus sockets deben reconectar."
+
+      - alert: ViajaYaRealtimeRedisMensajeInvalido
+        expr: >-
+          increase(viajaya_realtime_redis_invalid_messages_total[10m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis entregó un mensaje realtime inválido"
+          description: "El proceso descartó un mensaje y forzó resnapshot de sus sockets locales."
+
+      - alert: ViajaYaRealtimeRedisReconexionesPersistentes
+        expr: >-
+          increase(viajaya_realtime_redis_reconnects_total[10m]) > 3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "El bridge Redis realtime está inestable"
+          description: "El proceso intentó reconectar más de tres veces en diez minutos."
+
       - alert: ViajaYaRealtimeRetencionDetenida
         expr: >-
           viajaya_realtime_outbox_retention_enabled == 1

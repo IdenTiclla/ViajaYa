@@ -255,6 +255,45 @@ class RealtimeOutboxBatchPublisher(ABC):
         """Fuerza otro snapshot a los sockets afectados por un hueco terminal."""
 
 
+class RealtimeDeliveryBridge(RealtimeOutboxBatchPublisher):
+    """Fanout entre procesos y sus sockets locales durante el modo live."""
+
+    @property
+    @abstractmethod
+    def running(self) -> bool:
+        """Indica si el loop suscriptor continúa activo."""
+
+    @property
+    @abstractmethod
+    def connected(self) -> bool:
+        """Indica si este proceso mantiene su suscripción al transporte."""
+
+    @property
+    @abstractmethod
+    def last_error(self) -> str | None:
+        """Código sanitizado del último fallo todavía no recuperado."""
+
+    @abstractmethod
+    async def preflight(self) -> None:
+        """Comprueba conectividad antes de admitir tráfico."""
+
+    @abstractmethod
+    async def wait_until_ready(self, timeout_seconds: float) -> None:
+        """Espera hasta confirmar que la suscripción ya recibe fanout."""
+
+    @abstractmethod
+    async def run(self) -> None:
+        """Mantiene la suscripción y reconecta mientras no se solicite cierre."""
+
+    @abstractmethod
+    def stop(self) -> None:
+        """Solicita un cierre coordinado del suscriptor."""
+
+    @abstractmethod
+    async def aclose(self) -> None:
+        """Libera conexiones del transporte de forma idempotente."""
+
+
 class CreateOfferEventRecorder(ABC):
     """Registra los eventos durables producidos al crear o mejorar una oferta."""
 

@@ -33,6 +33,9 @@ logger = logging.getLogger(__name__)
 # la app siga abierta. La consulta HTTP de viaje activo renueva esta ventana, por
 # lo que solo se cancela cuando desaparecen ambos canales durante dos minutos.
 PRESENCE_GRACE_SECONDS = 120.0
+# Un timer live_redis nunca interpreta una caída del transporte como abandono.
+# El polling corto permanece cancelable por una reconexión real del pasajero.
+TRANSPORT_HEALTH_RECHECK_SECONDS = 1.0
 
 # Instante (reloj monótono) de la última desconexión por ``ride_id``. Mientras
 # haya conexión viva no se usa (``has_subscribers`` manda).
@@ -276,6 +279,28 @@ async def _run_cancel_after_grace(
     except asyncio.CancelledError:
         # Reconectar solo puede llegar aquí, durante la espera cancelable.
         return
+
+    transport_was_unhealthy = False
+    while settings.realtime_outbox_dispatch_mode == "live_redis":
+        if not hub.shared_transport_healthy:
+            transport_was_unhealthy = True
+            try:
+                await asyncio.sleep(TRANSPORT_HEALTH_RECHECK_SECONDS)
+            except asyncio.CancelledError:
+                # Una reconexión/actividad HTTP gana incluso durante una caída larga.
+                return
+            continue
+        if not transport_was_unhealthy:
+            break
+
+        # Al volver Redis no se cancela de inmediato: el cliente recibe una
+        # ventana completa para atravesar readiness/LB y renovar su presencia.
+        transport_was_unhealthy = False
+        _last_seen[ride_id] = time.monotonic()
+        try:
+            await asyncio.sleep(PRESENCE_GRACE_SECONDS)
+        except asyncio.CancelledError:
+            return
 
     # No hay ``await`` entre quitar la tarea cancelable y registrar la fase
     # crítica: otra coroutine nunca observa una ventana intermedia.

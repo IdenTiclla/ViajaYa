@@ -22,6 +22,7 @@ from app.application.dto import (
     RealtimeOutboxQuarantineCode,
     ScheduledActionsOperationalSnapshot,
 )
+from app.infrastructure.realtime.hub import hub
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +65,7 @@ class _OpenMetricsDocument:
 
 def render_realtime_openmetrics(
     *,
-    mode: Literal["off", "shadow", "live_local"],
+    mode: Literal["off", "shadow", "live_local", "live_redis"],
     retention_days: int,
     dispatcher_running: bool,
     dispatcher_error: bool,
@@ -74,6 +75,16 @@ def render_realtime_openmetrics(
     retention_deleted_event_count: int,
     snapshot: RealtimeOutboxOperationalSnapshot | None,
     scrape_success: bool,
+    redis_connected: bool = False,
+    redis_error: bool = False,
+    redis_published_batch_count: int = 0,
+    redis_received_batch_count: int = 0,
+    redis_received_event_count: int = 0,
+    redis_resync_message_count: int = 0,
+    redis_reconnect_count: int = 0,
+    redis_invalid_message_count: int = 0,
+    redis_last_publish_subscriber_count: int = 0,
+    redis_local_socket_count: int = 0,
     scheduled_mode: Literal["off", "shadow", "live"] = "off",
     scheduled_worker_running: bool = False,
     scheduled_worker_error: bool = False,
@@ -91,7 +102,7 @@ def render_realtime_openmetrics(
 ) -> str:
     """Renderiza solo agregados operativos, sin payloads, topics ni errores."""
     document = _OpenMetricsDocument()
-    dispatcher_enabled = mode in {"shadow", "live_local"}
+    dispatcher_enabled = mode in {"shadow", "live_local", "live_redis"}
     document.metric(
         "viajaya_realtime_outbox",
         "Información estable del modo realtime activo.",
@@ -122,6 +133,75 @@ def render_realtime_openmetrics(
         "Indica si el dispatcher conserva un fallo operativo sin recuperar.",
         "gauge",
         [({}, int(dispatcher_error))],
+    )
+    document.metric(
+        "viajaya_realtime_redis_bridge_enabled",
+        "Indica si el modo activo requiere fanout Redis entre procesos.",
+        "gauge",
+        [({}, int(mode == "live_redis"))],
+    )
+    document.metric(
+        "viajaya_realtime_redis_bridge_connected",
+        "Indica si este proceso mantiene su suscripción Redis realtime.",
+        "gauge",
+        [({}, int(redis_connected))],
+    )
+    document.metric(
+        "viajaya_realtime_redis_bridge_error",
+        "Indica si el bridge Redis conserva un fallo sin recuperar.",
+        "gauge",
+        [({}, int(redis_error))],
+    )
+    for name, help_text, value in (
+        (
+            "published_batches",
+            "Batches publicados a Redis por este proceso desde su arranque.",
+            redis_published_batch_count,
+        ),
+        (
+            "received_batches",
+            "Batches Redis recibidos por este proceso desde su arranque.",
+            redis_received_batch_count,
+        ),
+        (
+            "received_events",
+            "Eventos Redis recibidos por este proceso desde su arranque.",
+            redis_received_event_count,
+        ),
+        (
+            "resync_messages",
+            "Órdenes Redis de resnapshot recibidas desde el arranque.",
+            redis_resync_message_count,
+        ),
+        (
+            "reconnects",
+            "Reconexiones Redis intentadas por este proceso desde el arranque.",
+            redis_reconnect_count,
+        ),
+        (
+            "invalid_messages",
+            "Mensajes Redis inválidos descartados desde el arranque.",
+            redis_invalid_message_count,
+        ),
+    ):
+        document.metric(
+            f"viajaya_realtime_redis_{name}",
+            help_text,
+            "counter",
+            [({}, value)],
+            sample_name=f"viajaya_realtime_redis_{name}_total",
+        )
+    document.metric(
+        "viajaya_realtime_redis_last_publish_subscribers",
+        "Suscriptores confirmados por el último PUBLISH de este proceso.",
+        "gauge",
+        [({}, redis_last_publish_subscriber_count)],
+    )
+    document.metric(
+        "viajaya_realtime_local_sockets",
+        "Sockets WebSocket locales únicos suscritos en este proceso.",
+        "gauge",
+        [({}, redis_local_socket_count)],
     )
     document.metric(
         "viajaya_realtime_outbox_retention_enabled",
@@ -451,6 +531,11 @@ async def metrics(
         scheduled_retention_worker is not None
         and scheduled_retention_worker.last_error is not None
     )
+    redis_bridge = request.app.state.realtime_redis_bridge
+    redis_connected = bool(redis_bridge is not None and redis_bridge.connected)
+    redis_error = bool(
+        redis_bridge is not None and redis_bridge.last_error is not None
+    )
 
     now = datetime.now(UTC)
     snapshot: RealtimeOutboxOperationalSnapshot | None = None
@@ -494,6 +579,44 @@ async def metrics(
             retention_deleted_event_count=deleted_events,
             snapshot=snapshot,
             scrape_success=scrape_success,
+            redis_connected=redis_connected,
+            redis_error=redis_error,
+            redis_published_batch_count=(
+                getattr(redis_bridge, "published_batch_count", 0)
+                if redis_bridge is not None
+                else 0
+            ),
+            redis_received_batch_count=(
+                getattr(redis_bridge, "received_batch_count", 0)
+                if redis_bridge is not None
+                else 0
+            ),
+            redis_received_event_count=(
+                getattr(redis_bridge, "received_event_count", 0)
+                if redis_bridge is not None
+                else 0
+            ),
+            redis_resync_message_count=(
+                getattr(redis_bridge, "resync_message_count", 0)
+                if redis_bridge is not None
+                else 0
+            ),
+            redis_reconnect_count=(
+                getattr(redis_bridge, "reconnect_count", 0)
+                if redis_bridge is not None
+                else 0
+            ),
+            redis_invalid_message_count=(
+                getattr(redis_bridge, "invalid_message_count", 0)
+                if redis_bridge is not None
+                else 0
+            ),
+            redis_last_publish_subscriber_count=(
+                getattr(redis_bridge, "last_publish_subscriber_count", 0)
+                if redis_bridge is not None
+                else 0
+            ),
+            redis_local_socket_count=hub.subscribed_socket_count,
             scheduled_mode=scheduled_mode,
             scheduled_worker_running=scheduled_worker_running,
             scheduled_worker_error=scheduled_worker_error,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import Literal
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
@@ -15,8 +16,17 @@ from sqlalchemy.ext.asyncio import (
 
 logger = logging.getLogger(__name__)
 
-_LOCK_EXPRESSION = (
+_LEGACY_LOCK_EXPRESSION = (
     "hashtextextended(current_database() || ':viajaya:realtime:live_local', 0)"
+)
+_SHADOW_LOCK_EXPRESSION = (
+    "hashtextextended(current_database() || ':viajaya:realtime:shadow-group', 0)"
+)
+_LIVE_LOCK_EXPRESSION = (
+    "hashtextextended(current_database() || ':viajaya:realtime:live-group', 0)"
+)
+_MODE_TRANSITION_LOCK_EXPRESSION = (
+    "hashtextextended(current_database() || ':viajaya:realtime:mode-transition', 0)"
 )
 
 
@@ -25,13 +35,17 @@ class LiveLocalProcessLockUnavailableError(RuntimeError):
 
 
 class PostgreSQLLiveLocalProcessLock:
-    """Mantiene un advisory lock de sesión en una conexión dedicada.
+    """Mantiene la exclusión de modos realtime en una conexión dedicada.
 
     El lock se deriva del nombre de la base para no hacer colisionar entornos
     que compartan un mismo clúster PostgreSQL. La conexión usa autocommit: queda
     reservada durante el lifespan sin mantener una transacción ociosa abierta.
-    Los dispatchers sombra toman el lock compartido y ``live_local`` lo toma
-    exclusivo, por lo que un rolling deploy nunca mezcla ambos consumidores.
+    Durante el rolling deploy todos los modos conservan además la clave de la
+    versión anterior: shadow la comparte y ambos live la toman en exclusiva.
+    Esto impide mezclar binarios viejos/nuevos y mantiene ``live_redis`` en un
+    único worker hasta introducir presencia compartida. Un mutex efímero
+    serializa únicamente la transición mientras cada grupo comprueba que el
+    opuesto esté vacío.
 
     SQLite solo se admite para las pruebas locales. En ese dialecto el método
     devuelve ``False`` y no finge una exclusión que SQLite no puede garantizar
@@ -43,12 +57,16 @@ class PostgreSQLLiveLocalProcessLock:
         session_factory: async_sessionmaker[AsyncSession],
         *,
         exclusive: bool = True,
+        mode: Literal["shadow", "live_local", "live_redis"] | None = None,
     ) -> None:
         self._session_factory = session_factory
-        self._exclusive = exclusive
+        self._mode = mode or ("live_local" if exclusive else "shadow")
         self._connection: AsyncConnection | None = None
         self._dialect_name: str | None = None
         self._backend_pid: int | None = None
+        self._held_expression: str | None = None
+        self._held_shared = False
+        self._legacy_held_shared = False
         self._operation_lock = asyncio.Lock()
 
     @property
@@ -68,10 +86,7 @@ class PostgreSQLLiveLocalProcessLock:
         engine = await self._resolve_engine()
         self._dialect_name = engine.dialect.name
         if self._dialect_name == "sqlite":
-            logger.warning(
-                "SQLite no aplica coordinación multiproceso realtime; "
-                "este modo solo es válido en pruebas de un proceso."
-            )
+            logger.warning("SQLite no aplica coordinación multiproceso realtime.")
             return False
         if self._dialect_name != "postgresql":
             raise RuntimeError("El lock realtime requiere PostgreSQL.")
@@ -81,29 +96,97 @@ class PostgreSQLLiveLocalProcessLock:
             connection = await connection.execution_options(
                 isolation_level="AUTOCOMMIT"
             )
-            lock_function = (
-                "pg_try_advisory_lock"
-                if self._exclusive
-                else "pg_try_advisory_lock_shared"
+            held_expression, held_shared, conflicting_expression = {
+                "shadow": (
+                    _SHADOW_LOCK_EXPRESSION,
+                    True,
+                    _LIVE_LOCK_EXPRESSION,
+                ),
+                "live_redis": (
+                    _LIVE_LOCK_EXPRESSION,
+                    True,
+                    _SHADOW_LOCK_EXPRESSION,
+                ),
+                "live_local": (
+                    _LIVE_LOCK_EXPRESSION,
+                    False,
+                    _SHADOW_LOCK_EXPRESSION,
+                ),
+            }[self._mode]
+            legacy_shared = self._mode == "shadow"
+            await self._lock(
+                connection,
+                _MODE_TRANSITION_LOCK_EXPRESSION,
+                shared=False,
             )
-            backend_pid, acquired = (
-                await connection.execute(
-                    text(
-                        "SELECT pg_backend_pid(), "
-                        f"{lock_function}({_LOCK_EXPRESSION})"
-                    )
+            try:
+                backend_pid = int(
+                    (
+                        await connection.execute(text("SELECT pg_backend_pid()"))
+                    ).scalar_one()
                 )
-            ).one()
-            if not acquired:
-                raise LiveLocalProcessLockUnavailableError(
-                    "Existe un modo realtime incompatible activo para esta base."
+                legacy_acquired = await self._try_lock(
+                    connection,
+                    _LEGACY_LOCK_EXPRESSION,
+                    legacy_shared,
+                )
+                if not legacy_acquired:
+                    raise LiveLocalProcessLockUnavailableError(
+                        "Existe un modo realtime incompatible activo para esta base."
+                    )
+                held_acquired = False
+                try:
+                    held_acquired = await self._try_lock(
+                        connection,
+                        held_expression,
+                        held_shared,
+                    )
+                    if not held_acquired:
+                        raise LiveLocalProcessLockUnavailableError(
+                            "Existe un modo realtime incompatible activo para esta base."
+                        )
+                    conflicting_acquired = await self._try_lock(
+                        connection,
+                        conflicting_expression,
+                        shared=False,
+                    )
+                    if not conflicting_acquired:
+                        raise LiveLocalProcessLockUnavailableError(
+                            "Existe un modo realtime incompatible activo para esta base."
+                        )
+                    await self._unlock(
+                        connection,
+                        conflicting_expression,
+                        shared=False,
+                    )
+                except BaseException:
+                    if held_acquired:
+                        await self._unlock(
+                            connection,
+                            held_expression,
+                            held_shared,
+                        )
+                    await self._unlock(
+                        connection,
+                        _LEGACY_LOCK_EXPRESSION,
+                        legacy_shared,
+                    )
+                    raise
+            finally:
+                await self._unlock(
+                    connection,
+                    _MODE_TRANSITION_LOCK_EXPRESSION,
+                    shared=False,
                 )
         except BaseException:
             await connection.close()
             raise
 
         self._connection = connection
-        self._backend_pid = int(backend_pid)
+        self._backend_pid = backend_pid
+        self._held_expression = held_expression
+        self._held_shared = held_shared
+        self._legacy_held_shared = legacy_shared
         return True
 
     async def check(self) -> bool:
@@ -139,27 +222,37 @@ class PostgreSQLLiveLocalProcessLock:
             connection = self._connection
             self._connection = None
             self._backend_pid = None
+            held_expression = self._held_expression
+            held_shared = self._held_shared
+            legacy_held_shared = self._legacy_held_shared
+            self._held_expression = None
+            self._held_shared = False
+            self._legacy_held_shared = False
             if connection is None:
                 return
 
             try:
                 if connection.invalidated:
                     return
-                unlock_function = (
-                    "pg_advisory_unlock"
-                    if self._exclusive
-                    else "pg_advisory_unlock_shared"
-                )
-                released = bool(
-                    (
-                        await connection.execute(
-                            text(f"SELECT {unlock_function}({_LOCK_EXPRESSION})")
-                        )
-                    ).scalar_one()
+                if held_expression is None:
+                    raise RuntimeError("El lock realtime perdió su identidad.")
+                released = await self._unlock(
+                    connection,
+                    held_expression,
+                    held_shared,
                 )
                 if not released:
                     logger.error(
                         "PostgreSQL informó que el lock realtime no estaba tomado."
+                    )
+                legacy_released = await self._unlock(
+                    connection,
+                    _LEGACY_LOCK_EXPRESSION,
+                    legacy_held_shared,
+                )
+                if not legacy_released:
+                    logger.error(
+                        "PostgreSQL informó que el lock realtime legado no estaba tomado."
                     )
             except Exception:  # noqa: BLE001 - cerrar libera el lock
                 # No se registra el error del driver para no filtrar el DSN.
@@ -167,6 +260,41 @@ class PostgreSQLLiveLocalProcessLock:
                 await connection.invalidate()
             finally:
                 await connection.close()
+
+    @staticmethod
+    async def _try_lock(
+        connection: AsyncConnection,
+        expression: str,
+        shared: bool,
+    ) -> bool:
+        function = "pg_try_advisory_lock_shared" if shared else "pg_try_advisory_lock"
+        return bool(
+            (
+                await connection.execute(text(f"SELECT {function}({expression})"))
+            ).scalar_one()
+        )
+
+    @staticmethod
+    async def _lock(
+        connection: AsyncConnection,
+        expression: str,
+        shared: bool,
+    ) -> None:
+        function = "pg_advisory_lock_shared" if shared else "pg_advisory_lock"
+        await connection.execute(text(f"SELECT {function}({expression})"))
+
+    @staticmethod
+    async def _unlock(
+        connection: AsyncConnection,
+        expression: str,
+        shared: bool,
+    ) -> bool:
+        function = "pg_advisory_unlock_shared" if shared else "pg_advisory_unlock"
+        return bool(
+            (
+                await connection.execute(text(f"SELECT {function}({expression})"))
+            ).scalar_one()
+        )
 
     async def _resolve_engine(self) -> AsyncEngine:
         session = self._session_factory()

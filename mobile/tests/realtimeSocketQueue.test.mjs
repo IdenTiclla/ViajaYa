@@ -11,7 +11,7 @@ function deferred() {
   return { promise, resolve };
 }
 
-test('descarta mensajes encolados de una generación reemplazada', async () => {
+test('la generación nueva no espera al handler viejo y descarta su cola', async () => {
   const queue = createGenerationMessageQueue();
   const release = deferred();
   const started = deferred();
@@ -44,10 +44,18 @@ test('descarta mensajes encolados de una generación reemplazada', async () => {
     () => calls.push('new-error'),
   );
 
-  release.resolve();
-  await completed.promise;
+  await Promise.race([
+    completed.promise,
+    new Promise((_, reject) =>
+      setTimeout(
+        () => reject(new Error('La generación nueva quedó bloqueada.')),
+        100,
+      ),
+    ),
+  ]);
 
   assert.deepEqual(calls, ['old-running', 'new']);
+  release.resolve();
 });
 
 test('reporta error solo si la generación sigue vigente', async () => {

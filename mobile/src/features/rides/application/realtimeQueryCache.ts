@@ -8,7 +8,9 @@ export async function writeRealtimeQueryData<T>(
   queryClient: QueryClient,
   queryKey: QueryKey,
   updater: Updater<T | undefined, T | undefined>,
+  isCurrent: () => boolean = () => true,
 ): Promise<T | undefined> {
   await queryClient.cancelQueries({ queryKey, exact: true });
+  if (!isCurrent()) return queryClient.getQueryData<T>(queryKey);
   return queryClient.setQueryData<T>(queryKey, updater);
 }

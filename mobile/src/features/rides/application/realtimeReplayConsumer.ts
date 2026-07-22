@@ -38,18 +38,41 @@ export type RealtimeConsumeResult =
 
 type PostCommitEffect = (() => void) | void;
 
+/** Barrera externa que permite al transporte invalidar un handler en curso. */
+export type RealtimeConnectionGuard = {
+  isCurrent: () => boolean;
+};
+
 type RealtimeReplayConsumerOptions<TMessage> = {
   gate: ReplayGate;
   classify: (message: TMessage) => RealtimeProtocolClassification;
-  applyLegacy: (message: TMessage) => Promise<PostCommitEffect>;
-  applySnapshot: (message: TMessage) => Promise<PostCommitEffect>;
-  applyEvent: (message: TMessage) => Promise<PostCommitEffect>;
+  applyLegacy: (
+    message: TMessage,
+    guard: RealtimeConnectionGuard,
+  ) => Promise<PostCommitEffect>;
+  applySnapshot: (
+    message: TMessage,
+    guard: RealtimeConnectionGuard,
+  ) => Promise<PostCommitEffect>;
+  applyEvent: (
+    message: TMessage,
+    guard: RealtimeConnectionGuard,
+  ) => Promise<PostCommitEffect>;
   onResync: (reason: RealtimeResyncCause) => void;
 };
 
 export type RealtimeReplayConsumer<TMessage> = {
-  beginConnection: () => void;
-  consume: (message: TMessage) => Promise<RealtimeConsumeResult>;
+  /** Inicia una conexión e invalida cualquier handler de la anterior. */
+  beginConnection: () => RealtimeConnectionGuard;
+  /**
+   * Invalida inmediatamente la conexión actual sin borrar cursores confirmados.
+   * El transporte debe llamarlo al cerrar, reemplazar o resincronizar el socket.
+   */
+  invalidateConnection: () => void;
+  consume: (
+    message: TMessage,
+    guard?: RealtimeConnectionGuard,
+  ) => Promise<RealtimeConsumeResult>;
   protocol: () => 'awaiting_snapshot' | 'legacy' | 'v2';
 };
 
@@ -59,10 +82,20 @@ export function createRealtimeReplayConsumer<TMessage>(
   let protocol: 'awaiting_snapshot' | 'legacy' | 'v2' = 'awaiting_snapshot';
   let legacyReady = false;
   let resyncRequested = false;
+  let connectionEpoch = 0;
+  let connectionActive = false;
+
+  const invalidateState = () => {
+    connectionEpoch += 1;
+    connectionActive = false;
+    protocol = 'awaiting_snapshot';
+    legacyReady = false;
+  };
 
   const requestResync = (reason: RealtimeResyncCause): RealtimeConsumeResult => {
     if (!resyncRequested) {
       resyncRequested = true;
+      invalidateState();
       options.onResync(reason);
     }
     return { kind: 'resync', reason };
@@ -84,7 +117,18 @@ export function createRealtimeReplayConsumer<TMessage>(
     }
   };
 
-  const consume = async (message: TMessage): Promise<RealtimeConsumeResult> => {
+  const consume = async (
+    message: TMessage,
+    guard?: RealtimeConnectionGuard,
+  ): Promise<RealtimeConsumeResult> => {
+    const expectedEpoch = connectionEpoch;
+    const isCurrent = () =>
+      connectionActive &&
+      expectedEpoch === connectionEpoch &&
+      (guard?.isCurrent() ?? true);
+    if (!isCurrent()) return { kind: 'dropped' };
+    const applyGuard: RealtimeConnectionGuard = { isCurrent };
+
     const classification = options.classify(message);
 
     if (classification.protocol === 'legacy') {
@@ -95,13 +139,14 @@ export function createRealtimeReplayConsumer<TMessage>(
         if (classification.kind !== 'snapshot') {
           return requestResync('event_before_snapshot');
         }
-        protocol = 'legacy';
       }
       if (classification.kind === 'event' && !legacyReady) {
         return requestResync('event_before_snapshot');
       }
       try {
-        const effect = await options.applyLegacy(message);
+        const effect = await options.applyLegacy(message, applyGuard);
+        if (!isCurrent()) return { kind: 'dropped' };
+        if (protocol === 'awaiting_snapshot') protocol = 'legacy';
         if (
           classification.kind === 'snapshot' &&
           classification.completesHandshake
@@ -111,6 +156,7 @@ export function createRealtimeReplayConsumer<TMessage>(
         runPostCommit(effect);
         return { kind: 'applied' };
       } catch {
+        if (!isCurrent()) return { kind: 'dropped' };
         return requestResync('handler_error');
       }
     }
@@ -130,13 +176,18 @@ export function createRealtimeReplayConsumer<TMessage>(
         );
       }
       try {
-        const effect = await options.applySnapshot(message);
+        const effect = await options.applySnapshot(message, applyGuard);
+        if (!isCurrent()) {
+          abortSafely(decision.ticket);
+          return { kind: 'dropped' };
+        }
         options.gate.commit(decision.ticket);
         protocol = 'v2';
         runPostCommit(effect);
         return { kind: 'applied' };
       } catch {
         abortSafely(decision.ticket);
+        if (!isCurrent()) return { kind: 'dropped' };
         return requestResync('handler_error');
       }
     }
@@ -149,21 +200,37 @@ export function createRealtimeReplayConsumer<TMessage>(
     if (decision.kind === 'resync') return requestResync(decision.reason);
 
     try {
-      const effect = await options.applyEvent(message);
+      const effect = await options.applyEvent(message, applyGuard);
+      if (!isCurrent()) {
+        abortSafely(decision.ticket);
+        return { kind: 'dropped' };
+      }
       options.gate.commit(decision.ticket);
       runPostCommit(effect);
       return { kind: 'applied' };
     } catch {
       abortSafely(decision.ticket);
+      if (!isCurrent()) return { kind: 'dropped' };
       return requestResync('handler_error');
     }
   };
 
   return {
     beginConnection() {
+      connectionEpoch += 1;
+      connectionActive = true;
       protocol = 'awaiting_snapshot';
       legacyReady = false;
       resyncRequested = false;
+      const ownEpoch = connectionEpoch;
+      return {
+        isCurrent: () => connectionActive && ownEpoch === connectionEpoch,
+      };
+    },
+    invalidateConnection() {
+      if (!connectionActive) return;
+      resyncRequested = true;
+      invalidateState();
     },
     consume,
     protocol: () => protocol,

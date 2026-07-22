@@ -47,6 +47,23 @@ export type DriverPoolSnapshotRide = {
   phase: 'open' | 'paused';
 };
 
+export type DriverOfferSnapshot = {
+  rideId: string;
+  id: string;
+  price: number;
+  /** Tarifa vigente de la solicitud, distinta del precio contraofertado. */
+  rideFare?: number;
+  etaMin: number | null;
+  expiresAt: string | null;
+};
+
+export type DriverRealtimeSnapshot = {
+  rides: DriverPoolSnapshotRide[];
+  offers: DriverOfferSnapshot[];
+  activeRideId: string | null;
+  offerCut: OfferSnapshotCut;
+};
+
 const FALLBACK_TTL_MS = 30_000;
 const MAX_SETTLED_OFFERS = 512;
 const MAX_TERMINAL_RIDES = 256;
@@ -256,6 +273,8 @@ type DriverRequestsState = {
   realtimeResyncSequence: number;
   applyPoolEvent: (event: DriverPoolEvent) => DriverPoolReduction;
   reconcilePoolSnapshot: (rides: DriverPoolSnapshotRide[]) => void;
+  /** Aplica todo el snapshot v2 mediante una única transición observable. */
+  reconcileRealtimeSnapshot: (snapshot: DriverRealtimeSnapshot) => void;
   dismiss: (rideId: string, poolVersion: number) => void;
   beginOfferAttempt: (rideId: string) => number;
   beginOfferSnapshot: () => OfferSnapshotCut;
@@ -274,15 +293,7 @@ type DriverRequestsState = {
   ) => boolean;
   /** Reemplaza solo las ofertas vivas con el snapshot autoritativo del backend. */
   reconcileOffered: (
-    offers: {
-      rideId: string;
-      id: string;
-      price: number;
-      /** Tarifa vigente de la solicitud, distinta del precio contraofertado. */
-      rideFare: number;
-      etaMin: number | null;
-      expiresAt: string | null;
-    }[],
+    offers: DriverOfferSnapshot[],
     cut?: OfferSnapshotCut,
   ) => void;
   markRejected: (rideId: string, offerId?: string) => boolean;
@@ -303,6 +314,189 @@ type DriverRequestsState = {
   isOffered: (rideId: string) => boolean;
   reset: () => void;
 };
+
+function reducePoolSnapshot(
+  state: DriverRequestsState,
+  rides: DriverPoolSnapshotRide[],
+): Partial<DriverRequestsState> {
+  let poolProjection: DriverPoolProjection = new Map();
+  const paused = new Set<string>();
+  const visibleRideIds = new Set<string>();
+  const openVersions = new Map<string, number>();
+  for (const ride of rides) {
+    poolProjection = rememberPoolCycle(poolProjection, ride.rideId, {
+      poolVersion: ride.poolVersion,
+      phase: ride.phase,
+    });
+    visibleRideIds.add(ride.rideId);
+    if (ride.phase === 'paused') paused.add(ride.rideId);
+    else openVersions.set(ride.rideId, ride.poolVersion);
+  }
+
+  const rejected = new Set(state.rejected);
+  const taken = new Set(state.taken);
+  const expired = new Set(state.expired);
+  const expiredFares = { ...state.expiredFares };
+  const terminalRideIds = new Set(state.terminalRideIds);
+  for (const rideId of visibleRideIds) {
+    rejected.delete(rideId);
+    taken.delete(rideId);
+    expired.delete(rideId);
+    delete expiredFares[rideId];
+    terminalRideIds.delete(rideId);
+  }
+
+  const dismissed = new Map(state.dismissed);
+  for (const [rideId, poolVersion] of openVersions) {
+    const dismissedVersion = dismissed.get(rideId);
+    if (dismissedVersion != null && dismissedVersion < poolVersion) {
+      dismissed.delete(rideId);
+    }
+  }
+  return {
+    poolProjection,
+    dismissed,
+    rejected,
+    taken,
+    expired,
+    expiredFares,
+    paused,
+    terminalRideIds,
+  };
+}
+
+function reduceOfferedSnapshot(
+  state: DriverRequestsState,
+  snapshot: DriverOfferSnapshot[],
+  cut?: OfferSnapshotCut,
+): Partial<DriverRequestsState> {
+  const offered: Record<string, SentOffer> = {};
+  const liveRideIds = new Set<string>();
+  const settledOfferIds = new Set(state.settledOfferIds);
+  const terminalRideIds = new Set(state.terminalRideIds);
+  let offerAttemptSequence = state.offerAttemptSequence;
+  let offerAttemptTokens = state.offerAttemptTokens;
+  const now = Date.now();
+  for (const offer of snapshot) {
+    const reportedExpiresAt =
+      offer.expiresAt ?? new Date(now + FALLBACK_TTL_MS).toISOString();
+    const expiresAt =
+      new Date(reportedExpiresAt).getTime() > now
+        ? reportedExpiresAt
+        : new Date(now + FALLBACK_TTL_MS).toISOString();
+    liveRideIds.add(offer.rideId);
+    // PostgreSQL confirma que sigue PENDING: corrige expiraciones locales
+    // por reloj adelantado o cualquier guard contradictorio del cliente.
+    settledOfferIds.delete(offer.id);
+    terminalRideIds.delete(offer.rideId);
+    const advanced = advanceOfferAttempt(
+      offerAttemptSequence,
+      offerAttemptTokens,
+      offer.rideId,
+    );
+    offerAttemptSequence = advanced.offerAttemptSequence;
+    offerAttemptTokens = advanced.offerAttemptTokens;
+    offered[offer.rideId] = {
+      offerId: offer.id,
+      price: offer.price,
+      rideFare:
+        offer.rideFare ?? state.offered[offer.rideId]?.rideFare ?? offer.price,
+      etaMin: offer.etaMin,
+      expiresAt,
+    };
+  }
+
+  const offerIdsAtSnapshot =
+    cut != null
+      ? new Set(snapshot.map((offer) => offer.id))
+      : state.offerIdsAtSnapshot;
+  const missingLocalOffer =
+    cut != null &&
+    Object.values(state.offered).some(
+      (current) =>
+        current.attemptToken != null &&
+        !offerIdsAtSnapshot.has(current.offerId),
+    );
+
+  // No se comparan timestamps del servidor: PostgreSQL ``now()`` ordena
+  // inicios de transacción, no commits. El corte local detecta tanto un 201
+  // posterior como uno que resolvió mientras se aplicaba el snapshot.
+  const offerSnapshotAttemptSequence =
+    cut != null ? cut.attemptSequence : state.offerSnapshotAttemptSequence;
+  const offerSnapshotAppliedAttemptSequence =
+    cut != null
+      ? offerAttemptSequence
+      : state.offerSnapshotAppliedAttemptSequence;
+
+  // El snapshot PENDING limpia desenlaces visuales viejos del mismo ride.
+  const rejected = new Set(state.rejected);
+  const taken = new Set(state.taken);
+  const expired = new Set(state.expired);
+  const expiredFares = { ...state.expiredFares };
+  const paused = new Set(state.paused);
+  for (const rideId of liveRideIds) {
+    rejected.delete(rideId);
+    taken.delete(rideId);
+    expired.delete(rideId);
+    delete expiredFares[rideId];
+    paused.delete(rideId);
+  }
+  return {
+    offered,
+    rejected,
+    taken,
+    expired,
+    expiredFares,
+    paused,
+    settledOfferIds,
+    terminalRideIds,
+    offerAttemptSequence,
+    offerAttemptTokens,
+    offerSnapshotAttemptSequence,
+    offerSnapshotAppliedAttemptSequence,
+    offerIdsAtSnapshot,
+    realtimeResyncSequence: missingLocalOffer
+      ? state.realtimeResyncSequence + 1
+      : state.realtimeResyncSequence,
+  };
+}
+
+function reduceAssignedSnapshot(
+  state: DriverRequestsState,
+  rideId: string,
+): Partial<DriverRequestsState> {
+  if (state.terminalRideIds.has(rideId)) return {};
+  const offered = { ...state.offered };
+  delete offered[rideId];
+  const rejected = new Set(state.rejected);
+  rejected.delete(rideId);
+  const taken = new Set(state.taken);
+  taken.delete(rideId);
+  const expired = new Set(state.expired);
+  expired.delete(rideId);
+  const expiredFares = { ...state.expiredFares };
+  delete expiredFares[rideId];
+  const paused = new Set(state.paused);
+  paused.delete(rideId);
+  return {
+    offered,
+    rejected,
+    taken,
+    expired,
+    expiredFares,
+    paused,
+    terminalRideIds: addBounded(
+      state.terminalRideIds,
+      rideId,
+      MAX_TERMINAL_RIDES,
+    ),
+    ...advanceOfferAttempt(
+      state.offerAttemptSequence,
+      state.offerAttemptTokens,
+      rideId,
+    ),
+  };
+}
 
 export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
   poolProjection: new Map(),
@@ -381,52 +575,20 @@ export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
     }
     return result;
   },
-  reconcilePoolSnapshot: (rides) =>
+  reconcilePoolSnapshot: (rides) => set((s) => reducePoolSnapshot(s, rides)),
+  reconcileRealtimeSnapshot: ({ rides, offers, activeRideId, offerCut }) =>
     set((s) => {
-      let poolProjection: DriverPoolProjection = new Map();
-      const paused = new Set<string>();
-      const visibleRideIds = new Set<string>();
-      const openVersions = new Map<string, number>();
-      for (const ride of rides) {
-        poolProjection = rememberPoolCycle(poolProjection, ride.rideId, {
-          poolVersion: ride.poolVersion,
-          phase: ride.phase,
-        });
-        visibleRideIds.add(ride.rideId);
-        if (ride.phase === 'paused') paused.add(ride.rideId);
-        else openVersions.set(ride.rideId, ride.poolVersion);
-      }
-
-      const rejected = new Set(s.rejected);
-      const taken = new Set(s.taken);
-      const expired = new Set(s.expired);
-      const expiredFares = { ...s.expiredFares };
-      const terminalRideIds = new Set(s.terminalRideIds);
-      for (const rideId of visibleRideIds) {
-        rejected.delete(rideId);
-        taken.delete(rideId);
-        expired.delete(rideId);
-        delete expiredFares[rideId];
-        terminalRideIds.delete(rideId);
-      }
-
-      const dismissed = new Map(s.dismissed);
-      for (const [rideId, poolVersion] of openVersions) {
-        const dismissedVersion = dismissed.get(rideId);
-        if (dismissedVersion != null && dismissedVersion < poolVersion) {
-          dismissed.delete(rideId);
-        }
-      }
-      return {
-        poolProjection,
-        dismissed,
-        rejected,
-        taken,
-        expired,
-        expiredFares,
-        paused,
-        terminalRideIds,
+      const withPool = { ...s, ...reducePoolSnapshot(s, rides) };
+      const withOffers = {
+        ...withPool,
+        ...reduceOfferedSnapshot(withPool, offers, offerCut),
       };
+      return activeRideId == null
+        ? withOffers
+        : {
+            ...withOffers,
+            ...reduceAssignedSnapshot(withOffers, activeRideId),
+          };
     }),
   dismiss: (rideId, poolVersion) =>
     set((s) => ({ dismissed: new Map(s.dismissed).set(rideId, poolVersion) })),
@@ -539,95 +701,7 @@ export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
     return applied;
   },
   reconcileOffered: (snapshot, cut) =>
-    set((s) => {
-      const offered: Record<string, SentOffer> = {};
-      const liveRideIds = new Set<string>();
-      const settledOfferIds = new Set(s.settledOfferIds);
-      const terminalRideIds = new Set(s.terminalRideIds);
-      let offerAttemptSequence = s.offerAttemptSequence;
-      let offerAttemptTokens = s.offerAttemptTokens;
-      const now = Date.now();
-      for (const offer of snapshot) {
-        const reportedExpiresAt =
-          offer.expiresAt ?? new Date(now + FALLBACK_TTL_MS).toISOString();
-        const expiresAt =
-          new Date(reportedExpiresAt).getTime() > now
-            ? reportedExpiresAt
-            : new Date(now + FALLBACK_TTL_MS).toISOString();
-        liveRideIds.add(offer.rideId);
-        // PostgreSQL confirma que sigue PENDING: corrige expiraciones locales
-        // por reloj adelantado o cualquier guard contradictorio del cliente.
-        settledOfferIds.delete(offer.id);
-        terminalRideIds.delete(offer.rideId);
-        const advanced = advanceOfferAttempt(
-          offerAttemptSequence,
-          offerAttemptTokens,
-          offer.rideId,
-        );
-        offerAttemptSequence = advanced.offerAttemptSequence;
-        offerAttemptTokens = advanced.offerAttemptTokens;
-        offered[offer.rideId] = {
-          offerId: offer.id,
-          price: offer.price,
-          rideFare: offer.rideFare,
-          etaMin: offer.etaMin,
-          expiresAt,
-        };
-      }
-
-      const offerIdsAtSnapshot = cut != null
-        ? new Set(snapshot.map((offer) => offer.id))
-        : s.offerIdsAtSnapshot;
-      const missingLocalOffer =
-        cut != null &&
-        Object.values(s.offered).some(
-          (current) =>
-            current.attemptToken != null &&
-            !offerIdsAtSnapshot.has(current.offerId),
-        );
-
-      // No se comparan timestamps del servidor: PostgreSQL ``now()`` ordena
-      // inicios de transacción, no commits. El corte local detecta tanto un 201
-      // posterior como uno que resolvió mientras se aplicaba el snapshot.
-      const offerSnapshotAttemptSequence = cut != null
-        ? cut.attemptSequence
-        : s.offerSnapshotAttemptSequence;
-      const offerSnapshotAppliedAttemptSequence = cut != null
-        ? offerAttemptSequence
-        : s.offerSnapshotAppliedAttemptSequence;
-
-      // El snapshot PENDING limpia desenlaces visuales viejos del mismo ride.
-      const rejected = new Set(s.rejected);
-      const taken = new Set(s.taken);
-      const expired = new Set(s.expired);
-      const expiredFares = { ...s.expiredFares };
-      const paused = new Set(s.paused);
-      for (const rideId of liveRideIds) {
-        rejected.delete(rideId);
-        taken.delete(rideId);
-        expired.delete(rideId);
-        delete expiredFares[rideId];
-        paused.delete(rideId);
-      }
-      return {
-        offered,
-        rejected,
-        taken,
-        expired,
-        expiredFares,
-        paused,
-        settledOfferIds,
-        terminalRideIds,
-        offerAttemptSequence,
-        offerAttemptTokens,
-        offerSnapshotAttemptSequence,
-        offerSnapshotAppliedAttemptSequence,
-        offerIdsAtSnapshot,
-        realtimeResyncSequence: missingLocalOffer
-          ? s.realtimeResyncSequence + 1
-          : s.realtimeResyncSequence,
-      };
-    }),
+    set((s) => reduceOfferedSnapshot(s, snapshot, cut)),
   // Cada desenlace limpia la entrada de `offered` (sin zombies) y crea sets nuevos
   // para que los selectores re-rendericen.
   markRejected: (rideId, offerId) => {
@@ -717,36 +791,7 @@ export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
     set((s) => {
       if (s.terminalRideIds.has(rideId)) return s;
       applied = true;
-      const offered = { ...s.offered };
-      delete offered[rideId];
-      const rejected = new Set(s.rejected);
-      rejected.delete(rideId);
-      const taken = new Set(s.taken);
-      taken.delete(rideId);
-      const expired = new Set(s.expired);
-      expired.delete(rideId);
-      const expiredFares = { ...s.expiredFares };
-      delete expiredFares[rideId];
-      const paused = new Set(s.paused);
-      paused.delete(rideId);
-      return {
-        offered,
-        rejected,
-        taken,
-        expired,
-        expiredFares,
-        paused,
-        terminalRideIds: addBounded(
-          s.terminalRideIds,
-          rideId,
-          MAX_TERMINAL_RIDES,
-        ),
-        ...advanceOfferAttempt(
-          s.offerAttemptSequence,
-          s.offerAttemptTokens,
-          rideId,
-        ),
-      };
+      return reduceAssignedSnapshot(s, rideId);
     });
     return applied;
   },

@@ -37,6 +37,7 @@ import {
 import { writeRealtimeQueryData } from '@/features/rides/application/realtimeQueryCache';
 import {
   createRealtimeReplayConsumer,
+  type RealtimeConnectionGuard,
   type RealtimeProtocolClassification,
 } from '@/features/rides/application/realtimeReplayConsumer';
 import {
@@ -70,7 +71,10 @@ export function useNegotiationSocket(rideId: string | null, enabled = true): voi
   useEffect(() => {
     if (!enabled || !rideId) return;
 
-    const applyMessage = async (msg: PassengerRealtimeMessage) => {
+    const applyMessage = async (
+      msg: PassengerRealtimeMessage,
+      guard: RealtimeConnectionGuard,
+    ) => {
       let postCommitEffect: (() => void) | undefined;
       switch (msg.type) {
         case 'offers_snapshot':
@@ -83,6 +87,7 @@ export function useNegotiationSocket(rideId: string | null, enabled = true): voi
               type: 'snapshot',
               offers: msg.data.map(toOffer),
             }).offers,
+            guard.isCurrent,
           );
           break;
         case 'offer_created': {
@@ -100,7 +105,9 @@ export function useNegotiationSocket(rideId: string | null, enabled = true): voi
               effect.received = reduction.notice?.kind === 'received';
               return reduction.offers;
             },
+            guard.isCurrent,
           );
+          if (!guard.isCurrent()) break;
           // No repite el aviso si el backend reenvia exactamente la misma oferta.
           if (effect.received) {
             postCommitEffect = () =>
@@ -118,6 +125,7 @@ export function useNegotiationSocket(rideId: string | null, enabled = true): voi
           const cachedRide = queryClient.getQueryData<Ride>(['ride', rideId]);
           if (cachedRide && !isTerminalRide(cachedRide)) {
             await queryClient.cancelQueries({ queryKey: PASSENGER_ACTIVE_RIDE_KEY });
+            if (!guard.isCurrent()) break;
             queryClient.setQueryData<Ride | null>(
               PASSENGER_ACTIVE_RIDE_KEY,
               (current) =>
@@ -155,6 +163,7 @@ export function useNegotiationSocket(rideId: string | null, enabled = true): voi
                   : null;
               return reduction.offers;
             },
+            guard.isCurrent,
           );
           if (effect.removed) {
             const removed = effect.removed;
@@ -187,6 +196,7 @@ export function useNegotiationSocket(rideId: string | null, enabled = true): voi
                   : null;
               return reduction.offers;
             },
+            guard.isCurrent,
           );
           if (effect.expired) {
             const expired = effect.expired;
@@ -206,6 +216,7 @@ export function useNegotiationSocket(rideId: string | null, enabled = true): voi
             queryClient.cancelQueries({ queryKey: ['ride', rideId] }),
             queryClient.cancelQueries({ queryKey: PASSENGER_ACTIVE_RIDE_KEY }),
           ]);
+          if (!guard.isCurrent()) break;
           const cachedRide = queryClient.getQueryData<Ride>(['ride', rideId]);
           const activeRide = queryClient.getQueryData<Ride | null>(
             PASSENGER_ACTIVE_RIDE_KEY,
@@ -258,7 +269,7 @@ export function useNegotiationSocket(rideId: string | null, enabled = true): voi
       },
       applyLegacy: applyMessage,
       applyEvent: applyMessage,
-      applySnapshot: async (message) => {
+      applySnapshot: async (message, guard) => {
         if (
           !isVersionedSocketMessage(message) ||
           message.kind !== 'snapshot' ||
@@ -273,24 +284,34 @@ export function useNegotiationSocket(rideId: string | null, enabled = true): voi
             ride: toRide(message.data.ride),
             offers: message.data.offers.map(toOffer),
           },
+          guard.isCurrent,
         );
       },
       onResync: () => handle?.resync(),
     });
     handle = openSocket(
       `/ws/rides/${rideId}`,
-      async (message) => {
-        await consumer.consume(message);
+      async (message, socketGuard) => {
+        await consumer.consume(message, socketGuard);
       },
       passengerRealtimeMessageParser,
       {
         onConnection: consumer.beginConnection,
-        onInvalidFrame: () => handle?.resync(),
-        onHandlerError: () => handle?.resync(),
+        onInvalidFrame: () => {
+          consumer.invalidateConnection();
+          handle?.resync();
+        },
+        onHandlerError: () => {
+          consumer.invalidateConnection();
+          handle?.resync();
+        },
       },
     );
 
-    return () => handle?.close();
+    return () => {
+      consumer.invalidateConnection();
+      handle?.close();
+    };
   }, [enabled, rideId, queryClient]);
 }
 
@@ -306,7 +327,10 @@ export function useDriverPoolSocket(enabled = true): void {
   useEffect(() => {
     if (!enabled || !driverId || !vehicleType) return;
 
-    const applyMessage = async (msg: DriverRealtimeMessage) => {
+    const applyMessage = async (
+      msg: DriverRealtimeMessage,
+      guard: RealtimeConnectionGuard,
+    ) => {
       let postCommitEffect: (() => void) | undefined;
       switch (msg.type) {
         case 'open_rides_snapshot': {
@@ -315,6 +339,11 @@ export function useDriverPoolSocket(enabled = true): void {
           // Además, un item no degrada una versión local más nueva.
           const openRidesPage = toOpenRidePage(msg.data);
           const openRides = openRidesPage.items;
+          await queryClient.cancelQueries({
+            queryKey: ['open-rides'],
+            exact: true,
+          });
+          if (!guard.isCurrent()) break;
           const driverRequests = useDriverRequests.getState();
           const preserveRideIds = new Set<string>();
           for (const ride of openRides) {
@@ -325,15 +354,10 @@ export function useDriverPoolSocket(enabled = true): void {
             });
             if (!reduction.acceptsPayload) preserveRideIds.add(ride.id);
           }
-          await writeRealtimeQueryData<OpenRidesInfiniteData>(
-            queryClient,
+          queryClient.setQueryData<OpenRidesInfiniteData>(
             ['open-rides'],
             (prev) =>
-              versionedOpenRidesSnapshot(
-                prev,
-                openRidesPage,
-                preserveRideIds,
-              ),
+              versionedOpenRidesSnapshot(prev, openRidesPage, preserveRideIds),
           );
           break;
         }
@@ -376,6 +400,11 @@ export function useDriverPoolSocket(enabled = true): void {
           // conductor estaba fuera de la app durante la edición.
           const pausedRides = msg.data.map(toOpenRide);
           const acceptedPausedRides: OpenRide[] = [];
+          await queryClient.cancelQueries({
+            queryKey: ['open-rides'],
+            exact: true,
+          });
+          if (!guard.isCurrent()) break;
           const driverRequests = useDriverRequests.getState();
           for (const ride of pausedRides) {
             const reduction = driverRequests.applyPoolEvent({
@@ -386,8 +415,7 @@ export function useDriverPoolSocket(enabled = true): void {
             if (reduction.acceptsPayload) acceptedPausedRides.push(ride);
             if (reduction.applied) driverRequests.markPaused(ride.id);
           }
-          await writeRealtimeQueryData<OpenRidesInfiniteData>(
-            queryClient,
+          queryClient.setQueryData<OpenRidesInfiniteData>(
             ['open-rides'],
             (prev) => prependPausedOpenRides(prev, acceptedPausedRides),
           );
@@ -395,6 +423,11 @@ export function useDriverPoolSocket(enabled = true): void {
         }
         case 'ride_created': {
           const ride = toOpenRide(msg.data);
+          await queryClient.cancelQueries({
+            queryKey: ['open-rides'],
+            exact: true,
+          });
+          if (!guard.isCurrent()) break;
           const reduction = useDriverRequests.getState().applyPoolEvent({
             rideId: ride.id,
             poolVersion: ride.poolVersion,
@@ -404,8 +437,7 @@ export function useDriverPoolSocket(enabled = true): void {
           // desenlaces. Uno atrasado o la misma versión ya cerrada/pausada no
           // puede revivir la tarjeta.
           if (!reduction.acceptsPayload) break;
-          await writeRealtimeQueryData<OpenRidesInfiniteData>(
-            queryClient,
+          queryClient.setQueryData<OpenRidesInfiniteData>(
             ['open-rides'],
             (prev) => upsertOpenRide(prev, ride),
           );
@@ -425,18 +457,24 @@ export function useDriverPoolSocket(enabled = true): void {
               queryClient,
               ['open-rides'],
               (prev) => removeOpenRide(prev, rideId),
+              guard.isCurrent,
             );
+            if (!guard.isCurrent()) break;
             useDriverRequests.getState().withdrawOffered([rideId]);
             break;
           }
+          await queryClient.cancelQueries({
+            queryKey: ['open-rides'],
+            exact: true,
+          });
+          if (!guard.isCurrent()) break;
           const reduction = useDriverRequests.getState().applyPoolEvent({
             rideId,
             poolVersion,
             phase: reason === 'terminal' ? 'terminal' : 'closed',
           });
           if (!reduction.applied) break;
-          await writeRealtimeQueryData<OpenRidesInfiniteData>(
-            queryClient,
+          queryClient.setQueryData<OpenRidesInfiniteData>(
             ['open-rides'],
             (prev) => removeOpenRide(prev, rideId),
           );
@@ -454,6 +492,11 @@ export function useDriverPoolSocket(enabled = true): void {
           // `offer_rejected(ride_paused)` que no traía los datos y, combinado con
           // el ride_closed, hacía desaparecer la tarjeta durante la edición.
           const ride = toOpenRide(msg.data);
+          await queryClient.cancelQueries({
+            queryKey: ['open-rides'],
+            exact: true,
+          });
+          if (!guard.isCurrent()) break;
           const driverRequests = useDriverRequests.getState();
           const reduction = driverRequests.applyPoolEvent({
             rideId: ride.id,
@@ -468,8 +511,7 @@ export function useDriverPoolSocket(enabled = true): void {
             driverRequests.markWithdrawn(ride.id, msg.data.offer_id);
             break;
           }
-          await writeRealtimeQueryData<OpenRidesInfiniteData>(
-            queryClient,
+          queryClient.setQueryData<OpenRidesInfiniteData>(
             ['open-rides'],
             (prev) => prependPausedOpenRides(prev, [ride]),
           );
@@ -490,6 +532,7 @@ export function useDriverPoolSocket(enabled = true): void {
           // conductor cambia a navegación. Limpia el estado de esa oferta.
           const ride = toRide(msg.data);
           await queryClient.cancelQueries({ queryKey: DRIVER_ACTIVE_RIDE_KEY });
+          if (!guard.isCurrent()) break;
           queryClient.setQueryData(DRIVER_ACTIVE_RIDE_KEY, ride);
           if (useDriverRequests.getState().markAssigned(ride.id)) {
             postCommitEffect = () =>
@@ -560,6 +603,7 @@ export function useDriverPoolSocket(enabled = true): void {
           // WS caído.
           const ride = toRide(msg.data);
           await queryClient.cancelQueries({ queryKey: DRIVER_ACTIVE_RIDE_KEY });
+          if (!guard.isCurrent()) break;
           queryClient.setQueryData(DRIVER_ACTIVE_RIDE_KEY, ride);
           useDriverRequests.getState().markAssigned(ride.id);
           break;
@@ -595,6 +639,7 @@ export function useDriverPoolSocket(enabled = true): void {
             queryClient.cancelQueries({ queryKey: ['ride', ride.id] }),
             queryClient.cancelQueries({ queryKey: DRIVER_ACTIVE_RIDE_KEY }),
           ]);
+          if (!guard.isCurrent()) break;
           const cachedRide = queryClient.getQueryData<Ride>(['ride', ride.id]);
           const activeRide = queryClient.getQueryData<Ride | null>(
             DRIVER_ACTIVE_RIDE_KEY,
@@ -656,7 +701,7 @@ export function useDriverPoolSocket(enabled = true): void {
       },
       applyLegacy: applyMessage,
       applyEvent: applyMessage,
-      applySnapshot: async (message) => {
+      applySnapshot: async (message, guard) => {
         if (
           !isVersionedSocketMessage(message) ||
           message.kind !== 'snapshot' ||
@@ -677,24 +722,34 @@ export function useDriverPoolSocket(enabled = true): void {
                 ? null
                 : toRide(message.data.active_ride),
           },
+          guard.isCurrent,
         );
       },
       onResync: () => handle?.resync(),
     });
     handle = openSocket(
       '/ws/driver',
-      async (message) => {
-        await consumer.consume(message);
+      async (message, socketGuard) => {
+        await consumer.consume(message, socketGuard);
       },
       driverRealtimeMessageParser,
       {
         onConnection: consumer.beginConnection,
-        onInvalidFrame: () => handle?.resync(),
-        onHandlerError: () => handle?.resync(),
+        onInvalidFrame: () => {
+          consumer.invalidateConnection();
+          handle?.resync();
+        },
+        onHandlerError: () => {
+          consumer.invalidateConnection();
+          handle?.resync();
+        },
       },
     );
 
-    return () => handle?.close();
+    return () => {
+      consumer.invalidateConnection();
+      handle?.close();
+    };
   }, [
     driverId,
     enabled,

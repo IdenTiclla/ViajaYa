@@ -135,6 +135,15 @@ test('driver_snapshot reemplaza open, paused, offers y active_ride null', async 
   queryClient.setQueryData(['driver-active-ride'], ride('old-active'));
   const open = openRide('open-1', 2, 30);
   const paused = openRide('paused-1', 4, 40);
+  let notifications = 0;
+  let queryStateObservedFromStore = null;
+  const unsubscribe = useDriverRequests.subscribe(() => {
+    notifications += 1;
+    queryStateObservedFromStore = {
+      open: queryClient.getQueryData(['open-rides']),
+      active: queryClient.getQueryData(['driver-active-ride']),
+    };
+  });
 
   await applyDriverRealtimeSnapshot(
     queryClient,
@@ -147,6 +156,7 @@ test('driver_snapshot reemplaza open, paused, offers y active_ride null', async 
       activeRide: null,
     },
   );
+  unsubscribe();
 
   const cached = queryClient.getQueryData(['open-rides']);
   assert.deepEqual(
@@ -166,6 +176,142 @@ test('driver_snapshot reemplaza open, paused, offers y active_ride null', async 
   assert.equal(state.offerSnapshotAppliedAttemptSequence, 3);
   // La oferta HTTP local ausente se limpia y pide una segunda confirmación.
   assert.equal(state.realtimeResyncSequence, 1);
+  assert.equal(notifications, 1);
+  assert.equal(queryStateObservedFromStore.active, null);
+  assert.deepEqual(
+    queryStateObservedFromStore.open.pages[0].items.map((item) => item.id),
+    ['paused-1', 'open-1'],
+  );
+  store.reset();
+  queryClient.clear();
+});
+
+test('driver_snapshot conserva la tarifa local de una oferta fuera de la página', async () => {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const store = useDriverRequests.getState();
+  store.reset();
+  const attempt = store.beginOfferAttempt('outside-page');
+  store.markOffered(
+    'outside-page',
+    {
+      id: 'local-offer',
+      price: 25,
+      etaMin: 5,
+      expiresAt: '2099-07-22T12:00:30Z',
+    },
+    42,
+    attempt,
+  );
+
+  await applyDriverRealtimeSnapshot(
+    queryClient,
+    ['driver-active-ride'],
+    store,
+    {
+      openRides: { items: [], nextCursor: null },
+      pausedRides: [],
+      offers: [offer('current-offer', 'outside-page')],
+      activeRide: null,
+    },
+  );
+
+  assert.equal(
+    useDriverRequests.getState().offered['outside-page'].rideFare,
+    42,
+  );
+  store.reset();
+  queryClient.clear();
+});
+
+test('driver_snapshot asignado limpia la oferta en una sola transición', async () => {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const store = useDriverRequests.getState();
+  store.reset();
+  const activeRide = ride('assigned-1', 'accepted');
+  const attempt = store.beginOfferAttempt(activeRide.id);
+  store.markOffered(
+    activeRide.id,
+    {
+      id: 'assigned-offer',
+      price: 25,
+      etaMin: 5,
+      expiresAt: '2099-07-22T12:00:30Z',
+    },
+    20,
+    attempt,
+  );
+  let notifications = 0;
+  const unsubscribe = useDriverRequests.subscribe(() => {
+    notifications += 1;
+  });
+
+  await applyDriverRealtimeSnapshot(
+    queryClient,
+    ['driver-active-ride'],
+    store,
+    {
+      openRides: { items: [], nextCursor: null },
+      pausedRides: [],
+      offers: [offer('assigned-offer', activeRide.id)],
+      activeRide,
+    },
+  );
+  unsubscribe();
+
+  const state = useDriverRequests.getState();
+  assert.equal(notifications, 1);
+  assert.equal(state.offered[activeRide.id], undefined);
+  assert.equal(state.terminalRideIds.has(activeRide.id), true);
+  assert.equal(queryClient.getQueryData(['driver-active-ride']).id, activeRide.id);
+  assert.equal(queryClient.getQueryData(['ride', activeRide.id]).id, activeRide.id);
+  store.reset();
+  queryClient.clear();
+});
+
+test('una generación invalidada durante el snapshot no muta ninguna proyección', async () => {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const release = deferred();
+  queryClient.cancelQueries = async () => release.promise;
+  queryClient.setQueryData(['open-rides'], { pages: [], pageParams: [] });
+  queryClient.setQueryData(['driver-active-ride'], ride('old-active'));
+  const store = useDriverRequests.getState();
+  store.reset();
+  let current = true;
+  let notifications = 0;
+  const unsubscribe = useDriverRequests.subscribe(() => {
+    notifications += 1;
+  });
+
+  const applying = applyDriverRealtimeSnapshot(
+    queryClient,
+    ['driver-active-ride'],
+    store,
+    {
+      openRides: { items: [openRide('new-open', 1)], nextCursor: null },
+      pausedRides: [],
+      offers: [],
+      activeRide: null,
+    },
+    () => current,
+  );
+  current = false;
+  release.resolve();
+  await applying;
+  unsubscribe();
+
+  assert.deepEqual(queryClient.getQueryData(['open-rides']), {
+    pages: [],
+    pageParams: [],
+  });
+  assert.equal(queryClient.getQueryData(['driver-active-ride']).id, 'old-active');
+  assert.equal(notifications, 0);
+  assert.equal(useDriverRequests.getState().poolProjection.size, 0);
   store.reset();
   queryClient.clear();
 });

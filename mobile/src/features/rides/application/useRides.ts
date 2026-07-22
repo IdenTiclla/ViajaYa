@@ -11,6 +11,9 @@ import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-quer
 import { useEffect } from 'react';
 
 import { flattenOpenRides } from '@/features/rides/application/openRidesCache';
+import {
+  copyPassengerActiveRideToDetail,
+} from '@/features/rides/application/rideStatusReducer';
 import { ridesRepository } from '@/features/rides/data/ridesRepository';
 import type { Ride } from '@/features/rides/domain/types';
 
@@ -103,9 +106,13 @@ export function usePassengerActiveRide() {
   // evita una segunda carga al recuperar Offers, Configure o Trip.
   useEffect(() => {
     if (query.data) {
-      queryClient.setQueryData(['ride', query.data.id], query.data);
+      copyPassengerActiveRideToDetail(
+        queryClient,
+        query.data,
+        query.dataUpdatedAt,
+      );
     }
-  }, [query.data, queryClient]);
+  }, [query.data, query.dataUpdatedAt, queryClient]);
 
   return {
     ride: query.data ?? null,

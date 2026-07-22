@@ -33,6 +33,9 @@ export function createGenerationMessageQueue(): GenerationMessageQueue {
     currentGeneration: () => generation,
     advanceGeneration: () => {
       generation += 1;
+      // La conexión nueva no espera a un handler viejo que podría quedar
+      // bloqueado en IO. Su cadena continúa aislada y los guards la descartan.
+      queue = Promise.resolve();
       return generation;
     },
     enqueue,

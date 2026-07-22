@@ -20,6 +20,14 @@ function legacyEvent() {
   return { protocol: 'legacy', kind: 'event' };
 }
 
+function deferred() {
+  let resolve;
+  const promise = new Promise((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
 function setup({ failEvent = false } = {}) {
   const gate = createReplayGate();
   const mutations = [];
@@ -196,4 +204,218 @@ test('una conexión nueva puede volver de v2 a legacy durante un rollback', asyn
   });
   assert.deepEqual(mutations, ['snapshot-10', 'legacy-snapshot']);
   assert.deepEqual(resyncs, []);
+});
+
+test('una conexión nueva invalida el snapshot anterior mientras su handler espera', async () => {
+  const gate = createReplayGate();
+  const release = deferred();
+  const started = deferred();
+  const effects = [];
+  const consumer = createRealtimeReplayConsumer({
+    gate,
+    classify() {
+      return {
+        protocol: 'v2',
+        kind: 'snapshot',
+        checkpoints: [{ stream: 'ride:ride-1', version: 10 }],
+        requiredStreams: ['ride:ride-1'],
+      };
+    },
+    async applyLegacy() {},
+    async applySnapshot() {
+      started.resolve();
+      await release.promise;
+      return () => effects.push('snapshot');
+    },
+    async applyEvent() {},
+    onResync() {},
+  });
+  const oldConnection = consumer.beginConnection();
+
+  const applying = consumer.consume({ kind: 'snapshot' }, oldConnection);
+  await started.promise;
+  const newConnection = consumer.beginConnection();
+  release.resolve();
+
+  assert.deepEqual(await applying, { kind: 'dropped' });
+  assert.equal(oldConnection.isCurrent(), false);
+  assert.equal(newConnection.isCurrent(), true);
+  assert.equal(consumer.protocol(), 'awaiting_snapshot');
+  assert.equal(gate.state().streams.has('ride:ride-1'), false);
+  assert.deepEqual(effects, []);
+});
+
+test('invalidar durante un evento aborta su ticket y suprime el efecto', async () => {
+  const gate = createReplayGate();
+  const release = deferred();
+  const started = deferred();
+  const effects = [];
+  const consumer = createRealtimeReplayConsumer({
+    gate,
+    classify(message) {
+      return message.kind === 'snapshot'
+        ? {
+            protocol: 'v2',
+            kind: 'snapshot',
+            checkpoints: [{ stream: 'ride:ride-1', version: 10 }],
+            requiredStreams: ['ride:ride-1'],
+          }
+        : {
+            protocol: 'v2',
+            kind: 'event',
+            metadata: {
+              eventId: 'event-11',
+              batchId: 'batch-11',
+              sequence: 0,
+              eventType: 'offer_created',
+              aggregateType: 'ride',
+              aggregateId: 'ride-1',
+              aggregateVersion: 11,
+              stream: 'ride:ride-1',
+              streamVersion: 11,
+              occurredAt: '2026-07-22T12:00:00Z',
+              payloadFingerprint: 'payload-11',
+            },
+          };
+    },
+    async applyLegacy() {},
+    async applySnapshot() {},
+    async applyEvent() {
+      started.resolve();
+      await release.promise;
+      return () => effects.push('event');
+    },
+    onResync() {},
+  });
+  const connection = consumer.beginConnection();
+  await consumer.consume({ kind: 'snapshot' }, connection);
+
+  const applying = consumer.consume({ kind: 'event' }, connection);
+  await started.promise;
+  consumer.invalidateConnection();
+  release.resolve();
+
+  assert.deepEqual(await applying, { kind: 'dropped' });
+  assert.equal(connection.isCurrent(), false);
+  assert.equal(consumer.protocol(), 'awaiting_snapshot');
+  assert.equal(gate.state().streams.get('ride:ride-1'), 10);
+  assert.deepEqual(effects, []);
+});
+
+test('un guard externo obsoleto no confirma ni emite efectos', async () => {
+  const gate = createReplayGate();
+  const release = deferred();
+  const started = deferred();
+  const effects = [];
+  let transportCurrent = true;
+  const consumer = createRealtimeReplayConsumer({
+    gate,
+    classify() {
+      return {
+        protocol: 'v2',
+        kind: 'snapshot',
+        checkpoints: [{ stream: 'ride:ride-1', version: 10 }],
+        requiredStreams: ['ride:ride-1'],
+      };
+    },
+    async applyLegacy() {},
+    async applySnapshot() {
+      started.resolve();
+      await release.promise;
+      return () => effects.push('snapshot');
+    },
+    async applyEvent() {},
+    onResync() {},
+  });
+  consumer.beginConnection();
+
+  const applying = consumer.consume(
+    { kind: 'snapshot' },
+    { isCurrent: () => transportCurrent },
+  );
+  await started.promise;
+  transportCurrent = false;
+  release.resolve();
+
+  assert.deepEqual(await applying, { kind: 'dropped' });
+  assert.equal(gate.state().streams.has('ride:ride-1'), false);
+  assert.deepEqual(effects, []);
+});
+
+test('un handler viejo que falla no invalida la conexión nueva', async () => {
+  const gate = createReplayGate();
+  const release = deferred();
+  const started = deferred();
+  const resyncs = [];
+  const consumer = createRealtimeReplayConsumer({
+    gate,
+    classify() {
+      return {
+        protocol: 'v2',
+        kind: 'snapshot',
+        checkpoints: [{ stream: 'ride:ride-1', version: 10 }],
+        requiredStreams: ['ride:ride-1'],
+      };
+    },
+    async applyLegacy() {},
+    async applySnapshot() {
+      started.resolve();
+      await release.promise;
+      throw new Error('fallo tardío');
+    },
+    async applyEvent() {},
+    onResync(reason) {
+      resyncs.push(reason);
+    },
+  });
+  const oldConnection = consumer.beginConnection();
+
+  const applying = consumer.consume({ kind: 'snapshot' }, oldConnection);
+  await started.promise;
+  const newConnection = consumer.beginConnection();
+  release.resolve();
+
+  assert.deepEqual(await applying, { kind: 'dropped' });
+  assert.equal(newConnection.isCurrent(), true);
+  assert.equal(consumer.protocol(), 'awaiting_snapshot');
+  assert.deepEqual(resyncs, []);
+});
+
+test('un snapshot legacy obsoleto tampoco cambia el protocolo ni emite efecto', async () => {
+  const gate = createReplayGate();
+  const release = deferred();
+  const started = deferred();
+  const effects = [];
+  let transportCurrent = true;
+  const consumer = createRealtimeReplayConsumer({
+    gate,
+    classify() {
+      return {
+        protocol: 'legacy',
+        kind: 'snapshot',
+        completesHandshake: true,
+      };
+    },
+    async applyLegacy() {
+      started.resolve();
+      await release.promise;
+      return () => effects.push('legacy');
+    },
+    async applySnapshot() {},
+    async applyEvent() {},
+    onResync() {},
+  });
+  consumer.beginConnection();
+
+  const applying = consumer.consume(
+    { kind: 'snapshot' },
+    { isCurrent: () => transportCurrent },
+  );
+  await started.promise;
+  transportCurrent = false;
+  release.resolve();
+
+  assert.deepEqual(await applying, { kind: 'dropped' });
+  assert.equal(consumer.protocol(), 'awaiting_snapshot');
+  assert.deepEqual(effects, []);
 });

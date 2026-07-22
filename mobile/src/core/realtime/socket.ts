@@ -23,6 +23,11 @@ export type SocketHandle = {
   resync: () => void;
 };
 
+/** Identidad viva de la conexión física que entregó un mensaje. */
+export type SocketDeliveryContext = {
+  isCurrent: () => boolean;
+};
+
 export type SocketLifecycleCallbacks = {
   onConnection?: () => void;
   onInvalidFrame?: (issue: SanitizedSocketIssue) => void;
@@ -149,7 +154,10 @@ export function parseSocketFrame<T extends SocketMessage>(
  */
 export function openSocket<T extends SocketMessage>(
   path: string,
-  onMessage: (msg: T) => void | Promise<void>,
+  onMessage: (
+    msg: T,
+    context: SocketDeliveryContext,
+  ) => void | Promise<void>,
   parser: SocketMessageParser<T>,
   callbacks: SocketLifecycleCallbacks = {},
 ): SocketHandle {
@@ -209,6 +217,10 @@ export function openSocket<T extends SocketMessage>(
         return;
       }
       ws = socket;
+      const deliveryContext: SocketDeliveryContext = {
+        isCurrent: () =>
+          !closedByUser && ws === socket && ownGeneration === generation,
+      };
 
       socket.onopen = () => {
         if (ws !== socket || ownGeneration !== generation) return;
@@ -232,8 +244,8 @@ export function openSocket<T extends SocketMessage>(
         messageQueue.enqueue(
           ownGeneration,
           () => {
-            if (ws !== socket || ownGeneration !== generation) return;
-            return onMessage(parsed.data);
+            if (!deliveryContext.isCurrent()) return;
+            return onMessage(parsed.data, deliveryContext);
           },
           () => callbacks.onHandlerError?.(),
         );
@@ -243,8 +255,11 @@ export function openSocket<T extends SocketMessage>(
       };
       socket.onclose = () => {
         if (ws === socket) ws = null;
-        if (ownGeneration === generation) {
-          scheduleReconnect(ownGeneration);
+        if (!closedByUser && ownGeneration === generation) {
+          // Cada transporte físico delimita una generación: un handler que
+          // seguía esperando IO no puede completar dentro de la reconexión.
+          generation = messageQueue.advanceGeneration();
+          scheduleReconnect(generation);
         }
       };
     } catch {

@@ -72,6 +72,33 @@ export function applyRideMutationResult(
   return true;
 }
 
+/**
+ * Comparte el GET de viaje activo con la caché de detalle sin convertir un
+ * efecto ejecutado tarde en una escritura nueva. El timestamp pertenece a la
+ * consulta de origen: un snapshot/delta que ya actualizó el detalle con una
+ * posición local igual o posterior conserva siempre la autoridad.
+ */
+export function copyPassengerActiveRideToDetail(
+  queryClient: QueryClient,
+  incoming: Ride,
+  sourceUpdatedAt: number,
+): boolean {
+  const queryKey = ['ride', incoming.id] as const;
+  const currentState = queryClient.getQueryState<Ride>(queryKey);
+  if (
+    currentState?.data !== undefined &&
+    currentState.dataUpdatedAt >= sourceUpdatedAt
+  ) {
+    return false;
+  }
+  if (!shouldApplyRideStatus(currentState?.data, incoming)) return false;
+
+  queryClient.setQueryData(queryKey, incoming, {
+    updatedAt: sourceUpdatedAt,
+  });
+  return true;
+}
+
 export function reducePassengerActiveRide(
   current: Ride | null | undefined,
   incoming: Ride,

@@ -14,7 +14,8 @@ Define `VIAJAYA_TEST_DATABASE_URL` con una base PostgreSQL desechable y ejecuta:
 cd backend
 .venv/bin/pytest \
   tests/postgresql/test_pg_realtime_network_smoke.py \
-  tests/postgresql/test_pg_realtime_fault_smoke.py -q
+  tests/postgresql/test_pg_realtime_fault_smoke.py \
+  tests/postgresql/test_pg_realtime_crash_smoke.py -q
 ```
 
 La guarda compartida de la suite rechaza drivers distintos de
@@ -23,16 +24,44 @@ La guarda compartida de la suite rechaza drivers distintos de
 lo que elimina todos los objetos administrados por Alembic en la base indicada.
 Nunca apuntes esta variable a desarrollo, staging o producción.
 
-La prueba usa usuarios con sufijo aleatorio, un puerto loopback efímero y
-deadlines acotados. En el `finally` verifica que el ride se cancele, deja al
-conductor offline, espera que la outbox drene y apaga Uvicorn junto con sus
-timers de presencia/expiración. La limpieza física ocurre al desmontar la
-fixture PostgreSQL de la suite. No registra JWT, payloads ni la URL de base de
-datos.
+Los smokes base y one-shot usan usuarios con sufijo aleatorio, un puerto loopback
+efímero y deadlines acotados. En su `finally` verifican que el ride se cancele,
+dejan al conductor offline, esperan que la outbox drene y apagan Uvicorn junto
+con sus timers de presencia/expiración. La limpieza física ocurre al desmontar
+la fixture PostgreSQL de la suite. No registran JWT, payloads ni la URL de base
+de datos.
 
 Este smoke forma parte del job `Backend · PostgreSQL real` de CI porque vive en
 `tests/postgresql/`; no requiere cuentas seed ni un backend levantado de
 antemano.
+
+## Crash/restart multiproceso
+
+El smoke de crash usa dos procesos Uvicorn consecutivos, el mismo socket
+loopback, la misma PostgreSQL y el mismo secreto JWT fijo de prueba. Las
+compuertas son objetos IPC anónimos del runner; no existen endpoints, variables
+de corrupción ni controles remotos en `app`. Requiere POSIX por el uso explícito
+de `SIGKILL`; en otros sistemas la prueba se omite.
+
+Certifica separadamente estas dos ventanas:
+
+- `commit → publish`: el primer proceso queda suspendido antes de emitir y
+  recibe `SIGKILL`; el claim revierte, la fila sigue pendiente y la segunda
+  instancia publica con el hub vacío. Una conexión posterior converge por su
+  snapshot y watermark sin depender de haber recibido ese delta.
+- `publish → published_at`: el primer socket recibe el frame y el proceso muere
+  antes de confirmar; la segunda instancia reentrega exactamente el mismo
+  `event_id`, `batch_id`, secuencia, versión y payload.
+
+En ambos casos se comprueba salida por `SIGKILL`, cierre WebSocket anormal,
+liberación y readquisición del advisory lock, `attempts == 0` después del crash,
+`attempts == 1` y `published_at` confirmado después del replay, además de un
+snapshot nuevo con una sola oferta y watermark exacto. En la ventana posterior a
+publicación, el proceso de recuperación se detiene antes del replay únicamente
+dentro del arnés para permitir que el socket TCP real observe la reentrega.
+En el camino exitoso también verifica cancelación, conductor offline, drenado y
+shutdown coordinado de la instancia recuperada. Si una aserción ya falló, un app
+`off` aislado intenta limpiar ese estado sin ocultar el error primario.
 
 ## Cobertura todavía manual
 
@@ -63,5 +92,9 @@ sanitizado de logcat. Nunca debe conservar JWT, payloads, DSN ni datos personale
 - Cierra y abre explícitamente otra conexión; no prueba backoff, AppState ni red
   móvil.
 - Inyecta duplicado, hueco y cuarentena solo mediante el arnés one-shot de
-  tests. Todavía no fuerza crash/restart del proceso, no inyecta un frame
-  inválido y no ejecuta el hook React Native.
+  tests. Fuerza `SIGKILL` y restart de un único proceso `live_local`, pero no
+  cubre caída del host o PostgreSQL, Redis, multiworker, frame inválido ni el
+  hook React Native.
+- No certifica que la expiración de ofertas ni la cancelación por ausencia
+  sobrevivan al restart; esos timers siguen en memoria hasta implementar
+  `scheduled_actions` durable.

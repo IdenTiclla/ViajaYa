@@ -260,13 +260,15 @@ vuelo se considera ambigua y fuerza otro handshake autoritativo.
 - [x] Snapshot más nuevo que los eventos locales y rechazo de snapshots viejos.
 - [x] Integrar el gate al socket y certificar duplicados, huecos, fallo del
   handler, generaciones reemplazadas y resnapshot en las piezas de transporte.
-- [ ] Completar el pase React Native descrito en el endurecimiento de la fase 3;
-  el smoke headless ya cubre la vertical real, pero no el runtime mobile.
 - [x] Payload inválido, razón inválida y tipo desconocido en el contrato backend.
 - [x] GET HTTP iniciado antes que un evento WebSocket y resuelto después: una
   prueba con `QueryClient` real certifica que la caché conserva el evento.
 - [x] Mutación HTTP que devuelve un estado anterior después de un terminal WS:
   los callbacks consultan primero el detalle canónico y no reviven el ride.
+
+El pase del hook productivo en React Native se conserva como criterio pendiente
+canónico en el endurecimiento de la fase 3; los smokes headless no certifican el
+runtime mobile.
 
 La barrera actual solo impide regresiones desde estados terminales. Ordenar dos
 estados no terminales concurrentes requiere `aggregate_version` y queda ligado a
@@ -319,7 +321,13 @@ Axios todavía continúe en segundo plano sin propagar `AbortSignal`.
 > duplicada, un salto de versión intencional, la continuidad posterior del
 > stream, una cuarentena confirmada, el cierre `1012` y un nuevo snapshot
 > autoritativo. Este smoke no ejecuta el cliente React Native ni fuerza la caída
-> del proceso API.
+> del proceso API. Un segundo smoke multiproceso exclusivo de tests fuerza con
+> `SIGKILL` tanto `commit → publish` como `publish → published_at`. PostgreSQL
+> revierte el claim inconcluso y libera el advisory lock; otra instancia sobre
+> la misma base publica o reentrega la misma identidad durable según la ventana,
+> confirma `published_at` y devuelve un snapshot cuyo watermark cubre el evento.
+> Esta certificación sigue limitada a `live_local` con un proceso y deberá
+> repetirse al introducir Redis.
 > `0018`–`0021` no se aplicaron a la base local `viajaya`; sus pruebas PostgreSQL son
 > opt-in y CI las ejecutará sobre una base desechable.
 > El anuncio inicial y cada reanuncio por reconexión adquieren lock sobre el
@@ -539,10 +547,14 @@ Endurecimiento antes de promover la canary:
   observable, continuidad posterior del stream, batch puesto en cuarentena
   después del commit, cierre `1012` y nuevo snapshot cuyo watermark salta el
   evento no publicado.
-- [ ] Añadir un smoke de crash/restart que termine abruptamente el proceso entre
-  el commit durable y la confirmación de `published_at`, levante otra instancia
-  contra la misma base y compruebe que no se pierde la notificación. El cierre
-  controlado o forzado de un WebSocket no cubre este caso.
+- [x] Forzar crash/restart después del commit y antes de publicar: una instancia
+  nueva contra la misma PostgreSQL reclama la misma fila pendiente, emite su
+  envelope y confirma `published_at` sin perder ni recrear el evento.
+- [x] Forzar crash/restart después de publicar y antes de confirmar
+  `published_at`: la instancia nueva reentrega exactamente el mismo `event_id`
+  y el nuevo handshake devuelve un snapshot autoritativo cuyo watermark cubre
+  esa versión. La duplicación es la semántica esperada de entrega al menos una
+  vez.
 - [ ] Ejecutar el pase del hook productivo en un dev build React Native frente
   a duplicado, hueco, frame inválido y cuarentena/cierre `1012`, y conservar la
   evidencia indicada en
@@ -617,7 +629,8 @@ seguirán siendo la defensa final contra carreras.
    watermarks.
 6. Activar Redis bridge con un worker API y comparar eventos/snapshots.
 7. Desactivar temporizadores y publicación directa mediante feature flags.
-8. Probar reinicios forzados de API, Redis y workers.
+8. Probar reinicios forzados de API, Redis y workers. La API `live_local` ya está
+   certificada; Redis y workers siguen pendientes.
 9. Habilitar dos workers API en staging; luego producción.
 
 Cada paso debe tener un feature flag y rollback que no revierta migraciones ni
@@ -640,7 +653,8 @@ personales sin redacción.
 ## Criterios finales de aceptación
 
 - Pasajero y conductor conectados a procesos distintos reciben todos los eventos.
-- Matar la API después del commit no pierde la notificación: la outbox la publica.
+- Matar la API después del commit no pierde la notificación: certificado para
+  `live_local` uniproceso; deberá recertificarse al introducir Redis.
 - Reiniciar workers no evita que una oferta venza ni deja una búsqueda abandonada.
 - Redis caído no provoca cancelaciones falsas.
 - Duplicar o reordenar eventos no revierte estados terminales en mobile.

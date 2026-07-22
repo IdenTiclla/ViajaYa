@@ -624,8 +624,9 @@ seguirán siendo la defensa final contra carreras.
 > `off|shadow|live` permite comparar primero el dual-write. En `live`, el worker
 > reemplaza el timer local, confirma oferta expirada + outbox + ack de acción en
 > una transacción y recupera claims abandonados con `FOR UPDATE SKIP LOCKED`.
-> PostgreSQL certifica dos claimers, token obsoleto, restart tras claim y carrera
-> entre timer shadow y worker sin duplicar la outbox. `cancel_absent_ride` sigue
+> PostgreSQL certifica dos claimers, token obsoleto, `SIGKILL` real tras confirmar
+> el claim, recuperación por lease y carrera entre timer shadow y worker sin
+> duplicar la outbox. `cancel_absent_ride` sigue
 > pendiente: no se migrará hasta que Redis aporte leases de presencia compartidos
 > y una generación durable; hacerlo antes permitiría cancelaciones falsas entre
 > procesos.

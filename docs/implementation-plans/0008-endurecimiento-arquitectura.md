@@ -205,12 +205,13 @@ La subfase 2.1 conserva el envelope actual `{type, data}`. No se añadirán
 misma transacción que la mutación mediante la outbox de la fase 3. Añadirlos
 antes crearía una falsa garantía de orden y durabilidad.
 
-La base del contrato v2 ya está implementada, pero todavía no está conectada al
-socket en vivo. Backend dispone de schemas estrictos para el envelope durable y
+La base del contrato v2 ya está conectada al socket detrás del modo canary
+`live_local`. Backend dispone de schemas estrictos para el envelope durable y
 los snapshots unificados, además de un serializador que traduce batches
-canónicos de outbox. Mobile conserva los parsers legacy y ofrece parsers duales:
-si un frame incluye cualquier clave reservada de v2 debe satisfacer el contrato
-v2 completo y nunca degrada silenciosamente a legacy. Ambos lados limitan
+canónicos de outbox. Mobile usa parsers duales: si un frame incluye cualquier
+clave reservada de v2 debe satisfacer el contrato completo y nunca degrada
+silenciosamente a legacy dentro de la misma conexión. Una conexión nueva sí
+puede negociar legacy otra vez para permitir rollback. Ambos lados limitan
 versiones y secuencias al máximo entero seguro de JSON.
 
 El snapshot del pasajero contiene `{ride, offers}` y un único watermark. El del
@@ -228,20 +229,26 @@ La prueba PostgreSQL opt-in pausa la captura entre estado y watermarks, confirma
 una escritura concurrente y demuestra que ambos permanecen en la versión
 anterior. Una captura nueva verá ambos valores nuevos. Los casos de uso derivan
 los streams autorizados y un adaptador API traduce los DTO enriquecidos al schema
-Pydantic sin IO adicional. El WebSocket todavía no invoca este reader ni emite
-los snapshots v2: presencia sigue en memoria y todavía quedan productores
-legacy, aunque creación/reemplazo y aceptación de ofertas, pausa, cancelación,
-cambio de tarifa y reapertura ya alimentan la outbox. Activarlos ahora todavía
-daría watermarks incompletos.
+Pydantic sin IO adicional. En `live_local`, el WebSocket se suscribe bajo la
+barrera, captura con este reader y envía un único snapshot v2; en `off|shadow`
+conserva el handshake legacy. Todas las mutaciones que emiten deltas live ya
+registran su batch durable. Presencia y expiración siguen en memoria, por lo que
+esta conexión solo certifica la vertical de un worker.
 
-Mobile incluye además un gate puro de replay. Decide `apply`, `drop` o `resync`
+Mobile integra un gate puro de replay en ambos hooks. Decide `apply`, `drop` o `resync`
 sin adelantar cursores y solo los confirma después de que el handler complete la
 mutación de caché. Así un fallo del handler permite reintentar el evento. El gate
 deduplica la misma entrega y detecta reutilización contradictoria de `event_id`
-incluyendo una huella canónica de `{type, data}`. Todavía no está cableado a
-`useNegotiationSocket`: hacerlo requiere que el
-backend entregue primero el snapshot consistente y que el socket pueda solicitar
-una resincronización controlada.
+incluyendo una huella canónica de `{type, data}`. El socket serializa frames por
+generación, descarta callbacks encolados de conexiones reemplazadas y expone
+`resync()` para renovar el snapshot ante hueco, contrato inválido o fallo del
+handler. Los efectos visuales se ejecutan después de confirmar el ticket.
+
+La carrera entre un snapshot del conductor y un `201` de oferta no usa
+`created_at <= captured_at`: PostgreSQL `now()` ordena inicios de transacción, no
+commits, y JavaScript perdería microsegundos. Mobile conserva la secuencia local
+de intentos cubierta por cada snapshot; una respuesta ausente que ya estaba en
+vuelo se considera ambigua y fuerza otro handshake autoritativo.
 
 ### Pruebas
 
@@ -251,8 +258,10 @@ una resincronización controlada.
 - [x] Evento atrasado con menor `aggregate_version` en otro stream: se conserva
   el delta si su posición de stream es contigua, sin regresiones globales.
 - [x] Snapshot más nuevo que los eventos locales y rechazo de snapshots viejos.
-- [ ] Integrar el gate al socket y certificar duplicados, huecos y resnapshot con
-  el transporte WebSocket real.
+- [x] Integrar el gate al socket y certificar duplicados, huecos, fallo del
+  handler, generaciones reemplazadas y resnapshot en las piezas de transporte.
+- [ ] Ejecutar un smoke mobile contra el stack real que fuerce un hueco/cuarentena
+  y compruebe la reconexión completa desde React Native.
 - [x] Payload inválido, razón inválida y tipo desconocido en el contrato backend.
 - [x] GET HTTP iniciado antes que un evento WebSocket y resuelto después: una
   prueba con `QueryClient` real certifica que la caché conserva el evento.
@@ -292,23 +301,23 @@ Axios todavía continúe en segundo plano sin propagar `AbortSignal`.
 > notificación/limpieza del ganador y retiros/rechazos de los afectados en un
 > único batch multistream. El recorder está detrás
 > de `REALTIME_OUTBOX_RECORDING_ENABLED=false` y el dispatcher se controla con
-> `REALTIME_OUTBOX_DISPATCH_MODE=off|shadow`, también apagado por defecto. El modo
-> sombra únicamente reclama, valida y marca batches: no entrega al hub WebSocket
-> ni a Redis. Esta vertical no incorpora modo `live` ni habilita múltiples
-> workers. El lifecycle ya realiza preflight del esquema actual, usa una sesión
-> nueva por iteración y detiene el loop de forma coordinada. El contrato v2 y su
-> serializador ya pueden representar esos batches, y mobile ya puede validarlos y
-> decidir su replay de forma pura; ninguna de esas piezas está habilitada en el
-> socket vivo todavía. Los builders de snapshots ya disponen de un corte
-> consistente y read-only, pero siguen desacoplados del handshake por la misma
-> condición de rollout.
+> `REALTIME_OUTBOX_DISPATCH_MODE=off|shadow|live_local`, apagado por defecto. El
+> modo sombra únicamente reclama, valida y marca batches. `live_local` exige
+> recording, pre-serializa el batch v2 completo, lo entrega en orden al hub del
+> proceso y solo después marca `published_at`; simultáneamente apaga la ruta
+> directa legacy y activa los snapshots v2. Un fallo transitorio conserva el
+> batch con backoff y una cuarentena confirma primero el hueco y después fuerza
+> cierre 1012/resnapshot de todos sus sockets. El lifecycle realiza preflight,
+> usa una sesión nueva por iteración y detiene el loop de forma coordinada. Este
+> modo no habilita múltiples workers: es una canary local previa al bridge Redis.
 > `0018`–`0020` no se aplicaron a la base local `viajaya`; sus pruebas PostgreSQL son
 > opt-in y CI las ejecutará sobre una base desechable.
 > El anuncio inicial y cada reanuncio por reconexión adquieren lock sobre el
 > ride, revalidan `SEARCHING && !paused` y registran un único `ride_created`
 > antes del commit. El heartbeat HTTP conserva su función de renovar la gracia y
-> no crea eventos periódicos. La publicación directa ocurre después del commit;
-> su orden de transporte sigue siendo best-effort hasta activar outbox v2 live.
+> no crea eventos periódicos. En `off|shadow`, la publicación directa ocurre
+> después del commit y conserva orden best-effort; `live_local` la suprime y
+> entrega exclusivamente la copia durable v2.
 > El retiro voluntario de una oferta también usa compare-and-set + outbox + UoW;
 > su único `offer_withdrawn` comparte builder entre la copia durable y el socket.
 > El rechazo explícito replica la misma frontera y registra un único
@@ -360,29 +369,31 @@ inválido se cuarentena completo en el primer intento: deja de participar en los
 predicados pending y libera sus streams solo después del commit. Sus versiones
 no se reutilizan; el hueco obliga a un cliente live a solicitar otro snapshot.
 
-Un dispatcher reclamará filas con `FOR UPDATE SKIP LOCKED`, publicará en Redis y
-marcará `published_at`. Si muere después de publicar y antes de marcar, el evento
-se repetirá; por eso la idempotencia del cliente es obligatoria.
+Un dispatcher reclama filas con `FOR UPDATE SKIP LOCKED`, publica al transporte y
+marca `published_at`. Si muere después de publicar y antes de marcar, el evento
+se repite; por eso la idempotencia del cliente es obligatoria. El transporte
+actual de `live_local` es el hub del mismo proceso; Redis sigue pendiente.
 
-El primer dispatcher es deliberadamente **sombra** y no ejecuta esa publicación:
-certifica el claim, la validación y el lifecycle usando la outbox real, marca las
-filas procesadas y deja la entrega directa actual como única vía visible. Exige
-que `0018`, `0019` y `0020` estén aplicadas antes de
-habilitarlo. La secuencia de flags es:
+El dispatcher **sombra** no ejecuta publicación: certifica claim, validación y
+lifecycle usando la outbox real, marca las filas procesadas y deja la entrega
+directa como única vía visible. `live_local` es el siguiente peldaño canary.
+Ambos exigen `0018`, `0019` y `0020`. La secuencia de flags es:
 
 1. `off` + recording `false`: estado seguro y predeterminado;
 2. `shadow` + recording `false`: comprobar arranque/apagado y drenar cualquier
    backlog previo sin entregarlo;
 3. `shadow` + recording `true`: registrar y depurar en sombra mientras se compara
-   con la publicación directa.
+   con la publicación directa;
+4. `live_local` + recording `true`: solo después de drenar el backlog, entregar
+   envelopes/snapshots v2 con exactamente un worker.
 
-`off` + recording `true` no es una combinación desplegable. Antes de una futura
-entrega real se debe comprobar que no quede backlog sombra reproducible. Cambiar
+`off` + recording `true` no es una combinación desplegable. Antes de activar la
+entrega local se debe comprobar que no quede backlog sombra reproducible. Cambiar
 estos flags no permite aumentar el número de workers API.
 
-Las operaciones atómicas de aceptación, cancelación, pausa, creación/reemplazo
-de oferta, creación de ride y renovación del pool son las primeras migradas. No se retirará la publicación directa
-hasta que la outbox funcione en modo sombra y sus métricas coincidan.
+La publicación directa permanece disponible para `off|shadow`; el lifecycle la
+deshabilita globalmente durante `live_local`, evitando una entrega doble al mismo
+socket.
 
 Base ya cumplida por `93b9741`:
 
@@ -412,7 +423,7 @@ Base ya cumplida por `93b9741`:
 - [x] Añadir `0020` y cuarentena terminal atómica para batches inválidos, con
   códigos cerrados, índices que excluyen terminales y downgrade protegido.
 
-Dispatcher sombra, sin Redis ni cambios de contrato/mobile:
+Dispatcher sombra y canary local, todavía sin Redis:
 
 - [x] Ejecutar el dispatcher en modo sombra con lifecycle y apagado coordinado.
 - [x] Validar antes de marcar que lote, secuencia, `event_id`, versión,
@@ -421,8 +432,9 @@ Dispatcher sombra, sin Redis ni cambios de contrato/mobile:
 - [ ] Activarlo en un entorno con `0018`–`0020`, depurar el backlog sombra y
   comparar sus batches con la publicación directa antes de habilitar entrega real.
 - [ ] Medir pendientes y edad máxima, y definir retención de filas publicadas.
-- [ ] No habilitar entrega real hasta que el envelope lleve `event_id`, versiones
-  de agregado/stream en el socket vivo y el gate mobile esté integrado.
+- [x] Añadir `live_local` con envelopes `event_id`, versiones de
+  agregado/stream, snapshots con watermarks y gate mobile integrado, sin afirmar
+  soporte multiworker.
 - [x] Migrar cancelación con un único builder canónico y agregado `ride`; esta
   operación no muta otros rides y ordena sus rechazos por UUID de oferta.
 - [x] Migrar el anuncio inicial/reanuncio de presencia con lock y revalidación
@@ -474,7 +486,25 @@ Dispatcher sombra, sin Redis ni cambios de contrato/mobile:
   `offer_id`, token por intento, bloqueo por ride terminal y `markOffered` CAS.
   Una respuesta tardía ya no revive rechazo, expiración, pausa, aceptación,
   retiro, viaje tomado, cancelación ni gana a un intento nuevo. El snapshot
-  PostgreSQL `PENDING` prevalece sobre una expiración local contradictoria.
+  PostgreSQL `PENDING` prevalece sobre una expiración local contradictoria; si
+  un intento en vuelo queda ausente en el corte, se resuelve con otro snapshot y
+  no comparando timestamps de transacciones concurrentes.
+
+Endurecimiento aún pendiente antes de promover la canary:
+
+- [ ] Impedir en runtime que `live_local` arranque con más de un proceso, o
+  reemplazarlo directamente por el bridge Redis con una prueba de dos workers.
+- [ ] Añadir métricas de backlog/edad/latencia, alertas y retención de filas
+  publicadas; hoy el drenaje y la comparación sombra son pasos operativos.
+- [ ] Ejecutar pruebas de contrato backend JSON → parsers mobile y un smoke real
+  que fuerce caída, duplicado, hueco y cuarentena.
+- [ ] Hacer indivisible la aplicación de snapshots entre React Query y Zustand,
+  e impedir que un handler ya iniciado emita efectos después de invalidar su
+  generación.
+- [ ] Proteger el batch frente a corrupción histórica/truncado con cardinalidad
+  durable o una auditoría previa al modo live.
+- [ ] Eliminar la copia tardía de un resultado HTTP anterior desde
+  `usePassengerActiveRide` hacia el detalle después de un snapshot más nuevo.
 
 ### 3.2 Bridge Redis y sockets locales
 

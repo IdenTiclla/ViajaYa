@@ -224,6 +224,25 @@ def test_ride_closed_legacy_accepts_absent_generation_and_reason() -> None:
 
 
 @pytest.mark.parametrize(
+    "partial_data",
+    [
+        {"pool_version": 1},
+        {"reason": "terminal"},
+    ],
+)
+def test_ride_closed_rejects_partial_versioned_fields(
+    partial_data: dict[str, object],
+) -> None:
+    with pytest.raises(ValidationError, match="juntos"):
+        parse_negotiation_message(
+            {
+                "type": "ride_closed",
+                "data": {"ride_id": str(uuid.uuid4()), **partial_data},
+            }
+        )
+
+
+@pytest.mark.parametrize(
     ("message_type", "data"),
     [
         (
@@ -332,7 +351,7 @@ def test_event_envelope_v2_is_strict_and_validates_type_data() -> None:
             for key, value in dumped["data"].items()
             if key != missing_field
         }
-        with pytest.raises(ValidationError, match="requiere"):
+        with pytest.raises(ValidationError, match="contrato"):
             RealtimeEventEnvelopeV2.model_validate(
                 dumped | {"data": incomplete_data}
             )

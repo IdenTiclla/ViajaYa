@@ -178,6 +178,19 @@ test('ride_closed legacy tolera temporalmente los campos versionados ausentes', 
   assert.equal(result.success, true);
 });
 
+test('ride_closed legacy rechaza metadata versionada parcial', () => {
+  for (const data of [
+    { ride_id: rideId, pool_version: 2 },
+    { ride_id: rideId, reason: 'terminal' },
+  ]) {
+    assert.equal(
+      driverRealtimeMessageParser.safeParse({ type: 'ride_closed', data })
+        .success,
+      false,
+    );
+  }
+});
+
 test('ride_closed v2 exige pool_version y reason aunque legacy los permita omitir', () => {
   const metadata = eventMetadata({ stream: 'pool:taxi' });
   const missingMetadata = driverRealtimeMessageParser.safeParse({

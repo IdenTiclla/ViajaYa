@@ -372,7 +372,14 @@ export function useDriverPoolSocket(enabled = true): void {
             poolVersion: ride.poolVersion,
             phase: 'paused',
           });
-          if (!reduction.applied) break;
+          if (!reduction.applied) {
+            // La pausa puede pertenecer a una generación anterior y no debe
+            // degradar la tarjeta actual. Su offer_id sí conserva valor: sella
+            // la oferta retirada e invalida un 201 HTTP tardío de esa oferta,
+            // sin borrar una reoferta posterior con otra identidad.
+            driverRequests.markWithdrawn(ride.id, msg.data.offer_id);
+            break;
+          }
           await writeRealtimeQueryData<OpenRidesInfiniteData>(
             queryClient,
             ['open-rides'],

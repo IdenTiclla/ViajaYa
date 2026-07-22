@@ -181,12 +181,21 @@ const rideCreatedMessageSchema = z.object({
 });
 const rideClosedMessageSchema = z.object({
   type: z.literal('ride_closed'),
-  data: z.object({
-    ride_id: uuidSchema,
-    // Opcionales durante el despliegue; los productores nuevos siempre los emiten.
-    pool_version: z.number().int().positive().optional(),
-    reason: z.enum(['paused', 'terminal']).optional(),
-  }),
+  data: z
+    .object({
+      ride_id: uuidSchema,
+      // Opcionales durante el despliegue; los productores nuevos siempre los emiten.
+      pool_version: z.number().int().positive().optional(),
+      reason: z.enum(['paused', 'terminal']).optional(),
+    })
+    .superRefine((data, context) => {
+      if ((data.pool_version === undefined) !== (data.reason === undefined)) {
+        context.addIssue({
+          code: 'custom',
+          message: 'ride_closed requiere pool_version y reason juntos.',
+        });
+      }
+    }),
 });
 const ridePausedMessageSchema = z.object({
   type: z.literal('ride_paused'),

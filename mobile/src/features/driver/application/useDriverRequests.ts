@@ -256,7 +256,7 @@ type DriverRequestsState = {
   markTaken: (rideId: string, offerId?: string) => boolean;
   markCancelled: (rideId: string, offerId?: string) => boolean;
   markAssigned: (rideId: string) => boolean;
-  /** Confirma por identidad el retiro voluntario de una oferta. */
+  /** Confirma por identidad el retiro de una oferta sin cambiar el desenlace visual. */
   markWithdrawn: (rideId: string, offerId: string) => boolean;
   /** Expira solo la oferta vigente esperada; devuelve si aplicó el cambio. */
   markExpired: (rideId: string, offerId: string) => boolean;

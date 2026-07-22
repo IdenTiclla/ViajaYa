@@ -33,6 +33,14 @@ class RideClosedData(_StrictPayload):
     pool_version: int | None = Field(default=None, strict=True, ge=1)
     reason: RideClosedReason | None = None
 
+    @model_validator(mode="after")
+    def validate_versioned_fields_together(self) -> RideClosedData:
+        if (self.pool_version is None) != (self.reason is None):
+            raise ValueError(
+                "ride_closed requiere pool_version y reason juntos."
+            )
+        return self
+
 
 class RidePausedData(OpenRideResponse):
     model_config = ConfigDict(extra="forbid")

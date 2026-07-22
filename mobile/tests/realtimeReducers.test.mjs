@@ -606,6 +606,33 @@ test('una pausa de snapshot invalida el HTTP incluso después de reanudar', () =
   store.reset();
 });
 
+test('una pausa atrasada sella su oferta sin degradar la generación nueva', () => {
+  const store = useDriverRequests.getState();
+  store.reset();
+  store.applyPoolEvent({ rideId: 'ride-1', poolVersion: 1, phase: 'open' });
+  const oldAttempt = store.beginOfferAttempt('ride-1');
+  store.applyPoolEvent({ rideId: 'ride-1', poolVersion: 2, phase: 'open' });
+
+  const delayedPause = store.applyPoolEvent({
+    rideId: 'ride-1',
+    poolVersion: 1,
+    phase: 'paused',
+  });
+  assert.equal(delayedPause.applied, false);
+  assert.equal(store.markWithdrawn('ride-1', 'offer-old'), true);
+
+  assert.equal(
+    store.markOffered('ride-1', sentOffer('offer-old'), undefined, oldAttempt),
+    false,
+  );
+  assert.equal(useDriverRequests.getState().paused.has('ride-1'), false);
+
+  assert.equal(applySentOffer(store, 'ride-1', sentOffer('offer-new')), true);
+  assert.equal(store.markWithdrawn('ride-1', 'offer-old'), false);
+  assert.equal(useDriverRequests.getState().offered['ride-1'].offerId, 'offer-new');
+  store.reset();
+});
+
 test('el retiro voluntario de A no elimina una oferta B posterior', () => {
   const store = useDriverRequests.getState();
   store.reset();

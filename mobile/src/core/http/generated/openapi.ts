@@ -632,6 +632,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/health/scheduled-actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Scheduled Actions Health
+         * @description Expone backlog y leases agregados, nunca payloads ni identificadores.
+         */
+        get: operations["scheduled_actions_health_health_scheduled_actions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1257,6 +1277,56 @@ export interface components {
             location: components["schemas"]["PointSchema"];
             /** Updated At */
             updated_at: string | null;
+        };
+        /** ScheduledActionDeadCountResponse */
+        ScheduledActionDeadCountResponse: {
+            /** Action Count */
+            action_count: number;
+            /** Action Type */
+            action_type: string;
+        };
+        /** ScheduledActionsHealthResponse */
+        ScheduledActionsHealthResponse: {
+            /** Captured At */
+            captured_at?: string | null;
+            /** Claimed Count */
+            claimed_count?: number | null;
+            /** Dead Count */
+            dead_count?: number | null;
+            /** Dead Counts */
+            dead_counts?: components["schemas"]["ScheduledActionDeadCountResponse"][] | null;
+            /** Due Count */
+            due_count?: number | null;
+            /** Latest Succeeded At */
+            latest_succeeded_at?: string | null;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "off" | "shadow" | "live";
+            /** Next Due At */
+            next_due_at?: string | null;
+            /** Oldest Due Age Seconds */
+            oldest_due_age_seconds?: number | null;
+            /** Pending Count */
+            pending_count?: number | null;
+            /** Recovered Lease Count */
+            recovered_lease_count?: number | null;
+            /** Retried Count */
+            retried_count?: number | null;
+            /** Retrying Count */
+            retrying_count?: number | null;
+            /** Running Count */
+            running_count?: number | null;
+            /** Stale Count */
+            stale_count?: number | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "disabled" | "unavailable";
+            /** Succeeded Count */
+            succeeded_count?: number | null;
         };
         /**
          * ServiceType
@@ -2504,6 +2574,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RealtimeHealthResponse"];
+                };
+            };
+        };
+    };
+    scheduled_actions_health_health_scheduled_actions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduledActionsHealthResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduledActionsHealthResponse"];
                 };
             };
         };

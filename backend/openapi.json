@@ -1711,6 +1711,223 @@
         "title": "SavedPlaceResponse",
         "type": "object"
       },
+      "ScheduledActionDeadCountResponse": {
+        "properties": {
+          "action_count": {
+            "title": "Action Count",
+            "type": "integer"
+          },
+          "action_type": {
+            "title": "Action Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action_type",
+          "action_count"
+        ],
+        "title": "ScheduledActionDeadCountResponse",
+        "type": "object"
+      },
+      "ScheduledActionsHealthResponse": {
+        "properties": {
+          "captured_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Captured At"
+          },
+          "claimed_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Claimed Count"
+          },
+          "dead_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dead Count"
+          },
+          "dead_counts": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ScheduledActionDeadCountResponse"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dead Counts"
+          },
+          "due_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Count"
+          },
+          "latest_succeeded_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Succeeded At"
+          },
+          "mode": {
+            "enum": [
+              "off",
+              "shadow",
+              "live"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "next_due_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Due At"
+          },
+          "oldest_due_age_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oldest Due Age Seconds"
+          },
+          "pending_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Count"
+          },
+          "recovered_lease_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recovered Lease Count"
+          },
+          "retried_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retried Count"
+          },
+          "retrying_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retrying Count"
+          },
+          "running_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Running Count"
+          },
+          "stale_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stale Count"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "disabled",
+              "unavailable"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "succeeded_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Succeeded Count"
+          }
+        },
+        "required": [
+          "status",
+          "mode"
+        ],
+        "title": "ScheduledActionsHealthResponse",
+        "type": "object"
+      },
       "ServiceType": {
         "description": "Tipo de servicio solicitado por un pasajero.",
         "enum": [
@@ -3909,6 +4126,38 @@
           }
         },
         "summary": "Realtime Health",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/health/scheduled-actions": {
+      "get": {
+        "description": "Expone backlog y leases agregados, nunca payloads ni identificadores.",
+        "operationId": "scheduled_actions_health_health_scheduled_actions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduledActionsHealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduledActionsHealthResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Scheduled Actions Health",
         "tags": [
           "health"
         ]

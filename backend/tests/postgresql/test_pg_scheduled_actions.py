@@ -12,6 +12,9 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.application.dto import PendingScheduledAction
+from app.application.use_cases.get_scheduled_actions_operational_snapshot import (
+    GetScheduledActionsOperationalSnapshot,
+)
 from app.domain.entities import (
     Location,
     Offer,
@@ -30,6 +33,9 @@ from app.infrastructure.db.repositories import (
 )
 from app.infrastructure.db.scheduled_actions import (
     SqlAlchemyScheduledActionRepository,
+)
+from app.infrastructure.db.scheduled_actions_observability import (
+    SqlAlchemyScheduledActionsOperationalReader,
 )
 
 _REVISION_0021 = "0021_realtime_outbox_batch_size"
@@ -292,5 +298,44 @@ async def test_reclaim_invalida_el_token_del_worker_anterior(pg_test_db) -> None
             await connection.execute(
                 delete(ScheduledActionModel).where(
                     ScheduledActionModel.dedupe_key == key
+                )
+            )
+
+
+async def test_snapshot_operativo_cuenta_due_y_lease_stale_en_postgresql(
+    pg_test_db,
+) -> None:
+    sessions = async_sessionmaker(pg_test_db.engine, expire_on_commit=False)
+    now = datetime.now(UTC)
+    execute_at = now - timedelta(seconds=40)
+    keys = [f"expire_offer:{uuid.uuid4()}" for _ in range(2)]
+    try:
+        async with sessions() as session:
+            repository = SqlAlchemyScheduledActionRepository(session)
+            for key in keys:
+                await repository.schedule(_pending(key, execute_at))
+            await session.commit()
+            claimed = await repository.claim_due(
+                execute_at,
+                execute_at - timedelta(minutes=1),
+            )
+            assert claimed is not None
+            await session.commit()
+
+        async with sessions() as session:
+            snapshot = await GetScheduledActionsOperationalSnapshot(
+                SqlAlchemyScheduledActionsOperationalReader(session)
+            ).execute(now, lease_seconds=30)
+
+        assert snapshot.pending_count == 1
+        assert snapshot.due_count == 1
+        assert snapshot.running_count == 1
+        assert snapshot.stale_count == 1
+        assert snapshot.oldest_due_age_seconds >= 40
+    finally:
+        async with pg_test_db.engine.begin() as connection:
+            await connection.execute(
+                delete(ScheduledActionModel).where(
+                    ScheduledActionModel.dedupe_key.in_(keys)
                 )
             )

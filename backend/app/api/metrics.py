@@ -12,10 +12,15 @@ from fastapi import APIRouter, Request, Response
 from prometheus_client.metrics_core import Metric
 from prometheus_client.openmetrics.exposition import CONTENT_TYPE_LATEST, generate_latest
 
-from app.api.deps import RealtimeOutboxOperationalSnapshotDep, SettingsDep
+from app.api.deps import (
+    RealtimeOutboxOperationalSnapshotDep,
+    ScheduledActionsOperationalSnapshotDep,
+    SettingsDep,
+)
 from app.application.dto import (
     RealtimeOutboxOperationalSnapshot,
     RealtimeOutboxQuarantineCode,
+    ScheduledActionsOperationalSnapshot,
 )
 
 logger = logging.getLogger(__name__)
@@ -24,6 +29,7 @@ router = APIRouter(tags=["metrics"])
 
 OPENMETRICS_CONTENT_TYPE = CONTENT_TYPE_LATEST
 _QUARANTINE_CODES = frozenset(get_args(RealtimeOutboxQuarantineCode))
+_SCHEDULED_ACTION_TYPES = frozenset({"expire_offer"})
 
 
 def _quarantine_code(value: str) -> str:
@@ -68,6 +74,16 @@ def render_realtime_openmetrics(
     retention_deleted_event_count: int,
     snapshot: RealtimeOutboxOperationalSnapshot | None,
     scrape_success: bool,
+    scheduled_mode: Literal["off", "shadow", "live"] = "off",
+    scheduled_worker_running: bool = False,
+    scheduled_worker_error: bool = False,
+    scheduled_claimed_count: int = 0,
+    scheduled_succeeded_count: int = 0,
+    scheduled_retried_count: int = 0,
+    scheduled_dead_count: int = 0,
+    scheduled_recovered_lease_count: int = 0,
+    scheduled_snapshot: ScheduledActionsOperationalSnapshot | None = None,
+    scheduled_scrape_success: bool = True,
 ) -> str:
     """Renderiza solo agregados operativos, sin payloads, topics ni errores."""
     document = _OpenMetricsDocument()
@@ -142,6 +158,146 @@ def render_realtime_openmetrics(
         sample_name="viajaya_realtime_outbox_retention_deleted_events_total",
     )
 
+    document.metric(
+        "viajaya_scheduled_actions",
+        "Información estable del modo de acciones programadas.",
+        "info",
+        [({"mode": scheduled_mode}, 1)],
+        sample_name="viajaya_scheduled_actions_info",
+    )
+    document.metric(
+        "viajaya_scheduled_actions_collection_success",
+        "Indica si el scrape persistido del scheduler tuvo éxito.",
+        "gauge",
+        [({}, int(scheduled_scrape_success))],
+    )
+    document.metric(
+        "viajaya_scheduled_actions_worker_enabled",
+        "Indica si la configuración requiere ejecutar el worker.",
+        "gauge",
+        [({}, int(scheduled_mode == "live"))],
+    )
+    document.metric(
+        "viajaya_scheduled_actions_worker_running",
+        "Indica si el worker requerido está ejecutándose en este proceso.",
+        "gauge",
+        [({}, int(scheduled_worker_running))],
+    )
+    document.metric(
+        "viajaya_scheduled_actions_worker_error",
+        "Indica si el worker conserva un fallo operativo sin recuperar.",
+        "gauge",
+        [({}, int(scheduled_worker_error))],
+    )
+    for name, help_text, value in (
+        (
+            "claimed",
+            "Acciones reclamadas por este proceso desde su arranque.",
+            scheduled_claimed_count,
+        ),
+        (
+            "succeeded",
+            "Acciones completadas por este proceso desde su arranque.",
+            scheduled_succeeded_count,
+        ),
+        (
+            "retried",
+            "Acciones reprogramadas por este proceso desde su arranque.",
+            scheduled_retried_count,
+        ),
+        (
+            "dead",
+            "Acciones agotadas por este proceso desde su arranque.",
+            scheduled_dead_count,
+        ),
+        (
+            "recovered_leases",
+            "Leases abandonados recuperados por este proceso desde su arranque.",
+            scheduled_recovered_lease_count,
+        ),
+    ):
+        document.metric(
+            f"viajaya_scheduled_actions_{name}",
+            help_text,
+            "counter",
+            [({}, value)],
+            sample_name=f"viajaya_scheduled_actions_{name}_total",
+        )
+
+    if scheduled_snapshot is not None:
+        for name, help_text, value in (
+            (
+                "pending",
+                "Acciones pendientes, vencidas o futuras.",
+                scheduled_snapshot.pending_count,
+            ),
+            (
+                "due",
+                "Acciones pendientes cuyo deadline y retry ya vencieron.",
+                scheduled_snapshot.due_count,
+            ),
+            (
+                "running",
+                "Acciones con lease reclamado.",
+                scheduled_snapshot.running_count,
+            ),
+            (
+                "stale",
+                "Acciones running cuyo lease ya puede recuperarse.",
+                scheduled_snapshot.stale_count,
+            ),
+            (
+                "retrying",
+                "Acciones pendientes que consumieron al menos un intento.",
+                scheduled_snapshot.retrying_count,
+            ),
+        ):
+            document.metric(
+                f"viajaya_scheduled_actions_{name}",
+                help_text,
+                "gauge",
+                [({}, value)],
+            )
+        dead_counts = dict.fromkeys((*_SCHEDULED_ACTION_TYPES, "unknown"), 0)
+        for item in scheduled_snapshot.dead_counts:
+            action_type = (
+                item.action_type
+                if item.action_type in _SCHEDULED_ACTION_TYPES
+                else "unknown"
+            )
+            dead_counts[action_type] = (
+                dead_counts.get(action_type, 0) + item.action_count
+            )
+        document.metric(
+            "viajaya_scheduled_actions_dead_persisted",
+            "Acciones terminales dead agrupadas por tipo acotado.",
+            "gauge",
+            [
+                ({"action_type": action_type}, count)
+                for action_type, count in sorted(dead_counts.items())
+            ],
+        )
+        document.metric(
+            "viajaya_scheduled_actions_oldest_due_age_seconds",
+            "Edad de la acción vencida más antigua.",
+            "gauge",
+            [({}, scheduled_snapshot.oldest_due_age_seconds)],
+        )
+        if scheduled_snapshot.next_due_at is not None:
+            document.metric(
+                "viajaya_scheduled_actions_next_due_timestamp_seconds",
+                "Instante Unix del próximo deadline pendiente.",
+                "gauge",
+                [({}, scheduled_snapshot.next_due_at.timestamp())],
+            )
+        if scheduled_snapshot.latest_succeeded_at is not None:
+            document.metric(
+                "viajaya_scheduled_actions_latest_succeeded_timestamp_seconds",
+                "Instante Unix del último ack exitoso observado.",
+                "gauge",
+                [({}, scheduled_snapshot.latest_succeeded_at.timestamp())],
+            )
+
     if snapshot is None:
         return document.render()
 
@@ -211,6 +367,7 @@ async def metrics(
     request: Request,
     settings: SettingsDep,
     use_case: RealtimeOutboxOperationalSnapshotDep,
+    scheduled_use_case: ScheduledActionsOperationalSnapshotDep,
 ) -> Response:
     """Expone métricas scrapeables sin convertir fallos internos en datos."""
     mode = settings.realtime_outbox_dispatch_mode
@@ -241,45 +398,48 @@ async def metrics(
     deleted_events = (
         retention_worker.deleted_event_count if retention_worker is not None else 0
     )
+    scheduled_mode = settings.scheduled_actions_mode
+    scheduled_worker = request.app.state.scheduled_actions_worker
+    scheduled_task = request.app.state.scheduled_actions_task
+    scheduled_worker_running = bool(
+        scheduled_worker is not None
+        and scheduled_worker.running
+        and scheduled_task is not None
+        and not scheduled_task.done()
+    )
+    scheduled_worker_error = bool(
+        scheduled_worker is not None and scheduled_worker.last_error is not None
+    )
 
-    if mode == "off" and retention_days == 0:
-        return _response(
-            render_realtime_openmetrics(
-                mode=mode,
-                retention_days=retention_days,
-                dispatcher_running=dispatcher_running,
-                dispatcher_error=dispatcher_error,
-                retention_running=retention_running,
-                retention_error=retention_error,
-                retention_deleted_batch_count=deleted_batches,
-                retention_deleted_event_count=deleted_events,
-                snapshot=None,
-                scrape_success=True,
+    now = datetime.now(UTC)
+    snapshot: RealtimeOutboxOperationalSnapshot | None = None
+    scrape_success = True
+    if mode != "off" or retention_days > 0:
+        try:
+            async with asyncio.timeout(2):
+                snapshot = await use_case.execute(now)
+        except Exception as error:  # noqa: BLE001 - scrape sanitizado
+            scrape_success = False
+            logger.warning(
+                "Falló el scrape OpenMetrics de la outbox (%s).",
+                type(error).__name__,
             )
-        )
 
-    try:
-        async with asyncio.timeout(2):
-            snapshot = await use_case.execute(datetime.now(UTC))
-    except Exception as error:  # noqa: BLE001 - endpoint operativo sanitizado
-        logger.warning(
-            "Falló el scrape OpenMetrics de la outbox (%s).",
-            type(error).__name__,
-        )
-        return _response(
-            render_realtime_openmetrics(
-                mode=mode,
-                retention_days=retention_days,
-                dispatcher_running=dispatcher_running,
-                dispatcher_error=dispatcher_error,
-                retention_running=retention_running,
-                retention_error=retention_error,
-                retention_deleted_batch_count=deleted_batches,
-                retention_deleted_event_count=deleted_events,
-                snapshot=None,
-                scrape_success=False,
+    scheduled_snapshot: ScheduledActionsOperationalSnapshot | None = None
+    scheduled_scrape_success = True
+    if scheduled_mode != "off":
+        try:
+            async with asyncio.timeout(2):
+                scheduled_snapshot = await scheduled_use_case.execute(
+                    now,
+                    lease_seconds=settings.scheduled_actions_lease_seconds,
+                )
+        except Exception as error:  # noqa: BLE001 - scrape sanitizado
+            scheduled_scrape_success = False
+            logger.warning(
+                "Falló el scrape OpenMetrics de scheduled_actions (%s).",
+                type(error).__name__,
             )
-        )
 
     return _response(
         render_realtime_openmetrics(
@@ -292,6 +452,30 @@ async def metrics(
             retention_deleted_batch_count=deleted_batches,
             retention_deleted_event_count=deleted_events,
             snapshot=snapshot,
-            scrape_success=True,
+            scrape_success=scrape_success,
+            scheduled_mode=scheduled_mode,
+            scheduled_worker_running=scheduled_worker_running,
+            scheduled_worker_error=scheduled_worker_error,
+            scheduled_claimed_count=(
+                scheduled_worker.claimed_count if scheduled_worker is not None else 0
+            ),
+            scheduled_succeeded_count=(
+                scheduled_worker.succeeded_count
+                if scheduled_worker is not None
+                else 0
+            ),
+            scheduled_retried_count=(
+                scheduled_worker.retried_count if scheduled_worker is not None else 0
+            ),
+            scheduled_dead_count=(
+                scheduled_worker.dead_count if scheduled_worker is not None else 0
+            ),
+            scheduled_recovered_lease_count=(
+                scheduled_worker.recovered_lease_count
+                if scheduled_worker is not None
+                else 0
+            ),
+            scheduled_snapshot=scheduled_snapshot,
+            scheduled_scrape_success=scheduled_scrape_success,
         )
     )

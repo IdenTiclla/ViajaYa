@@ -629,7 +629,9 @@ seguirán siendo la defensa final contra carreras.
 > duplicar la outbox. `cancel_absent_ride` sigue
 > pendiente: no se migrará hasta que Redis aporte leases de presencia compartidos
 > y una generación durable; hacerlo antes permitiría cancelaciones falsas entre
-> procesos.
+> procesos. `/health/scheduled-actions` y `/metrics` exponen únicamente conteos,
+> edades y tipos acotados; Prometheus alerta worker detenido, backlog vencido,
+> leases estancados y acciones `dead` sin publicar payloads ni identificadores.
 
 ## Despliegue incremental
 

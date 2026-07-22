@@ -108,3 +108,57 @@ groups:
         annotations:
           summary: "La publicación realtime está lenta"
           description: "Una publicación observada en los últimos 5 minutos superó 10 segundos de demora."
+
+      - alert: ViajaYaSchedulerWorkerDetenido
+        expr: >-
+          viajaya_scheduled_actions_worker_enabled == 1
+          and on(job, instance)
+          viajaya_scheduled_actions_worker_running == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "El worker de acciones programadas está detenido"
+          description: "El modo live exige ejecutar scheduled_actions, pero el proceso no mantiene su worker activo."
+
+      - alert: ViajaYaSchedulerColeccionFallida
+        expr: viajaya_scheduled_actions_collection_success == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "ViajaYa no puede observar scheduled_actions"
+          description: "La lectura agregada de la cola durable lleva al menos 2 minutos fallando."
+
+      - alert: ViajaYaSchedulerAccionVencida
+        expr: >-
+          max without(instance, pod)
+          (viajaya_scheduled_actions_oldest_due_age_seconds) > 60
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Una acción programada lleva más de un minuto vencida"
+          description: "El scheduler no converge dentro del margen operativo esperado."
+
+      - alert: ViajaYaSchedulerLeaseEstancado
+        expr: >-
+          max without(instance, pod)
+          (viajaya_scheduled_actions_stale) > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Persisten leases vencidos de scheduled_actions"
+          description: "Uno o más leases recuperables siguen estancados durante al menos 2 minutos."
+
+      - alert: ViajaYaSchedulerAccionDead
+        expr: >-
+          max without(instance, pod)
+          (viajaya_scheduled_actions_dead_persisted) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Una acción programada agotó sus intentos"
+          description: "Existen acciones dead para {{ $labels.action_type }}; requieren diagnóstico manual."

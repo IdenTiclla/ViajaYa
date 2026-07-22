@@ -95,6 +95,45 @@ class DispatchScheduledActionResult:
 
 
 @dataclass(frozen=True, slots=True)
+class ScheduledActionDeadCount:
+    """Cantidad de acciones terminales agrupada por tipo estable."""
+
+    action_type: str
+    action_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class ScheduledActionsOperationalState:
+    """Agregados persistidos del scheduler, sin payloads ni identificadores."""
+
+    pending_count: int
+    due_count: int
+    running_count: int
+    stale_count: int
+    retrying_count: int
+    dead_counts: tuple[ScheduledActionDeadCount, ...]
+    oldest_due_at: datetime | None = None
+    next_due_at: datetime | None = None
+    latest_succeeded_at: datetime | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ScheduledActionsOperationalSnapshot:
+    """Corte operativo derivado con edades no negativas."""
+
+    captured_at: datetime
+    pending_count: int
+    due_count: int
+    running_count: int
+    stale_count: int
+    retrying_count: int
+    dead_counts: tuple[ScheduledActionDeadCount, ...]
+    oldest_due_age_seconds: float
+    next_due_at: datetime | None = None
+    latest_succeeded_at: datetime | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class PendingRealtimeEvent:
     """Evento listo para persistirse, todavía sin metadatos de entrega.
 

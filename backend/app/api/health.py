@@ -14,6 +14,7 @@ from sqlalchemy import text
 
 from app.api.deps import (
     RealtimeOutboxOperationalSnapshotDep,
+    ScheduledActionsOperationalSnapshotDep,
     SessionFactoryDep,
     SettingsDep,
 )
@@ -59,6 +60,31 @@ class RealtimeHealthResponse(BaseModel):
     latest_published_at: datetime | None = None
     retention_deleted_batch_count: int | None = None
     retention_deleted_event_count: int | None = None
+
+
+class ScheduledActionDeadCountResponse(BaseModel):
+    action_type: str
+    action_count: int
+
+
+class ScheduledActionsHealthResponse(BaseModel):
+    status: Literal["ok", "disabled", "unavailable"]
+    mode: Literal["off", "shadow", "live"]
+    captured_at: datetime | None = None
+    pending_count: int | None = None
+    due_count: int | None = None
+    running_count: int | None = None
+    stale_count: int | None = None
+    retrying_count: int | None = None
+    dead_counts: list[ScheduledActionDeadCountResponse] | None = None
+    oldest_due_age_seconds: float | None = None
+    next_due_at: datetime | None = None
+    latest_succeeded_at: datetime | None = None
+    claimed_count: int | None = None
+    succeeded_count: int | None = None
+    retried_count: int | None = None
+    dead_count: int | None = None
+    recovered_lease_count: int | None = None
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -244,5 +270,71 @@ async def realtime_health(
             retention_worker.deleted_event_count
             if retention_worker is not None
             else 0
+        ),
+    )
+
+
+@router.get(
+    "/health/scheduled-actions",
+    response_model=ScheduledActionsHealthResponse,
+    response_model_exclude_none=True,
+    responses={503: {"model": ScheduledActionsHealthResponse}},
+)
+async def scheduled_actions_health(
+    request: Request,
+    settings: SettingsDep,
+    use_case: ScheduledActionsOperationalSnapshotDep,
+) -> ScheduledActionsHealthResponse | JSONResponse:
+    """Expone backlog y leases agregados, nunca payloads ni identificadores."""
+    mode = settings.scheduled_actions_mode
+    if mode == "off":
+        return ScheduledActionsHealthResponse(status="disabled", mode=mode)
+
+    try:
+        async with asyncio.timeout(2):
+            snapshot = await use_case.execute(
+                datetime.now(UTC),
+                lease_seconds=settings.scheduled_actions_lease_seconds,
+            )
+    except Exception as error:  # noqa: BLE001 - probe sanitario
+        logger.warning(
+            "Falló el snapshot operativo de scheduled_actions (%s).",
+            type(error).__name__,
+        )
+        response = ScheduledActionsHealthResponse(
+            status="unavailable",
+            mode=mode,
+        )
+        return JSONResponse(
+            status_code=503,
+            content=response.model_dump(mode="json", exclude_none=True),
+        )
+
+    worker = request.app.state.scheduled_actions_worker
+    return ScheduledActionsHealthResponse(
+        status="ok",
+        mode=mode,
+        captured_at=snapshot.captured_at,
+        pending_count=snapshot.pending_count,
+        due_count=snapshot.due_count,
+        running_count=snapshot.running_count,
+        stale_count=snapshot.stale_count,
+        retrying_count=snapshot.retrying_count,
+        dead_counts=[
+            ScheduledActionDeadCountResponse(
+                action_type=item.action_type,
+                action_count=item.action_count,
+            )
+            for item in snapshot.dead_counts
+        ],
+        oldest_due_age_seconds=snapshot.oldest_due_age_seconds,
+        next_due_at=snapshot.next_due_at,
+        latest_succeeded_at=snapshot.latest_succeeded_at,
+        claimed_count=worker.claimed_count if worker is not None else 0,
+        succeeded_count=worker.succeeded_count if worker is not None else 0,
+        retried_count=worker.retried_count if worker is not None else 0,
+        dead_count=worker.dead_count if worker is not None else 0,
+        recovered_lease_count=(
+            worker.recovered_lease_count if worker is not None else 0
         ),
     )

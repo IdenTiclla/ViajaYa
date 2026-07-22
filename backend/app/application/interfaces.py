@@ -33,6 +33,7 @@ from app.application.dto import (
     RidePausedResult,
     RideRepublishedResult,
     ScheduledAction,
+    ScheduledActionsOperationalState,
     SocialProfile,
 )
 from app.domain.entities import AuthProvider, Offer, RideStatus, UserRole
@@ -101,6 +102,18 @@ class ScheduledActionExecutor(ABC):
     @abstractmethod
     async def execute(self, action: ScheduledAction) -> Literal["succeeded", "lost_lease"]:
         """Procesa una acción reclamada sin exponer detalles de infraestructura."""
+
+
+class ScheduledActionsOperationalReader(ABC):
+    """Lee agregados sanitizados del backlog de acciones programadas."""
+
+    @abstractmethod
+    async def read(
+        self,
+        now: datetime,
+        stale_before: datetime,
+    ) -> ScheduledActionsOperationalState:
+        """Cuenta acciones vencidas, leases y terminales bajo un corte corto."""
 
 
 class RealtimeOutbox(ABC):

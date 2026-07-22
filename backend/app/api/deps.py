@@ -75,6 +75,9 @@ from app.application.use_cases.get_realtime_outbox_operational_snapshot import (
     GetRealtimeOutboxOperationalSnapshot,
 )
 from app.application.use_cases.get_ride import GetRide
+from app.application.use_cases.get_scheduled_actions_operational_snapshot import (
+    GetScheduledActionsOperationalSnapshot,
+)
 from app.application.use_cases.list_offers_for_ride import ListOffersForRide
 from app.application.use_cases.list_open_rides import ListOpenRides
 from app.application.use_cases.list_recent_destinations import ListRecentDestinations
@@ -120,6 +123,9 @@ from app.infrastructure.db.repositories import (
 )
 from app.infrastructure.db.scheduled_actions import (
     SqlAlchemyScheduledActionRepository,
+)
+from app.infrastructure.db.scheduled_actions_observability import (
+    SqlAlchemyScheduledActionsOperationalReader,
 )
 from app.infrastructure.db.session import async_session_factory, get_session
 from app.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
@@ -173,6 +179,20 @@ def get_realtime_outbox_operational_snapshot(
 RealtimeOutboxOperationalSnapshotDep = Annotated[
     GetRealtimeOutboxOperationalSnapshot,
     Depends(get_realtime_outbox_operational_snapshot),
+]
+
+
+def get_scheduled_actions_operational_snapshot(
+    session: SessionDep,
+) -> GetScheduledActionsOperationalSnapshot:
+    return GetScheduledActionsOperationalSnapshot(
+        SqlAlchemyScheduledActionsOperationalReader(session)
+    )
+
+
+ScheduledActionsOperationalSnapshotDep = Annotated[
+    GetScheduledActionsOperationalSnapshot,
+    Depends(get_scheduled_actions_operational_snapshot),
 ]
 
 

@@ -4,6 +4,9 @@ Con `OPENMETRICS_ENABLED=true`, la API expone `/metrics` en formato OpenMetrics
 1.0. El endpoint no publica payloads, topics, DSN ni errores internos. En `off`
 informa únicamente la configuración y los contadores locales; en `shadow` o
 `live_local` añade el corte persistido de la outbox.
+Cuando `SCHEDULED_ACTIONS_MODE=shadow|live`, el mismo documento añade backlog,
+leases y contadores del scheduler; `/health/scheduled-actions` ofrece el corte
+JSON equivalente para diagnóstico.
 
 Prometheus debe usar un job cuyo nombre comience con `viajaya-backend` y cargar
 `viajaya-realtime.rules.yml` mediante `rule_files`. Ejemplo mínimo:
@@ -58,8 +61,9 @@ Staging o producción deben añadir una regla sobre
 
 ## Diagnóstico rápido
 
-- Scrape o colección: consulta `/health/live`, `/health/ready` y luego
-  `/health/realtime`; confirma red, PostgreSQL y migraciones `0018`–`0021`.
+- Scrape o colección: consulta `/health/live`, `/health/ready`,
+  `/health/realtime` y `/health/scheduled-actions`; confirma red, PostgreSQL y
+  migraciones `0018`–`0022`.
 - Dispatcher o retención detenidos: revisa readiness y logs sanitizados del
   proceso; no reinicies otro consumidor hasta confirmar el advisory lock.
 - Backlog o reintentos: compara edad, batches y último publish. Conserva las
@@ -68,6 +72,9 @@ Staging o producción deben añadir una regla sobre
   un nuevo snapshot después de corregirlo. La retención no borra la evidencia.
 - Publicación lenta: correlaciona el instante de la última publicación con carga
   de PostgreSQL. Esta gauge describe el último batch, no un percentil ni un SLO.
+- Scheduler: una acción `due` envejecida indica ejecución atrasada; un lease
+  `stale` debe recuperarse automáticamente. No borres acciones `dead`: conserva
+  su código sanitizado y corrige el handler antes de reprogramarlas.
 
 La automatización del receptor, silencios y escalamiento pertenece a
 Alertmanager del entorno. No hay un acknowledgement persistido para cuarentenas;

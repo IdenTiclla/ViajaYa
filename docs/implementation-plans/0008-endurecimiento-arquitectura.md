@@ -286,6 +286,10 @@ Axios todavía continúe en segundo plano sin propagar `AbortSignal`.
 > todo el batch con un código estable, deja de bloquear sus streams y conserva
 > las filas para auditoría; el hueco resultante obliga a resnapshot antes de
 > continuar el replay live.
+> `0021_realtime_outbox_batch_size` persiste la cardinalidad esperada de cada
+> batch, valida que toda secuencia quede dentro de ella y añade el índice parcial
+> de publicados que usa la retención. El consumidor rechaza un lote truncado
+> antes de emitirlo.
 > `CreateOffer`/reemplazo, `AcceptOffer`, `PauseRideForEdit`, `CancelRide`, el
 > cierre automático por ausencia, `UpdateRideFare`, `EditRide`,
 > `AnnounceOpenRide`, `WithdrawOffer`, `RejectOffer`, `ExpireOffer` y
@@ -310,7 +314,7 @@ Axios todavía continúe en segundo plano sin propagar `AbortSignal`.
 > cierre 1012/resnapshot de todos sus sockets. El lifecycle realiza preflight,
 > usa una sesión nueva por iteración y detiene el loop de forma coordinada. Este
 > modo no habilita múltiples workers: es una canary local previa al bridge Redis.
-> `0018`–`0020` no se aplicaron a la base local `viajaya`; sus pruebas PostgreSQL son
+> `0018`–`0021` no se aplicaron a la base local `viajaya`; sus pruebas PostgreSQL son
 > opt-in y CI las ejecutará sobre una base desechable.
 > El anuncio inicial y cada reanuncio por reconexión adquieren lock sobre el
 > ride, revalidan `SEARCHING && !paused` y registran un único `ride_created`
@@ -345,6 +349,7 @@ hacen `flush` y la unidad de trabajo decide `commit`/`rollback`.
 Esquema actual de `realtime_outbox`:
 
 - `id UUID` (`event_id`);
+- `batch_id`, `sequence` y `batch_size` para certificar el lote completo;
 - `event_type`, `topic`;
 - `aggregate_type`, `aggregate_id`, `aggregate_version`;
 - `stream_version`, único y creciente dentro de cada `topic`;
@@ -377,7 +382,7 @@ actual de `live_local` es el hub del mismo proceso; Redis sigue pendiente.
 El dispatcher **sombra** no ejecuta publicación: certifica claim, validación y
 lifecycle usando la outbox real, marca las filas procesadas y deja la entrega
 directa como única vía visible. `live_local` es el siguiente peldaño canary.
-Ambos exigen `0018`, `0019` y `0020`. La secuencia de flags es:
+Ambos exigen `0018`–`0021`. La secuencia de flags es:
 
 1. `off` + recording `false`: estado seguro y predeterminado;
 2. `shadow` + recording `false`: comprobar arranque/apagado y drenar cualquier
@@ -422,6 +427,9 @@ Base ya cumplida por `93b9741`:
   `ride_status → ride_created` con payload enriquecido previo al commit.
 - [x] Añadir `0020` y cuarentena terminal atómica para batches inválidos, con
   códigos cerrados, índices que excluyen terminales y downgrade protegido.
+- [x] Añadir `0021`, cardinalidad durable por fila e índice parcial por
+  `published_at`; el backfill fija el corte histórico y los productores nuevos
+  escriben `batch_size` dentro de la misma transacción.
 
 Dispatcher sombra y canary local, todavía sin Redis:
 
@@ -431,7 +439,9 @@ Dispatcher sombra y canary local, todavía sin Redis:
   cuarentena sanitizada y solo fallos transitorios conservan backoff.
 - [ ] Activarlo en un entorno con `0018`–`0020`, depurar el backlog sombra y
   comparar sus batches con la publicación directa antes de habilitar entrega real.
-- [ ] Medir pendientes y edad máxima, y definir retención de filas publicadas.
+- [x] Medir pendientes, batches, reintentos, cuarentenas, edad máxima y demora
+  conservadora `created_at → published_at` mediante `/health/realtime`; definir
+  retención opt-in de publicados por batches completos, desactivada por defecto.
 - [x] Añadir `live_local` con envelopes `event_id`, versiones de
   agregado/stream, snapshots con watermarks y gate mobile integrado, sin afirmar
   soporte multiworker.
@@ -490,19 +500,33 @@ Dispatcher sombra y canary local, todavía sin Redis:
   un intento en vuelo queda ausente en el corte, se resuelve con otro snapshot y
   no comparando timestamps de transacciones concurrentes.
 
-Endurecimiento aún pendiente antes de promover la canary:
+Endurecimiento antes de promover la canary:
 
-- [ ] Impedir en runtime que `live_local` arranque con más de un proceso, o
-  reemplazarlo directamente por el bridge Redis con una prueba de dos workers.
-- [ ] Añadir métricas de backlog/edad/latencia, alertas y retención de filas
-  publicadas; hoy el drenaje y la comparación sombra son pasos operativos.
+- [x] Impedir en runtime que consumidores PostgreSQL `shadow` y `live_local`
+  convivan contra la misma base: sombra toma un advisory lock compartido y live
+  uno exclusivo. El dispatcher sondea la misma sesión propietaria y se detiene
+  fail-closed si la pierde. Sigue pendiente
+  reemplazar esta exclusión por el bridge Redis para admitir dos workers.
+- [x] Añadir liveness/readiness y un snapshot sanitario de backlog, edad,
+  reintentos, cuarentenas y demora de publicación; la lectura no expone payload,
+  topic, DSN ni errores internos.
+- [x] Añadir retención opt-in de filas publicadas, con TTL `0` por defecto,
+  límite por batches, cardinalidad verificada, sesiones separadas y apagado
+  coordinado. Las cuarentenas y los contadores nunca se podan. La suite
+  PostgreSQL opt-in certifica dos purgas concurrentes con `SKIP LOCKED`, sin
+  doble conteo ni fragmentación, y continuidad de versiones después del purge.
+- [ ] Exportar estas señales a OpenMetrics/Prometheus y configurar alertas del
+  entorno; `/health/realtime` ya ofrece la fuente sanitaria, no el scraper.
 - [ ] Ejecutar pruebas de contrato backend JSON → parsers mobile y un smoke real
   que fuerce caída, duplicado, hueco y cuarentena.
 - [ ] Hacer indivisible la aplicación de snapshots entre React Query y Zustand,
   e impedir que un handler ya iniciado emita efectos después de invalidar su
   generación.
-- [ ] Proteger el batch frente a corrupción histórica/truncado con cardinalidad
-  durable o una auditoría previa al modo live.
+- [x] Proteger el batch frente a truncado posterior a `0021` mediante
+  cardinalidad durable, validación previa a publicar y auditoría de todos los
+  pendientes durante el preflight, incluidos batches sin anchor. El backfill
+  establece la cardinalidad observable de los lotes históricos existentes,
+  pero no puede reconstruir una cola ya ausente antes de `0021`.
 - [ ] Eliminar la copia tardía de un resultado HTTP anterior desde
   `usePassengerActiveRide` hacia el detalle después de un snapshot más nuevo.
 
@@ -552,7 +576,7 @@ seguirán siendo la defensa final contra carreras.
 ## Despliegue incremental
 
 1. Publicar métricas y documentar el límite actual de un worker.
-2. Aplicar `0018`–`0020` y desplegar las tablas de outbox sin consumidores.
+2. Aplicar `0018`–`0021` y desplegar las tablas de outbox sin consumidores.
 3. Desplegar el dispatcher en `off` y luego activar `shadow` con recording
    `false` para certificar lifecycle y drenar backlog.
 4. Activar recording en sombra y comparar batches, payloads y métricas contra la

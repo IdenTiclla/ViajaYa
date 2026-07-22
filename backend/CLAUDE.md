@@ -19,7 +19,7 @@ app/
 │   ├── ride_policy.py         # OFFER_TTL=30s + offer_expires_at / is_offer_expired / is_offer_active
 │   └── exceptions.py          # DomainError + 16 excepciones específicas
 ├── application/             # Casos de uso. Orquestan el dominio.
-│   ├── use_cases/             # UN caso de uso por archivo · 34 UC (lista abajo)
+│   ├── use_cases/             # UN caso de uso por archivo · 36 UC (lista abajo)
 │   ├── interfaces.py          # Puertos técnicos y proyecciones de lectura de aplicación
 │   ├── dto.py                 # @dataclass(frozen=True) de entrada/salida entre capas
 │   └── token_issuer.py        # Helper issue_token_pair(tokens, user_id)  (NO es una clase)
@@ -32,7 +32,7 @@ app/
 └── api/                     # Capa HTTP (FastAPI).
     ├── deps.py                # Inyección: ÚNICO cableo infra→app (factories get_*, *Dep)
     ├── errors.py              # DomainError → HTTP (map _STATUS_MAP, sin HTTPException disperso)
-    ├── main.py                # create_app(): CORS, handlers, routers con prefijo /api/v1, /health
+    ├── health.py              # Liveness, readiness y snapshot sanitario de outbox
     └── v1/
         ├── routers/            # auth, rides, drivers, saved_places
         ├── schemas/            # Pydantic v2 request/response (NO reusar entities)
@@ -125,7 +125,10 @@ REALTIME_OUTBOX_RECORDING_ENABLED (false por defecto),
 REALTIME_OUTBOX_POLL_INTERVAL_SECONDS (1),
 REALTIME_OUTBOX_RETRY_BASE_SECONDS (1),
 REALTIME_OUTBOX_RETRY_MAX_SECONDS (60),
-REALTIME_OUTBOX_SHUTDOWN_TIMEOUT_SECONDS (5)
+REALTIME_OUTBOX_SHUTDOWN_TIMEOUT_SECONDS (5),
+REALTIME_OUTBOX_PUBLISHED_RETENTION_DAYS (0, desactivada),
+REALTIME_OUTBOX_RETENTION_INTERVAL_SECONDS (3600),
+REALTIME_OUTBOX_RETENTION_BATCH_LIMIT (100)
 ```
 
 Accede a la config con `get_settings()` (cacheado con `@lru_cache`); **no leas `os.environ` directo**.
@@ -135,7 +138,8 @@ El rollout de la outbox sigue obligatoriamente esta secuencia: `off+false` ->
 `shadow+false` -> `shadow+true` -> `live_local+true`. No uses `off+true` y no
 actives `live_local` sin drenar y revisar antes el backlog sombra. Antes de salir
 de `off` deben estar aplicadas `0018_realtime_outbox`,
-`0019_realtime_stream_versions` y `0020_realtime_outbox_quarantine`. `shadow`
+`0019_realtime_stream_versions`, `0020_realtime_outbox_quarantine` y
+`0021_realtime_outbox_batch_size`. `shadow`
 reclama, valida y marca batches, pero no los entrega. `live_local` pre-serializa
 el batch completo como envelopes v2, lo envía en orden al hub del proceso y solo
 después marca `published_at`; simultáneamente desactiva la entrega directa legacy
@@ -143,10 +147,28 @@ y usa los snapshots unificados v2. Una cuarentena live cierra con 1012 los
 sockets de sus streams después del commit para forzar otro snapshot.
 
 `live_local` es exclusivamente una vertical canary de **un solo worker API**.
-Con dos procesos, `SKIP LOCKED` repartiría batches entre hubs locales y perdería
-notificaciones para sockets del otro proceso. No escales workers/réplicas hasta
-incorporar el bridge Redis; este modo no implementa ni implica soporte
-multiworker. El valor predeterminado continúa siendo `off`.
+En PostgreSQL, `shadow` toma un advisory lock compartido y `live_local` uno
+exclusivo, ambos derivados de la base y sondeados por el dispatcher. Una mezcla
+de consumidores falla antes de reclamar eventos y perder la sesión propietaria
+detiene el loop. Esto impide el
+despliegue inseguro, pero no lo convierte en multiworker: con dos procesos,
+`SKIP LOCKED` repartiría batches entre hubs locales y perdería notificaciones
+para sockets del otro proceso. No escales workers/réplicas hasta incorporar el
+bridge Redis. SQLite solo omite esta exclusión en pruebas de un proceso. El valor
+predeterminado continúa siendo `off`.
+
+`GET /health` y `GET /health/live` son liveness sin dependencias. `GET
+/health/ready` comprueba PostgreSQL y que los workers habilitados continúen
+activos. `GET /health/realtime` expone únicamente agregados sanitizados de
+pendientes, reintentos, cuarentenas, edad y demora conservadora
+`created_at → published_at`; nunca incluye topics ni payloads.
+
+La retención de publicados es opt-in (`...RETENTION_DAYS=0` por defecto) y
+trabaja por batches completos, con una transacción y un chunk acotado por
+intervalo. No elimina
+cuarentenas ni contadores de agregado/stream. Antes de activarla se debe observar
+el backlog del entorno y elegir el TTL; `30` días es solo un ejemplo operativo,
+no un valor predeterminado.
 
 ## API (v1, prefijo `/api/v1`)
 
@@ -165,7 +187,7 @@ multiworker. El valor predeterminado continúa siendo `off`.
 
 Rutas protegidas: usan `CurrentUserDep` (header `Authorization: Bearer <access_token>`).
 
-### Casos de uso (34)
+### Casos de uso (36)
 
 `register_user`, `authenticate_user`, `authenticate_with_oauth`, `refresh_token`,
 `create_ride_request`, `announce_open_ride`, `list_recent_destinations`, `list_open_rides`, `dismiss_open_ride`,
@@ -176,6 +198,9 @@ Rutas protegidas: usan `CurrentUserDep` (header `Authorization: Bearer <access_t
 `rate_ride`, `skip_ride_rating`, `set_driver_online`, `get_driver_active_ride`,
 `get_driver_earnings`, `list_saved_places`, `create_saved_place`, `update_saved_place`,
 `delete_saved_place`.
+
+Operación de outbox: `get_realtime_outbox_operational_snapshot` y
+`purge_published_realtime_outbox`.
 
 ## Modelo de negociación (el pasajero decide)
 
@@ -264,8 +289,8 @@ cerrar la app o perder ambos canales durante toda la gracia cancela la búsqueda
 ## Migraciones (Alembic)
 
 - Config: `alembic.ini` + `migrations/env.py` (engine **async** con `async_engine_from_config`).
-- **20 migraciones** en `migrations/versions/` (`0001_create_users` …
-  `0020_realtime_outbox_quarantine`).
+- **21 migraciones** en `migrations/versions/` (`0001_create_users` …
+  `0021_realtime_outbox_batch_size`).
 - Importante: los enums se persisten por **valor** minúsculo vía `values_callable=_enum_values`
   en `infrastructure/db/models.py` (migración `0006_normalize_enum_values`). No rompas esa convención
   o se caerán columnas existentes.

@@ -3,7 +3,17 @@ import test from 'node:test';
 
 import { QueryClient } from '@tanstack/react-query';
 
-import { useDriverRequests } from '../src/features/driver/application/useDriverRequests.ts';
+import {
+  MAX_DRIVER_POOL_CYCLES,
+  reduceDriverPoolEvent,
+  useDriverRequests,
+} from '../src/features/driver/application/useDriverRequests.ts';
+import {
+  flattenOpenRides,
+  openRidesSnapshot,
+  removeOpenRide,
+  versionedOpenRidesSnapshot,
+} from '../src/features/rides/application/openRidesCache.ts';
 import { reducePassengerOffers } from '../src/features/rides/application/passengerOffersReducer.ts';
 import {
   applyRideMutationResult,
@@ -74,6 +84,41 @@ function sentOffer(id, price = 20) {
 function applySentOffer(store, rideId, offer, rideFare) {
   const attemptToken = store.beginOfferAttempt(rideId);
   return store.markOffered(rideId, offer, rideFare, attemptToken);
+}
+
+function openRide(id, poolVersion, fare = 20) {
+  const place = {
+    coordinates: { latitude: -16.5, longitude: -68.15 },
+    name: 'Lugar',
+    address: 'Dirección',
+    countryCode: 'BO',
+  };
+  return {
+    id,
+    service: 'taxi',
+    payment: 'cash',
+    fare,
+    origin: place,
+    destination: place,
+    rider: {
+      id: `rider-${id}`,
+      fullName: 'Pasajero',
+      rating: 4.9,
+      tripsCompleted: 10,
+    },
+    poolVersion,
+    createdAt: '2026-07-18T12:00:00Z',
+  };
+}
+
+function reducePool(events) {
+  let projection = new Map();
+  let reduction = null;
+  for (const event of events) {
+    reduction = reduceDriverPoolEvent(projection, event);
+    projection = reduction.projection;
+  }
+  return { projection, reduction };
 }
 
 test('el snapshot reemplaza las ofertas anteriores', () => {
@@ -547,9 +592,10 @@ test('el snapshot PENDING corrige una expiración local por reloj adelantado', (
 test('una pausa de snapshot invalida el HTTP incluso después de reanudar', () => {
   const store = useDriverRequests.getState();
   store.reset();
+  store.applyPoolEvent({ rideId: 'ride-1', poolVersion: 1, phase: 'open' });
   const oldAttempt = store.beginOfferAttempt('ride-1');
   store.markPaused('ride-1');
-  store.clearPaused('ride-1');
+  store.applyPoolEvent({ rideId: 'ride-1', poolVersion: 2, phase: 'open' });
 
   assert.equal(
     store.markOffered('ride-1', sentOffer('offer-old'), undefined, oldAttempt),
@@ -620,4 +666,246 @@ test('los guards históricos mantienen una retención acotada', () => {
   assert.equal(useDriverRequests.getState().settledOfferIds.has('offer-0'), false);
   assert.equal(useDriverRequests.getState().settledOfferIds.has('offer-519'), true);
   store.reset();
+});
+
+test('close y pause de la misma versión convergen sin importar el orden', () => {
+  const opened = { rideId: 'ride-1', poolVersion: 1, phase: 'open' };
+  const closedForPause = { rideId: 'ride-1', poolVersion: 1, phase: 'closed' };
+  const paused = { rideId: 'ride-1', poolVersion: 1, phase: 'paused' };
+
+  const closeFirst = reducePool([opened, closedForPause, paused]);
+  const pauseFirst = reducePool([opened, paused, closedForPause]);
+
+  assert.deepEqual(closeFirst.projection.get('ride-1'), {
+    poolVersion: 1,
+    phase: 'paused',
+  });
+  assert.deepEqual(pauseFirst.projection.get('ride-1'), {
+    poolVersion: 1,
+    phase: 'paused',
+  });
+  assert.equal(pauseFirst.reduction.kind, 'superseded');
+});
+
+test('un cierre terminal domina una pausa de la misma versión', () => {
+  const opened = { rideId: 'ride-1', poolVersion: 1, phase: 'open' };
+  const paused = { rideId: 'ride-1', poolVersion: 1, phase: 'paused' };
+  const terminal = { rideId: 'ride-1', poolVersion: 1, phase: 'terminal' };
+
+  for (const events of [
+    [opened, paused, terminal],
+    [opened, terminal, paused],
+  ]) {
+    assert.deepEqual(reducePool(events).projection.get('ride-1'), {
+      poolVersion: 1,
+      phase: 'terminal',
+    });
+  }
+});
+
+test('un created duplicado no reabre un ciclo cerrado', () => {
+  const result = reducePool([
+    { rideId: 'ride-1', poolVersion: 1, phase: 'open' },
+    { rideId: 'ride-1', poolVersion: 1, phase: 'closed' },
+    { rideId: 'ride-1', poolVersion: 1, phase: 'open' },
+  ]);
+
+  assert.deepEqual(result.projection.get('ride-1'), {
+    poolVersion: 1,
+    phase: 'closed',
+  });
+  assert.equal(result.reduction.kind, 'superseded');
+  assert.equal(result.reduction.acceptsPayload, false);
+});
+
+test('cierres y pausas atrasados no degradan una publicación nueva', () => {
+  for (const phase of ['closed', 'paused', 'terminal']) {
+    const result = reducePool([
+      { rideId: 'ride-1', poolVersion: 1, phase: 'open' },
+      { rideId: 'ride-1', poolVersion: 2, phase: 'open' },
+      { rideId: 'ride-1', poolVersion: 1, phase },
+    ]);
+
+    assert.deepEqual(result.projection.get('ride-1'), {
+      poolVersion: 2,
+      phase: 'open',
+    });
+    assert.equal(result.reduction.kind, 'stale');
+    assert.equal(result.reduction.applied, false);
+  }
+});
+
+test('solo una versión abierta mayor limpia desenlaces del conductor', () => {
+  const store = useDriverRequests.getState();
+  store.reset();
+
+  for (const rideId of ['rejected', 'expired', 'paused']) {
+    store.applyPoolEvent({ rideId, poolVersion: 1, phase: 'open' });
+  }
+  store.markRejected('rejected', 'offer-rejected');
+  store.markExpired('expired', 'offer-expired');
+  store.applyPoolEvent({ rideId: 'paused', poolVersion: 1, phase: 'paused' });
+  store.markPaused('paused', 'offer-paused');
+  store.dismiss('rejected', 1);
+
+  const duplicate = store.applyPoolEvent({
+    rideId: 'rejected',
+    poolVersion: 1,
+    phase: 'open',
+  });
+  assert.equal(duplicate.clearsOutcomes, false);
+  assert.equal(duplicate.acceptsPayload, true);
+  assert.equal(useDriverRequests.getState().rejected.has('rejected'), true);
+  assert.equal(useDriverRequests.getState().dismissed.has('rejected'), true);
+
+  const stalePausedOpen = store.applyPoolEvent({
+    rideId: 'paused',
+    poolVersion: 1,
+    phase: 'open',
+  });
+  assert.equal(stalePausedOpen.acceptsPayload, false);
+  assert.equal(useDriverRequests.getState().paused.has('paused'), true);
+
+  for (const rideId of ['rejected', 'expired', 'paused']) {
+    assert.equal(
+      store.applyPoolEvent({ rideId, poolVersion: 2, phase: 'open' })
+        .clearsOutcomes,
+      true,
+    );
+  }
+  const state = useDriverRequests.getState();
+  assert.equal(state.rejected.has('rejected'), false);
+  assert.equal(state.expired.has('expired'), false);
+  assert.equal(state.paused.has('paused'), false);
+  assert.equal(state.dismissed.has('rejected'), false);
+  store.reset();
+});
+
+test('solo un close aplicado retira la oferta e invalida su intento', () => {
+  const store = useDriverRequests.getState();
+  store.reset();
+  store.applyPoolEvent({ rideId: 'ride-1', poolVersion: 2, phase: 'open' });
+  applySentOffer(store, 'ride-1', sentOffer('offer-1'));
+  const tokenBeforeClose = useDriverRequests.getState().offerAttemptTokens.get('ride-1');
+
+  const stale = store.applyPoolEvent({
+    rideId: 'ride-1',
+    poolVersion: 1,
+    phase: 'closed',
+  });
+  if (stale.applied) store.withdrawOffered(['ride-1']);
+  assert.equal(stale.applied, false);
+  assert.equal(useDriverRequests.getState().offered['ride-1'].offerId, 'offer-1');
+  assert.equal(
+    useDriverRequests.getState().offerAttemptTokens.get('ride-1'),
+    tokenBeforeClose,
+  );
+
+  const terminal = store.applyPoolEvent({
+    rideId: 'ride-1',
+    poolVersion: 2,
+    phase: 'terminal',
+  });
+  if (terminal.applied) store.withdrawOffered(['ride-1']);
+  assert.equal(terminal.applied, true);
+  assert.equal(useDriverRequests.getState().offered['ride-1'], undefined);
+  assert.notEqual(
+    useDriverRequests.getState().offerAttemptTokens.get('ride-1'),
+    tokenBeforeClose,
+  );
+  const tokenAfterClose = useDriverRequests.getState().offerAttemptTokens.get('ride-1');
+  const duplicate = store.applyPoolEvent({
+    rideId: 'ride-1',
+    poolVersion: 2,
+    phase: 'terminal',
+  });
+  if (duplicate.applied) store.withdrawOffered(['ride-1']);
+  assert.equal(duplicate.applied, false);
+  assert.equal(
+    useDriverRequests.getState().offerAttemptTokens.get('ride-1'),
+    tokenAfterClose,
+  );
+  store.reset();
+});
+
+test('terminal elimina una tarjeta pausada y una pausa tardía no la revive', () => {
+  const store = useDriverRequests.getState();
+  store.reset();
+  const ride = openRide('ride-1', 1);
+  let cache = openRidesSnapshot({ items: [ride], nextCursor: null });
+  store.applyPoolEvent({ rideId: ride.id, poolVersion: 1, phase: 'open' });
+  const paused = store.applyPoolEvent({
+    rideId: ride.id,
+    poolVersion: 1,
+    phase: 'paused',
+  });
+  if (paused.applied) store.markPaused(ride.id, 'offer-1');
+
+  const terminal = store.applyPoolEvent({
+    rideId: ride.id,
+    poolVersion: 1,
+    phase: 'terminal',
+  });
+  if (terminal.applied) {
+    cache = removeOpenRide(cache, ride.id);
+    store.withdrawOffered([ride.id]);
+  }
+  assert.deepEqual(flattenOpenRides(cache), []);
+  assert.equal(useDriverRequests.getState().paused.has(ride.id), false);
+
+  const delayedPause = store.applyPoolEvent({
+    rideId: ride.id,
+    poolVersion: 1,
+    phase: 'paused',
+  });
+  if (delayedPause.applied) store.markPaused(ride.id, 'offer-1');
+  assert.equal(delayedPause.acceptsPayload, false);
+  assert.deepEqual(flattenOpenRides(cache), []);
+  assert.equal(useDriverRequests.getState().paused.has(ride.id), false);
+  store.reset();
+});
+
+test('el snapshot conserva un objeto local más nuevo aunque esté en otra página', () => {
+  const local = openRide('ride-1', 2, 30);
+  const stale = openRide('ride-1', 1, 20);
+  const current = {
+    pages: [
+      { items: [openRide('other', 1)], nextCursor: 'cursor-2' },
+      { items: [local], nextCursor: null },
+    ],
+    pageParams: [null, 'cursor-2'],
+  };
+  const reconciled = versionedOpenRidesSnapshot(
+    current,
+    { items: [stale], nextCursor: null },
+    new Set(['ride-1']),
+  );
+
+  assert.deepEqual(flattenOpenRides(reconciled), [local]);
+});
+
+test('la proyección del pool conserva una retención acotada y reiniciable', () => {
+  const store = useDriverRequests.getState();
+  store.reset();
+  for (let index = 0; index < MAX_DRIVER_POOL_CYCLES + 8; index += 1) {
+    store.applyPoolEvent({
+      rideId: `pool-${index}`,
+      poolVersion: 1,
+      phase: 'open',
+    });
+  }
+
+  assert.equal(
+    useDriverRequests.getState().poolProjection.size,
+    MAX_DRIVER_POOL_CYCLES,
+  );
+  assert.equal(useDriverRequests.getState().poolProjection.has('pool-0'), false);
+  assert.equal(
+    useDriverRequests.getState().poolProjection.has(
+      `pool-${MAX_DRIVER_POOL_CYCLES + 7}`,
+    ),
+    true,
+  );
+  store.reset();
+  assert.equal(useDriverRequests.getState().poolProjection.size, 0);
 });

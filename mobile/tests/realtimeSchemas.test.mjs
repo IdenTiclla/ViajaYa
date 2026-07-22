@@ -139,7 +139,10 @@ test('conserva los mensajes legacy de pasajero y conductor tras el refactor', ()
     { type: 'paused_rides_snapshot', data: [openRide()] },
     { type: 'driver_offers_snapshot', data: [offer()] },
     { type: 'ride_created', data: openRide() },
-    { type: 'ride_closed', data: { ride_id: rideId } },
+    {
+      type: 'ride_closed',
+      data: { ride_id: rideId, pool_version: 1, reason: 'terminal' },
+    },
     { type: 'ride_paused', data: { ...openRide(), offer_id: offerId } },
     { type: 'offer_accepted', data: ride() },
     { type: 'offer_expired', data: expired },
@@ -164,6 +167,32 @@ test('conserva los mensajes legacy de pasajero y conductor tras el refactor', ()
     ),
     true,
   );
+});
+
+test('ride_closed legacy tolera temporalmente los campos versionados ausentes', () => {
+  const result = driverRealtimeMessageParser.safeParse({
+    type: 'ride_closed',
+    data: { ride_id: rideId },
+  });
+
+  assert.equal(result.success, true);
+});
+
+test('ride_closed v2 exige pool_version y reason aunque legacy los permita omitir', () => {
+  const metadata = eventMetadata({ stream: 'pool:taxi' });
+  const missingMetadata = driverRealtimeMessageParser.safeParse({
+    ...metadata,
+    type: 'ride_closed',
+    data: { ride_id: rideId },
+  });
+  const complete = driverRealtimeMessageParser.safeParse({
+    ...metadata,
+    type: 'ride_closed',
+    data: { ride_id: rideId, pool_version: 2, reason: 'paused' },
+  });
+
+  assert.equal(missingMetadata.success, false);
+  assert.equal(complete.success, true);
 });
 
 test('acepta un evento v2 completo y conserva sus campos wire', () => {

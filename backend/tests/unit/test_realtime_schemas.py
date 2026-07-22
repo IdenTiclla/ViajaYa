@@ -140,7 +140,13 @@ def _all_messages() -> list[NegotiationMessage]:
         DriverOffersSnapshotMessage(data=[offer]),
         DriverActiveRideMessage(data=ride),
         RideCreatedMessage(data=open_ride),
-        RideClosedMessage(data=RideClosedData(ride_id=ride_id)),
+        RideClosedMessage(
+            data=RideClosedData(
+                ride_id=ride_id,
+                pool_version=3,
+                reason="terminal",
+            )
+        ),
         RidePausedMessage(data=RidePausedData.from_open_ride(open_ride, offer_id)),
         OfferCreatedMessage(data=offer),
         OfferRejectedMessage(
@@ -185,6 +191,38 @@ def test_union_rejects_invalid_payload():
         parse_negotiation_message({"type": "ride_closed", "data": {}})
 
 
+@pytest.mark.parametrize("pool_version", [0, -1, 1.5, "2"])
+def test_ride_closed_requires_positive_integer_pool_version(
+    pool_version: object,
+) -> None:
+    with pytest.raises(ValidationError):
+        parse_negotiation_message(
+            {
+                "type": "ride_closed",
+                "data": {
+                    "ride_id": str(uuid.uuid4()),
+                    "pool_version": pool_version,
+                },
+            }
+        )
+
+
+def test_ride_closed_legacy_accepts_absent_generation_and_reason() -> None:
+    ride_id = uuid.uuid4()
+
+    parsed = parse_negotiation_message(
+        {
+            "type": "ride_closed",
+            "data": {"ride_id": str(ride_id)},
+        }
+    )
+
+    assert dump_negotiation_message(parsed) == {
+        "type": "ride_closed",
+        "data": {"ride_id": str(ride_id)},
+    }
+
+
 @pytest.mark.parametrize(
     ("message_type", "data"),
     [
@@ -207,6 +245,14 @@ def test_union_rejects_invalid_payload():
             "offers_withdrawn",
             {
                 "ride_ids": [str(uuid.uuid4())],
+                "reason": "unknown",
+            },
+        ),
+        (
+            "ride_closed",
+            {
+                "ride_id": str(uuid.uuid4()),
+                "pool_version": 1,
                 "reason": "unknown",
             },
         ),
@@ -257,7 +303,11 @@ def test_event_envelope_v2_is_strict_and_validates_type_data() -> None:
         stream_version=8,
         occurred_at=now,
         type="ride_closed",
-        data={"ride_id": str(ride_id)},
+        data={
+            "ride_id": str(ride_id),
+            "pool_version": 4,
+            "reason": "terminal",
+        },
     )
 
     dumped = envelope.model_dump(mode="json")
@@ -276,6 +326,16 @@ def test_event_envelope_v2_is_strict_and_validates_type_data() -> None:
         RealtimeEventEnvelopeV2.model_validate(
             dumped | {"occurred_at": datetime.now(), "stream": "pool:bicicleta"}
         )
+    for missing_field in ("pool_version", "reason"):
+        incomplete_data = {
+            key: value
+            for key, value in dumped["data"].items()
+            if key != missing_field
+        }
+        with pytest.raises(ValidationError, match="requiere"):
+            RealtimeEventEnvelopeV2.model_validate(
+                dumped | {"data": incomplete_data}
+            )
 
 
 def test_event_envelope_v2_correlates_aggregate_stream_and_payload() -> None:

@@ -14,6 +14,30 @@ export function openRidesSnapshot(
   };
 }
 
+/**
+ * Reemplaza el snapshot sin degradar los rides cuyo `poolVersion` local es más
+ * nuevo (o cuya fase local ya cerró/pausó esa misma versión).
+ */
+export function versionedOpenRidesSnapshot(
+  data: OpenRidesInfiniteData | undefined,
+  page: CursorPage<OpenRide>,
+  preserveRideIds: ReadonlySet<string>,
+): OpenRidesInfiniteData {
+  if (preserveRideIds.size === 0) return openRidesSnapshot(page);
+
+  const currentById = new Map(
+    flattenOpenRides(data).map((ride) => [ride.id, ride]),
+  );
+  return openRidesSnapshot({
+    ...page,
+    items: page.items.flatMap((ride) => {
+      if (!preserveRideIds.has(ride.id)) return [ride];
+      const current = currentById.get(ride.id);
+      return current ? [current] : [];
+    }),
+  });
+}
+
 export function emptyOpenRides(): OpenRidesInfiniteData {
   return openRidesSnapshot({ items: [], nextCursor: null });
 }

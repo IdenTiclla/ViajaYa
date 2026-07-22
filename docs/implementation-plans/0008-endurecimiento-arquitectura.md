@@ -445,10 +445,15 @@ Dispatcher sombra, sin Redis ni cambios de contrato/mobile:
   personal: el cierre del pool solo retira la oferta visible y preserva los
   tombstones/estados que llegan por el stream conductor en cualquier orden.
 
-También antes de `live`, la proyección mobile debe ignorar `ride_created`
-duplicados o atrasados sin limpiar desenlaces locales y proteger el cruce
-`ride_closed` del pool anterior contra `ride_created` de un servicio nuevo. Los
-streams conservan orden individual, no orden relativo entre pools distintos.
+- [x] Versionar el ciclo legacy del pool antes de `live`: cada reapertura avanza
+  `pool_version` aunque no cambien campos visibles; `ride_closed` añade la
+  generación y `reason=paused|terminal`. La proyección mobile acotada ignora
+  `ride_created`/cierres duplicados o atrasados, conserva desenlaces de la misma
+  generación y hace conmutar pausa, cierre terminal y cambio de servicio entre
+  streams. Legacy tolera temporalmente los campos ausentes, mientras v2 los
+  exige para no debilitar su garantía. El rollout de este contrato despliega
+  primero backend y después mobile: un productor legacy sin esos campos solo
+  admite el fallback best-effort anterior.
 
 - [x] Hacer que el consumidor conductor de `offer_expired` compare `offer_id`:
   un evento de una oferta anterior ya no vence la nueva del mismo ride y un

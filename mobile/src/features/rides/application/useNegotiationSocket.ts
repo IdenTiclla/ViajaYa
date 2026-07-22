@@ -17,10 +17,10 @@ import { useDriverToasts } from '@/features/driver/application/useDriverToasts';
 import {
   flattenOpenRides,
   type OpenRidesInfiniteData,
-  openRidesSnapshot,
   prependPausedOpenRides,
   removeOpenRide,
   upsertOpenRide,
+  versionedOpenRidesSnapshot,
 } from '@/features/rides/application/openRidesCache';
 import {
   DRIVER_ACTIVE_RIDE_KEY,
@@ -46,7 +46,7 @@ import {
   driverSocketMessageSchema,
   passengerSocketMessageSchema,
 } from '@/features/rides/data/realtimeSchemas';
-import type { Offer, Ride } from '@/features/rides/domain/types';
+import type { Offer, OpenRide, Ride } from '@/features/rides/domain/types';
 
 /** Pasajero: recibe en vivo las ofertas y los cambios de estado de su viaje. */
 export function useNegotiationSocket(rideId: string | null, enabled = true): void {
@@ -224,35 +224,34 @@ export function useDriverPoolSocket(enabled = true): void {
 
     const handle = openSocket('/ws/driver', async (msg) => {
       switch (msg.type) {
-        case 'open_rides_snapshot':
-          // Al volver de segundo plano el conductor puede perder el
-          // `ride_created` que anuncia una renovación de la solicitud. Solo
-          // borramos el aviso de expiración si la tarifa actual es mayor que la
-          // que el pasajero ofrecía cuando el conductor envió esa propuesta.
+        case 'open_rides_snapshot': {
+          // El snapshot es autoritativo para el contenido de este corte/página,
+          // pero la ausencia no se interpreta como cierre: el pool es paginado.
+          // Además, un item no degrada una versión local más nueva.
           const openRidesPage = toOpenRidePage(msg.data);
           const openRides = openRidesPage.items;
+          const driverRequests = useDriverRequests.getState();
+          const preserveRideIds = new Set<string>();
+          for (const ride of openRides) {
+            const reduction = driverRequests.applyPoolEvent({
+              rideId: ride.id,
+              poolVersion: ride.poolVersion,
+              phase: 'open',
+            });
+            if (!reduction.acceptsPayload) preserveRideIds.add(ride.id);
+          }
           await writeRealtimeQueryData<OpenRidesInfiniteData>(
             queryClient,
             ['open-rides'],
-            openRidesSnapshot(openRidesPage),
+            (prev) =>
+              versionedOpenRidesSnapshot(
+                prev,
+                openRidesPage,
+                preserveRideIds,
+              ),
           );
-          const driverRequests = useDriverRequests.getState();
-          for (const ride of openRides) {
-            // Una solicitud presente en el pool ya terminó de editarse. Esto
-            // recupera el `ride_created` que pudo perderse mientras el
-            // conductor estaba en segundo plano.
-            driverRequests.clearPaused(ride.id);
-            // El servidor solo incluye la solicitud si no fue ocultada en
-            // esta versión; al aparecer aquí, cualquier descarte local es de
-            // una versión anterior.
-            driverRequests.clearDismissedBefore(ride.id, ride.poolVersion);
-            const expiredFare = driverRequests.expiredFares[ride.id];
-            if (expiredFare != null && ride.fare > expiredFare) {
-              driverRequests.clearExpired(ride.id);
-              driverRequests.clearRejected(ride.id);
-            }
-          }
           break;
+        }
         case 'driver_offers_snapshot': {
           const offers = (msg.data as OfferDto[]).map(toOffer);
           // El handshake entrega primero las solicitudes (abiertas y pausadas),
@@ -288,43 +287,66 @@ export function useDriverPoolSocket(enabled = true): void {
           // Recupera el aviso que habría llegado como `ride_paused` si el
           // conductor estaba fuera de la app durante la edición.
           const pausedRides = msg.data.map(toOpenRide);
+          const acceptedPausedRides: OpenRide[] = [];
+          const driverRequests = useDriverRequests.getState();
+          for (const ride of pausedRides) {
+            const reduction = driverRequests.applyPoolEvent({
+              rideId: ride.id,
+              poolVersion: ride.poolVersion,
+              phase: 'paused',
+            });
+            if (reduction.acceptsPayload) acceptedPausedRides.push(ride);
+            if (reduction.applied) driverRequests.markPaused(ride.id);
+          }
           await writeRealtimeQueryData<OpenRidesInfiniteData>(
             queryClient,
             ['open-rides'],
-            (prev) => prependPausedOpenRides(prev, pausedRides),
+            (prev) => prependPausedOpenRides(prev, acceptedPausedRides),
           );
-          for (const ride of pausedRides) {
-            useDriverRequests.getState().markPaused(ride.id);
-          }
           break;
         }
         case 'ride_created': {
-          // Upsert: una solicitud nueva se antepone; una ya conocida se
-          // reemplaza (p. ej. el pasajero aumentó su oferta → nuevo monto, o
-          // terminó de modificarla y volvió al pool). En ese segundo caso hay que
-          // resetear el estado local del conductor sobre esa tarjeta, porque los
-          // desenlaces previos caducan al renovarse la solicitud:
-          // - `paused`: deja de mostrar "El pasajero está modificando su solicitud".
-          // - `dismissed`: si la había descartado, la oferta renovada reaparece.
-          // - `expired`/`rejected`: la oferta PREVIA del conductor (que venció o fue
-          //   rechazada) ya no aplica al nuevo contexto (monto mayor o datos
-          //   cambiados); sin esto, la tarjeta seguiría mostrando "Tu oferta expiró"
-          //   / "Tu oferta fue rechazada" sobre un precio que el conductor nunca
-          //   ofertó. No se toca `offered` (oferta viva) ni `taken`.
           const ride = toOpenRide(msg.data);
+          const reduction = useDriverRequests.getState().applyPoolEvent({
+            rideId: ride.id,
+            poolVersion: ride.poolVersion,
+            phase: 'open',
+          });
+          // Un duplicado abierto puede refrescar datos públicos sin limpiar
+          // desenlaces. Uno atrasado o la misma versión ya cerrada/pausada no
+          // puede revivir la tarjeta.
+          if (!reduction.acceptsPayload) break;
           await writeRealtimeQueryData<OpenRidesInfiniteData>(
             queryClient,
             ['open-rides'],
             (prev) => upsertOpenRide(prev, ride),
           );
-          useDriverRequests.getState().clearPaused(ride.id);
-          useDriverRequests.getState().clearDismissedBefore(ride.id, ride.poolVersion);
-          useDriverRequests.getState().clearExpired(ride.id);
-          useDriverRequests.getState().clearRejected(ride.id);
           break;
         }
         case 'ride_closed': {
-          const { ride_id: rideId } = msg.data;
+          const {
+            ride_id: rideId,
+            pool_version: poolVersion,
+            reason,
+          } = msg.data;
+          // Compatibilidad temporal con productores legacy. Sin ambos campos no
+          // hay forma segura de ordenar el cierre, por lo que conserva el
+          // comportamiento best-effort anterior hasta completar el despliegue.
+          if (poolVersion == null || reason == null) {
+            await writeRealtimeQueryData<OpenRidesInfiniteData>(
+              queryClient,
+              ['open-rides'],
+              (prev) => removeOpenRide(prev, rideId),
+            );
+            useDriverRequests.getState().withdrawOffered([rideId]);
+            break;
+          }
+          const reduction = useDriverRequests.getState().applyPoolEvent({
+            rideId,
+            poolVersion,
+            phase: reason === 'terminal' ? 'terminal' : 'closed',
+          });
+          if (!reduction.applied) break;
           await writeRealtimeQueryData<OpenRidesInfiniteData>(
             queryClient,
             ['open-rides'],
@@ -344,14 +366,19 @@ export function useDriverPoolSocket(enabled = true): void {
           // `offer_rejected(ride_paused)` que no traía los datos y, combinado con
           // el ride_closed, hacía desaparecer la tarjeta durante la edición.
           const ride = toOpenRide(msg.data);
+          const driverRequests = useDriverRequests.getState();
+          const reduction = driverRequests.applyPoolEvent({
+            rideId: ride.id,
+            poolVersion: ride.poolVersion,
+            phase: 'paused',
+          });
+          if (!reduction.applied) break;
           await writeRealtimeQueryData<OpenRidesInfiniteData>(
             queryClient,
             ['open-rides'],
             (prev) => prependPausedOpenRides(prev, [ride]),
           );
-          const applied = useDriverRequests
-            .getState()
-            .markPaused(ride.id, msg.data.offer_id);
+          const applied = driverRequests.markPaused(ride.id, msg.data.offer_id);
           if (applied) {
             useDriverToasts.getState().push({
               kind: 'paused',

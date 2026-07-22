@@ -27,6 +27,7 @@ from app.api.v1.schemas.realtime import (
     OfferWithdrawnReason,
     RideClosedData,
     RideClosedMessage,
+    RideClosedReason,
     RideCreatedMessage,
     RidePausedData,
     RidePausedMessage,
@@ -143,7 +144,13 @@ def build_accept_offer_events(result: AcceptOfferResult) -> list[PendingRealtime
             topic=pool_topic(ride.service_type.value),
             aggregate_type="ride",
             aggregate_id=ride.id,
-            message=RideClosedMessage(data=RideClosedData(ride_id=ride.id)),
+            message=RideClosedMessage(
+                data=RideClosedData(
+                    ride_id=ride.id,
+                    pool_version=ride.pool_version,
+                    reason="terminal",
+                )
+            ),
         ),
     ]
     pending.extend(
@@ -211,7 +218,13 @@ def build_pause_ride_events(result: RidePausedResult) -> list[PendingRealtimeEve
             topic=pool_topic(ride.service_type.value),
             aggregate_type="ride",
             aggregate_id=ride.id,
-            message=RideClosedMessage(data=RideClosedData(ride_id=ride.id)),
+            message=RideClosedMessage(
+                data=RideClosedData(
+                    ride_id=ride.id,
+                    pool_version=ride.pool_version,
+                    reason="paused",
+                )
+            ),
         )
     ]
     for offer in sorted(result.paused_offers, key=lambda item: item.id.hex):
@@ -267,7 +280,13 @@ def build_cancel_ride_events(result: CancelRideResult) -> list[PendingRealtimeEv
             topic=pool_topic(ride.service_type.value),
             aggregate_type="ride",
             aggregate_id=ride.id,
-            message=RideClosedMessage(data=RideClosedData(ride_id=ride.id)),
+            message=RideClosedMessage(
+                data=RideClosedData(
+                    ride_id=ride.id,
+                    pool_version=ride.pool_version,
+                    reason="terminal",
+                )
+            ),
         )
     )
     for offer in sorted(result.cancelled_offers, key=lambda item: item.id.hex):
@@ -461,11 +480,22 @@ async def publish_ride_created(detail: OpenRideDetail) -> None:
     await _broadcast_pending(build_announce_open_ride_events(detail))
 
 
-async def publish_ride_closed(ride_id: uuid.UUID, service_type: ServiceType) -> None:
+async def publish_ride_closed(
+    ride_id: uuid.UUID,
+    service_type: ServiceType,
+    pool_version: int,
+    reason: RideClosedReason,
+) -> None:
     """La solicitud deja de estar abierta (asignada/cancelada): sale del pool."""
     await _broadcast(
         pool_topic(service_type.value),
-        RideClosedMessage(data=RideClosedData(ride_id=ride_id)),
+        RideClosedMessage(
+            data=RideClosedData(
+                ride_id=ride_id,
+                pool_version=pool_version,
+                reason=reason,
+            )
+        ),
     )
 
 

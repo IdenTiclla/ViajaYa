@@ -428,6 +428,21 @@ async def test_edit_ride_updates_fields_and_unpauses():
     assert [r.id for r in open_rides] == [ride.id]
 
 
+async def test_edit_ride_advances_pool_version_even_without_visible_changes():
+    rides = InMemoryRideRequestRepository()
+    rider = _rider()
+    ride = await create_ride_request_use_case(rides).execute(rider, _input())
+    await pause_ride_use_case(rides, InMemoryOfferRepository(rides=rides)).execute(
+        rider,
+        ride.id,
+    )
+
+    reopened = (await edit_ride_use_case(rides).execute(rider, ride.id, _input())).ride
+
+    assert reopened.paused is False
+    assert reopened.pool_version == ride.pool_version + 1
+
+
 async def test_edit_ride_requires_paused():
     rides = InMemoryRideRequestRepository()
     rider = _rider()

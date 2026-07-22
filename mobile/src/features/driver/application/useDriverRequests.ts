@@ -35,6 +35,149 @@ const MAX_SETTLED_OFFERS = 512;
 const MAX_TERMINAL_RIDES = 256;
 const MAX_OFFER_ATTEMPTS = 512;
 
+export type DriverPoolPhase = 'open' | 'closed' | 'paused' | 'terminal';
+
+export type DriverPoolCycle = {
+  poolVersion: number;
+  phase: DriverPoolPhase;
+};
+
+export type DriverPoolProjection = Map<string, DriverPoolCycle>;
+
+export type DriverPoolEvent = {
+  rideId: string;
+  poolVersion: number;
+  phase: DriverPoolPhase;
+};
+
+export type DriverPoolReductionKind =
+  | 'initial'
+  | 'renewed'
+  | 'transition'
+  | 'duplicate'
+  | 'stale'
+  | 'superseded';
+
+export type DriverPoolReduction = {
+  projection: DriverPoolProjection;
+  kind: DriverPoolReductionKind;
+  /** El payload puede refrescar la caché sin implicar una transición nueva. */
+  acceptsPayload: boolean;
+  /** El evento puede mutar la caché y los estados visuales. */
+  applied: boolean;
+  /** Solo una publicación de versión estrictamente mayor limpia desenlaces. */
+  clearsOutcomes: boolean;
+};
+
+export const MAX_DRIVER_POOL_CYCLES = 512;
+
+const POOL_PHASE_PRECEDENCE: Record<DriverPoolPhase, number> = {
+  open: 0,
+  closed: 1,
+  paused: 2,
+  terminal: 3,
+};
+
+function rememberPoolCycle(
+  projection: DriverPoolProjection,
+  rideId: string,
+  cycle: DriverPoolCycle,
+): DriverPoolProjection {
+  const next = new Map(projection);
+  // El orden de inserción funciona como LRU sencillo para acotar tombstones.
+  next.delete(rideId);
+  next.set(rideId, cycle);
+  while (next.size > MAX_DRIVER_POOL_CYCLES) {
+    const oldest = next.keys().next().value;
+    if (oldest == null) break;
+    next.delete(oldest);
+  }
+  return next;
+}
+
+/**
+ * Reduce el ciclo visible de una solicitud dentro del pool del conductor.
+ *
+ * `poolVersion` separa publicaciones reales. Dentro de una misma versión las
+ * fases solo avanzan: un cierre puede anteceder a la notificación personal de
+ * pausa, pero un `ride_created` repetido no puede reabrir ninguna de las dos.
+ */
+export function reduceDriverPoolEvent(
+  projection: DriverPoolProjection,
+  event: DriverPoolEvent,
+): DriverPoolReduction {
+  const current = projection.get(event.rideId);
+  if (!current) {
+    return {
+      projection: rememberPoolCycle(projection, event.rideId, {
+        poolVersion: event.poolVersion,
+        phase: event.phase,
+      }),
+      kind: 'initial',
+      acceptsPayload: true,
+      applied: true,
+      clearsOutcomes: false,
+    };
+  }
+
+  if (event.poolVersion < current.poolVersion) {
+    return {
+      projection,
+      kind: 'stale',
+      acceptsPayload: false,
+      applied: false,
+      clearsOutcomes: false,
+    };
+  }
+
+  if (event.poolVersion > current.poolVersion) {
+    return {
+      projection: rememberPoolCycle(projection, event.rideId, {
+        poolVersion: event.poolVersion,
+        phase: event.phase,
+      }),
+      kind: event.phase === 'open' ? 'renewed' : 'transition',
+      acceptsPayload: true,
+      applied: true,
+      clearsOutcomes: event.phase === 'open',
+    };
+  }
+
+  if (event.phase === current.phase) {
+    return {
+      projection: rememberPoolCycle(projection, event.rideId, current),
+      kind: 'duplicate',
+      acceptsPayload: true,
+      applied: false,
+      clearsOutcomes: false,
+    };
+  }
+
+  if (
+    POOL_PHASE_PRECEDENCE[event.phase] <=
+    POOL_PHASE_PRECEDENCE[current.phase]
+  ) {
+    return {
+      projection: rememberPoolCycle(projection, event.rideId, current),
+      kind: 'superseded',
+      acceptsPayload: false,
+      applied: false,
+      clearsOutcomes: false,
+    };
+  }
+
+  return {
+    projection: rememberPoolCycle(projection, event.rideId, {
+      poolVersion: event.poolVersion,
+      phase: event.phase,
+    }),
+    kind: 'transition',
+    acceptsPayload: true,
+    applied: true,
+    clearsOutcomes: false,
+  };
+}
+
 function addBounded(set: Set<string>, value: string, limit: number): Set<string> {
   const next = new Set(set);
   next.delete(value);
@@ -65,6 +208,8 @@ function advanceOfferAttempt(
 }
 
 type DriverRequestsState = {
+  /** Última versión/fase observada por ride; acota eventos atrasados del pool. */
+  poolProjection: DriverPoolProjection;
   /** Versión descartada de cada solicitud; evita revivirla por un WS repetido. */
   dismissed: Map<string, number>;
   offered: Record<string, SentOffer>;
@@ -85,6 +230,7 @@ type DriverRequestsState = {
   /** Token vigente de la última petición de oferta iniciada por ride. */
   offerAttemptTokens: Map<string, number>;
   offerAttemptSequence: number;
+  applyPoolEvent: (event: DriverPoolEvent) => DriverPoolReduction;
   dismiss: (rideId: string, poolVersion: number) => void;
   beginOfferAttempt: (rideId: string) => number;
   invalidateAllOfferAttempts: () => void;
@@ -117,14 +263,6 @@ type DriverRequestsState = {
   /** Retira únicamente las ofertas de los rides incluidos; devuelve cuántas quitó. */
   withdrawOffered: (rideIds: string[]) => number;
   markPaused: (rideId: string, offerId?: string) => boolean;
-  /** Saca una solicitud del set `paused` sin tocar el resto (al volver al pool). */
-  clearPaused: (rideId: string) => void;
-  /** Saca el descarte solo si el pasajero publicó una versión más nueva. */
-  clearDismissedBefore: (rideId: string, poolVersion: number) => void;
-  /** Saca una solicitud del set `expired` (la oferta previa caducó; el ride se renovó). */
-  clearExpired: (rideId: string) => void;
-  /** Saca una solicitud del set `rejected` (la oferta previa fue rechazada; el ride se renovó). */
-  clearRejected: (rideId: string) => void;
   getOffer: (rideId: string) => SentOffer | null;
   isDismissed: (rideId: string) => boolean;
   isOffered: (rideId: string) => boolean;
@@ -132,6 +270,7 @@ type DriverRequestsState = {
 };
 
 export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
+  poolProjection: new Map(),
   dismissed: new Map(),
   offered: {},
   rejected: new Set(),
@@ -143,6 +282,66 @@ export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
   terminalRideIds: new Set(),
   offerAttemptTokens: new Map(),
   offerAttemptSequence: 0,
+  applyPoolEvent: (event) => {
+    let result: DriverPoolReduction | null = null;
+    set((s) => {
+      const reduction = reduceDriverPoolEvent(s.poolProjection, event);
+      result = reduction;
+
+      let dismissed = s.dismissed;
+      if (event.phase === 'open') {
+        const dismissedVersion = dismissed.get(event.rideId);
+        if (dismissedVersion != null && dismissedVersion < event.poolVersion) {
+          dismissed = new Map(dismissed);
+          dismissed.delete(event.rideId);
+        }
+      }
+
+      if (!reduction.clearsOutcomes) {
+        if (
+          reduction.applied &&
+          event.phase === 'terminal' &&
+          s.paused.has(event.rideId)
+        ) {
+          const paused = new Set(s.paused);
+          paused.delete(event.rideId);
+          return {
+            poolProjection: reduction.projection,
+            dismissed,
+            paused,
+          };
+        }
+        if (
+          reduction.projection === s.poolProjection &&
+          dismissed === s.dismissed
+        ) {
+          return s;
+        }
+        return { poolProjection: reduction.projection, dismissed };
+      }
+
+      const rejected = new Set(s.rejected);
+      rejected.delete(event.rideId);
+      const expired = new Set(s.expired);
+      expired.delete(event.rideId);
+      const expiredFares = { ...s.expiredFares };
+      delete expiredFares[event.rideId];
+      const paused = new Set(s.paused);
+      paused.delete(event.rideId);
+      return {
+        poolProjection: reduction.projection,
+        dismissed,
+        rejected,
+        expired,
+        expiredFares,
+        paused,
+      };
+    });
+    if (!result) {
+      throw new Error('No se pudo reducir el evento del pool.');
+    }
+    return result;
+  },
   dismiss: (rideId, poolVersion) =>
     set((s) => ({ dismissed: new Map(s.dismissed).set(rideId, poolVersion) })),
   beginOfferAttempt: (rideId) => {
@@ -517,37 +716,6 @@ export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
     });
     return applied;
   },
-  clearPaused: (rideId) =>
-    set((s) => {
-      if (!s.paused.has(rideId)) return s;
-      const paused = new Set(s.paused);
-      paused.delete(rideId);
-      return { paused };
-    }),
-  clearDismissedBefore: (rideId, poolVersion) =>
-    set((s) => {
-      const dismissedVersion = s.dismissed.get(rideId);
-      if (dismissedVersion == null || dismissedVersion >= poolVersion) return s;
-      const dismissed = new Map(s.dismissed);
-      dismissed.delete(rideId);
-      return { dismissed };
-    }),
-  clearExpired: (rideId) =>
-    set((s) => {
-      if (!s.expired.has(rideId) && s.expiredFares[rideId] == null) return s;
-      const expired = new Set(s.expired);
-      expired.delete(rideId);
-      const expiredFares = { ...s.expiredFares };
-      delete expiredFares[rideId];
-      return { expired, expiredFares };
-    }),
-  clearRejected: (rideId) =>
-    set((s) => {
-      if (!s.rejected.has(rideId)) return s;
-      const rejected = new Set(s.rejected);
-      rejected.delete(rideId);
-      return { rejected };
-    }),
   getOffer: (rideId) => get().offered[rideId] ?? null,
   isDismissed: (rideId) => get().dismissed.has(rideId),
   // Hay oferta "en pie" si existe, no expiró (30 s) y no tuvo desenlace terminal.
@@ -564,6 +732,7 @@ export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
   },
   reset: () =>
     set({
+      poolProjection: new Map(),
       dismissed: new Map(),
       offered: {},
       rejected: new Set(),

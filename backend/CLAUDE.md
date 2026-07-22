@@ -223,6 +223,9 @@ offer_withdrawn, offer_accepted, offers_withdrawn (plural), offer_expired, ride_
 ```
 
 - `offers_withdrawn` (plural) → al conductor elegido: lista de `ride_ids` cuyas ofertas suyas se retiraron al ganar el viaje.
+- Todo productor actual de `ride_closed` incluye `pool_version` y
+  `reason=paused|terminal`. Ambos solo son opcionales al leer legacy histórico;
+  el envelope v2 los exige.
 - El polling del cliente queda **solo como respaldo lento**; la vía principal es el WS.
 - Crear/reemplazar/retirar/rechazar/vencer oferta, aceptar oferta, avanzar,
   cambiar disponibilidad, pausar, cancelar,

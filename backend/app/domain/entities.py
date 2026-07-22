@@ -181,8 +181,8 @@ class RideRequest:
     driver_id: uuid.UUID | None = None
     accepted_offer_id: uuid.UUID | None = None
     paused: bool = False
-    # Versión de los datos que el conductor evalúa antes de ofertar. Un cambio
-    # relevante vuelve a hacer visible una solicitud que había ocultado.
+    # Generación de la publicación que el conductor evalúa antes de ofertar.
+    # Avanza al cambiar la propuesta y en cada reapertura tras una pausa.
     pool_version: int = 1
     id: uuid.UUID = field(default_factory=uuid.uuid4)
     created_at: datetime | None = None

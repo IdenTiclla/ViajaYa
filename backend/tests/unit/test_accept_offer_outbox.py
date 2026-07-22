@@ -210,6 +210,11 @@ async def test_accept_builder_preserves_order_routing_aggregates_and_direct_payl
         ("ride", other_ride.id),
         ("ride", accepted_ride.id),
     ]
+    assert batch[1].payload["data"] == {
+        "ride_id": str(accepted_ride.id),
+        "pool_version": accepted_ride.pool_version,
+        "reason": "terminal",
+    }
     assert batch[3].payload["data"] == {"ride_ids": [str(other_ride.id)]}
     assert batch[4].payload["data"] == {"driver_id": str(winner.id)}
     assert batch[5].payload["data"] == {

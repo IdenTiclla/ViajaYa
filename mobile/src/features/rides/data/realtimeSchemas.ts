@@ -181,7 +181,12 @@ const rideCreatedMessageSchema = z.object({
 });
 const rideClosedMessageSchema = z.object({
   type: z.literal('ride_closed'),
-  data: z.object({ ride_id: uuidSchema }),
+  data: z.object({
+    ride_id: uuidSchema,
+    // Opcionales durante el despliegue; los productores nuevos siempre los emiten.
+    pool_version: z.number().int().positive().optional(),
+    reason: z.enum(['paused', 'terminal']).optional(),
+  }),
 });
 const ridePausedMessageSchema = z.object({
   type: z.literal('ride_paused'),
@@ -344,6 +349,22 @@ function validateVersionedEventSemantics(
       message: 'El servicio del payload no coincide con el pool.',
       path: ['stream'],
     });
+  }
+  if (event.type === 'ride_closed') {
+    if (data.pool_version === undefined) {
+      context.addIssue({
+        code: 'custom',
+        message: 'ride_closed v2 requiere pool_version.',
+        path: ['data', 'pool_version'],
+      });
+    }
+    if (data.reason === undefined) {
+      context.addIssue({
+        code: 'custom',
+        message: 'ride_closed v2 requiere reason.',
+        path: ['data', 'reason'],
+      });
+    }
   }
 }
 

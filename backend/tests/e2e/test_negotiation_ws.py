@@ -419,7 +419,11 @@ def test_driver_receives_offer_accepted_on_passenger_accept(ws_client: TestClien
             offer_accepted["type"],
             offers_withdrawn["type"],
         ] == ["ride_closed", "offer_accepted", "offers_withdrawn"]
-        assert closed["data"] == {"ride_id": ride["id"]}
+        assert closed["data"] == {
+            "ride_id": ride["id"],
+            "pool_version": 1,
+            "reason": "terminal",
+        }
         assert offer_accepted["data"]["id"] == ride["id"]
         assert offer_accepted["data"]["status"] == "accepted"
         assert offers_withdrawn["data"] == {"ride_ids": []}
@@ -735,7 +739,14 @@ def test_edit_reopens_ride_in_new_service_pool(ws_client: TestClient):
                 headers=_headers(rider_token),
             )
             assert paused.status_code == 200, paused.text
-            assert driver_ws.receive_json()["type"] == "ride_closed"
+            assert driver_ws.receive_json() == {
+                "type": "ride_closed",
+                "data": {
+                    "ride_id": ride["id"],
+                    "pool_version": 1,
+                    "reason": "paused",
+                },
+            }
 
             edited = ws_client.patch(
                 f"{RIDES}/{ride['id']}",
@@ -1103,6 +1114,11 @@ def test_driver_notified_when_passenger_cancels(ws_client: TestClient):
             "ride_closed",
             "offer_rejected",
         ]
+        assert received[1]["data"] == {
+            "ride_id": ride["id"],
+            "pool_version": 1,
+            "reason": "terminal",
+        }
         rejected = received[2]
         assert rejected["data"]["ride_id"] == ride["id"]
         assert rejected["data"]["offer_id"] is not None
@@ -1153,6 +1169,11 @@ def test_driver_receives_ride_paused_on_pause_edit(ws_client: TestClient):
             "ride_closed",
             "ride_paused",
         ]
+        assert driver_events[1]["data"] == {
+            "ride_id": ride["id"],
+            "pool_version": 1,
+            "reason": "paused",
+        }
         paused = driver_events[2]
         assert paused["data"]["id"] == ride["id"]
         assert paused["data"]["offer_id"] == offer["id"]

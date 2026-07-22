@@ -89,7 +89,11 @@ async def test_dispatch_once_consumes_sqlite_batch_without_calling_local_hub(
                     aggregate_id=ride_id,
                     payload={
                         "type": "ride_closed",
-                        "data": {"ride_id": str(ride_id)},
+                        "data": {
+                            "ride_id": str(ride_id),
+                            "pool_version": 1,
+                            "reason": "terminal",
+                        },
                     },
                 )
             ]

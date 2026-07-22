@@ -119,6 +119,11 @@ async def test_cancel_builder_and_direct_delivery_share_exact_batch(
         ride_topic(ride.id),
         pool_topic(ServiceType.TAXI.value),
     ]
+    assert batch[1].payload["data"] == {
+        "ride_id": str(ride.id),
+        "pool_version": ride.pool_version,
+        "reason": "terminal",
+    }
     expected_offers = sorted(
         [item.detail.offer for item in created],
         key=lambda item: item.id.hex,
@@ -150,6 +155,21 @@ async def test_cancel_builder_and_direct_delivery_share_exact_batch(
     await events.publish_ride_cancelled(result)
 
     assert delivered == [(event.topic, event.payload) for event in batch]
+
+
+async def test_cancel_paused_ride_emits_terminal_close_in_same_pool_generation() -> None:
+    users, rides, offers, rider, _, ride, _ = await _memory_scenario()
+    ride.paused = True
+    await rides.update(ride)
+
+    result = await cancel_ride_use_case(rides, offers, users).execute(rider, ride.id)
+    closed = events.build_cancel_ride_events(result)[1]
+
+    assert closed.payload["data"] == {
+        "ride_id": str(ride.id),
+        "pool_version": ride.pool_version,
+        "reason": "terminal",
+    }
 
 
 def test_assigned_cancel_builder_notifies_driver_before_closing_pool() -> None:
@@ -191,6 +211,11 @@ def test_assigned_cancel_builder_notifies_driver_before_closing_pool() -> None:
         pool_topic(ride.service_type.value),
     ]
     assert batch[0].payload == batch[1].payload
+    assert batch[2].payload["data"] == {
+        "ride_id": str(ride.id),
+        "pool_version": ride.pool_version,
+        "reason": "terminal",
+    }
 
 
 async def test_assigned_driver_can_cancel_with_enriched_detail() -> None:

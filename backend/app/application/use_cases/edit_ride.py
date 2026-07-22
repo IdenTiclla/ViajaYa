@@ -95,13 +95,6 @@ class EditRide:
             name=data.destination.name.strip(),
             address=data.destination.address.strip(),
         )
-        changed = (
-            origin != ride.origin
-            or destination != ride.destination
-            or data.service_type is not ride.service_type
-            or fare.amount != ride.fare
-            or data.payment_method is not ride.payment_method
-        )
         updated = await self._rides.update_if_state(
             replace(
                 ride,
@@ -111,7 +104,10 @@ class EditRide:
                 fare=fare.amount,
                 payment_method=data.payment_method,
                 paused=False,
-                pool_version=ride.pool_version + 1 if changed else ride.pool_version,
+                # Cada reapertura es una publicación nueva, aunque el pasajero
+                # guarde sin cambiar campos visibles. El cierre anterior y el
+                # nuevo anuncio deben ser comparables incluso si cruzan pools.
+                pool_version=ride.pool_version + 1,
             ),
             RideStatus.SEARCHING,
             expected_paused=True,

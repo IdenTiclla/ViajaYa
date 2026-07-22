@@ -23,8 +23,15 @@ class _StrictPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+RideClosedReason: TypeAlias = Literal["paused", "terminal"]
+
+
 class RideClosedData(_StrictPayload):
     ride_id: uuid.UUID
+    # Opcionales únicamente para leer frames legacy y filas históricas de
+    # outbox. Todo productor actual los completa y el envelope v2 los exige.
+    pool_version: int | None = Field(default=None, strict=True, ge=1)
+    reason: RideClosedReason | None = None
 
 
 class RidePausedData(OpenRideResponse):
@@ -322,6 +329,13 @@ class RealtimeEventEnvelopeV2(_Message):
             message = parse_negotiation_message({"type": self.type, "data": self.data})
         except (TypeError, ValueError) as error:
             raise ValueError("type y data no cumplen el contrato de negociación.") from error
+
+        if self.type == "ride_closed" and (
+            message.data.pool_version is None or message.data.reason is None
+        ):
+            raise ValueError(
+                "ride_closed v2 requiere pool_version y reason."
+            )
 
         validate_realtime_event_semantics(
             event_type=self.type,

@@ -40,7 +40,15 @@ def _event(
         aggregate_id=ride_id,
         aggregate_version=aggregate_version,
         stream_version=stream_version,
-        payload=payload or {"type": "ride_closed", "data": {"ride_id": str(ride_id)}},
+        payload=payload
+        or {
+            "type": "ride_closed",
+            "data": {
+                "ride_id": str(ride_id),
+                "pool_version": 1,
+                "reason": "terminal",
+            },
+        },
         created_at=now,
         next_attempt_at=now,
         published_at=None,
@@ -55,6 +63,19 @@ def test_acepta_un_lote_canonico() -> None:
 
 def test_validador_canonico_implementa_el_puerto_de_aplicacion() -> None:
     CanonicalRealtimeOutboxBatchValidator().validate([_event()])
+
+
+def test_validador_acepta_ride_closed_historico_sin_generacion() -> None:
+    event = _event()
+    legacy = replace(
+        event,
+        payload={
+            "type": "ride_closed",
+            "data": {"ride_id": str(event.aggregate_id)},
+        },
+    )
+
+    validate_realtime_outbox_batch([legacy])
 
 
 def test_rechaza_un_lote_vacio() -> None:
@@ -186,7 +207,11 @@ def test_rechaza_un_payload_que_no_coincide_con_el_agregado() -> None:
     event = _event(
         payload={
             "type": "ride_closed",
-            "data": {"ride_id": str(uuid.uuid4())},
+            "data": {
+                "ride_id": str(uuid.uuid4()),
+                "pool_version": 1,
+                "reason": "terminal",
+            },
         }
     )
 
@@ -255,7 +280,11 @@ def test_serializa_batch_unitario_outbox_a_envelope_v2() -> None:
         "stream_version": 9,
         "occurred_at": event.created_at.isoformat().replace("+00:00", "Z"),
         "type": "ride_closed",
-        "data": {"ride_id": str(event.aggregate_id)},
+        "data": {
+            "ride_id": str(event.aggregate_id),
+            "pool_version": 1,
+            "reason": "terminal",
+        },
     }
 
 

@@ -126,8 +126,7 @@ Eventos que escuchan los hooks (WS → mutación de caché React Query + estado 
 - **Pasajero** (`/ws/rides/{rideId}`): `offers_snapshot`, `offer_created`, `offer_withdrawn`
   (salvo `reason==='superseded'`), `offer_expired`, `ride_status`.
 - **Conductor** (`/ws/driver`): `open_rides_snapshot`, `driver_offers_snapshot` (rehidrata
-  ofertas pendientes tras reiniciar), `ride_created` (upsert + `clearPaused` +
-  `clearDismissed` — revive la tarjeta descartada al subir el fare), `ride_closed`, `ride_paused`,
+  ofertas pendientes tras reiniciar), `ride_created`, `ride_closed`, `ride_paused`,
   `offer_accepted`, `offer_expired`, `offer_rejected` (`ride_taken`/`ride_cancelled`/`declined`),
   `offers_withdrawn`, `ride_status`, `driver_active_ride` (snapshot al reconectar).
 
@@ -138,11 +137,14 @@ solo los `ride_ids` declarados; el éxito HTTP al pasar offline vacía además l
 ofertas vivas para tolerar una caída del WebSocket.
 
 El store del conductor conserva tombstones acotados por `offer_id`, rides
-terminales y un token por intento HTTP. `markOffered` es un CAS: el `201` tardío
+terminales, generaciones del pool y un token por intento HTTP. `markOffered` es
+un CAS: el `201` tardío
 de una oferta rechazada, expirada, pausada, aceptada, tomada, cancelada o retirada
 no puede revivirla, ni una respuesta anterior ganar a otra petición. Los eventos
-`ride_closed` solo retiran la oferta visible, para conmutar con el desenlace del
-stream personal. Un snapshot PostgreSQL `PENDING` sí corrige guards locales
+`ride_created` duplicados o atrasados no limpian desenlaces de otra generación.
+`ride_closed` lleva `pool_version` y `reason=paused|terminal`: solo un cierre
+aplicable retira la tarjeta y la oferta visible, y un terminal domina una pausa
+de la misma generación. Un snapshot PostgreSQL `PENDING` sí corrige guards locales
 contradictorios, incluida una expiración por reloj adelantado.
 
 ## Tema (design system)

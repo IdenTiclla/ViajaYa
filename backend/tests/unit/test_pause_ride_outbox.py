@@ -117,6 +117,11 @@ async def test_pause_builder_and_direct_delivery_share_exact_batch(
         ("ride", ride.id),
         ("ride", ride.id),
     ]
+    assert batch[0].payload["data"] == {
+        "ride_id": str(ride.id),
+        "pool_version": ride.pool_version,
+        "reason": "paused",
+    }
     assert batch[1].payload["data"] == {
         "driver_id": str(driver.id),
         "offer_id": str(offer.detail.offer.id),

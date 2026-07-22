@@ -62,6 +62,9 @@ async def test_snapshot_usa_repeatable_read_read_only_antes_de_cualquier_lectura
                 role=UserRole.PASSENGER,
             )
         )
+        # Estos modelos no declaran una relationship ORM entre sí; el flush
+        # explicita que la FK del ride siempre observa primero al pasajero.
+        await session.flush()
         session.add(
             RideRequestModel(
                 id=ride_id,

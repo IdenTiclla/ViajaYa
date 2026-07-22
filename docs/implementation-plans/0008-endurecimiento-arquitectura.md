@@ -260,8 +260,8 @@ vuelo se considera ambigua y fuerza otro handshake autoritativo.
 - [x] Snapshot más nuevo que los eventos locales y rechazo de snapshots viejos.
 - [x] Integrar el gate al socket y certificar duplicados, huecos, fallo del
   handler, generaciones reemplazadas y resnapshot en las piezas de transporte.
-- [ ] Ejecutar un smoke mobile contra el stack real que fuerce un hueco/cuarentena
-  y compruebe la reconexión completa desde React Native.
+- [ ] Completar el pase React Native descrito en el endurecimiento de la fase 3;
+  el smoke headless ya cubre la vertical real, pero no el runtime mobile.
 - [x] Payload inválido, razón inválida y tipo desconocido en el contrato backend.
 - [x] GET HTTP iniciado antes que un evento WebSocket y resuelto después: una
   prueba con `QueryClient` real certifica que la caché conserva el evento.
@@ -524,7 +524,15 @@ Endurecimiento antes de promover la canary:
 - [x] Ejecutar pruebas de contrato backend JSON → parsers mobile mediante un
   fixture determinista generado por los serializadores productivos y verificado
   contra ambos parsers Zod en CI.
-- [ ] Ejecutar un smoke real que fuerce caída, duplicado, hueco y cuarentena.
+- [x] Ejecutar un smoke headless con PostgreSQL, Uvicorn, HTTP y WebSocket TCP
+  reales en `live_local`: snapshot v2, delta durable, cierre controlado, nuevo
+  handshake, snapshot autoritativo y drenado final se certifican en la suite
+  PostgreSQL de CI.
+- [ ] Extender el smoke headless con fallos one-shot fuera del artefacto
+  productivo para caída, duplicado, hueco y cuarentena.
+- [ ] Ejecutar el pase del hook productivo en un dev build React Native frente
+  a esos fallos y conservar la evidencia indicada en
+  `docs/runbooks/smoke-realtime.md`.
 - [x] Hacer indivisible la aplicación de snapshots entre React Query y Zustand,
   e impedir que un handler ya iniciado emita efectos después de invalidar su
   generación. Cada socket físico abre una generación, los commits revalidan su

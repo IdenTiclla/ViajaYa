@@ -175,6 +175,7 @@ def _outbox_rows(batch_id: uuid.UUID, count: int) -> list[dict[str, object]]:
             "id": uuid.uuid4(),
             "batch_id": batch_id,
             "sequence": sequence,
+            "batch_size": count,
             "event_type": "ride_status",
             "topic": f"ride:{aggregate_id}",
             "aggregate_type": "ride",

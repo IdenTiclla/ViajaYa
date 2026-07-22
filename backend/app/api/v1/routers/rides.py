@@ -100,6 +100,16 @@ def _to_location_input(point) -> LocationInput:
 _EXPIRY_TASKS: set[asyncio.Task[None]] = set()
 
 
+async def shutdown_expiry_tasks() -> None:
+    """Cancela y espera las expiraciones pendientes al apagar la API."""
+    tasks = set(_EXPIRY_TASKS)
+    for task in tasks:
+        task.cancel()
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
+    _EXPIRY_TASKS.clear()
+
+
 async def _expire_offer_after(
     offer_id: uuid.UUID,
     session_factory: async_sessionmaker[AsyncSession],

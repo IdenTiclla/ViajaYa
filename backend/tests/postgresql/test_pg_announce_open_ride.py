@@ -12,9 +12,15 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from app.api.deps import build_cancel_ride_on_disconnect
 from app.api.v1.realtime_outbox import OutboxAnnounceOpenRideEventRecorder
 from app.application.use_cases.announce_open_ride import AnnounceOpenRide
-from app.domain.entities import Location, RideRequest, User
+from app.domain.entities import Location, RideRequest, ServiceType, User
 from app.infrastructure.config import Settings
-from app.infrastructure.db.models import RealtimeOutboxModel
+from app.infrastructure.db.models import (
+    RealtimeAggregateVersionModel,
+    RealtimeOutboxModel,
+    RealtimeStreamVersionModel,
+    RideRequestModel,
+    UserModel,
+)
 from app.infrastructure.db.outbox import SqlAlchemyRealtimeOutbox
 from app.infrastructure.db.repositories import (
     SqlAlchemyRideRequestRepository,
@@ -45,10 +51,37 @@ async def _insert_scenario(sessions):
                 rider_id=rider.id,
                 origin=Location(-17.39, -66.15, "Origen", "Calle 1"),
                 destination=Location(-17.40, -66.16, "Destino", "Calle 2"),
+                service_type=ServiceType.TAXI,
                 fare=Decimal("20.00"),
             )
         )
         return ride
+
+
+async def _cleanup(pg_test_db, ride) -> None:
+    async with pg_test_db.engine.begin() as connection:
+        await connection.execute(
+            RealtimeOutboxModel.__table__.delete().where(
+                RealtimeOutboxModel.aggregate_id == ride.id
+            )
+        )
+        await connection.execute(
+            RealtimeAggregateVersionModel.__table__.delete().where(
+                RealtimeAggregateVersionModel.aggregate_type == "ride",
+                RealtimeAggregateVersionModel.aggregate_id == ride.id,
+            )
+        )
+        await connection.execute(
+            RealtimeStreamVersionModel.__table__.delete().where(
+                RealtimeStreamVersionModel.topic == f"ride:{ride.id}"
+            )
+        )
+        await connection.execute(
+            RideRequestModel.__table__.delete().where(RideRequestModel.id == ride.id)
+        )
+        await connection.execute(
+            UserModel.__table__.delete().where(UserModel.id == ride.rider_id)
+        )
 
 
 async def _wait_for_database_lock(engine, backend_pid: int) -> None:
@@ -135,6 +168,7 @@ async def test_announcement_lock_orders_following_cancellation(pg_test_db) -> No
         ("ride_status", 2),
         ("ride_closed", 3),
     ]
+    await _cleanup(pg_test_db, ride)
 
 
 async def test_cancellation_committed_first_prevents_late_announcement(
@@ -171,3 +205,4 @@ async def test_cancellation_committed_first_prevents_late_announcement(
         ).scalars().all()
 
     assert event_types == ["ride_status", "ride_closed"]
+    await _cleanup(pg_test_db, ride)

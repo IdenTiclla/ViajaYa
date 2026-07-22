@@ -46,6 +46,23 @@ _critical_cancels: dict[uuid.UUID, asyncio.Task[None]] = {}
 _CANCEL_TASKS: set[asyncio.Task[None]] = set()
 
 
+async def shutdown_presence_tasks() -> None:
+    """Detiene timers y espera cierres críticos antes de apagar la API."""
+    pending_tasks = set(_pending_cancels.values())
+    for task in pending_tasks:
+        task.cancel()
+
+    tasks = set(_CANCEL_TASKS)
+    tasks.update(_critical_cancels.values())
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    _pending_cancels.clear()
+    _critical_cancels.clear()
+    _CANCEL_TASKS.clear()
+    _last_seen.clear()
+
+
 def is_ride_present(ride: RideRequest) -> bool:
     """``True`` si el pasajero está conectado o dentro de la ventana de gracia."""
     if hub.has_subscribers(ride_topic(ride.id)):

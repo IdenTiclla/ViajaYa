@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.api import health, metrics
 from app.api.deps import get_session_factory
 from app.api.errors import register_exception_handlers
+from app.api.v1 import presence
 from app.api.v1.realtime_outbox import (
     CanonicalRealtimeOutboxBatchValidator,
     LocalHubRealtimeOutboxBatchPublisher,
@@ -135,6 +136,11 @@ def create_app(
 
             yield
         finally:
+            # Los timers HTTP/WS pueden sobrevivir a su request original. Se
+            # cierran antes del dispatcher para que ningún productor quede
+            # escribiendo en la outbox durante el apagado.
+            await rides.shutdown_expiry_tasks()
+            await presence.shutdown_presence_tasks()
             if dispatcher is not None:
                 dispatcher.stop()
             if retention_worker is not None:

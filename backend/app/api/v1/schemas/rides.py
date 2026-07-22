@@ -8,12 +8,12 @@ from __future__ import annotations
 import re
 import unicodedata
 import uuid
-from datetime import datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, Field, model_validator
 
 from app.api.v1.pagination import encode_cursor
+from app.api.v1.schemas.datetimes import UtcAwareDatetime
 from app.application.dto import Page, RideDetail, RideHistoryItem
 from app.domain.entities import (
     Location,
@@ -120,7 +120,7 @@ class RideRequestResponse(BaseModel):
     payment_method: PaymentMethod
     origin: PointSchema
     destination: PointSchema
-    created_at: datetime | None
+    created_at: UtcAwareDatetime | None
 
     @classmethod
     def from_entity(cls, ride: RideRequest) -> RideRequestResponse:
@@ -168,7 +168,7 @@ class OpenRideResponse(BaseModel):
     destination: PointSchema
     rider: OpenRideRiderResponse
     pool_version: int
-    created_at: datetime | None
+    created_at: UtcAwareDatetime | None
 
     @classmethod
     def from_open_ride(cls, detail: OpenRideDetail) -> OpenRideResponse:
@@ -243,9 +243,9 @@ class RideResponse(BaseModel):
     driver: RideDriverSchema | None
     accepted_price: Decimal | None
     accepted_eta_min: int | None
-    created_at: datetime | None
-    completed_at: datetime | None
-    cancelled_at: datetime | None
+    created_at: UtcAwareDatetime | None
+    completed_at: UtcAwareDatetime | None
+    cancelled_at: UtcAwareDatetime | None
 
     @classmethod
     def from_detail(cls, detail: RideDetail) -> RideResponse:
@@ -335,7 +335,7 @@ class RideHistoryItemResponse(BaseModel):
     price: Decimal
     my_rating: int | None = None
     counterpart: HistoryCounterpartSchema | None = None
-    created_at: datetime | None = None
+    created_at: UtcAwareDatetime | None = None
 
     @classmethod
     def from_item(cls, item: RideHistoryItem) -> RideHistoryItemResponse:

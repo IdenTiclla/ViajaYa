@@ -11,12 +11,23 @@ usuario no autorizado → cierre con código 1008.
 from __future__ import annotations
 
 import uuid
+from dataclasses import replace
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 
-from app.api.deps import build_expire_offer, get_session_factory
+from app.api.deps import (
+    SessionFactoryDep,
+    SettingsDep,
+    build_expire_offer,
+    get_build_driver_realtime_snapshot,
+    get_build_passenger_realtime_snapshot,
+)
 from app.api.v1 import events, presence
+from app.api.v1.realtime_snapshots import (
+    build_driver_snapshot_message_v2,
+    build_passenger_snapshot_message_v2,
+)
 from app.api.v1.schemas.offers import OfferResponse
 from app.api.v1.schemas.realtime import (
     DriverActiveRideMessage,
@@ -29,12 +40,17 @@ from app.api.v1.schemas.realtime import (
 )
 from app.api.v1.schemas.rides import OpenRidePageResponse, OpenRideResponse, RideResponse
 from app.application.dto import OfferDetail, Page
+from app.application.use_cases.build_driver_realtime_snapshot import (
+    BuildDriverRealtimeSnapshot,
+)
+from app.application.use_cases.build_passenger_realtime_snapshot import (
+    BuildPassengerRealtimeSnapshot,
+)
 from app.application.use_cases.get_driver_active_ride import GetDriverActiveRide
 from app.application.use_cases.list_offers_for_ride import ListOffersForRide
 from app.application.use_cases.list_open_rides import ListOpenRides
 from app.domain.entities import UserRole, services_for_vehicle
 from app.domain.ride_policy import is_offer_expired
-from app.infrastructure.config import get_settings
 from app.infrastructure.db.repositories import (
     SqlAlchemyOfferRepository,
     SqlAlchemyRideReadRepository,
@@ -58,8 +74,6 @@ router = APIRouter(tags=["ws"])
 
 _POLICY_VIOLATION = 1008
 
-SessionFactoryDep = Annotated[object, Depends(get_session_factory)]
-
 
 async def _send_message(websocket: WebSocket, message: NegotiationMessage) -> None:
     await websocket.send_json(dump_negotiation_message(message))
@@ -82,6 +96,11 @@ async def passenger_ws(
     websocket: WebSocket,
     ride_id: uuid.UUID,
     session_factory: SessionFactoryDep,
+    settings: SettingsDep,
+    snapshot_builder: Annotated[
+        BuildPassengerRealtimeSnapshot,
+        Depends(get_build_passenger_realtime_snapshot),
+    ],
 ) -> None:
     """El pasajero dueño del viaje recibe ofertas y cambios de estado en vivo."""
     token = token_from_subprotocol(websocket)
@@ -93,7 +112,7 @@ async def passenger_ws(
             users = SqlAlchemyUserRepository(session)
             rides = SqlAlchemyRideRequestRepository(session)
             offers = SqlAlchemyOfferRepository(session)
-            tokens = JwtTokenService(get_settings())
+            tokens = JwtTokenService(settings)
 
             user = await authenticate_ws(token, users, tokens)
             if user is None:
@@ -107,30 +126,43 @@ async def passenger_ws(
             async with hub.delivery_barrier(websocket):
                 hub.subscribe(topic, websocket)
                 subscribed = True
-                details = await ListOffersForRide(rides, offers, users).execute(
-                    user, ride_id
-                )
-                snapshot = [OfferResponse.from_detail(detail) for detail in details]
-                await _send_message(
-                    websocket,
-                    OffersSnapshotMessage(data=snapshot),
-                )
+                if settings.realtime_outbox_dispatch_mode == "live_local":
+                    snapshot = await snapshot_builder.execute(user, ride_id)
+                    await websocket.send_json(
+                        build_passenger_snapshot_message_v2(snapshot).model_dump(
+                            mode="json"
+                        )
+                    )
+                else:
+                    details = await ListOffersForRide(rides, offers, users).execute(
+                        user, ride_id
+                    )
+                    snapshot = [OfferResponse.from_detail(detail) for detail in details]
+                    await _send_message(
+                        websocket,
+                        OffersSnapshotMessage(data=snapshot),
+                    )
 
         # Presencia: la solicitud aparece en el pool mientras el pasajero esté
         # presente (conectado o dentro de la ventana de gracia). El ``finally``
         # también cubre una desconexión durante esta revalidación.
-        await presence.on_passenger_connect(ride_id, session_factory)
+        await presence.on_passenger_connect(ride_id, session_factory, settings)
         await _drain(websocket)
     finally:
         if subscribed:
             hub.unsubscribe(topic, websocket)
-            presence.on_passenger_disconnect(ride_id, session_factory)
+            presence.on_passenger_disconnect(ride_id, session_factory, settings)
 
 
 @router.websocket("/ws/driver")
 async def driver_ws(
     websocket: WebSocket,
     session_factory: SessionFactoryDep,
+    settings: SettingsDep,
+    snapshot_builder: Annotated[
+        BuildDriverRealtimeSnapshot,
+        Depends(get_build_driver_realtime_snapshot),
+    ],
 ) -> None:
     """El conductor en línea recibe solicitudes nuevas y el aviso de ser elegido."""
     token = token_from_subprotocol(websocket)
@@ -142,7 +174,7 @@ async def driver_ws(
             rides = SqlAlchemyRideRequestRepository(session)
             ride_reads = SqlAlchemyRideReadRepository(session)
             offers = SqlAlchemyOfferRepository(session)
-            tokens = JwtTokenService(get_settings())
+            tokens = JwtTokenService(settings)
 
             user = await authenticate_ws(token, users, tokens)
             if user is None or user.role is not UserRole.DRIVER or user.vehicle_type is None:
@@ -160,17 +192,6 @@ async def driver_ws(
                 for topic in topics:
                     hub.subscribe(topic, websocket)
 
-                open_rides_page = (
-                    presence.present_rides(await ListOpenRides(rides).execute(user))
-                    if user.is_online
-                    else Page(items=[])
-                )
-                snapshot = OpenRidePageResponse.from_page(open_rides_page)
-                paused_snapshot = [
-                    OpenRideResponse.from_open_ride(detail)
-                    for detail in await rides.list_paused_with_rider_for_driver(user.id)
-                ]
-
                 # Recuperación de estado al (re)conectar:
                 # 1) vencer ofertas que pasaron su TTL y excluirlas del snapshot.
                 expired_offers = []
@@ -179,39 +200,62 @@ async def driver_ws(
                     if is_offer_expired(offer):
                         done = await build_expire_offer(
                             session,
-                            get_settings(),
+                            settings,
                         ).execute(offer.id)
                         if done is not None:
                             expired_offers.append(done)
                     else:
                         active_offers.append(offer)
-                offer_snapshot = [
-                    OfferResponse.from_detail(OfferDetail(offer=offer, driver=user))
-                    for offer in active_offers
-                ]
-                # 2) viaje activo (recupera un offer_accepted que se perdió).
-                active_detail = await GetDriverActiveRide(ride_reads).execute(user)
 
-                # Handshake autoritativo, siempre en este orden.
-                await _send_message(
-                    websocket,
-                    OpenRidesSnapshotMessage(data=snapshot),
-                )
-                await _send_message(
-                    websocket,
-                    PausedRidesSnapshotMessage(data=paused_snapshot),
-                )
-                await _send_message(
-                    websocket,
-                    DriverOffersSnapshotMessage(data=offer_snapshot),
-                )
-                if active_detail is not None:
+                if settings.realtime_outbox_dispatch_mode == "live_local":
+                    captured = await snapshot_builder.execute(user)
+                    captured = replace(
+                        captured,
+                        open_rides=presence.present_rides(captured.open_rides),
+                    )
+                    await websocket.send_json(
+                        build_driver_snapshot_message_v2(captured).model_dump(
+                            mode="json"
+                        )
+                    )
+                else:
+                    open_rides_page = (
+                        presence.present_rides(await ListOpenRides(rides).execute(user))
+                        if user.is_online
+                        else Page(items=[])
+                    )
+                    snapshot = OpenRidePageResponse.from_page(open_rides_page)
+                    paused_snapshot = [
+                        OpenRideResponse.from_open_ride(detail)
+                        for detail in await rides.list_paused_with_rider_for_driver(user.id)
+                    ]
+                    offer_snapshot = [
+                        OfferResponse.from_detail(OfferDetail(offer=offer, driver=user))
+                        for offer in active_offers
+                    ]
+                    # 2) viaje activo (recupera un offer_accepted que se perdió).
+                    active_detail = await GetDriverActiveRide(ride_reads).execute(user)
+
+                    # Handshake legacy autoritativo, siempre en este orden.
                     await _send_message(
                         websocket,
-                        DriverActiveRideMessage(
-                            data=RideResponse.from_detail(active_detail)
-                        ),
+                        OpenRidesSnapshotMessage(data=snapshot),
                     )
+                    await _send_message(
+                        websocket,
+                        PausedRidesSnapshotMessage(data=paused_snapshot),
+                    )
+                    await _send_message(
+                        websocket,
+                        DriverOffersSnapshotMessage(data=offer_snapshot),
+                    )
+                    if active_detail is not None:
+                        await _send_message(
+                            websocket,
+                            DriverActiveRideMessage(
+                                data=RideResponse.from_detail(active_detail)
+                            ),
+                        )
 
         # Se difunde tras el handshake; el mismo socket ya está suscrito.
         for offer in expired_offers:

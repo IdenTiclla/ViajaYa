@@ -127,6 +127,24 @@ def _ride() -> RideResponse:
     )
 
 
+def test_temporal_contract_normalizes_sqlite_naive_datetimes_to_utc() -> None:
+    naive = datetime(2026, 7, 22, 12, 30)
+    offer_payload = _offer().model_dump()
+    offer_payload["created_at"] = naive
+    offer_payload["expires_at"] = naive
+    ride_payload = _ride().model_dump()
+    ride_payload["created_at"] = naive
+
+    offer = OfferResponse.model_validate(offer_payload)
+    ride = RideResponse.model_validate(ride_payload)
+
+    assert offer.created_at is not None
+    assert offer.created_at.tzinfo is UTC
+    assert offer.model_dump(mode="json")["created_at"].endswith("Z")
+    assert ride.created_at is not None
+    assert ride.created_at.tzinfo is UTC
+
+
 def _all_messages() -> list[NegotiationMessage]:
     open_ride = _open_ride()
     offer = _offer()

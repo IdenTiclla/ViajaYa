@@ -320,7 +320,7 @@ async def test_http_heartbeat_renews_grace_without_recording_announcement(
     monkeypatch.setattr(
         presence,
         "on_passenger_disconnect",
-        lambda ride_id, _session_factory: renewed.append(ride_id),
+        lambda ride_id, _session_factory, _settings=None: renewed.append(ride_id),
     )
 
     await presence.on_passenger_activity(ride.id, session_factory)

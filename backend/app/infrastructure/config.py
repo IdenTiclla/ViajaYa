@@ -25,10 +25,10 @@ class Settings(BaseSettings):
     facebook_app_id: str = ""
     facebook_app_secret: str = ""
 
-    # El recorder queda apagado hasta que exista un dispatcher sombra que drene
-    # y marque los batches sin reproducir eventos históricos al cliente.
+    # El recorder queda apagado hasta desplegar un consumidor shadow/live que
+    # drene los batches sin dejar un backlog histórico abandonado.
     realtime_outbox_recording_enabled: bool = False
-    realtime_outbox_dispatch_mode: Literal["off", "shadow"] = "off"
+    realtime_outbox_dispatch_mode: Literal["off", "shadow", "live_local"] = "off"
     realtime_outbox_poll_interval_seconds: float = Field(default=1.0, gt=0, le=60)
     realtime_outbox_retry_base_seconds: float = Field(default=1.0, gt=0, le=3600)
     realtime_outbox_retry_max_seconds: float = Field(default=60.0, gt=0, le=86400)
@@ -42,7 +42,15 @@ class Settings(BaseSettings):
         ):
             raise ValueError(
                 "REALTIME_OUTBOX_RECORDING_ENABLED requiere "
-                "REALTIME_OUTBOX_DISPATCH_MODE=shadow."
+                "REALTIME_OUTBOX_DISPATCH_MODE=shadow|live_local."
+            )
+        if (
+            self.realtime_outbox_dispatch_mode == "live_local"
+            and not self.realtime_outbox_recording_enabled
+        ):
+            raise ValueError(
+                "REALTIME_OUTBOX_DISPATCH_MODE=live_local requiere "
+                "REALTIME_OUTBOX_RECORDING_ENABLED=true."
             )
         if (
             self.realtime_outbox_retry_max_seconds

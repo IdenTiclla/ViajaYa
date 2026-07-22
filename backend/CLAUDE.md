@@ -120,7 +120,7 @@ JWT_SECRET, JWT_ALGORITHM (HS256),
 ACCESS_TOKEN_EXPIRE_MINUTES (30), REFRESH_TOKEN_EXPIRE_DAYS (14),
 CORS_ORIGINS (lista separada por comas; helper .cors_origins_list),
 GOOGLE_CLIENT_ID, FACEBOOK_APP_ID, FACEBOOK_APP_SECRET,
-REALTIME_OUTBOX_DISPATCH_MODE (off|shadow; off por defecto),
+REALTIME_OUTBOX_DISPATCH_MODE (off|shadow|live_local; off por defecto),
 REALTIME_OUTBOX_RECORDING_ENABLED (false por defecto),
 REALTIME_OUTBOX_POLL_INTERVAL_SECONDS (1),
 REALTIME_OUTBOX_RETRY_BASE_SECONDS (1),
@@ -132,13 +132,21 @@ Accede a la config con `get_settings()` (cacheado con `@lru_cache`); **no leas `
 CORS se aplica en `main.py` con `cors_origins_list`.
 
 El rollout de la outbox sigue obligatoriamente esta secuencia: `off+false` ->
-`shadow+false` -> `shadow+true`. No uses `off+true`: produciría eventos sin un
-consumidor que depure el backlog. Antes de salir de `off` deben estar aplicadas
-`0018_realtime_outbox`, `0019_realtime_stream_versions` y
-`0020_realtime_outbox_quarantine`. `shadow` reclama,
-valida y marca batches como
-procesados, pero no los entrega al hub WebSocket ni a Redis. No existe un modo
-`live` y estos flags no autorizan más de un worker API.
+`shadow+false` -> `shadow+true` -> `live_local+true`. No uses `off+true` y no
+actives `live_local` sin drenar y revisar antes el backlog sombra. Antes de salir
+de `off` deben estar aplicadas `0018_realtime_outbox`,
+`0019_realtime_stream_versions` y `0020_realtime_outbox_quarantine`. `shadow`
+reclama, valida y marca batches, pero no los entrega. `live_local` pre-serializa
+el batch completo como envelopes v2, lo envía en orden al hub del proceso y solo
+después marca `published_at`; simultáneamente desactiva la entrega directa legacy
+y usa los snapshots unificados v2. Una cuarentena live cierra con 1012 los
+sockets de sus streams después del commit para forzar otro snapshot.
+
+`live_local` es exclusivamente una vertical canary de **un solo worker API**.
+Con dos procesos, `SKIP LOCKED` repartiría batches entre hubs locales y perdería
+notificaciones para sockets del otro proceso. No escales workers/réplicas hasta
+incorporar el bridge Redis; este modo no implementa ni implica soporte
+multiworker. El valor predeterminado continúa siendo `off`.
 
 ## API (v1, prefijo `/api/v1`)
 
@@ -215,6 +223,13 @@ fuera de la URL y los access logs; cierre 1008 si es inválido):
   ventana ciega entre snapshot y suscripción. `open_rides_snapshot.data` usa
   `{items, next_cursor}`; `paused_rides_snapshot.data` conserva su lista.
 
+Con `REALTIME_OUTBOX_DISPATCH_MODE=live_local`, cada socket recibe en cambio un
+único snapshot v2 (`ride_snapshot` o `driver_snapshot`) con watermarks, seguido
+exclusivamente por envelopes v2 durables. La barrera local suscribe antes de la
+captura; los deltas ya incluidos quedan por debajo del watermark y el cliente
+los deduplica. En cualquier otro modo se conserva exactamente el handshake
+legacy anterior.
+
 **Eventos** (`api/v1/events.py`, publicados vía `hub.broadcast` a `ride_topic`/`driver_topic`/`pool_topic`):
 
 ```
@@ -235,11 +250,11 @@ offer_withdrawn, offer_accepted, offers_withdrawn (plural), offer_expired, ride_
   renovar el pool y anunciar presencia ya persisten antes del commit sus batches
   ordenados en `realtime_outbox` cuando
   `REALTIME_OUTBOX_RECORDING_ENABLED=true`; la entrega directa reutiliza esos
-  mismos payloads `{type,data}`. El dispatcher controlado por
-  `REALTIME_OUTBOX_DISPATCH_MODE=shadow` solo valida y marca la copia durable; la
-  publicación directa continúa siendo la única entrega al cliente. El modo
-  inicial es `off`, no existe entrega `live` por outbox y el backend sigue
-  limitado a un worker.
+  mismos payloads `{type,data}`. El dispatcher `shadow` solo valida y marca la
+  copia durable; la publicación directa continúa siendo la única entrega al
+  cliente. `live_local` cambia ambas piezas de forma atómica: el dispatcher
+  entrega metadata durable v2 y el hub bloquea la ruta directa legacy durante
+  todo el lifespan. El backend continúa limitado a un worker.
 
 Presencia (`api/v1/presence.py`): la solicitud aparece en `/rides/open` mientras el pasajero esté
 conectado al WS o dentro de la ventana de gracia (`PRESENCE_GRACE_SECONDS = 120`). Minimizar/cambiar

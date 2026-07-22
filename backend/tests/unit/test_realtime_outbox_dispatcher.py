@@ -20,7 +20,10 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import StaticPool
 
-from app.api.v1.realtime_outbox import CanonicalRealtimeOutboxBatchValidator
+from app.api.v1.realtime_outbox import (
+    CanonicalRealtimeOutboxBatchValidator,
+    LocalHubRealtimeOutboxBatchPublisher,
+)
 from app.application.dto import DispatchRealtimeOutboxResult, PendingRealtimeEvent
 from app.infrastructure.config import Settings
 from app.infrastructure.db.models import (
@@ -32,6 +35,7 @@ from app.infrastructure.db.outbox import SqlAlchemyRealtimeOutbox
 from app.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from app.infrastructure.realtime import hub as realtime_hub_module
 from app.infrastructure.realtime.outbox_dispatcher import (
+    LocalRealtimeOutboxDispatcher,
     ShadowRealtimeOutboxDispatcher,
 )
 from app.main import create_app
@@ -238,6 +242,33 @@ async def test_app_lifecycle_starts_and_stops_shadow_dispatcher(
     assert dispatcher.running is False
 
 
+async def test_app_lifecycle_live_local_disables_legacy_and_restores_policy(
+    outbox_sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    settings = Settings(
+        _env_file=None,
+        realtime_outbox_dispatch_mode="live_local",
+        realtime_outbox_recording_enabled=True,
+        realtime_outbox_poll_interval_seconds=30,
+    )
+    app = create_app(settings=settings, session_factory=outbox_sessions)
+    previous_policy = realtime_hub_module.hub.legacy_delivery_enabled
+
+    async with app.router.lifespan_context(app):
+        dispatcher = app.state.realtime_outbox_dispatcher
+        assert isinstance(dispatcher, LocalRealtimeOutboxDispatcher)
+        assert isinstance(dispatcher._publisher, LocalHubRealtimeOutboxBatchPublisher)
+        assert realtime_hub_module.hub.legacy_delivery_enabled is False
+        for _ in range(10):
+            if dispatcher.running:
+                break
+            await asyncio.sleep(0)
+        assert dispatcher.running is True
+
+    assert dispatcher.running is False
+    assert realtime_hub_module.hub.legacy_delivery_enabled is previous_policy
+
+
 def test_settings_keep_shadow_dispatcher_disabled_by_default() -> None:
     settings = Settings(_env_file=None)
 
@@ -262,4 +293,24 @@ def test_settings_accept_shadow_rollout_with_recording_enabled() -> None:
     )
 
     assert settings.realtime_outbox_dispatch_mode == "shadow"
+    assert settings.realtime_outbox_recording_enabled is True
+
+
+def test_settings_reject_live_local_without_recording() -> None:
+    with pytest.raises(ValidationError, match="live_local requiere"):
+        Settings(
+            _env_file=None,
+            realtime_outbox_dispatch_mode="live_local",
+            realtime_outbox_recording_enabled=False,
+        )
+
+
+def test_settings_accept_live_local_only_with_recording() -> None:
+    settings = Settings(
+        _env_file=None,
+        realtime_outbox_dispatch_mode="live_local",
+        realtime_outbox_recording_enabled=True,
+    )
+
+    assert settings.realtime_outbox_dispatch_mode == "live_local"
     assert settings.realtime_outbox_recording_enabled is True

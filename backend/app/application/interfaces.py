@@ -124,6 +124,18 @@ class RealtimeOutboxBatchValidator(ABC):
         """Lanza un error de aplicación si el lote no es canónico."""
 
 
+class RealtimeOutboxBatchPublisher(ABC):
+    """Entrega un lote durable ya reclamado a un transporte realtime."""
+
+    @abstractmethod
+    async def publish(self, events: Sequence[RealtimeOutboxEvent]) -> None:
+        """Publica el lote completo conservando su orden de secuencia."""
+
+    @abstractmethod
+    async def force_resync(self, streams: Sequence[str]) -> None:
+        """Fuerza otro snapshot a los sockets afectados por un hueco terminal."""
+
+
 class CreateOfferEventRecorder(ABC):
     """Registra los eventos durables producidos al crear o mejorar una oferta."""
 

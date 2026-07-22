@@ -5,16 +5,19 @@ from __future__ import annotations
 import uuid
 from dataclasses import replace
 from datetime import UTC, datetime
+from unittest.mock import AsyncMock
 
 import pytest
 
 from app.api.v1.realtime_outbox import (
     CanonicalRealtimeOutboxBatchValidator,
+    LocalHubRealtimeOutboxBatchPublisher,
     serialize_realtime_outbox_batch_v2,
     validate_realtime_outbox_batch,
 )
 from app.application.dto import RealtimeOutboxEvent
 from app.application.exceptions import InvalidRealtimeOutboxBatchError
+from app.infrastructure.realtime import hub as realtime_hub_module
 
 
 def _event(
@@ -345,3 +348,60 @@ def test_serializa_batch_canonico_preservando_secuencia_y_stream() -> None:
 def test_serializer_v2_rechaza_batch_no_canonico() -> None:
     with pytest.raises(InvalidRealtimeOutboxBatchError, match="secuencia"):
         serialize_realtime_outbox_batch_v2([_event(sequence=1)])
+
+
+async def test_publicador_local_pre_serializa_todo_antes_del_primer_envio(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first = _event()
+    invalid_second = replace(
+        first,
+        id=uuid.uuid4(),
+        sequence=1,
+        aggregate_version=2,
+        stream_version=2,
+        payload={
+            "type": "ride_closed",
+            "data": {"ride_id": str(first.aggregate_id)},
+        },
+    )
+    broadcast = AsyncMock()
+    monkeypatch.setattr(realtime_hub_module.hub, "broadcast_versioned", broadcast)
+
+    with pytest.raises(InvalidRealtimeOutboxBatchError, match="contrato v2"):
+        await LocalHubRealtimeOutboxBatchPublisher().publish(
+            [first, invalid_second]
+        )
+
+    broadcast.assert_not_awaited()
+
+
+async def test_publicador_local_envia_en_orden_y_delega_resync(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first = _event()
+    second = replace(
+        first,
+        id=uuid.uuid4(),
+        sequence=1,
+        aggregate_version=2,
+        stream_version=2,
+    )
+    broadcast = AsyncMock()
+    force_resync = AsyncMock()
+    monkeypatch.setattr(realtime_hub_module.hub, "broadcast_versioned", broadcast)
+    monkeypatch.setattr(realtime_hub_module.hub, "force_resync", force_resync)
+    publisher = LocalHubRealtimeOutboxBatchPublisher()
+
+    await publisher.publish([first, second])
+    await publisher.force_resync([first.topic])
+
+    assert [call.args[0] for call in broadcast.await_args_list] == [
+        first.topic,
+        second.topic,
+    ]
+    assert [call.args[1]["event_id"] for call in broadcast.await_args_list] == [
+        str(first.id),
+        str(second.id),
+    ]
+    force_resync.assert_awaited_once_with([first.topic])

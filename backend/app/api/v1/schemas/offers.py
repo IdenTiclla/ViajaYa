@@ -6,11 +6,11 @@ Separados de las entidades de dominio.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, Field, model_validator
 
+from app.api.v1.schemas.datetimes import UtcAwareDatetime
 from app.application.dto import OfferDetail
 from app.domain.entities import OfferStatus, VehicleType
 from app.domain.ride_policy import offer_expires_at
@@ -52,9 +52,9 @@ class OfferResponse(BaseModel):
     eta_min: int | None
     status: OfferStatus
     driver: OfferDriverSchema
-    created_at: datetime | None
+    created_at: UtcAwareDatetime | None
     # Cuándo expira la oferta (created_at + 30 s); alimenta el contador.
-    expires_at: datetime | None
+    expires_at: UtcAwareDatetime | None
 
     @classmethod
     def from_detail(cls, detail: OfferDetail) -> OfferResponse:

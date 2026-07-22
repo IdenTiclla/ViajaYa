@@ -22,7 +22,7 @@ from app.api.deps import build_announce_open_ride, build_cancel_ride_on_disconne
 from app.application.dto import Page
 from app.domain.entities import RideRequest, RideStatus
 from app.domain.repositories import OpenRideDetail
-from app.infrastructure.config import get_settings
+from app.infrastructure.config import Settings, get_settings
 from app.infrastructure.db.repositories import SqlAlchemyRideRequestRepository
 from app.infrastructure.realtime.hub import hub, ride_topic
 
@@ -69,7 +69,9 @@ def present_rides(page: Page[OpenRideDetail]) -> Page[OpenRideDetail]:
 
 
 async def on_passenger_connect(
-    ride_id: uuid.UUID, session_factory: Callable[[], Any]
+    ride_id: uuid.UUID,
+    session_factory: Callable[[], Any],
+    settings: Settings | None = None,
 ) -> None:
     """El pasajero abrió/recuperó su conexión.
 
@@ -81,11 +83,17 @@ async def on_passenger_connect(
     # Esta revalidación debe cerrar su sesión antes de propagar ese cierre; dura
     # solo una lectura y no mantiene viva la conexión WebSocket.
     with CancelScope(shield=True):
-        await _revalidate_passenger_connect(ride_id, session_factory)
+        await _revalidate_passenger_connect(
+            ride_id,
+            session_factory,
+            settings or get_settings(),
+        )
 
 
 async def on_passenger_activity(
-    ride_id: uuid.UUID, session_factory: Callable[[], Any]
+    ride_id: uuid.UUID,
+    session_factory: Callable[[], Any],
+    settings: Settings | None = None,
 ) -> None:
     """Renueva la presencia desde el polling HTTP de una app todavía activa.
 
@@ -95,11 +103,17 @@ async def on_passenger_activity(
     espera su resultado para no revivir una solicitud cancelada.
     """
     with CancelScope(shield=True):
-        await _revalidate_passenger_activity(ride_id, session_factory)
+        await _revalidate_passenger_activity(
+            ride_id,
+            session_factory,
+            settings or get_settings(),
+        )
 
 
 async def _revalidate_passenger_connect(
-    ride_id: uuid.UUID, session_factory: Callable[[], Any]
+    ride_id: uuid.UUID,
+    session_factory: Callable[[], Any],
+    settings: Settings,
 ) -> None:
     _last_seen.pop(ride_id, None)
     pending = _pending_cancels.pop(ride_id, None)
@@ -114,7 +128,7 @@ async def _revalidate_passenger_connect(
         async with session_factory() as session:
             detail = await build_announce_open_ride(
                 session,
-                get_settings(),
+                settings,
             ).execute(ride_id)
 
         if detail is not None:
@@ -129,7 +143,9 @@ async def _revalidate_passenger_connect(
 
 
 async def _revalidate_passenger_activity(
-    ride_id: uuid.UUID, session_factory: Callable[[], Any]
+    ride_id: uuid.UUID,
+    session_factory: Callable[[], Any],
+    settings: Settings,
 ) -> None:
     if hub.has_subscribers(ride_topic(ride_id)):
         return
@@ -156,11 +172,13 @@ async def _revalidate_passenger_activity(
         # Reutiliza el mismo cierre diferido que una desconexión. Cada respuesta
         # HTTP exitosa mueve la ventana; si el polling también desaparece, este
         # último temporizador termina limpiando la búsqueda abandonada.
-        on_passenger_disconnect(ride_id, session_factory)
+        on_passenger_disconnect(ride_id, session_factory, settings)
 
 
 def on_passenger_disconnect(
-    ride_id: uuid.UUID, session_factory: Callable[[], Any]
+    ride_id: uuid.UUID,
+    session_factory: Callable[[], Any],
+    settings: Settings | None = None,
 ) -> None:
     """El pasajero se desconectó: arranca la ventana de gracia.
 
@@ -186,6 +204,7 @@ def on_passenger_disconnect(
         ride_id,
         session_factory,
         disconnected_at,
+        settings or get_settings(),
     )
 
 
@@ -193,6 +212,7 @@ def _start_cancel_timer(
     ride_id: uuid.UUID,
     session_factory: Callable[[], Any],
     disconnected_at: float,
+    settings: Settings,
 ) -> None:
     if (
         _last_seen.get(ride_id) != disconnected_at
@@ -206,7 +226,7 @@ def _start_cancel_timer(
     # final se toma bajo lock en la base después de la gracia. El contexto vacío
     # desacopla el worker del cancel-scope del transporte que lo originó.
     task = asyncio.create_task(
-        _cancel_after_grace(ride_id, session_factory),
+        _cancel_after_grace(ride_id, session_factory, settings),
         context=contextvars.Context(),
     )
     _pending_cancels[ride_id] = task
@@ -217,17 +237,19 @@ def _start_cancel_timer(
 async def _cancel_after_grace(
     ride_id: uuid.UUID,
     session_factory: Callable[[], Any],
+    settings: Settings,
 ) -> None:
     # El worker vive más que el handler WS que lo originó. El shield bloquea la
     # cancelación del scope AnyIO del transporte; ``Task.cancel()`` directo (la
     # reconexión durante el sleep) sigue atravesándolo.
     with CancelScope(shield=True):
-        await _run_cancel_after_grace(ride_id, session_factory)
+        await _run_cancel_after_grace(ride_id, session_factory, settings)
 
 
 async def _run_cancel_after_grace(
     ride_id: uuid.UUID,
     session_factory: Callable[[], Any],
+    settings: Settings,
 ) -> None:
     """Cancela la búsqueda si la ausencia persiste y publica su desenlace."""
     current = asyncio.current_task()
@@ -249,7 +271,7 @@ async def _run_cancel_after_grace(
         async with session_factory() as session:
             result = await build_cancel_ride_on_disconnect(
                 session,
-                get_settings(),
+                settings,
             ).execute(ride_id)
             if result is None:
                 return

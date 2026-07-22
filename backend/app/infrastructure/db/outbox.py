@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from collections import Counter
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import and_, func, literal, select, update
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
@@ -27,6 +27,11 @@ from app.infrastructure.db.models import (
 
 
 def _to_event(row: RealtimeOutboxModel) -> RealtimeOutboxEvent:
+    created_at = row.created_at
+    if created_at.tzinfo is None:
+        # SQLite pierde la zona de DateTime(timezone=True); PostgreSQL conserva
+        # el instante aware. El envelope v2 exige siempre una fecha inequívoca.
+        created_at = created_at.replace(tzinfo=UTC)
     return RealtimeOutboxEvent(
         id=row.id,
         batch_id=row.batch_id,
@@ -38,7 +43,7 @@ def _to_event(row: RealtimeOutboxModel) -> RealtimeOutboxEvent:
         aggregate_version=row.aggregate_version,
         stream_version=row.stream_version,
         payload=dict(row.payload),
-        created_at=row.created_at,
+        created_at=created_at,
         next_attempt_at=row.next_attempt_at,
         published_at=row.published_at,
         attempts=row.attempts,

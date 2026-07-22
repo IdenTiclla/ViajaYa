@@ -44,6 +44,7 @@ from app.application.interfaces import (
     ExpireOfferEventRecorder,
     PauseRideEventRecorder,
     RealtimeOutbox,
+    RealtimeOutboxBatchPublisher,
     RealtimeOutboxBatchValidator,
     RejectOfferEventRecorder,
     RepublishRideEventRecorder,
@@ -52,6 +53,7 @@ from app.application.interfaces import (
 )
 from app.domain.entities import Offer
 from app.domain.repositories import OpenRideDetail
+from app.infrastructure.realtime.hub import hub
 
 _POOL_TOPICS = frozenset({"pool:taxi", "pool:moto", "pool:delivery"})
 _MAX_SAFE_JSON_INTEGER = 2**53 - 1
@@ -185,6 +187,32 @@ def serialize_realtime_outbox_batch_v2(
     """Valida un lote canónico y lo traduce a envelopes v2 listos para JSON."""
     validate_realtime_outbox_batch(events)
     return [_serialize_realtime_outbox_event_v2(event) for event in events]
+
+
+class LocalHubRealtimeOutboxBatchPublisher(RealtimeOutboxBatchPublisher):
+    """Entrega envelopes v2 al hub del único proceso API activo.
+
+    Primero serializa el batch completo para que un error determinista nunca
+    produzca una entrega parcial. Los fallos de un socket individual los absorbe
+    el hub; un fallo operativo del transporte se propaga para aplicar backoff.
+    """
+
+    async def publish(self, events: Sequence[RealtimeOutboxEvent]) -> None:
+        try:
+            envelopes = serialize_realtime_outbox_batch_v2(events)
+        except InvalidRealtimeOutboxBatchError:
+            raise
+        except (TypeError, ValueError) as error:
+            raise _invalid_batch(
+                "invalid_payload",
+                "no cumple el contrato v2",
+            ) from error
+
+        for event, envelope in zip(events, envelopes, strict=True):
+            await hub.broadcast_versioned(event.topic, envelope)
+
+    async def force_resync(self, streams: Sequence[str]) -> None:
+        await hub.force_resync(streams)
 
 
 class CanonicalRealtimeOutboxBatchValidator(RealtimeOutboxBatchValidator):

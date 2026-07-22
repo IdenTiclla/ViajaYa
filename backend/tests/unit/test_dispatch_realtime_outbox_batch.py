@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -13,6 +13,7 @@ from app.application.dto import RealtimeOutboxEvent
 from app.application.exceptions import InvalidRealtimeOutboxBatchError
 from app.application.interfaces import (
     RealtimeOutbox,
+    RealtimeOutboxBatchPublisher,
     RealtimeOutboxBatchValidator,
     UnitOfWork,
 )
@@ -125,6 +126,30 @@ class ConfigurableValidator(RealtimeOutboxBatchValidator):
             raise self.error
 
 
+class RecordingPublisher(RealtimeOutboxBatchPublisher):
+    def __init__(
+        self,
+        error: BaseException | None = None,
+        operations: list[str] | None = None,
+    ) -> None:
+        self.error = error
+        self.operations = operations
+        self.published: list[list[RealtimeOutboxEvent]] = []
+        self.resynced: list[tuple[str, ...]] = []
+
+    async def publish(self, events: Sequence[RealtimeOutboxEvent]) -> None:
+        if self.operations is not None:
+            self.operations.append("publish")
+        if self.error is not None:
+            raise self.error
+        self.published.append(list(events))
+
+    async def force_resync(self, streams: Sequence[str]) -> None:
+        if self.operations is not None:
+            self.operations.append("resync")
+        self.resynced.append(tuple(streams))
+
+
 def _use_case(
     outbox: RecordingOutbox,
     unit_of_work: RecordingUnitOfWork,
@@ -168,6 +193,137 @@ async def test_valid_batch_is_marked_published_and_committed() -> None:
     assert outbox.quarantined == []
     assert unit_of_work.commits == 1
     assert unit_of_work.rollbacks == 0
+
+
+async def test_live_publishes_before_marking_and_committing() -> None:
+    operations: list[str] = []
+    event = _event()
+
+    class OrderedOutbox(RecordingOutbox):
+        async def mark_batch_published(self, batch_id, published_at):
+            operations.append("mark")
+            await super().mark_batch_published(batch_id, published_at)
+
+    class OrderedUnitOfWork(RecordingUnitOfWork):
+        async def commit(self):
+            operations.append("commit")
+            await super().commit()
+
+    outbox = OrderedOutbox([event])
+    unit_of_work = OrderedUnitOfWork()
+    publisher = RecordingPublisher(operations=operations)
+    use_case = DispatchRealtimeOutboxBatch(
+        outbox,
+        unit_of_work,
+        ConfigurableValidator(),
+        publisher,
+    )
+
+    result = await use_case.execute(datetime.now(UTC))
+
+    assert result.status == "published"
+    assert operations == ["publish", "mark", "commit"]
+    assert publisher.published == [[event]]
+
+
+async def test_live_persists_sanitized_failure_with_exponential_backoff() -> None:
+    now = datetime.now(UTC)
+    event = _event(attempts=3)
+    outbox = RecordingOutbox([event])
+    unit_of_work = RecordingUnitOfWork()
+    publisher = RecordingPublisher(RuntimeError("payload privado"))
+    use_case = DispatchRealtimeOutboxBatch(
+        outbox,
+        unit_of_work,
+        ConfigurableValidator(),
+        publisher,
+        retry_base_seconds=2,
+        retry_max_seconds=10,
+    )
+
+    result = await use_case.execute(now)
+
+    assert result.status == "failed"
+    assert outbox.failed == [(event.batch_id, "RuntimeError", now + timedelta(seconds=8))]
+    assert outbox.published == []
+    assert unit_of_work.commits == 1
+    assert unit_of_work.rollbacks == 0
+
+
+async def test_live_quarantines_before_forcing_resync_after_commit() -> None:
+    operations: list[str] = []
+    event = _event()
+
+    class OrderedOutbox(RecordingOutbox):
+        async def mark_batch_quarantined(self, batch_id, code, quarantined_at):
+            operations.append("quarantine")
+            return await super().mark_batch_quarantined(
+                batch_id,
+                code,
+                quarantined_at,
+            )
+
+    class OrderedUnitOfWork(RecordingUnitOfWork):
+        async def commit(self):
+            operations.append("commit")
+            await super().commit()
+
+    publisher = RecordingPublisher(
+        InvalidRealtimeOutboxBatchError("invalid_payload", "contrato v2"),
+        operations,
+    )
+    use_case = DispatchRealtimeOutboxBatch(
+        OrderedOutbox([event]),
+        OrderedUnitOfWork(),
+        ConfigurableValidator(),
+        publisher,
+    )
+
+    result = await use_case.execute(datetime.now(UTC))
+
+    assert result.status == "quarantined"
+    assert result.affected_streams == (event.topic,)
+    assert operations == ["publish", "quarantine", "commit", "resync"]
+    assert publisher.resynced == [(event.topic,)]
+
+
+async def test_cancel_after_quarantine_commit_waits_for_forced_resync() -> None:
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    completed = False
+    event = _event()
+
+    class SlowResyncPublisher(RecordingPublisher):
+        async def force_resync(self, streams: Sequence[str]) -> None:
+            nonlocal completed
+            entered.set()
+            await release.wait()
+            completed = True
+
+    outbox = RecordingOutbox([event])
+    unit_of_work = RecordingUnitOfWork()
+    publisher = SlowResyncPublisher(
+        InvalidRealtimeOutboxBatchError("invalid_payload", "contrato v2")
+    )
+    use_case = DispatchRealtimeOutboxBatch(
+        outbox,
+        unit_of_work,
+        ConfigurableValidator(),
+        publisher,
+    )
+
+    task = asyncio.create_task(use_case.execute(datetime.now(UTC)))
+    await entered.wait()
+    task.cancel()
+    await asyncio.sleep(0)
+
+    assert task.done() is False
+    release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert completed is True
+    assert unit_of_work.commits == 1
 
 
 async def test_invalid_batch_is_quarantined_without_retry_and_committed() -> None:

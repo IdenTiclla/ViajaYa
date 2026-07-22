@@ -21,14 +21,18 @@ from starlette.websockets import WebSocketDisconnect
 from app.api.deps import get_session_factory
 from app.api.v1.schemas.realtime import (
     DriverOffersSnapshotMessage,
+    DriverSnapshotMessageV2,
     OfferCreatedMessage,
     OffersSnapshotMessage,
     OpenRidesSnapshotMessage,
     PausedRidesSnapshotMessage,
+    RealtimeEventEnvelopeV2,
+    RideSnapshotMessageV2,
     RideStatusMessage,
     parse_negotiation_message,
 )
 from app.domain.entities import OfferStatus, UserRole, VehicleType
+from app.infrastructure.config import Settings
 from app.infrastructure.db.base import Base
 from app.infrastructure.db.models import OfferModel
 from app.infrastructure.db.repositories import (
@@ -114,6 +118,36 @@ def ws_client(tmp_path):
 
     with TestClient(app) as client:
         client.portal.call(create_tables)
+        client.factory = factory  # type: ignore[attr-defined]
+        try:
+            yield client
+        finally:
+            client.portal.call(engine.dispose)
+
+
+@pytest.fixture
+def ws_client_v2(tmp_path):
+    """Servidor canary con outbox→hub local y handshake v2 habilitados."""
+    engine = create_async_engine(
+        f"sqlite+aiosqlite:///{tmp_path / 'negotiation-v2.db'}",
+        future=True,
+    )
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    settings = Settings(
+        _env_file=None,
+        realtime_outbox_dispatch_mode="live_local",
+        realtime_outbox_recording_enabled=True,
+        realtime_outbox_poll_interval_seconds=0.01,
+    )
+
+    async def create_tables() -> None:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+    asyncio.run(create_tables())
+    app = create_app(settings=settings, session_factory=factory)
+
+    with TestClient(app) as client:
         client.factory = factory  # type: ignore[attr-defined]
         try:
             yield client
@@ -229,6 +263,61 @@ def test_passenger_receives_snapshot_and_live_offer(ws_client: TestClient):
         status_event = ws.receive_json()
         assert isinstance(parse_negotiation_message(status_event), RideStatusMessage)
         assert status_event["data"]["status"] == "accepted"
+
+
+def test_live_local_sends_single_v2_snapshot_and_durable_delta(
+    ws_client_v2: TestClient,
+) -> None:
+    rider_token = _register(ws_client_v2, "rider-v2@x.com")
+    driver_token = _register(ws_client_v2, "driver-v2@x.com")
+    _promote_driver(ws_client_v2, "driver-v2@x.com")
+    ride = ws_client_v2.post(
+        RIDES,
+        json=_ride_payload(),
+        headers=_headers(rider_token),
+    ).json()
+
+    with _websocket_connect(
+        ws_client_v2,
+        f"/api/v1/ws/rides/{ride['id']}?token={rider_token}",
+    ) as rider_ws:
+        rider_snapshot = RideSnapshotMessageV2.model_validate(
+            rider_ws.receive_json()
+        )
+        assert rider_snapshot.kind == "snapshot"
+        assert rider_snapshot.data.ride.id == uuid.UUID(ride["id"])
+        assert [item.stream for item in rider_snapshot.watermarks] == [
+            f"ride:{ride['id']}"
+        ]
+
+        # Permite que el anuncio de presencia confirme su outbox antes del
+        # snapshot del conductor. La barrera sigue garantizando snapshot primero.
+        ws_client_v2.portal.call(asyncio.sleep, 0.05)
+        with _websocket_connect(
+            ws_client_v2,
+            f"/api/v1/ws/driver?token={driver_token}",
+        ) as driver_ws:
+            driver_snapshot = DriverSnapshotMessageV2.model_validate(
+                driver_ws.receive_json()
+            )
+            assert driver_snapshot.kind == "snapshot"
+            assert [item.id for item in driver_snapshot.data.open_rides.items] == [
+                uuid.UUID(ride["id"])
+            ]
+
+            offer = ws_client_v2.post(
+                f"{RIDES}/{ride['id']}/offers",
+                json={"accept_at_fare": True, "eta_min": 4},
+                headers=_headers(driver_token),
+            )
+            assert offer.status_code == 201, offer.text
+
+            event = RealtimeEventEnvelopeV2.model_validate(rider_ws.receive_json())
+            assert event.kind == "event"
+            assert event.type == "offer_created"
+            assert event.stream == f"ride:{ride['id']}"
+            assert event.data["id"] == offer.json()["id"]
+            assert event.stream_version == rider_snapshot.watermarks[0].stream_version + 1
 
 
 def test_status_progression_reaches_both_participants_with_exact_http_payload(

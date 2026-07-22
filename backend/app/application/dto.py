@@ -86,6 +86,7 @@ class DispatchRealtimeOutboxResult:
     batch_id: uuid.UUID | None = None
     event_count: int = 0
     quarantine_code: RealtimeOutboxQuarantineCode | None = None
+    affected_streams: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

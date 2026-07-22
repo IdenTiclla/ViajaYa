@@ -1,4 +1,4 @@
-"""Loop operativo del dispatcher de outbox en modo sombra."""
+"""Loops operativos de outbox para los modos sombra y live local."""
 
 from __future__ import annotations
 
@@ -11,7 +11,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.application.dto import DispatchRealtimeOutboxResult
-from app.application.interfaces import RealtimeOutboxBatchValidator
+from app.application.interfaces import (
+    RealtimeOutboxBatchPublisher,
+    RealtimeOutboxBatchValidator,
+)
 from app.application.use_cases.dispatch_realtime_outbox_batch import (
     DispatchRealtimeOutboxBatch,
 )
@@ -56,6 +59,8 @@ class ShadowRealtimeOutboxDispatcher:
         # transporte live; los errores de contrato nunca consumen backoff.
         self._retry_base_seconds = retry_base_seconds
         self._retry_max_seconds = retry_max_seconds
+        self._publisher: RealtimeOutboxBatchPublisher | None = None
+        self._mode_label = "sombra"
         self._clock = clock
         self._stop_event = asyncio.Event()
         self._running = False
@@ -107,15 +112,18 @@ class ShadowRealtimeOutboxDispatcher:
                 SqlAlchemyRealtimeOutbox(session),
                 SqlAlchemyUnitOfWork(session),
                 self._validator,
+                self._publisher,
+                retry_base_seconds=self._retry_base_seconds,
+                retry_max_seconds=self._retry_max_seconds,
             )
             return await use_case.execute(self._clock())
 
     async def run(self) -> None:
         """Drena el backlog y espera de forma cancelable cuando queda vacío."""
         if self._running:
-            raise RuntimeError("El dispatcher sombra ya está en ejecución.")
+            raise RuntimeError(f"El dispatcher {self._mode_label} ya está en ejecución.")
         self._running = True
-        logger.info("Dispatcher de outbox iniciado en modo sombra.")
+        logger.info("Dispatcher de outbox iniciado en modo %s.", self._mode_label)
         try:
             while not self._stop_event.is_set():
                 try:
@@ -126,7 +134,8 @@ class ShadowRealtimeOutboxDispatcher:
                 except Exception as error:  # noqa: BLE001 - loop resiliente
                     self._last_error = type(error).__name__
                     logger.error(
-                        "Falló una iteración del dispatcher sombra (%s).",
+                        "Falló una iteración del dispatcher %s (%s).",
+                        self._mode_label,
                         self._last_error,
                     )
                     await self._wait_for_work()
@@ -139,14 +148,15 @@ class ShadowRealtimeOutboxDispatcher:
                     self._last_quarantined_batch_id = str(result.batch_id)
                     self._last_quarantine_code = result.quarantine_code
                     logger.error(
-                        "El dispatcher sombra puso en cuarentena terminal "
+                        "El dispatcher %s puso en cuarentena terminal "
                         "el batch %s (%s).",
+                        self._mode_label,
                         self._last_quarantined_batch_id,
                         self._last_quarantine_code,
                     )
         finally:
             self._running = False
-            logger.info("Dispatcher de outbox detenido.")
+            logger.info("Dispatcher de outbox %s detenido.", self._mode_label)
 
     def stop(self) -> None:
         """Solicita un cierre coordinado y despierta el polling actual."""
@@ -160,3 +170,29 @@ class ShadowRealtimeOutboxDispatcher:
             )
         except TimeoutError:
             pass
+
+
+class LocalRealtimeOutboxDispatcher(ShadowRealtimeOutboxDispatcher):
+    """Publica envelopes v2 al hub local antes de confirmar cada batch."""
+
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        validator: RealtimeOutboxBatchValidator,
+        publisher: RealtimeOutboxBatchPublisher,
+        *,
+        poll_interval_seconds: float,
+        retry_base_seconds: float,
+        retry_max_seconds: float,
+        clock: Callable[[], datetime] = _utc_now,
+    ) -> None:
+        super().__init__(
+            session_factory,
+            validator,
+            poll_interval_seconds=poll_interval_seconds,
+            retry_base_seconds=retry_base_seconds,
+            retry_max_seconds=retry_max_seconds,
+            clock=clock,
+        )
+        self._publisher = publisher
+        self._mode_label = "live_local"

@@ -240,6 +240,7 @@ async def passenger_active_ride(
     current_user: CurrentUserDep,
     use_case: Annotated[GetPassengerActiveRide, Depends(get_passenger_active_ride)],
     session_factory: SessionFactoryDep,
+    settings: SettingsDep,
 ) -> RideResponse | None:
     """Solicitud o viaje no terminal del pasajero, para recuperar el flujo."""
     detail = await use_case.execute(current_user)
@@ -248,7 +249,11 @@ async def passenger_active_ride(
         and detail.ride.status is RideStatus.SEARCHING
         and not detail.ride.paused
     ):
-        await presence.on_passenger_activity(detail.ride.id, session_factory)
+        await presence.on_passenger_activity(
+            detail.ride.id,
+            session_factory,
+            settings,
+        )
     return RideResponse.from_detail(detail) if detail is not None else None
 
 

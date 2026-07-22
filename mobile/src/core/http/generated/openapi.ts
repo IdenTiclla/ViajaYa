@@ -559,8 +559,71 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Health */
+        /**
+         * Health
+         * @description Contrato de liveness histórico, conservado sin cambios.
+         */
         get: operations["health_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/health/live": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Liveness
+         * @description Solo certifica que el proceso puede responder; no consulta dependencias.
+         */
+        get: operations["liveness_health_live_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/health/ready": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Readiness
+         * @description Comprueba PostgreSQL y los workers habilitados, sin filtrar errores.
+         */
+        get: operations["readiness_health_ready_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/health/realtime": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Realtime Health
+         * @description Expone métricas acotadas de outbox sin topics, payloads ni errores.
+         */
+        get: operations["realtime_health_health_realtime_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -634,6 +697,15 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** HealthResponse */
+        HealthResponse: {
+            /**
+             * Status
+             * @default ok
+             * @constant
+             */
+            status: "ok";
         };
         /**
          * HistoryCounterpartSchema
@@ -842,6 +914,13 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** QuarantinedBatchCountResponse */
+        QuarantinedBatchCountResponse: {
+            /** Batch Count */
+            batch_count: number;
+            /** Code */
+            code: string;
+        };
         /**
          * RatingCreate
          * @description Cuerpo para calificar un viaje completado (1–5 + comentario opcional).
@@ -880,6 +959,73 @@ export interface components {
             ride_id: string;
             /** Score */
             score: number;
+        };
+        /** ReadinessChecksResponse */
+        ReadinessChecksResponse: {
+            /**
+             * Database
+             * @enum {string}
+             */
+            database: "ok" | "error";
+            /**
+             * Realtime Outbox Dispatcher
+             * @enum {string}
+             */
+            realtime_outbox_dispatcher: "ok" | "error" | "disabled";
+            /**
+             * Realtime Outbox Process Lock
+             * @enum {string}
+             */
+            realtime_outbox_process_lock: "ok" | "error" | "disabled";
+            /**
+             * Realtime Outbox Retention
+             * @enum {string}
+             */
+            realtime_outbox_retention: "ok" | "error" | "disabled";
+        };
+        /** ReadinessResponse */
+        ReadinessResponse: {
+            checks: components["schemas"]["ReadinessChecksResponse"];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "unavailable";
+        };
+        /** RealtimeHealthResponse */
+        RealtimeHealthResponse: {
+            /** Captured At */
+            captured_at?: string | null;
+            /** Latest Publish Delay Seconds */
+            latest_publish_delay_seconds?: number | null;
+            /** Latest Published At */
+            latest_published_at?: string | null;
+            /** Max Pending Age Seconds */
+            max_pending_age_seconds?: number | null;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "off" | "shadow" | "live_local";
+            /** Pending Batch Count */
+            pending_batch_count?: number | null;
+            /** Pending Event Count */
+            pending_event_count?: number | null;
+            /** Quarantined Batches */
+            quarantined_batches?: components["schemas"]["QuarantinedBatchCountResponse"][] | null;
+            /** Retention Days */
+            retention_days: number;
+            /** Retention Deleted Batch Count */
+            retention_deleted_batch_count?: number | null;
+            /** Retention Deleted Event Count */
+            retention_deleted_event_count?: number | null;
+            /** Retrying Batch Count */
+            retrying_batch_count?: number | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "disabled" | "unavailable";
         };
         /** RecentDestinationResponse */
         RecentDestinationResponse: {
@@ -2274,9 +2420,85 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+        };
+    };
+    liveness_health_live_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+        };
+    };
+    readiness_health_ready_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReadinessResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReadinessResponse"];
+                };
+            };
+        };
+    };
+    realtime_health_health_realtime_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RealtimeHealthResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RealtimeHealthResponse"];
                 };
             };
         };

@@ -61,6 +61,9 @@ _OUTBOX_PENDING_PREDICATE = text(
 _OUTBOX_UNPUBLISHED_PREDICATE = text(
     "published_at IS NULL AND quarantined_at IS NULL"
 )
+_OUTBOX_PUBLISHED_RETENTION_PREDICATE = text(
+    "published_at IS NOT NULL AND sequence = 0"
+)
 _OUTBOX_PAYLOAD_TYPE = JSON().with_variant(JSONB(), "postgresql")
 
 
@@ -517,6 +520,14 @@ class RealtimeOutboxModel(Base):
             name="ck_realtime_outbox_sequence_nonnegative",
         ),
         CheckConstraint(
+            "batch_size >= 1",
+            name="ck_realtime_outbox_batch_size_positive",
+        ),
+        CheckConstraint(
+            "sequence < batch_size",
+            name="ck_realtime_outbox_sequence_within_batch",
+        ),
+        CheckConstraint(
             "aggregate_version >= 1",
             name="ck_realtime_outbox_aggregate_version_positive",
         ),
@@ -563,6 +574,13 @@ class RealtimeOutboxModel(Base):
             postgresql_where=text("quarantined_at IS NOT NULL AND sequence = 0"),
             sqlite_where=text("quarantined_at IS NOT NULL AND sequence = 0"),
         ),
+        Index(
+            "ix_realtime_outbox_published_retention",
+            "published_at",
+            "batch_id",
+            postgresql_where=_OUTBOX_PUBLISHED_RETENTION_PREDICATE,
+            sqlite_where=_OUTBOX_PUBLISHED_RETENTION_PREDICATE,
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -572,6 +590,7 @@ class RealtimeOutboxModel(Base):
     sequence: Mapped[int] = mapped_column(
         Integer, default=0, server_default="0", nullable=False
     )
+    batch_size: Mapped[int] = mapped_column(Integer, nullable=False)
     event_type: Mapped[str] = mapped_column(String(64), nullable=False)
     topic: Mapped[str] = mapped_column(String(255), nullable=False)
     stream_version: Mapped[int] = mapped_column(BigInteger, nullable=False)

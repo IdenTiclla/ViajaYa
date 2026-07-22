@@ -56,6 +56,7 @@ def test_outbox_declara_columnas_jsonb_constraints_e_indice_pending() -> None:
         "id",
         "batch_id",
         "sequence",
+        "batch_size",
         "event_type",
         "topic",
         "stream_version",
@@ -92,6 +93,8 @@ def test_outbox_declara_columnas_jsonb_constraints_e_indice_pending() -> None:
     }
     assert checks == {
         "ck_realtime_outbox_sequence_nonnegative": "sequence >= 0",
+        "ck_realtime_outbox_batch_size_positive": "batch_size >= 1",
+        "ck_realtime_outbox_sequence_within_batch": "sequence < batch_size",
         "ck_realtime_outbox_aggregate_version_positive": "aggregate_version >= 1",
         "ck_realtime_outbox_stream_version_positive": "stream_version >= 1",
         "ck_realtime_outbox_attempts_nonnegative": "attempts >= 0",
@@ -144,4 +147,19 @@ def test_outbox_declara_columnas_jsonb_constraints_e_indice_pending() -> None:
     )
     assert str(quarantined.dialect_options["postgresql"]["where"]) == (
         "quarantined_at IS NOT NULL AND sequence = 0"
+    )
+
+    published_retention = next(
+        index
+        for index in table.indexes
+        if index.name == "ix_realtime_outbox_published_retention"
+    )
+    assert tuple(
+        expression.name for expression in published_retention.expressions
+    ) == ("published_at", "batch_id")
+    assert str(published_retention.dialect_options["postgresql"]["where"]) == (
+        "published_at IS NOT NULL AND sequence = 0"
+    )
+    assert str(published_retention.dialect_options["sqlite"]["where"]) == (
+        "published_at IS NOT NULL AND sequence = 0"
     )

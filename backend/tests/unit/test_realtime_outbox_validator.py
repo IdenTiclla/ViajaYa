@@ -25,6 +25,7 @@ def _event(
     batch_id: uuid.UUID | None = None,
     event_id: uuid.UUID | None = None,
     sequence: int = 0,
+    batch_size: int = 1,
     topic: str | None = None,
     aggregate_version: int = 1,
     stream_version: int = 1,
@@ -37,6 +38,7 @@ def _event(
         id=event_id or uuid.uuid4(),
         batch_id=batch_id or uuid.uuid4(),
         sequence=sequence,
+        batch_size=batch_size,
         event_type=event_type,
         topic=topic or "pool:taxi",
         aggregate_type="ride",
@@ -135,10 +137,26 @@ def test_rechaza_mas_de_un_batch_id() -> None:
         validate_realtime_outbox_batch(events)
 
 
+def test_rechaza_cardinalidad_durable_inconsistente() -> None:
+    batch_id = uuid.uuid4()
+    events = [
+        _event(batch_id=batch_id, sequence=0, batch_size=3),
+        _event(batch_id=batch_id, sequence=1, batch_size=3),
+    ]
+
+    with pytest.raises(InvalidRealtimeOutboxBatchError, match="cardinalidad") as error:
+        validate_realtime_outbox_batch(events)
+
+    assert error.value.code == "invalid_sequence"
+
+
 @pytest.mark.parametrize("sequences", [[1], [0, 2], [1, 0]])
 def test_rechaza_una_secuencia_no_contigua_desde_cero(sequences: list[int]) -> None:
     batch_id = uuid.uuid4()
-    events = [_event(batch_id=batch_id, sequence=sequence) for sequence in sequences]
+    events = [
+        _event(batch_id=batch_id, sequence=sequence, batch_size=len(sequences))
+        for sequence in sequences
+    ]
 
     with pytest.raises(InvalidRealtimeOutboxBatchError, match="secuencia"):
         validate_realtime_outbox_batch(events)
@@ -148,8 +166,8 @@ def test_rechaza_un_event_id_duplicado() -> None:
     batch_id = uuid.uuid4()
     event_id = uuid.uuid4()
     events = [
-        _event(batch_id=batch_id, event_id=event_id, sequence=0),
-        _event(batch_id=batch_id, event_id=event_id, sequence=1),
+        _event(batch_id=batch_id, event_id=event_id, sequence=0, batch_size=2),
+        _event(batch_id=batch_id, event_id=event_id, sequence=1, batch_size=2),
     ]
 
     with pytest.raises(InvalidRealtimeOutboxBatchError, match="event_id duplicado"):
@@ -171,8 +189,8 @@ def test_rechaza_stream_version_no_positiva(stream_version: int) -> None:
 def test_rechaza_versiones_no_contiguas_del_mismo_stream_en_un_lote() -> None:
     batch_id = uuid.uuid4()
     events = [
-        _event(batch_id=batch_id, sequence=0, stream_version=4),
-        _event(batch_id=batch_id, sequence=1, stream_version=6),
+        _event(batch_id=batch_id, sequence=0, batch_size=2, stream_version=4),
+        _event(batch_id=batch_id, sequence=1, batch_size=2, stream_version=6),
     ]
 
     with pytest.raises(InvalidRealtimeOutboxBatchError, match="stream.*contigua"):
@@ -334,8 +352,8 @@ def test_serializa_batch_unitario_outbox_a_envelope_v2() -> None:
 def test_serializa_batch_canonico_preservando_secuencia_y_stream() -> None:
     batch_id = uuid.uuid4()
     events = [
-        _event(batch_id=batch_id, sequence=0, stream_version=20),
-        _event(batch_id=batch_id, sequence=1, stream_version=21),
+        _event(batch_id=batch_id, sequence=0, batch_size=2, stream_version=20),
+        _event(batch_id=batch_id, sequence=1, batch_size=2, stream_version=21),
     ]
 
     envelopes = serialize_realtime_outbox_batch_v2(events)
@@ -353,7 +371,7 @@ def test_serializer_v2_rechaza_batch_no_canonico() -> None:
 async def test_publicador_local_pre_serializa_todo_antes_del_primer_envio(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    first = _event()
+    first = _event(batch_size=2)
     invalid_second = replace(
         first,
         id=uuid.uuid4(),
@@ -379,7 +397,7 @@ async def test_publicador_local_pre_serializa_todo_antes_del_primer_envio(
 async def test_publicador_local_envia_en_orden_y_delega_resync(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    first = _event()
+    first = _event(batch_size=2)
     second = replace(
         first,
         id=uuid.uuid4(),

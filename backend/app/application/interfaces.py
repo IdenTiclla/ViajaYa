@@ -22,7 +22,9 @@ from app.application.dto import (
     PageCursor,
     PassengerRealtimeSnapshot,
     PendingRealtimeEvent,
+    PublishedRealtimeOutboxRetentionResult,
     RealtimeOutboxEvent,
+    RealtimeOutboxOperationalState,
     RealtimeOutboxQuarantineCode,
     RideDetail,
     RideHistoryItem,
@@ -89,6 +91,26 @@ class RealtimeOutbox(ABC):
         Devuelve la cantidad de filas que hicieron la transición. La operación
         es idempotente y nunca revive lotes publicados o apartados.
         """
+
+
+class RealtimeOutboxOperationalReader(ABC):
+    """Puerto de lectura para observar la salud durable de la outbox."""
+
+    @abstractmethod
+    async def read(self) -> RealtimeOutboxOperationalState:
+        """Devuelve conteos y timestamps sin exponer modelos ORM."""
+
+
+class PublishedRealtimeOutboxRetention(ABC):
+    """Elimina únicamente batches publicados, completos y antiguos."""
+
+    @abstractmethod
+    async def purge(
+        self,
+        cutoff: datetime,
+        batch_limit: int,
+    ) -> PublishedRealtimeOutboxRetentionResult:
+        """Marca para borrado hasta ``batch_limit`` batches completos."""
 
 
 class RealtimeSnapshotReader(ABC):

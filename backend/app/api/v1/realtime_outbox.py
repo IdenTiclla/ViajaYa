@@ -92,6 +92,13 @@ def validate_realtime_outbox_batch(events: Sequence[RealtimeOutboxEvent]) -> Non
     if len(batch_ids) != 1:
         raise _invalid_batch("mixed_batch", "contiene más de un batch_id")
 
+    batch_sizes = {event.batch_size for event in events}
+    if len(batch_sizes) != 1 or next(iter(batch_sizes)) != len(events):
+        raise _invalid_batch(
+            "invalid_sequence",
+            "la cardinalidad durable no coincide con sus miembros",
+        )
+
     expected_sequences = list(range(len(events)))
     sequences = [event.sequence for event in events]
     if sequences != expected_sequences:

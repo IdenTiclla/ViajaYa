@@ -75,6 +75,7 @@ async def test_add_batch_asigna_lote_secuencia_y_versiones_consecutivas(
         await unit_of_work.commit()
 
     assert [event.sequence for event in saved] == [0, 1, 2]
+    assert [event.batch_size for event in saved] == [3, 3, 3]
     assert len({event.batch_id for event in saved}) == 1
     assert [event.aggregate_version for event in saved] == [1, 2, 1]
     assert [event.stream_version for event in saved] == [1, 2, 1]
@@ -86,6 +87,7 @@ async def test_add_batch_asigna_lote_secuencia_y_versiones_consecutivas(
         await SqlAlchemyUnitOfWork(session).commit()
     assert next_batch[0].aggregate_version == 3
     assert next_batch[0].stream_version == 3
+    assert next_batch[0].batch_size == 1
 
 
 async def test_add_batch_agrupa_y_reserva_las_claves_en_orden_determinista(
@@ -186,6 +188,7 @@ async def test_claim_reintenta_el_lote_completo_y_luego_lo_marca_publicado(
         outbox = SqlAlchemyRealtimeOutbox(session)
         claimed = await outbox.claim_next_batch(claim_at)
         assert [event.sequence for event in claimed] == [0, 1]
+        assert [event.batch_size for event in claimed] == [2, 2]
         assert [event.attempts for event in claimed] == [1, 1]
         await outbox.mark_batch_failed(created[0].batch_id, "redis no disponible", retry_at)
         await SqlAlchemyUnitOfWork(session).commit()
@@ -444,6 +447,44 @@ async def test_terminal_state_constraints_reject_incomplete_or_mixed_quarantine(
         row.published_at = now
         row.quarantined_at = now
         row.quarantine_code = "invalid_payload"
+        with pytest.raises(IntegrityError):
+            await session.commit()
+        await session.rollback()
+
+
+async def test_batch_size_constraints_reject_invalid_cardinality(
+    outbox_sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    ride_id = uuid.uuid4()
+    async with outbox_sessions() as session:
+        saved = await SqlAlchemyRealtimeOutbox(session).add_batch(
+            [
+                _pending(ride_id, "offer_withdrawn"),
+                _pending(ride_id, "offer_created"),
+            ]
+        )
+        await SqlAlchemyUnitOfWork(session).commit()
+
+    async with outbox_sessions() as session:
+        second = await session.scalar(
+            select(RealtimeOutboxModel).where(
+                RealtimeOutboxModel.id == saved[1].id
+            )
+        )
+        assert second is not None
+        second.batch_size = 1
+        with pytest.raises(IntegrityError):
+            await session.commit()
+        await session.rollback()
+
+    async with outbox_sessions() as session:
+        first = await session.scalar(
+            select(RealtimeOutboxModel).where(
+                RealtimeOutboxModel.id == saved[0].id
+            )
+        )
+        assert first is not None
+        first.batch_size = 0
         with pytest.raises(IntegrityError):
             await session.commit()
         await session.rollback()

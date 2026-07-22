@@ -62,6 +62,7 @@ class RealtimeOutboxEvent:
     id: uuid.UUID
     batch_id: uuid.UUID
     sequence: int
+    batch_size: int
     event_type: str
     topic: str
     aggregate_type: str
@@ -87,6 +88,58 @@ class DispatchRealtimeOutboxResult:
     event_count: int = 0
     quarantine_code: RealtimeOutboxQuarantineCode | None = None
     affected_streams: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class RealtimeOutboxQuarantineCount:
+    """Cantidad de batches terminales agrupados por código de cuarentena."""
+
+    code: str
+    batch_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class RealtimeOutboxOperationalState:
+    """Estado persistido necesario para observar la salud de la outbox.
+
+    Los timestamps se conservan en este DTO de lectura para que la capa de
+    aplicación derive duraciones usando un reloj explícito y comprobable.
+    """
+
+    pending_event_count: int
+    pending_batch_count: int
+    retrying_batch_count: int
+    quarantined_batches: tuple[RealtimeOutboxQuarantineCount, ...]
+    oldest_pending_created_at: datetime | None = None
+    latest_published_created_at: datetime | None = None
+    latest_published_at: datetime | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RealtimeOutboxOperationalSnapshot:
+    """Métricas operativas derivadas de un corte de lectura de la outbox.
+
+    ``latest_publish_delay_seconds`` mide ``created_at → published_at``. Es
+    un límite superior conservador de la demora commit → publicación porque
+    PostgreSQL asigna ``created_at`` dentro de la transacción productora.
+    """
+
+    captured_at: datetime
+    pending_event_count: int
+    pending_batch_count: int
+    retrying_batch_count: int
+    quarantined_batches: tuple[RealtimeOutboxQuarantineCount, ...]
+    max_pending_age_seconds: float
+    latest_publish_delay_seconds: float | None
+    latest_published_at: datetime | None
+
+
+@dataclass(frozen=True, slots=True)
+class PublishedRealtimeOutboxRetentionResult:
+    """Batches publicados eliminados en una transacción acotada."""
+
+    batch_count: int
+    event_count: int
 
 
 @dataclass(frozen=True)

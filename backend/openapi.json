@@ -156,6 +156,18 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "HealthResponse": {
+        "properties": {
+          "status": {
+            "const": "ok",
+            "default": "ok",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "HealthResponse",
+        "type": "object"
+      },
       "HistoryCounterpartSchema": {
         "description": "La otra parte del viaje en el historial (conductor o pasajero).",
         "properties": {
@@ -691,6 +703,24 @@
         "title": "PointSchema",
         "type": "object"
       },
+      "QuarantinedBatchCountResponse": {
+        "properties": {
+          "batch_count": {
+            "title": "Batch Count",
+            "type": "integer"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "batch_count"
+        ],
+        "title": "QuarantinedBatchCountResponse",
+        "type": "object"
+      },
       "RatingCreate": {
         "description": "Cuerpo para calificar un viaje completado (1–5 + comentario opcional).",
         "properties": {
@@ -777,6 +807,222 @@
           "score"
         ],
         "title": "RatingResponse",
+        "type": "object"
+      },
+      "ReadinessChecksResponse": {
+        "properties": {
+          "database": {
+            "enum": [
+              "ok",
+              "error"
+            ],
+            "title": "Database",
+            "type": "string"
+          },
+          "realtime_outbox_dispatcher": {
+            "enum": [
+              "ok",
+              "error",
+              "disabled"
+            ],
+            "title": "Realtime Outbox Dispatcher",
+            "type": "string"
+          },
+          "realtime_outbox_process_lock": {
+            "enum": [
+              "ok",
+              "error",
+              "disabled"
+            ],
+            "title": "Realtime Outbox Process Lock",
+            "type": "string"
+          },
+          "realtime_outbox_retention": {
+            "enum": [
+              "ok",
+              "error",
+              "disabled"
+            ],
+            "title": "Realtime Outbox Retention",
+            "type": "string"
+          }
+        },
+        "required": [
+          "database",
+          "realtime_outbox_dispatcher",
+          "realtime_outbox_process_lock",
+          "realtime_outbox_retention"
+        ],
+        "title": "ReadinessChecksResponse",
+        "type": "object"
+      },
+      "ReadinessResponse": {
+        "properties": {
+          "checks": {
+            "$ref": "#/components/schemas/ReadinessChecksResponse"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "unavailable"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "checks"
+        ],
+        "title": "ReadinessResponse",
+        "type": "object"
+      },
+      "RealtimeHealthResponse": {
+        "properties": {
+          "captured_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Captured At"
+          },
+          "latest_publish_delay_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Publish Delay Seconds"
+          },
+          "latest_published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Published At"
+          },
+          "max_pending_age_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Pending Age Seconds"
+          },
+          "mode": {
+            "enum": [
+              "off",
+              "shadow",
+              "live_local"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "pending_batch_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Batch Count"
+          },
+          "pending_event_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Event Count"
+          },
+          "quarantined_batches": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/QuarantinedBatchCountResponse"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quarantined Batches"
+          },
+          "retention_days": {
+            "title": "Retention Days",
+            "type": "integer"
+          },
+          "retention_deleted_batch_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retention Deleted Batch Count"
+          },
+          "retention_deleted_event_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retention Deleted Event Count"
+          },
+          "retrying_batch_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retrying Batch Count"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "disabled",
+              "unavailable"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "mode",
+          "retention_days"
+        ],
+        "title": "RealtimeHealthResponse",
         "type": "object"
       },
       "RecentDestinationResponse": {
@@ -3552,17 +3798,14 @@
     },
     "/health": {
       "get": {
+        "description": "Contrato de liveness histórico, conservado sin cambios.",
         "operationId": "health_health_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "title": "Response Health Health Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/HealthResponse"
                 }
               }
             },
@@ -3570,6 +3813,92 @@
           }
         },
         "summary": "Health",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/health/live": {
+      "get": {
+        "description": "Solo certifica que el proceso puede responder; no consulta dependencias.",
+        "operationId": "liveness_health_live_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Liveness",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "description": "Comprueba PostgreSQL y los workers habilitados, sin filtrar errores.",
+        "operationId": "readiness_health_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Readiness",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/health/realtime": {
+      "get": {
+        "description": "Expone métricas acotadas de outbox sin topics, payloads ni errores.",
+        "operationId": "realtime_health_health_realtime_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RealtimeHealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RealtimeHealthResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Realtime Health",
         "tags": [
           "health"
         ]

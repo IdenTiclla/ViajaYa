@@ -29,6 +29,7 @@ def _event(*, attempts: int = 1) -> RealtimeOutboxEvent:
         id=uuid.uuid4(),
         batch_id=uuid.uuid4(),
         sequence=0,
+        batch_size=1,
         event_type="ride_closed",
         topic=f"ride:{ride_id}",
         aggregate_type="ride",
@@ -193,6 +194,28 @@ async def test_valid_batch_is_marked_published_and_committed() -> None:
     assert outbox.quarantined == []
     assert unit_of_work.commits == 1
     assert unit_of_work.rollbacks == 0
+
+
+async def test_live_uses_completion_clock_after_publishing() -> None:
+    started_at = datetime.now(UTC)
+    completed_at = started_at + timedelta(seconds=3)
+    event = _event()
+    outbox = RecordingOutbox([event])
+    unit_of_work = RecordingUnitOfWork()
+    publisher = RecordingPublisher()
+    use_case = DispatchRealtimeOutboxBatch(
+        outbox,
+        unit_of_work,
+        ConfigurableValidator(),
+        publisher,
+        completion_clock=lambda: completed_at,
+    )
+
+    result = await use_case.execute(started_at)
+
+    assert result.status == "published"
+    assert outbox.claimed_at == started_at
+    assert outbox.published == [(event.batch_id, completed_at)]
 
 
 async def test_live_publishes_before_marking_and_committing() -> None:

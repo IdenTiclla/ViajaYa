@@ -33,6 +33,24 @@ class Settings(BaseSettings):
     realtime_outbox_retry_base_seconds: float = Field(default=1.0, gt=0, le=3600)
     realtime_outbox_retry_max_seconds: float = Field(default=60.0, gt=0, le=86400)
     realtime_outbox_shutdown_timeout_seconds: float = Field(default=5.0, gt=0, le=60)
+    # La limpieza solo elimina batches publicados y queda desactivada hasta que
+    # operación haya observado el backlog del entorno. Las cuarentenas se
+    # conservan indefinidamente para auditoría.
+    realtime_outbox_published_retention_days: int = Field(
+        default=0,
+        ge=0,
+        le=3650,
+    )
+    realtime_outbox_retention_interval_seconds: float = Field(
+        default=3600,
+        gt=0,
+        le=86400,
+    )
+    realtime_outbox_retention_batch_limit: int = Field(
+        default=100,
+        ge=1,
+        le=1000,
+    )
 
     @model_validator(mode="after")
     def validate_realtime_outbox_rollout(self) -> Settings:

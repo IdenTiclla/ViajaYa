@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock
 import pytest
 import pytest_asyncio
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -180,6 +180,29 @@ async def test_run_exposes_a_quarantined_batch_without_logging_its_payload(
     assert str(batch_id) in caplog.text
 
 
+async def test_run_logs_a_sanitized_retry(
+    outbox_sessions: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    dispatcher = _dispatcher(outbox_sessions, poll_interval_seconds=30)
+    batch_id = uuid.uuid4()
+
+    async def dispatch_failed() -> DispatchRealtimeOutboxResult:
+        dispatcher.stop()
+        return DispatchRealtimeOutboxResult(
+            status="failed",
+            batch_id=batch_id,
+            event_count=2,
+        )
+
+    monkeypatch.setattr(dispatcher, "dispatch_once", dispatch_failed)
+    await dispatcher.run()
+
+    assert str(batch_id) in caplog.text
+    assert "2 eventos" in caplog.text
+
+
 async def test_run_sanitizes_unexpected_errors(
     outbox_sessions: async_sessionmaker[AsyncSession],
     monkeypatch: pytest.MonkeyPatch,
@@ -200,13 +223,43 @@ async def test_run_sanitizes_unexpected_errors(
     assert secret not in caplog.text
 
 
+async def test_run_stops_fail_closed_when_process_lock_is_lost(
+    outbox_sessions: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    guard_calls = 0
+
+    async def lost_guard() -> bool:
+        nonlocal guard_calls
+        guard_calls += 1
+        return False
+
+    dispatcher = ShadowRealtimeOutboxDispatcher(
+        outbox_sessions,
+        CanonicalRealtimeOutboxBatchValidator(),
+        poll_interval_seconds=30,
+        retry_base_seconds=1,
+        retry_max_seconds=60,
+        process_guard=lost_guard,
+    )
+    dispatch_once = AsyncMock()
+    monkeypatch.setattr(dispatcher, "dispatch_once", dispatch_once)
+
+    await dispatcher.run()
+
+    assert guard_calls == 1
+    assert dispatcher.last_error == "RealtimeProcessLockLost"
+    assert dispatcher.running is False
+    dispatch_once.assert_not_awaited()
+
+
 async def test_preflight_accepts_a_database_with_outbox_tables(
     outbox_sessions: async_sessionmaker[AsyncSession],
 ) -> None:
     await _dispatcher(outbox_sessions).preflight()
 
 
-async def test_preflight_rejects_a_database_without_migrations_0018_to_0020() -> None:
+async def test_preflight_rejects_a_database_without_migrations_0018_to_0021() -> None:
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:",
         poolclass=StaticPool,
@@ -218,6 +271,50 @@ async def test_preflight_rejects_a_database_without_migrations_0018_to_0020() ->
             await _dispatcher(factory).preflight()
     finally:
         await engine.dispose()
+
+
+async def test_preflight_rejects_a_pending_batch_without_anchor(
+    outbox_sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    ride_id = uuid.uuid4()
+    async with outbox_sessions() as session:
+        saved = await SqlAlchemyRealtimeOutbox(session).add_batch(
+            [
+                PendingRealtimeEvent(
+                    event_type="ride_closed",
+                    topic="pool:taxi",
+                    aggregate_type="ride",
+                    aggregate_id=ride_id,
+                    payload={
+                        "type": "ride_closed",
+                        "data": {"ride_id": str(ride_id)},
+                    },
+                ),
+                PendingRealtimeEvent(
+                    event_type="ride_status",
+                    topic=f"ride:{ride_id}",
+                    aggregate_type="ride",
+                    aggregate_id=ride_id,
+                    payload={
+                        "type": "ride_status",
+                        "data": {"ride_id": str(ride_id)},
+                    },
+                ),
+            ]
+        )
+        await session.commit()
+
+    async with outbox_sessions() as session:
+        await session.execute(
+            delete(RealtimeOutboxModel).where(
+                RealtimeOutboxModel.batch_id == saved[0].batch_id,
+                RealtimeOutboxModel.sequence == 0,
+            )
+        )
+        await session.commit()
+
+    with pytest.raises(RuntimeError, match="batch pendiente incompleto"):
+        await _dispatcher(outbox_sessions).preflight()
 
 
 async def test_app_lifecycle_starts_and_stops_shadow_dispatcher(
@@ -256,8 +353,11 @@ async def test_app_lifecycle_live_local_disables_legacy_and_restores_policy(
 
     async with app.router.lifespan_context(app):
         dispatcher = app.state.realtime_outbox_dispatcher
+        process_lock = app.state.live_local_process_lock
         assert isinstance(dispatcher, LocalRealtimeOutboxDispatcher)
         assert isinstance(dispatcher._publisher, LocalHubRealtimeOutboxBatchPublisher)
+        assert process_lock.dialect_name == "sqlite"
+        assert process_lock.enforced is False
         assert realtime_hub_module.hub.legacy_delivery_enabled is False
         for _ in range(10):
             if dispatcher.running:

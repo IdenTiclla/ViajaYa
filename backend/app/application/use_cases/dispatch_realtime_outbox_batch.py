@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import datetime, timedelta
 
 from app.application.dto import DispatchRealtimeOutboxResult, RealtimeOutboxEvent
@@ -33,6 +33,7 @@ class DispatchRealtimeOutboxBatch:
         *,
         retry_base_seconds: float = 1,
         retry_max_seconds: float = 60,
+        completion_clock: Callable[[], datetime] | None = None,
     ) -> None:
         if retry_base_seconds <= 0:
             raise ValueError("El backoff base debe ser positivo.")
@@ -44,6 +45,7 @@ class DispatchRealtimeOutboxBatch:
         self._publisher = publisher
         self._retry_base_seconds = retry_base_seconds
         self._retry_max_seconds = retry_max_seconds
+        self._completion_clock = completion_clock
 
     async def execute(self, now: datetime) -> DispatchRealtimeOutboxResult:
         try:
@@ -59,13 +61,17 @@ class DispatchRealtimeOutboxBatch:
                 if self._publisher is not None:
                     await self._publisher.publish(events)
             except InvalidRealtimeOutboxBatchError as error:
-                return await self._quarantine(events, error, now)
+                return await self._quarantine(
+                    events,
+                    error,
+                    self._completed_at(now),
+                )
             except asyncio.CancelledError:
                 raise
             except Exception as error:  # noqa: BLE001 - fallo transitorio sanitizado
                 if self._publisher is None:
                     raise
-                retry_at = now + timedelta(
+                retry_at = self._completed_at(now) + timedelta(
                     seconds=self._retry_delay(events[0].attempts)
                 )
                 await self._outbox.mark_batch_failed(
@@ -80,7 +86,10 @@ class DispatchRealtimeOutboxBatch:
                     event_count=len(events),
                 )
 
-            await self._outbox.mark_batch_published(events[0].batch_id, now)
+            await self._outbox.mark_batch_published(
+                events[0].batch_id,
+                self._completed_at(now),
+            )
             await self._unit_of_work.commit()
             return DispatchRealtimeOutboxResult(
                 status="published",
@@ -137,3 +146,14 @@ class DispatchRealtimeOutboxBatch:
             self._retry_max_seconds,
             self._retry_base_seconds * (2**exponent),
         )
+
+    def _completed_at(self, fallback: datetime) -> datetime:
+        """Toma el reloj después del intento, no antes de publicar.
+
+        Los tests y adaptadores que todavía no inyectan reloj conservan el
+        instante recibido por compatibilidad. El dispatcher operativo siempre
+        inyecta su reloj real.
+        """
+        if self._completion_clock is None:
+            return fallback
+        return self._completion_clock()

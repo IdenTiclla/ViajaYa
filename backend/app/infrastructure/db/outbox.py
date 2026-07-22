@@ -36,6 +36,7 @@ def _to_event(row: RealtimeOutboxModel) -> RealtimeOutboxEvent:
         id=row.id,
         batch_id=row.batch_id,
         sequence=row.sequence,
+        batch_size=row.batch_size,
         event_type=row.event_type,
         topic=row.topic,
         aggregate_type=row.aggregate_type,
@@ -95,6 +96,7 @@ class SqlAlchemyRealtimeOutbox(RealtimeOutbox):
             next_stream_versions[topic] = last_version - count + 1
 
         batch_id = uuid.uuid4()
+        batch_size = len(events)
         rows: list[RealtimeOutboxModel] = []
         for sequence, event in enumerate(events):
             aggregate_key = (event.aggregate_type, event.aggregate_id)
@@ -105,6 +107,7 @@ class SqlAlchemyRealtimeOutbox(RealtimeOutbox):
             row = RealtimeOutboxModel(
                 batch_id=batch_id,
                 sequence=sequence,
+                batch_size=batch_size,
                 event_type=event.event_type,
                 topic=event.topic,
                 aggregate_type=event.aggregate_type,

@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.application.dto import DispatchRealtimeOutboxResult
@@ -45,6 +45,7 @@ class ShadowRealtimeOutboxDispatcher:
         retry_base_seconds: float,
         retry_max_seconds: float,
         clock: Callable[[], datetime] = _utc_now,
+        process_guard: Callable[[], Awaitable[bool]] | None = None,
     ) -> None:
         if poll_interval_seconds <= 0:
             raise ValueError("El intervalo de polling debe ser positivo.")
@@ -62,6 +63,7 @@ class ShadowRealtimeOutboxDispatcher:
         self._publisher: RealtimeOutboxBatchPublisher | None = None
         self._mode_label = "sombra"
         self._clock = clock
+        self._process_guard = process_guard
         self._stop_event = asyncio.Event()
         self._running = False
         self._last_error: str | None = None
@@ -94,7 +96,7 @@ class ShadowRealtimeOutboxDispatcher:
         return self._last_quarantine_code
 
     async def preflight(self) -> None:
-        """Falla al arrancar si alguna migración 0018–0020 no está aplicada."""
+        """Falla al arrancar si alguna migración 0018–0021 no está aplicada."""
         async with self._session_factory() as session:
             try:
                 # Seleccionar los modelos completos detecta también una tabla
@@ -102,6 +104,30 @@ class ShadowRealtimeOutboxDispatcher:
                 await session.execute(select(RealtimeOutboxModel).limit(1))
                 await session.execute(select(RealtimeAggregateVersionModel).limit(1))
                 await session.execute(select(RealtimeStreamVersionModel).limit(1))
+                incomplete_batch_id = await session.scalar(
+                    select(RealtimeOutboxModel.batch_id)
+                    .where(
+                        RealtimeOutboxModel.published_at.is_(None),
+                        RealtimeOutboxModel.quarantined_at.is_(None),
+                    )
+                    .group_by(RealtimeOutboxModel.batch_id)
+                    .having(
+                        or_(
+                            func.count(RealtimeOutboxModel.id)
+                            != func.max(RealtimeOutboxModel.batch_size),
+                            func.min(RealtimeOutboxModel.sequence) != 0,
+                            func.max(RealtimeOutboxModel.sequence)
+                            != func.max(RealtimeOutboxModel.batch_size) - 1,
+                            func.min(RealtimeOutboxModel.batch_size)
+                            != func.max(RealtimeOutboxModel.batch_size),
+                        )
+                    )
+                    .limit(1)
+                )
+                if incomplete_batch_id is not None:
+                    raise RuntimeError(
+                        "La outbox contiene un batch pendiente incompleto."
+                    )
             finally:
                 await session.rollback()
 
@@ -115,6 +141,7 @@ class ShadowRealtimeOutboxDispatcher:
                 self._publisher,
                 retry_base_seconds=self._retry_base_seconds,
                 retry_max_seconds=self._retry_max_seconds,
+                completion_clock=self._clock,
             )
             return await use_case.execute(self._clock())
 
@@ -126,6 +153,16 @@ class ShadowRealtimeOutboxDispatcher:
         logger.info("Dispatcher de outbox iniciado en modo %s.", self._mode_label)
         try:
             while not self._stop_event.is_set():
+                if (
+                    self._process_guard is not None
+                    and not await self._process_guard()
+                ):
+                    self._last_error = "RealtimeProcessLockLost"
+                    logger.critical(
+                        "El dispatcher %s perdió su lock de proceso y se detendrá.",
+                        self._mode_label,
+                    )
+                    break
                 try:
                     result = await self.dispatch_once()
                     self._last_error = None
@@ -153,6 +190,13 @@ class ShadowRealtimeOutboxDispatcher:
                         self._mode_label,
                         self._last_quarantined_batch_id,
                         self._last_quarantine_code,
+                    )
+                elif result.status == "failed":
+                    logger.warning(
+                        "El dispatcher %s reprogramó el batch %s (%s eventos).",
+                        self._mode_label,
+                        result.batch_id,
+                        result.event_count,
                     )
         finally:
             self._running = False
@@ -185,6 +229,7 @@ class LocalRealtimeOutboxDispatcher(ShadowRealtimeOutboxDispatcher):
         retry_base_seconds: float,
         retry_max_seconds: float,
         clock: Callable[[], datetime] = _utc_now,
+        process_guard: Callable[[], Awaitable[bool]] | None = None,
     ) -> None:
         super().__init__(
             session_factory,
@@ -193,6 +238,7 @@ class LocalRealtimeOutboxDispatcher(ShadowRealtimeOutboxDispatcher):
             retry_base_seconds=retry_base_seconds,
             retry_max_seconds=retry_max_seconds,
             clock=clock,
+            process_guard=process_guard,
         )
         self._publisher = publisher
         self._mode_label = "live_local"

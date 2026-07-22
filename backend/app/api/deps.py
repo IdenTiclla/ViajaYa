@@ -68,6 +68,9 @@ from app.application.use_cases.get_driver_active_ride import GetDriverActiveRide
 from app.application.use_cases.get_driver_earnings import GetDriverEarnings
 from app.application.use_cases.get_passenger_active_ride import GetPassengerActiveRide
 from app.application.use_cases.get_pending_rating_ride import GetPendingRatingRide
+from app.application.use_cases.get_realtime_outbox_operational_snapshot import (
+    GetRealtimeOutboxOperationalSnapshot,
+)
 from app.application.use_cases.get_ride import GetRide
 from app.application.use_cases.list_offers_for_ride import ListOffersForRide
 from app.application.use_cases.list_open_rides import ListOpenRides
@@ -98,6 +101,9 @@ from app.domain.repositories import (
 )
 from app.infrastructure.config import Settings, get_settings
 from app.infrastructure.db.outbox import SqlAlchemyRealtimeOutbox
+from app.infrastructure.db.outbox_observability import (
+    SqlAlchemyRealtimeOutboxOperationalReader,
+)
 from app.infrastructure.db.realtime_snapshots import SqlAlchemyRealtimeSnapshotReader
 from app.infrastructure.db.repositories import (
     SqlAlchemyOfferRepository,
@@ -147,6 +153,20 @@ def get_realtime_snapshot_reader(
 RealtimeSnapshotReaderDep = Annotated[
     RealtimeSnapshotReader,
     Depends(get_realtime_snapshot_reader),
+]
+
+
+def get_realtime_outbox_operational_snapshot(
+    session: SessionDep,
+) -> GetRealtimeOutboxOperationalSnapshot:
+    return GetRealtimeOutboxOperationalSnapshot(
+        SqlAlchemyRealtimeOutboxOperationalReader(session)
+    )
+
+
+RealtimeOutboxOperationalSnapshotDep = Annotated[
+    GetRealtimeOutboxOperationalSnapshot,
+    Depends(get_realtime_outbox_operational_snapshot),
 ]
 
 

@@ -517,18 +517,24 @@ Endurecimiento antes de promover la canary:
   doble conteo ni fragmentación, y continuidad de versiones después del purge.
 - [ ] Exportar estas señales a OpenMetrics/Prometheus y configurar alertas del
   entorno; `/health/realtime` ya ofrece la fuente sanitaria, no el scraper.
-- [ ] Ejecutar pruebas de contrato backend JSON → parsers mobile y un smoke real
-  que fuerce caída, duplicado, hueco y cuarentena.
-- [ ] Hacer indivisible la aplicación de snapshots entre React Query y Zustand,
+- [x] Ejecutar pruebas de contrato backend JSON → parsers mobile mediante un
+  fixture determinista generado por los serializadores productivos y verificado
+  contra ambos parsers Zod en CI.
+- [ ] Ejecutar un smoke real que fuerce caída, duplicado, hueco y cuarentena.
+- [x] Hacer indivisible la aplicación de snapshots entre React Query y Zustand,
   e impedir que un handler ya iniciado emita efectos después de invalidar su
-  generación.
+  generación. Cada socket físico abre una generación, los commits revalidan su
+  guard después de IO y el snapshot del conductor usa una sola transición del
+  store con notificaciones Query agrupadas.
 - [x] Proteger el batch frente a truncado posterior a `0021` mediante
   cardinalidad durable, validación previa a publicar y auditoría de todos los
   pendientes durante el preflight, incluidos batches sin anchor. El backfill
   establece la cardinalidad observable de los lotes históricos existentes,
   pero no puede reconstruir una cola ya ausente antes de `0021`.
-- [ ] Eliminar la copia tardía de un resultado HTTP anterior desde
-  `usePassengerActiveRide` hacia el detalle después de un snapshot más nuevo.
+- [x] Eliminar la copia tardía de un resultado HTTP anterior desde
+  `usePassengerActiveRide` hacia el detalle después de un snapshot más nuevo;
+  la optimización conserva ahora el `dataUpdatedAt` de origen y nunca pisa una
+  proyección igual, posterior o terminal.
 
 ### 3.2 Bridge Redis y sockets locales
 

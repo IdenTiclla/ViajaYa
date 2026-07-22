@@ -1,0 +1,1172 @@
+{
+  "cases": [
+    {
+      "audiences": [
+        "passenger"
+      ],
+      "message": {
+        "data": [
+          {
+            "created_at": "2026-07-18T12:00:00Z",
+            "driver": {
+              "full_name": "Conductor Uno",
+              "id": "00000000-0000-4000-8000-000000000003",
+              "plate": "ABC-123",
+              "rating": 4.8,
+              "vehicle_model": "Sedán",
+              "vehicle_type": "taxi"
+            },
+            "eta_min": 5,
+            "expires_at": "2026-07-18T12:00:30Z",
+            "id": "00000000-0000-4000-8000-000000000004",
+            "price": "25.00",
+            "ride_id": "00000000-0000-4000-8000-000000000001",
+            "status": "pending"
+          }
+        ],
+        "type": "offers_snapshot"
+      },
+      "name": "legacy.offers_snapshot",
+      "protocol": "legacy"
+    },
+    {
+      "audiences": [
+        "driver"
+      ],
+      "message": {
+        "data": {
+          "items": [
+            {
+              "created_at": "2026-07-18T12:00:00Z",
+              "destination": {
+                "address": "Destino, La Paz",
+                "country_code": "BO",
+                "latitude": -16.5,
+                "longitude": -68.15,
+                "name": "Destino"
+              },
+              "fare": "20.00",
+              "id": "00000000-0000-4000-8000-000000000001",
+              "origin": {
+                "address": "Origen, La Paz",
+                "country_code": "BO",
+                "latitude": -16.5,
+                "longitude": -68.15,
+                "name": "Origen"
+              },
+              "payment_method": "cash",
+              "pool_version": 2,
+              "rider": {
+                "full_name": "Pasajero Uno",
+                "id": "00000000-0000-4000-8000-000000000002",
+                "rating": 4.9,
+                "trips_completed": 12
+              },
+              "service_type": "taxi"
+            }
+          ],
+          "next_cursor": null
+        },
+        "type": "open_rides_snapshot"
+      },
+      "name": "legacy.open_rides_snapshot",
+      "protocol": "legacy"
+    },
+    {
+      "audiences": [
+        "driver"
+      ],
+      "message": {
+        "data": [
+          {
+            "created_at": "2026-07-18T12:00:00Z",
+            "destination": {
+              "address": "Destino, La Paz",
+              "country_code": "BO",
+              "latitude": -16.5,
+              "longitude": -68.15,
+              "name": "Destino"
+            },
+            "fare": "20.00",
+            "id": "00000000-0000-4000-8000-000000000001",
+            "origin": {
+              "address": "Origen, La Paz",
+              "country_code": "BO",
+              "latitude": -16.5,
+              "longitude": -68.15,
+              "name": "Origen"
+            },
+            "payment_method": "cash",
+            "pool_version": 2,
+            "rider": {
+              "full_name": "Pasajero Uno",
+              "id": "00000000-0000-4000-8000-000000000002",
+              "rating": 4.9,
+              "trips_completed": 12
+            },
+            "service_type": "taxi"
+          }
+        ],
+        "type": "paused_rides_snapshot"
+      },
+      "name": "legacy.paused_rides_snapshot",
+      "protocol": "legacy"
+    },
+    {
+      "audiences": [
+        "driver"
+      ],
+      "message": {
+        "data": [
+          {
+            "created_at": "2026-07-18T12:00:00Z",
+            "driver": {
+              "full_name": "Conductor Uno",
+              "id": "00000000-0000-4000-8000-000000000003",
+              "plate": "ABC-123",
+              "rating": 4.8,
+              "vehicle_model": "Sedán",
+              "vehicle_type": "taxi"
+            },
+            "eta_min": 5,
+            "expires_at": "2026-07-18T12:00:30Z",
+            "id": "00000000-0000-4000-8000-000000000004",
+            "price": "25.00",
+            "ride_id": "00000000-0000-4000-8000-000000000001",
+            "status": "pending"
+          }
+        ],
+        "type": "driver_offers_snapshot"
+      },
+      "name": "legacy.driver_offers_snapshot",
+      "protocol": "legacy"
+    },
+    {
+      "audiences": [
+        "driver"
+      ],
+      "message": {
+        "data": {
+          "accepted_eta_min": 5,
+          "accepted_price": "25.00",
+          "cancelled_at": null,
+          "completed_at": null,
+          "created_at": "2026-07-18T12:00:00Z",
+          "destination": {
+            "address": "Destino, La Paz",
+            "country_code": "BO",
+            "latitude": -16.5,
+            "longitude": -68.15,
+            "name": "Destino"
+          },
+          "driver": {
+            "full_name": "Conductor Uno",
+            "id": "00000000-0000-4000-8000-000000000003",
+            "phone": "+59170000002",
+            "plate": "ABC-123",
+            "rating": 4.8,
+            "vehicle_model": "Sedán",
+            "vehicle_type": "taxi"
+          },
+          "fare": "20.00",
+          "id": "00000000-0000-4000-8000-000000000005",
+          "origin": {
+            "address": "Origen, La Paz",
+            "country_code": "BO",
+            "latitude": -16.5,
+            "longitude": -68.15,
+            "name": "Origen"
+          },
+          "paused": false,
+          "payment_method": "cash",
+          "rider": {
+            "full_name": "Pasajero Uno",
+            "id": "00000000-0000-4000-8000-000000000002",
+            "phone": "+59170000001",
+            "rating": 4.9
+          },
+          "rider_id": "00000000-0000-4000-8000-000000000002",
+          "service_type": "taxi",
+          "status": "accepted"
+        },
+        "type": "driver_active_ride"
+      },
+      "name": "legacy.driver_active_ride",
+      "protocol": "legacy"
+    },
+    {
+      "audiences": [
+        "driver"
+      ],
+      "message": {
+        "data": {
+          "created_at": "2026-07-18T12:00:00Z",
+          "destination": {
+            "address": "Destino, La Paz",
+            "country_code": "BO",
+            "latitude": -16.5,
+            "longitude": -68.15,
+            "name": "Destino"
+          },
+          "fare": "20.00",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "origin": {
+            "address": "Origen, La Paz",
+            "country_code": "BO",
+            "latitude": -16.5,
+            "longitude": -68.15,
+            "name": "Origen"
+          },
+          "payment_method": "cash",
+          "pool_version": 2,
+          "rider": {
+            "full_name": "Pasajero Uno",
+            "id": "00000000-0000-4000-8000-000000000002",
+            "rating": 4.9,
+            "trips_completed": 12
+          },
+          "service_type": "taxi"
+        },
+        "type": "ride_created"
+      },
+      "name": "legacy.ride_created",
+      "protocol": "legacy"
+    },
+    {
+      "audiences": [
+        "driver"
+      ],
+      "message": {
+        "data": {
+          "pool_version": 2,
+          "reason": "terminal",
+          "ride_id": "00000000-0000-4000-8000-000000000001"
+        },
+        "type": "ride_closed"
+      },
+      "name": "legacy.ride_closed",
+      "protocol": "legacy"
+    },
+    {
+      "audiences": [
+        "driver"
+      ],
+      "message": {
+        "data": {
+          "created_at": "2026-07-18T12:00:00Z",
+          "destination": {
+            "address": "Destino, La Paz",
+            "country_code": "BO",
+            "latitude": -16.5,
+            "longitude": -68.15,
+            "name": "Destino"
+          },
+          "fare": "20.00",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "offer_id": "00000000-0000-4000-8000-000000000004",
+          "origin": {
+            "address": "Origen, La Paz",
+            "country_code": "BO",
+            "latitude": -16.5,
+            "longitude": -68.15,
+            "name": "Origen"
+          },
+          "payment_method": "cash",
+          "pool_version": 2,
+          "rider": {
+            "full_name": "Pasajero Uno",
+            "id": "00000000-0000-4000-8000-000000000002",
+            "rating": 4.9,
+            "trips_completed": 12
+          },
+          "service_type": "taxi"
+        },
+        "type": "ride_paused"
+      },
+      "name": "legacy.ride_paused",
+      "protocol": "legacy"
+    },
+    {
+      "audiences": [
+        "passenger"
+      ],
+      "message": {
+        "data": {
+          "created_at": "2026-07-18T12:00:00Z",
+          "driver": {
+            "full_name": "Conductor Uno",
+            "id": "00000000-0000-4000-8000-000000000003",
+            "plate": "ABC-123",
+            "rating": 4.8,
+            "vehicle_model": "Sedán",
+            "vehicle_type": "taxi"
+          },
+          "eta_min": 5,
+          "expires_at": "2026-07-18T12:00:30Z",
+          "id": "00000000-0000-4000-8000-000000000004",
+          "price": "25.00",
+          "ride_id": "00000000-0000-4000-8000-000000000001",
+          "status": "pending"
+        },
+        "type": "offer_created"
+      },
+      "name": "legacy.offer_created",
+      "protocol": "legacy"
+    },
+    {
+      "audiences": [
+        "driver"
+      ],
+      "message": {
+        "data": {
+          "offer_id": "00000000-0000-4000-8000-000000000004",
+          "reason": "declined",
+          "ride_id": "00000000-0000-4000-8000-000000000001"
+        },
+        "type": "offer_rejected"
+      },
+      "name": "legacy.offer_rejected",
+      "protocol": "legacy"
+    },
+    {
+      "audiences": [
+        "passenger"
+      ],
+      "message": {
+        "data": {
+          "driver_id": "00000000-0000-4000-8000-000000000003",
+          "offer_id": "00000000-0000-4000-8000-000000000004",
+          "reason": "superseded"
+        },
+        "type": "offer_withdrawn"
+      },
+      "name": "legacy.offer_withdrawn",
+      "protocol": "legacy"
+    },
+    {
+      "audiences": [
+        "driver"
+      ],
+      "message": {
+        "data": {
+          "accepted_eta_min": 5,
+          "accepted_price": "25.00",
+          "cancelled_at": null,
+          "completed_at": null,
+          "created_at": "2026-07-18T12:00:00Z",
+          "destination": {
+            "address": "Destino, La Paz",
+            "country_code": "BO",
+            "latitude": -16.5,
+            "longitude": -68.15,
+            "name": "Destino"
+          },
+          "driver": {
+            "full_name": "Conductor Uno",
+            "id": "00000000-0000-4000-8000-000000000003",
+            "phone": "+59170000002",
+            "plate": "ABC-123",
+            "rating": 4.8,
+            "vehicle_model": "Sedán",
+            "vehicle_type": "taxi"
+          },
+          "fare": "20.00",
+          "id": "00000000-0000-4000-8000-000000000005",
+          "origin": {
+            "address": "Origen, La Paz",
+            "country_code": "BO",
+            "latitude": -16.5,
+            "longitude": -68.15,
+            "name": "Origen"
+          },
+          "paused": false,
+          "payment_method": "cash",
+          "rider": {
+            "full_name": "Pasajero Uno",
+            "id": "00000000-0000-4000-8000-000000000002",
+            "phone": "+59170000001",
+            "rating": 4.9
+          },
+          "rider_id": "00000000-0000-4000-8000-000000000002",
+          "service_type": "taxi",
+          "status": "accepted"
+        },
+        "type": "offer_accepted"
+      },
+      "name": "legacy.offer_accepted",
+      "protocol": "legacy"
+    },
+    {
+      "audiences": [
+        "driver"
+      ],
+      "message": {
+        "data": {
+          "offers": [
+            {
+              "offer_id": "00000000-0000-4000-8000-000000000004",
+              "ride_id": "00000000-0000-4000-8000-000000000001"
+            }
+          ],
+          "reason": "driver_offline",
+          "ride_ids": [
+            "00000000-0000-4000-8000-000000000001"
+          ]
+        },
+        "type": "offers_withdrawn"
+      },
+      "name": "legacy.offers_withdrawn",
+      "protocol": "legacy"
+    },
+    {
+      "audiences": [
+        "passenger",
+        "driver"
+      ],
+      "message": {
+        "data": {
+          "driver_id": "00000000-0000-4000-8000-000000000003",
+          "offer_id": "00000000-0000-4000-8000-000000000004",
+          "reason": "expired",
+          "ride_id": "00000000-0000-4000-8000-000000000001"
+        },
+        "type": "offer_expired"
+      },
+      "name": "legacy.offer_expired",
+      "protocol": "legacy"
+    },
+    {
+      "audiences": [
+        "passenger",
+        "driver"
+      ],
+      "message": {
+        "data": {
+          "accepted_eta_min": 5,
+          "accepted_price": "25.00",
+          "cancelled_at": null,
+          "completed_at": null,
+          "created_at": "2026-07-18T12:00:00Z",
+          "destination": {
+            "address": "Destino, La Paz",
+            "country_code": "BO",
+            "latitude": -16.5,
+            "longitude": -68.15,
+            "name": "Destino"
+          },
+          "driver": {
+            "full_name": "Conductor Uno",
+            "id": "00000000-0000-4000-8000-000000000003",
+            "phone": "+59170000002",
+            "plate": "ABC-123",
+            "rating": 4.8,
+            "vehicle_model": "Sedán",
+            "vehicle_type": "taxi"
+          },
+          "fare": "20.00",
+          "id": "00000000-0000-4000-8000-000000000005",
+          "origin": {
+            "address": "Origen, La Paz",
+            "country_code": "BO",
+            "latitude": -16.5,
+            "longitude": -68.15,
+            "name": "Origen"
+          },
+          "paused": false,
+          "payment_method": "cash",
+          "rider": {
+            "full_name": "Pasajero Uno",
+            "id": "00000000-0000-4000-8000-000000000002",
+            "phone": "+59170000001",
+            "rating": 4.9
+          },
+          "rider_id": "00000000-0000-4000-8000-000000000002",
+          "service_type": "taxi",
+          "status": "accepted"
+        },
+        "type": "ride_status"
+      },
+      "name": "legacy.ride_status",
+      "protocol": "legacy"
+    },
+    {
+      "audiences": [
+        "driver"
+      ],
+      "message": {
+        "aggregate_id": "00000000-0000-4000-8000-000000000001",
+        "aggregate_type": "ride",
+        "aggregate_version": 1,
+        "batch_id": "00000000-0000-4000-8000-000000000201",
+        "data": {
+          "created_at": "2026-07-18T12:00:00Z",
+          "destination": {
+            "address": "Destino, La Paz",
+            "country_code": "BO",
+            "latitude": -16.5,
+            "longitude": -68.15,
+            "name": "Destino"
+          },
+          "fare": "20.00",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "origin": {
+            "address": "Origen, La Paz",
+            "country_code": "BO",
+            "latitude": -16.5,
+            "longitude": -68.15,
+            "name": "Origen"
+          },
+          "payment_method": "cash",
+          "pool_version": 2,
+          "rider": {
+            "full_name": "Pasajero Uno",
+            "id": "00000000-0000-4000-8000-000000000002",
+            "rating": 4.9,
+            "trips_completed": 12
+          },
+          "service_type": "taxi"
+        },
+        "event_id": "00000000-0000-4000-8000-000000000101",
+        "kind": "event",
+        "occurred_at": "2026-07-18T12:00:00Z",
+        "schema_version": 2,
+        "sequence": 0,
+        "stream": "pool:taxi",
+        "stream_version": 1,
+        "type": "ride_created"
+      },
+      "name": "v2_event.ride_created.pool",
+      "protocol": "v2_event"
+    },
+    {
+      "audiences": [
+        "driver"
+      ],
+      "message": {
+        "aggregate_id": "00000000-0000-4000-8000-000000000001",
+        "aggregate_type": "ride",
+        "aggregate_version": 2,
+        "batch_id": "00000000-0000-4000-8000-000000000202",
+        "data": {
+          "pool_version": 2,
+          "reason": "terminal",
+          "ride_id": "00000000-0000-4000-8000-000000000001"
+        },
+        "event_id": "00000000-0000-4000-8000-000000000102",
+        "kind": "event",
+        "occurred_at": "2026-07-18T12:00:00Z",
+        "schema_version": 2,
+        "sequence": 0,
+        "stream": "pool:taxi",
+        "stream_version": 2,
+        "type": "ride_closed"
+      },
+      "name": "v2_event.ride_closed.pool",
+      "protocol": "v2_event"
+    },
+    {
+      "audiences": [
+        "driver"
+      ],
+      "message": {
+        "aggregate_id": "00000000-0000-4000-8000-000000000001",
+        "aggregate_type": "ride",
+        "aggregate_version": 3,
+        "batch_id": "00000000-0000-4000-8000-000000000203",
+        "data": {
+          "created_at": "2026-07-18T12:00:00Z",
+          "destination": {
+            "address": "Destino, La Paz",
+            "country_code": "BO",
+            "latitude": -16.5,
+            "longitude": -68.15,
+            "name": "Destino"
+          },
+          "fare": "20.00",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "offer_id": "00000000-0000-4000-8000-000000000004",
+          "origin": {
+            "address": "Origen, La Paz",
+            "country_code": "BO",
+            "latitude": -16.5,
+            "longitude": -68.15,
+            "name": "Origen"
+          },
+          "payment_method": "cash",
+          "pool_version": 2,
+          "rider": {
+            "full_name": "Pasajero Uno",
+            "id": "00000000-0000-4000-8000-000000000002",
+            "rating": 4.9,
+            "trips_completed": 12
+          },
+          "service_type": "taxi"
+        },
+        "event_id": "00000000-0000-4000-8000-000000000103",
+        "kind": "event",
+        "occurred_at": "2026-07-18T12:00:00Z",
+        "schema_version": 2,
+        "sequence": 0,
+        "stream": "driver:00000000-0000-4000-8000-000000000003",
+        "stream_version": 3,
+        "type": "ride_paused"
+      },
+      "name": "v2_event.ride_paused.driver",
+      "protocol": "v2_event"
+    },
+    {
+      "audiences": [
+        "passenger"
+      ],
+      "message": {
+        "aggregate_id": "00000000-0000-4000-8000-000000000001",
+        "aggregate_type": "ride",
+        "aggregate_version": 4,
+        "batch_id": "00000000-0000-4000-8000-000000000204",
+        "data": {
+          "created_at": "2026-07-18T12:00:00Z",
+          "driver": {
+            "full_name": "Conductor Uno",
+            "id": "00000000-0000-4000-8000-000000000003",
+            "plate": "ABC-123",
+            "rating": 4.8,
+            "vehicle_model": "Sedán",
+            "vehicle_type": "taxi"
+          },
+          "eta_min": 5,
+          "expires_at": "2026-07-18T12:00:30Z",
+          "id": "00000000-0000-4000-8000-000000000004",
+          "price": "25.00",
+          "ride_id": "00000000-0000-4000-8000-000000000001",
+          "status": "pending"
+        },
+        "event_id": "00000000-0000-4000-8000-000000000104",
+        "kind": "event",
+        "occurred_at": "2026-07-18T12:00:00Z",
+        "schema_version": 2,
+        "sequence": 0,
+        "stream": "ride:00000000-0000-4000-8000-000000000001",
+        "stream_version": 4,
+        "type": "offer_created"
+      },
+      "name": "v2_event.offer_created.ride",
+      "protocol": "v2_event"
+    },
+    {
+      "audiences": [
+        "driver"
+      ],
+      "message": {
+        "aggregate_id": "00000000-0000-4000-8000-000000000001",
+        "aggregate_type": "ride",
+        "aggregate_version": 5,
+        "batch_id": "00000000-0000-4000-8000-000000000205",
+        "data": {
+          "offer_id": "00000000-0000-4000-8000-000000000004",
+          "reason": "declined",
+          "ride_id": "00000000-0000-4000-8000-000000000001"
+        },
+        "event_id": "00000000-0000-4000-8000-000000000105",
+        "kind": "event",
+        "occurred_at": "2026-07-18T12:00:00Z",
+        "schema_version": 2,
+        "sequence": 0,
+        "stream": "driver:00000000-0000-4000-8000-000000000003",
+        "stream_version": 5,
+        "type": "offer_rejected"
+      },
+      "name": "v2_event.offer_rejected.driver",
+      "protocol": "v2_event"
+    },
+    {
+      "audiences": [
+        "passenger"
+      ],
+      "message": {
+        "aggregate_id": "00000000-0000-4000-8000-000000000001",
+        "aggregate_type": "ride",
+        "aggregate_version": 6,
+        "batch_id": "00000000-0000-4000-8000-000000000206",
+        "data": {
+          "driver_id": "00000000-0000-4000-8000-000000000003",
+          "offer_id": "00000000-0000-4000-8000-000000000004",
+          "reason": "superseded"
+        },
+        "event_id": "00000000-0000-4000-8000-000000000106",
+        "kind": "event",
+        "occurred_at": "2026-07-18T12:00:00Z",
+        "schema_version": 2,
+        "sequence": 0,
+        "stream": "ride:00000000-0000-4000-8000-000000000001",
+        "stream_version": 6,
+        "type": "offer_withdrawn"
+      },
+      "name": "v2_event.offer_withdrawn.ride",
+      "protocol": "v2_event"
+    },
+    {
+      "audiences": [
+        "driver"
+      ],
+      "message": {
+        "aggregate_id": "00000000-0000-4000-8000-000000000005",
+        "aggregate_type": "ride",
+        "aggregate_version": 7,
+        "batch_id": "00000000-0000-4000-8000-000000000207",
+        "data": {
+          "accepted_eta_min": 5,
+          "accepted_price": "25.00",
+          "cancelled_at": null,
+          "completed_at": null,
+          "created_at": "2026-07-18T12:00:00Z",
+          "destination": {
+            "address": "Destino, La Paz",
+            "country_code": "BO",
+            "latitude": -16.5,
+            "longitude": -68.15,
+            "name": "Destino"
+          },
+          "driver": {
+            "full_name": "Conductor Uno",
+            "id": "00000000-0000-4000-8000-000000000003",
+            "phone": "+59170000002",
+            "plate": "ABC-123",
+            "rating": 4.8,
+            "vehicle_model": "Sedán",
+            "vehicle_type": "taxi"
+          },
+          "fare": "20.00",
+          "id": "00000000-0000-4000-8000-000000000005",
+          "origin": {
+            "address": "Origen, La Paz",
+            "country_code": "BO",
+            "latitude": -16.5,
+            "longitude": -68.15,
+            "name": "Origen"
+          },
+          "paused": false,
+          "payment_method": "cash",
+          "rider": {
+            "full_name": "Pasajero Uno",
+            "id": "00000000-0000-4000-8000-000000000002",
+            "phone": "+59170000001",
+            "rating": 4.9
+          },
+          "rider_id": "00000000-0000-4000-8000-000000000002",
+          "service_type": "taxi",
+          "status": "accepted"
+        },
+        "event_id": "00000000-0000-4000-8000-000000000107",
+        "kind": "event",
+        "occurred_at": "2026-07-18T12:00:00Z",
+        "schema_version": 2,
+        "sequence": 0,
+        "stream": "driver:00000000-0000-4000-8000-000000000003",
+        "stream_version": 7,
+        "type": "offer_accepted"
+      },
+      "name": "v2_event.offer_accepted.driver",
+      "protocol": "v2_event"
+    },
+    {
+      "audiences": [
+        "driver"
+      ],
+      "message": {
+        "aggregate_id": "00000000-0000-4000-8000-000000000003",
+        "aggregate_type": "driver",
+        "aggregate_version": 8,
+        "batch_id": "00000000-0000-4000-8000-000000000208",
+        "data": {
+          "offers": [
+            {
+              "offer_id": "00000000-0000-4000-8000-000000000004",
+              "ride_id": "00000000-0000-4000-8000-000000000001"
+            }
+          ],
+          "reason": "driver_offline",
+          "ride_ids": [
+            "00000000-0000-4000-8000-000000000001"
+          ]
+        },
+        "event_id": "00000000-0000-4000-8000-000000000108",
+        "kind": "event",
+        "occurred_at": "2026-07-18T12:00:00Z",
+        "schema_version": 2,
+        "sequence": 0,
+        "stream": "driver:00000000-0000-4000-8000-000000000003",
+        "stream_version": 8,
+        "type": "offers_withdrawn"
+      },
+      "name": "v2_event.offers_withdrawn.driver",
+      "protocol": "v2_event"
+    },
+    {
+      "audiences": [
+        "passenger"
+      ],
+      "message": {
+        "aggregate_id": "00000000-0000-4000-8000-000000000001",
+        "aggregate_type": "ride",
+        "aggregate_version": 9,
+        "batch_id": "00000000-0000-4000-8000-000000000209",
+        "data": {
+          "driver_id": "00000000-0000-4000-8000-000000000003",
+          "offer_id": "00000000-0000-4000-8000-000000000004",
+          "reason": "expired",
+          "ride_id": "00000000-0000-4000-8000-000000000001"
+        },
+        "event_id": "00000000-0000-4000-8000-000000000109",
+        "kind": "event",
+        "occurred_at": "2026-07-18T12:00:00Z",
+        "schema_version": 2,
+        "sequence": 0,
+        "stream": "ride:00000000-0000-4000-8000-000000000001",
+        "stream_version": 9,
+        "type": "offer_expired"
+      },
+      "name": "v2_event.offer_expired.ride",
+      "protocol": "v2_event"
+    },
+    {
+      "audiences": [
+        "driver"
+      ],
+      "message": {
+        "aggregate_id": "00000000-0000-4000-8000-000000000001",
+        "aggregate_type": "ride",
+        "aggregate_version": 10,
+        "batch_id": "00000000-0000-4000-8000-000000000210",
+        "data": {
+          "driver_id": "00000000-0000-4000-8000-000000000003",
+          "offer_id": "00000000-0000-4000-8000-000000000004",
+          "reason": "expired",
+          "ride_id": "00000000-0000-4000-8000-000000000001"
+        },
+        "event_id": "00000000-0000-4000-8000-000000000110",
+        "kind": "event",
+        "occurred_at": "2026-07-18T12:00:00Z",
+        "schema_version": 2,
+        "sequence": 0,
+        "stream": "driver:00000000-0000-4000-8000-000000000003",
+        "stream_version": 10,
+        "type": "offer_expired"
+      },
+      "name": "v2_event.offer_expired.driver",
+      "protocol": "v2_event"
+    },
+    {
+      "audiences": [
+        "passenger"
+      ],
+      "message": {
+        "aggregate_id": "00000000-0000-4000-8000-000000000005",
+        "aggregate_type": "ride",
+        "aggregate_version": 11,
+        "batch_id": "00000000-0000-4000-8000-000000000211",
+        "data": {
+          "accepted_eta_min": 5,
+          "accepted_price": "25.00",
+          "cancelled_at": null,
+          "completed_at": null,
+          "created_at": "2026-07-18T12:00:00Z",
+          "destination": {
+            "address": "Destino, La Paz",
+            "country_code": "BO",
+            "latitude": -16.5,
+            "longitude": -68.15,
+            "name": "Destino"
+          },
+          "driver": {
+            "full_name": "Conductor Uno",
+            "id": "00000000-0000-4000-8000-000000000003",
+            "phone": "+59170000002",
+            "plate": "ABC-123",
+            "rating": 4.8,
+            "vehicle_model": "Sedán",
+            "vehicle_type": "taxi"
+          },
+          "fare": "20.00",
+          "id": "00000000-0000-4000-8000-000000000005",
+          "origin": {
+            "address": "Origen, La Paz",
+            "country_code": "BO",
+            "latitude": -16.5,
+            "longitude": -68.15,
+            "name": "Origen"
+          },
+          "paused": false,
+          "payment_method": "cash",
+          "rider": {
+            "full_name": "Pasajero Uno",
+            "id": "00000000-0000-4000-8000-000000000002",
+            "phone": "+59170000001",
+            "rating": 4.9
+          },
+          "rider_id": "00000000-0000-4000-8000-000000000002",
+          "service_type": "taxi",
+          "status": "accepted"
+        },
+        "event_id": "00000000-0000-4000-8000-000000000111",
+        "kind": "event",
+        "occurred_at": "2026-07-18T12:00:00Z",
+        "schema_version": 2,
+        "sequence": 0,
+        "stream": "ride:00000000-0000-4000-8000-000000000005",
+        "stream_version": 11,
+        "type": "ride_status"
+      },
+      "name": "v2_event.ride_status.ride",
+      "protocol": "v2_event"
+    },
+    {
+      "audiences": [
+        "driver"
+      ],
+      "message": {
+        "aggregate_id": "00000000-0000-4000-8000-000000000005",
+        "aggregate_type": "ride",
+        "aggregate_version": 12,
+        "batch_id": "00000000-0000-4000-8000-000000000212",
+        "data": {
+          "accepted_eta_min": 5,
+          "accepted_price": "25.00",
+          "cancelled_at": null,
+          "completed_at": null,
+          "created_at": "2026-07-18T12:00:00Z",
+          "destination": {
+            "address": "Destino, La Paz",
+            "country_code": "BO",
+            "latitude": -16.5,
+            "longitude": -68.15,
+            "name": "Destino"
+          },
+          "driver": {
+            "full_name": "Conductor Uno",
+            "id": "00000000-0000-4000-8000-000000000003",
+            "phone": "+59170000002",
+            "plate": "ABC-123",
+            "rating": 4.8,
+            "vehicle_model": "Sedán",
+            "vehicle_type": "taxi"
+          },
+          "fare": "20.00",
+          "id": "00000000-0000-4000-8000-000000000005",
+          "origin": {
+            "address": "Origen, La Paz",
+            "country_code": "BO",
+            "latitude": -16.5,
+            "longitude": -68.15,
+            "name": "Origen"
+          },
+          "paused": false,
+          "payment_method": "cash",
+          "rider": {
+            "full_name": "Pasajero Uno",
+            "id": "00000000-0000-4000-8000-000000000002",
+            "phone": "+59170000001",
+            "rating": 4.9
+          },
+          "rider_id": "00000000-0000-4000-8000-000000000002",
+          "service_type": "taxi",
+          "status": "accepted"
+        },
+        "event_id": "00000000-0000-4000-8000-000000000112",
+        "kind": "event",
+        "occurred_at": "2026-07-18T12:00:00Z",
+        "schema_version": 2,
+        "sequence": 0,
+        "stream": "driver:00000000-0000-4000-8000-000000000003",
+        "stream_version": 12,
+        "type": "ride_status"
+      },
+      "name": "v2_event.ride_status.driver",
+      "protocol": "v2_event"
+    },
+    {
+      "audiences": [
+        "passenger"
+      ],
+      "message": {
+        "captured_at": "2026-07-18T12:00:00Z",
+        "data": {
+          "offers": [
+            {
+              "created_at": "2026-07-18T12:00:00Z",
+              "driver": {
+                "full_name": "Conductor Uno",
+                "id": "00000000-0000-4000-8000-000000000003",
+                "plate": "ABC-123",
+                "rating": 4.8,
+                "vehicle_model": "Sedán",
+                "vehicle_type": "taxi"
+              },
+              "eta_min": 5,
+              "expires_at": "2026-07-18T12:00:30Z",
+              "id": "00000000-0000-4000-8000-000000000004",
+              "price": "25.00",
+              "ride_id": "00000000-0000-4000-8000-000000000001",
+              "status": "pending"
+            }
+          ],
+          "ride": {
+            "accepted_eta_min": null,
+            "accepted_price": null,
+            "cancelled_at": null,
+            "completed_at": null,
+            "created_at": "2026-07-18T12:00:00Z",
+            "destination": {
+              "address": "Destino, La Paz",
+              "country_code": "BO",
+              "latitude": -16.5,
+              "longitude": -68.15,
+              "name": "Destino"
+            },
+            "driver": null,
+            "fare": "20.00",
+            "id": "00000000-0000-4000-8000-000000000001",
+            "origin": {
+              "address": "Origen, La Paz",
+              "country_code": "BO",
+              "latitude": -16.5,
+              "longitude": -68.15,
+              "name": "Origen"
+            },
+            "paused": false,
+            "payment_method": "cash",
+            "rider": {
+              "full_name": "Pasajero Uno",
+              "id": "00000000-0000-4000-8000-000000000002",
+              "phone": "+59170000001",
+              "rating": 4.9
+            },
+            "rider_id": "00000000-0000-4000-8000-000000000002",
+            "service_type": "taxi",
+            "status": "searching"
+          }
+        },
+        "kind": "snapshot",
+        "schema_version": 2,
+        "snapshot_id": "00000000-0000-4000-8000-000000000301",
+        "type": "ride_snapshot",
+        "watermarks": [
+          {
+            "stream": "ride:00000000-0000-4000-8000-000000000001",
+            "stream_version": 20
+          }
+        ]
+      },
+      "name": "v2_snapshot.ride_snapshot",
+      "protocol": "v2_snapshot"
+    },
+    {
+      "audiences": [
+        "driver"
+      ],
+      "message": {
+        "captured_at": "2026-07-18T12:00:00Z",
+        "data": {
+          "active_ride": {
+            "accepted_eta_min": 5,
+            "accepted_price": "25.00",
+            "cancelled_at": null,
+            "completed_at": null,
+            "created_at": "2026-07-18T12:00:00Z",
+            "destination": {
+              "address": "Destino, La Paz",
+              "country_code": "BO",
+              "latitude": -16.5,
+              "longitude": -68.15,
+              "name": "Destino"
+            },
+            "driver": {
+              "full_name": "Conductor Uno",
+              "id": "00000000-0000-4000-8000-000000000003",
+              "phone": "+59170000002",
+              "plate": "ABC-123",
+              "rating": 4.8,
+              "vehicle_model": "Sedán",
+              "vehicle_type": "taxi"
+            },
+            "fare": "20.00",
+            "id": "00000000-0000-4000-8000-000000000005",
+            "origin": {
+              "address": "Origen, La Paz",
+              "country_code": "BO",
+              "latitude": -16.5,
+              "longitude": -68.15,
+              "name": "Origen"
+            },
+            "paused": false,
+            "payment_method": "cash",
+            "rider": {
+              "full_name": "Pasajero Uno",
+              "id": "00000000-0000-4000-8000-000000000002",
+              "phone": "+59170000001",
+              "rating": 4.9
+            },
+            "rider_id": "00000000-0000-4000-8000-000000000002",
+            "service_type": "taxi",
+            "status": "accepted"
+          },
+          "offers": [],
+          "open_rides": {
+            "items": [
+              {
+                "created_at": "2026-07-18T12:00:00Z",
+                "destination": {
+                  "address": "Destino, La Paz",
+                  "country_code": "BO",
+                  "latitude": -16.5,
+                  "longitude": -68.15,
+                  "name": "Destino"
+                },
+                "fare": "20.00",
+                "id": "00000000-0000-4000-8000-000000000001",
+                "origin": {
+                  "address": "Origen, La Paz",
+                  "country_code": "BO",
+                  "latitude": -16.5,
+                  "longitude": -68.15,
+                  "name": "Origen"
+                },
+                "payment_method": "cash",
+                "pool_version": 2,
+                "rider": {
+                  "full_name": "Pasajero Uno",
+                  "id": "00000000-0000-4000-8000-000000000002",
+                  "rating": 4.9,
+                  "trips_completed": 12
+                },
+                "service_type": "taxi"
+              }
+            ],
+            "next_cursor": null
+          },
+          "paused_rides": []
+        },
+        "kind": "snapshot",
+        "schema_version": 2,
+        "snapshot_id": "00000000-0000-4000-8000-000000000302",
+        "type": "driver_snapshot",
+        "watermarks": [
+          {
+            "stream": "pool:taxi",
+            "stream_version": 30
+          },
+          {
+            "stream": "pool:delivery",
+            "stream_version": 31
+          },
+          {
+            "stream": "driver:00000000-0000-4000-8000-000000000003",
+            "stream_version": 32
+          }
+        ]
+      },
+      "name": "v2_snapshot.driver_snapshot",
+      "protocol": "v2_snapshot"
+    }
+  ],
+  "fixture_version": 1
+}

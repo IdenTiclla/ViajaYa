@@ -23,7 +23,7 @@ class EarningsItemResponse(BaseModel):
     ride_id: uuid.UUID
     destination_name: str
     price: Decimal
-    completed_at: datetime | None = None
+    completed_at: datetime | None
 
 
 class DriverEarningsResponse(BaseModel):

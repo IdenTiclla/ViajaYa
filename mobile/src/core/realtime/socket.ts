@@ -30,6 +30,7 @@ export type SocketDeliveryContext = {
 
 export type SocketLifecycleCallbacks = {
   onConnection?: () => void;
+  onClose?: (close: SanitizedSocketClose) => void;
   onInvalidFrame?: (issue: SanitizedSocketIssue) => void;
   onHandlerError?: () => void;
 };
@@ -49,6 +50,11 @@ export type SanitizedSocketIssue = {
   type: string;
   path: string;
   message: string;
+};
+
+export type SanitizedSocketClose = {
+  code: number;
+  wasClean: boolean;
 };
 
 export type SocketFrameResult<T extends SocketMessage> =
@@ -253,7 +259,14 @@ export function openSocket<T extends SocketMessage>(
       socket.onerror = () => {
         // El cierre subsecuente dispara la reconexion.
       };
-      socket.onclose = () => {
+      socket.onclose = (event) => {
+        callbacks.onClose?.({
+          code:
+            Number.isInteger(event.code) && event.code >= 0 && event.code <= 4_999
+              ? event.code
+              : 0,
+          wasClean: event.wasClean === true,
+        });
         if (ws === socket) ws = null;
         if (!closedByUser && ownGeneration === generation) {
           // Cada transporte físico delimita una generación: un handler que

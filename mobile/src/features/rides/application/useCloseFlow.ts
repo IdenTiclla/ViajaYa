@@ -36,7 +36,8 @@ async function refreshAfterRating(queryClient: QueryClient, rideId: string): Pro
 export function useRideHistory(status?: RideStatus) {
   const query = useInfiniteQuery({
     queryKey: ['ride-history', status ?? 'all'],
-    queryFn: ({ pageParam }) => ridesRepository.getHistory(status, pageParam),
+    queryFn: ({ pageParam, signal }) =>
+      ridesRepository.getHistory(status, pageParam, undefined, signal),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
   });
@@ -51,7 +52,7 @@ export function useRideHistory(status?: RideStatus) {
 export function useDriverEarnings(enabled = true) {
   return useQuery({
     queryKey: ['driver-earnings'],
-    queryFn: () => ridesRepository.getEarnings(),
+    queryFn: ({ signal }) => ridesRepository.getEarnings(signal),
     enabled,
   });
 }

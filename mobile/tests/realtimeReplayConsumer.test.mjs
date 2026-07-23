@@ -93,7 +93,10 @@ test('snapshot, delta y duplicado mutan una sola vez', async () => {
 
   assert.deepEqual(await consumer.consume(snapshot()), { kind: 'applied' });
   assert.deepEqual(await consumer.consume(event()), { kind: 'applied' });
-  assert.deepEqual(await consumer.consume(event()), { kind: 'dropped' });
+  assert.deepEqual(await consumer.consume(event()), {
+    kind: 'dropped',
+    reason: 'duplicate',
+  });
 
   assert.deepEqual(mutations, ['snapshot-10', 'event-11']);
   assert.deepEqual(resyncs, []);
@@ -239,7 +242,10 @@ test('una conexión nueva invalida el snapshot anterior mientras su handler espe
   const newConnection = consumer.beginConnection();
   release.resolve();
 
-  assert.deepEqual(await applying, { kind: 'dropped' });
+  assert.deepEqual(await applying, {
+    kind: 'dropped',
+    reason: 'stale_connection',
+  });
   assert.equal(oldConnection.isCurrent(), false);
   assert.equal(newConnection.isCurrent(), true);
   assert.equal(consumer.protocol(), 'awaiting_snapshot');
@@ -298,7 +304,10 @@ test('invalidar durante un evento aborta su ticket y suprime el efecto', async (
   consumer.invalidateConnection();
   release.resolve();
 
-  assert.deepEqual(await applying, { kind: 'dropped' });
+  assert.deepEqual(await applying, {
+    kind: 'dropped',
+    reason: 'stale_connection',
+  });
   assert.equal(connection.isCurrent(), false);
   assert.equal(consumer.protocol(), 'awaiting_snapshot');
   assert.equal(gate.state().streams.get('ride:ride-1'), 10);
@@ -340,7 +349,10 @@ test('un guard externo obsoleto no confirma ni emite efectos', async () => {
   transportCurrent = false;
   release.resolve();
 
-  assert.deepEqual(await applying, { kind: 'dropped' });
+  assert.deepEqual(await applying, {
+    kind: 'dropped',
+    reason: 'stale_connection',
+  });
   assert.equal(gate.state().streams.has('ride:ride-1'), false);
   assert.deepEqual(effects, []);
 });
@@ -378,7 +390,10 @@ test('un handler viejo que falla no invalida la conexión nueva', async () => {
   const newConnection = consumer.beginConnection();
   release.resolve();
 
-  assert.deepEqual(await applying, { kind: 'dropped' });
+  assert.deepEqual(await applying, {
+    kind: 'dropped',
+    reason: 'stale_connection',
+  });
   assert.equal(newConnection.isCurrent(), true);
   assert.equal(consumer.protocol(), 'awaiting_snapshot');
   assert.deepEqual(resyncs, []);
@@ -418,7 +433,10 @@ test('un snapshot legacy obsoleto tampoco cambia el protocolo ni emite efecto', 
   transportCurrent = false;
   release.resolve();
 
-  assert.deepEqual(await applying, { kind: 'dropped' });
+  assert.deepEqual(await applying, {
+    kind: 'dropped',
+    reason: 'stale_connection',
+  });
   assert.equal(consumer.protocol(), 'awaiting_snapshot');
   assert.deepEqual(effects, []);
 });

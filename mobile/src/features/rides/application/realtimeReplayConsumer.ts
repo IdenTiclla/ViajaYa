@@ -2,6 +2,7 @@
 
 import type {
   RealtimeEventMetadata,
+  ReplayDropReason,
   ReplayGate,
   ReplayResyncReason,
   StreamCheckpoint,
@@ -31,9 +32,13 @@ export type RealtimeResyncCause =
   | 'protocol_mismatch'
   | 'handler_error';
 
+export type RealtimeDropCause =
+  | ReplayDropReason
+  | 'stale_connection';
+
 export type RealtimeConsumeResult =
   | { kind: 'applied' }
-  | { kind: 'dropped' }
+  | { kind: 'dropped'; reason: RealtimeDropCause }
   | { kind: 'resync'; reason: RealtimeResyncCause };
 
 type PostCommitEffect = (() => void) | void;
@@ -126,7 +131,9 @@ export function createRealtimeReplayConsumer<TMessage>(
       connectionActive &&
       expectedEpoch === connectionEpoch &&
       (guard?.isCurrent() ?? true);
-    if (!isCurrent()) return { kind: 'dropped' };
+    if (!isCurrent()) {
+      return { kind: 'dropped', reason: 'stale_connection' };
+    }
     const applyGuard: RealtimeConnectionGuard = { isCurrent };
 
     const classification = options.classify(message);
@@ -145,7 +152,9 @@ export function createRealtimeReplayConsumer<TMessage>(
       }
       try {
         const effect = await options.applyLegacy(message, applyGuard);
-        if (!isCurrent()) return { kind: 'dropped' };
+        if (!isCurrent()) {
+          return { kind: 'dropped', reason: 'stale_connection' };
+        }
         if (protocol === 'awaiting_snapshot') protocol = 'legacy';
         if (
           classification.kind === 'snapshot' &&
@@ -156,7 +165,9 @@ export function createRealtimeReplayConsumer<TMessage>(
         runPostCommit(effect);
         return { kind: 'applied' };
       } catch {
-        if (!isCurrent()) return { kind: 'dropped' };
+        if (!isCurrent()) {
+          return { kind: 'dropped', reason: 'stale_connection' };
+        }
         return requestResync('handler_error');
       }
     }
@@ -179,7 +190,7 @@ export function createRealtimeReplayConsumer<TMessage>(
         const effect = await options.applySnapshot(message, applyGuard);
         if (!isCurrent()) {
           abortSafely(decision.ticket);
-          return { kind: 'dropped' };
+          return { kind: 'dropped', reason: 'stale_connection' };
         }
         options.gate.commit(decision.ticket);
         protocol = 'v2';
@@ -187,7 +198,9 @@ export function createRealtimeReplayConsumer<TMessage>(
         return { kind: 'applied' };
       } catch {
         abortSafely(decision.ticket);
-        if (!isCurrent()) return { kind: 'dropped' };
+        if (!isCurrent()) {
+          return { kind: 'dropped', reason: 'stale_connection' };
+        }
         return requestResync('handler_error');
       }
     }
@@ -196,21 +209,25 @@ export function createRealtimeReplayConsumer<TMessage>(
       return requestResync('event_before_snapshot');
     }
     const decision = options.gate.decideEvent(classification.metadata);
-    if (decision.kind === 'drop') return { kind: 'dropped' };
+    if (decision.kind === 'drop') {
+      return { kind: 'dropped', reason: decision.reason };
+    }
     if (decision.kind === 'resync') return requestResync(decision.reason);
 
     try {
       const effect = await options.applyEvent(message, applyGuard);
       if (!isCurrent()) {
         abortSafely(decision.ticket);
-        return { kind: 'dropped' };
+        return { kind: 'dropped', reason: 'stale_connection' };
       }
       options.gate.commit(decision.ticket);
       runPostCommit(effect);
       return { kind: 'applied' };
     } catch {
       abortSafely(decision.ticket);
-      if (!isCurrent()) return { kind: 'dropped' };
+      if (!isCurrent()) {
+        return { kind: 'dropped', reason: 'stale_connection' };
+      }
       return requestResync('handler_error');
     }
   };

@@ -1,10 +1,21 @@
 # Plan 0008 — Endurecimiento arquitectónico y escalado del tiempo real
 
-> **Estado:** en ejecución.
+> **Estado:** implementación terminada; validación local superada y validación
+> operativa de entorno pendiente.
 > **Creado:** 2026-07-18.
 > **Alcance:** backend, mobile, contrato compartido y operación.
 > **Estrategia:** evolución incremental del monolito modular; no se divide en
 > microservicios.
+
+> **Validación local 2026-07-22:** pasaron las 556 pruebas rápidas y las 67
+> pruebas PostgreSQL/Redis opt-in, incluidas las pruebas TCP, crash/replay,
+> reinicio de Redis, scheduler durable y dos workers con presencia compartida.
+> También pasaron Ruff, exportación y generación OpenAPI, `oasdiff`, TypeScript,
+> lint y los 10 tests mobile. `promtool` validó 21 reglas; `amtool` validó la
+> configuración y el perfil Compose arrancó ambos servicios en loopback y
+> aceptó una alerta sintética local. Permanecen abiertos únicamente el rollout
+> con tráfico representativo, la integración real del receptor/perímetro de
+> métricas y el pase del dev build en un dispositivo o AVD.
 
 ## Contexto
 
@@ -112,10 +123,10 @@ infraestructura.
 > restricciones e índices descritos abajo. Historial y pool ya exponen páginas
 > con cursor keyset y mobile las consume con React Query infinito. `0017` pasó el
 > ciclo `0016 → 0017 → 0016 → 0017` y la carrera de asignación en una base
-> PostgreSQL desechable; no se aplicó a la base local `viajaya`. Aún falta llevar
-> la migración a un entorno desplegado y comprobar `EXPLAIN` con volumen
-> representativo. El workflow CI ya ejecuta la suite opt-in, pero su primera
-> corrida remota depende de publicar estos cambios.
+> PostgreSQL desechable. La base local `viajaya` está actualmente en `0023`, por
+> lo que incluye `0017`; aún falta comprobar `EXPLAIN` con volumen representativo
+> y aplicar/certificar la cadena completa en un entorno desplegado. El workflow
+> CI ejecuta la suite PostgreSQL opt-in sobre una base desechable.
 
 ### Paginación
 
@@ -169,14 +180,16 @@ parciales ni niveles de aislamiento.
   gradualmente en los repositorios mobile. Los DTO centrales de viajes, ofertas
   y pool ya referencian el contrato generado.
 - [x] Mantener mappers explícitos DTO `snake_case` → dominio `camelCase`.
-- [x] Detectar cualquier drift del schema como fallo de CI. La clasificación
-  automática entre cambios compatibles e incompatibles queda pendiente junto
-  con una herramienta de diff semántico.
+- [x] Detectar cualquier drift del schema como fallo de CI. En pull requests,
+  `oasdiff` compara el snapshot de la rama base con el candidato y bloquea
+  cambios incompatibles o potencialmente incompatibles (`WARN|ERR`); el chequeo
+  determinista existente sigue exigiendo que el snapshot coincida con el código.
 
 El generador vive aislado en el paquete de tooling de la raíz y solo produce
 tipos: no añade otro cliente HTTP ni reemplaza los mappers. Historial y ganancias
-mantienen DTO manual por ahora, porque sus schemas OpenAPI todavía exponen
-campos opcionales que deben normalizarse explícitamente antes de adoptarlos.
+también consumen el contrato generado: sus campos que siempre se serializan son
+requeridos pero anulables en OpenAPI, alineando el schema con la respuesta real
+sin eliminar la normalización explícita DTO → dominio.
 
 ### WebSocket
 
@@ -272,8 +285,9 @@ runtime mobile.
 
 La barrera actual solo impide regresiones desde estados terminales. Ordenar dos
 estados no terminales concurrentes requiere `aggregate_version` y queda ligado a
-la outbox de la fase 3. `cancelQueries` protege la caché aunque el transporte
-Axios todavía continúe en segundo plano sin propagar `AbortSignal`.
+la outbox de la fase 3. Las consultas de viajes propagan el `AbortSignal` de
+React Query a Axios: `cancelQueries` interrumpe también el transporte HTTP, además
+de impedir que una respuesta anterior modifique la caché.
 
 ## Fase 3 — Tiempo real durable y multiworker
 
@@ -334,8 +348,9 @@ Axios todavía continúe en segundo plano sin propagar `AbortSignal`.
 > confirma `published_at` y devuelve un snapshot cuyo watermark cubre el evento.
 > Esta certificación de crash sigue limitada a `live_local` con un proceso y
 > deberá repetirse sobre `live_redis`.
-> `0018`–`0021` no se aplicaron a la base local `viajaya`; sus pruebas PostgreSQL son
-> opt-in y CI las ejecutará sobre una base desechable.
+> La base local `viajaya` está en `0023` e incluye `0018`–`0022`; las pruebas
+> PostgreSQL destructivas siguen siendo opt-in y CI las ejecuta sobre una base
+> desechable.
 > El anuncio inicial y cada reanuncio por reconexión adquieren lock sobre el
 > ride, revalidan `SEARCHING && !paused` y registran un único `ride_created`
 > antes del commit. El heartbeat HTTP conserva su función de renovar la gracia y
@@ -350,7 +365,8 @@ Axios todavía continúe en segundo plano sin propagar `AbortSignal`.
 > del conductor y luego en el del ride. Ambos eventos pertenecen al agregado
 > ride; una lectura fresca bajo lock evita que el barrido de una sesión ORM
 > obsoleta sobrescriba una aceptación, rechazo o retiro concurrente. El timer de
-> 30 s continúa en memoria y su durabilidad queda reservada a `scheduled_actions`.
+> 30 s solo continúa como fallback en `off|shadow`; en `live`, la acción
+> `expire_offer` durable reemplaza por completo al timer local.
 > Cada avance del viaje captura antes del commit el detalle enriquecido exacto y
 > registra `ride_status` primero en el stream del ride y luego en el del
 > conductor. El router devuelve ese mismo detalle, sin una segunda lectura que
@@ -456,14 +472,17 @@ Base ya cumplida por `93b9741`:
   `published_at`; el backfill fija el corte histórico y los productores nuevos
   escriben `batch_size` dentro de la misma transacción.
 
-Dispatcher sombra y canary local, todavía sin Redis:
+Dispatcher sombra y canary local:
 
 - [x] Ejecutar el dispatcher en modo sombra con lifecycle y apagado coordinado.
 - [x] Validar antes de marcar que lote, secuencia, `event_id`, versión,
   `event_type`, topic y payload canónico coincidan; errores deterministas usan
   cuarentena sanitizada y solo fallos transitorios conservan backoff.
-- [ ] Activarlo en un entorno con `0018`–`0020`, depurar el backlog sombra y
+- [ ] Activarlo en un entorno con `0018`–`0023`, depurar el backlog sombra y
   comparar sus batches con la publicación directa antes de habilitar entrega real.
+  El procedimiento, gates y rollback están versionados en
+  `docs/runbooks/realtime-rollout.md`; la tarea permanece abierta hasta ejecutarlo
+  con tráfico representativo del entorno.
 - [x] Medir pendientes, batches, reintentos, cuarentenas, edad máxima y demora
   conservadora `created_at → published_at` mediante `/health/realtime`; definir
   retención opt-in de publicados por batches completos, desactivada por defecto.
@@ -546,6 +565,10 @@ Endurecimiento antes de promover la canary:
   diagnóstico humano.
 - [ ] Conectar el scrape y Alertmanager del entorno, restringir `/metrics` por
   red y ajustar umbrales con tráfico de staging.
+  El repositorio ya incluye un perfil Compose con scrape, reglas, Alertmanager
+  local sin destinos externos, montura de configuración secreta y validación de
+  ambos archivos en CI. La tarea permanece abierta hasta conectar el receptor y
+  el perímetro reales, y calibrar los umbrales en staging.
 - [x] Ejecutar pruebas de contrato backend JSON → parsers mobile mediante un
   fixture determinista generado por los serializadores productivos y verificado
   contra ambos parsers Zod en CI.
@@ -570,6 +593,10 @@ Endurecimiento antes de promover la canary:
   a duplicado, hueco, frame inválido y cuarentena/cierre `1012`, y conservar la
   evidencia indicada en
   `docs/runbooks/smoke-realtime.md`.
+  El observador sanitizado de desarrollo ya conserva código de cierre, causa de
+  descarte y motivo de resync en un buffer acotado y en logs `[realtime]`. La
+  tarea permanece abierta hasta ejecutar y documentar los cuatro escenarios en
+  un dispositivo o AVD.
 - [x] Hacer indivisible la aplicación de snapshots entre React Query y Zustand,
   e impedir que un handler ya iniciado emita efectos después de invalidar su
   generación. Cada socket físico abre una generación, los commits revalidan su

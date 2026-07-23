@@ -120,15 +120,30 @@ shutdown coordinado de la instancia recuperada. Si una aserción ya falló, un a
 
 ## Cobertura todavía manual
 
-El pase headless no sustituye el runtime React Native. Para cerrar la
-certificación móvil todavía se debe añadir un observador técnico sanitizado que
-conserve código de cierre, causa de descarte y motivo de resync. Después se debe
-usar un dev build —nunca Expo Go— y observar que el hook productivo:
+El pase headless no sustituye el runtime React Native. El observador técnico de
+desarrollo conserva en un buffer acotado y escribe con el prefijo `[realtime]`
+el código de cierre, la causa de descarte y el motivo de resync. Solo registra
+scope `passenger|driver`, categorías cerradas, secuencia y hora; nunca rutas,
+IDs de viaje, tokens, frames ni payloads. El buffer está deshabilitado fuera de
+`__DEV__`.
+
+Para cerrar la certificación se debe usar un dev build —nunca Expo Go— y
+observar que el hook productivo:
 
 - descarta un duplicado sin repetir estado ni avisos;
 - detecta un hueco y aplica un snapshot de reconexión;
 - se recupera de un frame inválido;
 - recibe el cierre `1012` posterior a una cuarentena confirmada y converge.
+
+La evidencia puede capturarse desde Metro o, en Android, filtrando logcat:
+
+```bash
+adb logcat -v time | rg '\[realtime\]'
+```
+
+Los escenarios deben mostrar respectivamente `dropped/duplicate`,
+`resync/stream_gap`, `invalid_frame` seguido de `resync/invalid_frame`, y
+`closed` con código `1012` seguido de `connected` y `snapshot_applied`.
 
 Ese pase requiere un emulador o dispositivo solicitado expresamente. El arnés
 one-shot de los tests puede reutilizarse al diseñar el proxy o runner móvil, pero
@@ -142,8 +157,8 @@ sanitizado de logcat. Nunca debe conservar JWT, payloads, DSN ni datos personale
 ## Límites del smoke headless
 
 - Usa loopback sin TLS, proxy inverso ni balanceador.
-- El smoke base certifica un proceso `live_local`; Redis permanece limitado a un
-  proceso hasta implementar leases de presencia y cancelación durable.
+- El smoke base certifica un proceso `live_local`; el smoke Redis certifica dos
+  procesos únicamente con presencia compartida y scheduler durable activos.
 - Usa el cliente Python `websockets`, no el WebSocket nativo de React Native.
 - Cierra y abre explícitamente otra conexión; no prueba backoff, AppState ni red
   móvil.

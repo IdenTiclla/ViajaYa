@@ -39,6 +39,27 @@ def test_openapi_marca_campos_nullable_del_pool_como_requeridos() -> None:
     } == {"string", "null"}
 
 
+def test_openapi_marca_historial_y_ganancias_nullable_como_requeridos() -> None:
+    schema = json.loads(serializar_openapi())
+    schemas = schema["components"]["schemas"]
+
+    history_item = schemas["RideHistoryItemResponse"]
+    assert {"counterpart", "created_at", "my_rating"} <= set(
+        history_item["required"]
+    )
+
+    counterpart = schemas["HistoryCounterpartSchema"]
+    assert {"plate", "rating", "vehicle_model", "vehicle_type"} <= set(
+        counterpart["required"]
+    )
+
+    history_page = schemas["RideHistoryPageResponse"]
+    assert "next_cursor" in history_page["required"]
+
+    earnings_item = schemas["EarningsItemResponse"]
+    assert "completed_at" in earnings_item["required"]
+
+
 def test_check_detecta_drift_sin_reescribir(tmp_path, capsys) -> None:
     snapshot = tmp_path / "openapi.json"
     contenido_obsoleto = '{"contrato":"obsoleto"}\n'

@@ -317,10 +317,10 @@ class HistoryCounterpartSchema(BaseModel):
 
     id: uuid.UUID
     full_name: str
-    rating: float | None = None
-    vehicle_type: VehicleType | None = None
-    vehicle_model: str | None = None
-    plate: str | None = None
+    rating: float | None
+    vehicle_type: VehicleType | None
+    vehicle_model: str | None
+    plate: str | None
 
 
 class RideHistoryItemResponse(BaseModel):
@@ -333,9 +333,9 @@ class RideHistoryItemResponse(BaseModel):
     origin: PointSchema
     destination: PointSchema
     price: Decimal
-    my_rating: int | None = None
-    counterpart: HistoryCounterpartSchema | None = None
-    created_at: UtcAwareDatetime | None = None
+    my_rating: int | None
+    counterpart: HistoryCounterpartSchema | None
+    created_at: UtcAwareDatetime | None
 
     @classmethod
     def from_item(cls, item: RideHistoryItem) -> RideHistoryItemResponse:
@@ -370,7 +370,7 @@ class RideHistoryPageResponse(BaseModel):
     """Página del historial de un pasajero o conductor."""
 
     items: list[RideHistoryItemResponse]
-    next_cursor: str | None = None
+    next_cursor: str | None
 
     @classmethod
     def from_page(cls, page: Page[RideHistoryItem]) -> RideHistoryPageResponse:

@@ -240,7 +240,9 @@ pendientes, reintentos, cuarentenas, edad y demora conservadora
 `GET /metrics` expone el mismo corte en OpenMetrics 1.0 únicamente cuando
 `OPENMETRICS_ENABLED=true`; el despliegue debe restringirlo a la red de
 monitoreo. Las reglas versionadas y el runbook viven en
-`ops/monitoring/prometheus/`.
+`ops/monitoring/prometheus/`. El perfil Compose `monitoring` conecta el scrape y
+Alertmanager local sin destinos externos; staging/producción deben montar la
+configuración administrada por secretos y aplicar su control perimetral.
 
 La retención de publicados es opt-in (`...RETENTION_DAYS=0` por defecto) y
 trabaja por batches completos, con una transacción y un chunk acotado por

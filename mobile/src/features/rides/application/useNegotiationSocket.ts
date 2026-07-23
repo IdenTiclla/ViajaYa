@@ -10,6 +10,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 
+import { recordRealtimeDiagnostic } from '@/core/realtime/diagnostics';
 import { createReplayGate } from '@/core/realtime/replayGate';
 import { openSocket, type SocketHandle } from '@/core/realtime/socket';
 import { usePassengerToasts } from '@/features/booking/application/usePassengerToasts';
@@ -287,21 +288,77 @@ export function useNegotiationSocket(rideId: string | null, enabled = true): voi
           guard.isCurrent,
         );
       },
-      onResync: () => handle?.resync(),
+      onResync: (reason) => {
+        recordRealtimeDiagnostic({
+          kind: 'resync',
+          scope: 'passenger',
+          reason,
+        });
+        handle?.resync();
+      },
     });
     handle = openSocket(
       `/ws/rides/${rideId}`,
       async (message, socketGuard) => {
-        await consumer.consume(message, socketGuard);
+        const result = await consumer.consume(message, socketGuard);
+        if (result.kind === 'dropped') {
+          recordRealtimeDiagnostic({
+            kind: 'dropped',
+            scope: 'passenger',
+            reason: result.reason,
+          });
+        } else if (
+          result.kind === 'applied' &&
+          isVersionedSocketMessage(message) &&
+          message.kind === 'snapshot'
+        ) {
+          recordRealtimeDiagnostic({
+            kind: 'snapshot_applied',
+            scope: 'passenger',
+          });
+        }
       },
       passengerRealtimeMessageParser,
       {
-        onConnection: consumer.beginConnection,
-        onInvalidFrame: () => {
+        onConnection: () => {
+          recordRealtimeDiagnostic({
+            kind: 'connected',
+            scope: 'passenger',
+          });
+          consumer.beginConnection();
+        },
+        onClose: (close) => {
+          recordRealtimeDiagnostic({
+            kind: 'closed',
+            scope: 'passenger',
+            ...close,
+          });
+        },
+        onInvalidFrame: (issue) => {
+          recordRealtimeDiagnostic({
+            kind: 'invalid_frame',
+            scope: 'passenger',
+            frameType: issue.type,
+            path: issue.path,
+          });
+          recordRealtimeDiagnostic({
+            kind: 'resync',
+            scope: 'passenger',
+            reason: 'invalid_frame',
+          });
           consumer.invalidateConnection();
           handle?.resync();
         },
         onHandlerError: () => {
+          recordRealtimeDiagnostic({
+            kind: 'handler_error',
+            scope: 'passenger',
+          });
+          recordRealtimeDiagnostic({
+            kind: 'resync',
+            scope: 'passenger',
+            reason: 'handler_error',
+          });
           consumer.invalidateConnection();
           handle?.resync();
         },
@@ -725,21 +782,77 @@ export function useDriverPoolSocket(enabled = true): void {
           guard.isCurrent,
         );
       },
-      onResync: () => handle?.resync(),
+      onResync: (reason) => {
+        recordRealtimeDiagnostic({
+          kind: 'resync',
+          scope: 'driver',
+          reason,
+        });
+        handle?.resync();
+      },
     });
     handle = openSocket(
       '/ws/driver',
       async (message, socketGuard) => {
-        await consumer.consume(message, socketGuard);
+        const result = await consumer.consume(message, socketGuard);
+        if (result.kind === 'dropped') {
+          recordRealtimeDiagnostic({
+            kind: 'dropped',
+            scope: 'driver',
+            reason: result.reason,
+          });
+        } else if (
+          result.kind === 'applied' &&
+          isVersionedSocketMessage(message) &&
+          message.kind === 'snapshot'
+        ) {
+          recordRealtimeDiagnostic({
+            kind: 'snapshot_applied',
+            scope: 'driver',
+          });
+        }
       },
       driverRealtimeMessageParser,
       {
-        onConnection: consumer.beginConnection,
-        onInvalidFrame: () => {
+        onConnection: () => {
+          recordRealtimeDiagnostic({
+            kind: 'connected',
+            scope: 'driver',
+          });
+          consumer.beginConnection();
+        },
+        onClose: (close) => {
+          recordRealtimeDiagnostic({
+            kind: 'closed',
+            scope: 'driver',
+            ...close,
+          });
+        },
+        onInvalidFrame: (issue) => {
+          recordRealtimeDiagnostic({
+            kind: 'invalid_frame',
+            scope: 'driver',
+            frameType: issue.type,
+            path: issue.path,
+          });
+          recordRealtimeDiagnostic({
+            kind: 'resync',
+            scope: 'driver',
+            reason: 'invalid_frame',
+          });
           consumer.invalidateConnection();
           handle?.resync();
         },
         onHandlerError: () => {
+          recordRealtimeDiagnostic({
+            kind: 'handler_error',
+            scope: 'driver',
+          });
+          recordRealtimeDiagnostic({
+            kind: 'resync',
+            scope: 'driver',
+            reason: 'handler_error',
+          });
           consumer.invalidateConnection();
           handle?.resync();
         },

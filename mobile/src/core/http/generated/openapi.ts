@@ -702,7 +702,7 @@ export interface components {
          */
         EarningsItemResponse: {
             /** Completed At */
-            completed_at?: string | null;
+            completed_at: string | null;
             /** Destination Name */
             destination_name: string;
             /** Price */
@@ -740,12 +740,12 @@ export interface components {
              */
             id: string;
             /** Plate */
-            plate?: string | null;
+            plate: string | null;
             /** Rating */
-            rating?: number | null;
+            rating: number | null;
             /** Vehicle Model */
-            vehicle_model?: string | null;
-            vehicle_type?: components["schemas"]["VehicleType"] | null;
+            vehicle_model: string | null;
+            vehicle_type: components["schemas"]["VehicleType"] | null;
         };
         /** LoginRequest */
         LoginRequest: {
@@ -1163,9 +1163,9 @@ export interface components {
          * @description Un viaje del historial, listo para pintar la tarjeta.
          */
         RideHistoryItemResponse: {
-            counterpart?: components["schemas"]["HistoryCounterpartSchema"] | null;
+            counterpart: components["schemas"]["HistoryCounterpartSchema"] | null;
             /** Created At */
-            created_at?: string | null;
+            created_at: string | null;
             destination: components["schemas"]["PointSchema"];
             /**
              * Id
@@ -1173,7 +1173,7 @@ export interface components {
              */
             id: string;
             /** My Rating */
-            my_rating?: number | null;
+            my_rating: number | null;
             origin: components["schemas"]["PointSchema"];
             payment_method: components["schemas"]["PaymentMethod"];
             /** Price */
@@ -1189,7 +1189,7 @@ export interface components {
             /** Items */
             items: components["schemas"]["RideHistoryItemResponse"][];
             /** Next Cursor */
-            next_cursor?: string | null;
+            next_cursor: string | null;
         };
         /** RideRequestResponse */
         RideRequestResponse: {

@@ -1,0 +1,15 @@
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: interfaz-local
+  group_by: [alertname, job]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+# Este receptor conserva las alertas en la interfaz de Alertmanager sin
+# enviarlas fuera del entorno. Staging/producción deben montar una configuración
+# externa con sus destinos y secretos.
+receivers:
+  - name: interfaz-local

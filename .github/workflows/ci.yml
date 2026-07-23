@@ -26,6 +26,7 @@ jobs:
       - name: Descargar repositorio
         uses: actions/checkout@v6
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Configurar Python
@@ -44,15 +45,38 @@ jobs:
       - name: Verificar contrato OpenAPI
         run: python -m scripts.export_openapi --check
 
+      - name: Extraer contrato OpenAPI de la rama base
+        if: github.event_name == 'pull_request'
+        env:
+          OPENAPI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: git show "${OPENAPI_BASE_SHA}:backend/openapi.json" > /tmp/viajaya-openapi-base.json
+
+      - name: Rechazar cambios OpenAPI incompatibles
+        if: github.event_name == 'pull_request'
+        run: >-
+          docker run --rm
+          -v "/tmp/viajaya-openapi-base.json:/specs/base.json:ro"
+          -v "${{ github.workspace }}/backend/openapi.json:/specs/revision.json:ro"
+          tufin/oasdiff:v1.17.0
+          breaking --fail-on WARN --format githubactions
+          /specs/base.json /specs/revision.json
+
       - name: Verificar contrato realtime mobile
         run: python -m scripts.export_realtime_contract --check
 
-      - name: Validar reglas Prometheus
+      - name: Validar configuración Prometheus
         run: >-
           docker run --rm --entrypoint /bin/promtool
-          -v "${{ github.workspace }}/ops/monitoring/prometheus:/rules:ro"
+          -v "${{ github.workspace }}/ops/monitoring/prometheus:/etc/prometheus:ro"
           prom/prometheus:v3.11.3
-          check rules /rules/viajaya-realtime.rules.yml
+          check config /etc/prometheus/prometheus.yml
+
+      - name: Validar configuración Alertmanager
+        run: >-
+          docker run --rm --entrypoint /bin/amtool
+          -v "${{ github.workspace }}/ops/monitoring/alertmanager:/etc/alertmanager:ro"
+          prom/alertmanager:v0.32.1
+          check-config /etc/alertmanager/alertmanager.yml
 
       - name: Ejecutar pruebas rápidas
         run: python -m pytest -q

@@ -35,7 +35,8 @@ function isTerminal(status: Ride['status'] | undefined): boolean {
 export function useOpenRides(enabled = true) {
   const query = useInfiniteQuery({
     queryKey: ['open-rides'],
-    queryFn: ({ pageParam }) => ridesRepository.getOpenRides(pageParam),
+    queryFn: ({ pageParam, signal }) =>
+      ridesRepository.getOpenRides(pageParam, undefined, signal),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     refetchInterval: enabled ? POLL_OPEN_MS : false,
@@ -62,7 +63,8 @@ export function useRideOffers(
   const active = enabled && !!rideId;
   const query = useQuery({
     queryKey: ['ride-offers', rideId],
-    queryFn: () => ridesRepository.listOffers(rideId as string),
+    queryFn: ({ signal }) =>
+      ridesRepository.listOffers(rideId as string, signal),
     refetchInterval: active ? POLL_OFFERS_MS : false,
     enabled: active,
   });
@@ -79,7 +81,8 @@ export function useRideOffers(
 export function useRide(rideId: string | null) {
   const query = useQuery({
     queryKey: ['ride', rideId],
-    queryFn: () => ridesRepository.getRide(rideId as string),
+    queryFn: ({ signal }) =>
+      ridesRepository.getRide(rideId as string, signal),
     enabled: !!rideId,
     refetchInterval: (q) => (isTerminal(q.state.data?.status) ? false : POLL_RIDE_MS),
   });
@@ -97,7 +100,8 @@ export function usePassengerActiveRide() {
   const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: PASSENGER_ACTIVE_RIDE_KEY,
-    queryFn: () => ridesRepository.getPassengerActiveRide(),
+    queryFn: ({ signal }) =>
+      ridesRepository.getPassengerActiveRide(signal),
     refetchInterval: (q) =>
       isTerminal(q.state.data?.status) ? false : POLL_ACTIVE_MS,
   });
@@ -130,7 +134,7 @@ export function useDriverActiveRide(
 ) {
   const query = useQuery({
     queryKey: DRIVER_ACTIVE_RIDE_KEY,
-    queryFn: () => ridesRepository.getActiveRide(),
+    queryFn: ({ signal }) => ridesRepository.getActiveRide(signal),
     enabled,
     refetchInterval: (q) =>
       enabled && !isTerminal(q.state.data?.status) ? POLL_ACTIVE_MS : false,
@@ -150,7 +154,7 @@ export function usePendingRatingRide(enabled = true) {
   const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: PENDING_RATING_RIDE_KEY,
-    queryFn: () => ridesRepository.getPendingRatingRide(),
+    queryFn: ({ signal }) => ridesRepository.getPendingRatingRide(signal),
     enabled,
   });
 

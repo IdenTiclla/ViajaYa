@@ -91,6 +91,8 @@ Las rutas ocultas declaran `tabBarButton: () => null` (ej. el `index` redirect d
 
 - **Server state → React Query** (`QueryClient` singleton: `retry:1`, `staleTime:30s`). Polling lento
   (15–20 s) como respaldo del WS en `useOpenRides`, `useRideOffers`, `useRide`, `useDriverActiveRide`.
+- Las `queryFn` de viajes propagan `signal` hasta Axios. Conserva esa cadena al
+  añadir consultas para que `cancelQueries` cancele también el transporte HTTP.
 - El pool abierto y el historial usan `useInfiniteQuery` sobre el contrato
   `{items, next_cursor}`. La caché `['open-rides']` es `InfiniteData`: los eventos
   WS deben usar `features/rides/application/openRidesCache.ts`, no escribir arrays
@@ -127,6 +129,10 @@ fallo del handler descarta la generación del socket y fuerza otro handshake sin
 perder los cursores ya confirmados. El gate v2 confirma cada ticket solo después
 de actualizar React Query/Zustand; duplicados y posiciones antiguas no mutan ni
 repiten avisos.
+En un dev build, `core/realtime/diagnostics.ts` conserva un buffer acotado y
+emite logs `[realtime]` con conexión, snapshot, código de cierre, causa de
+descarte y resync. No añadas rutas, IDs, tokens, frames ni payloads a ese
+contrato; permanece deshabilitado fuera de `__DEV__`.
 Durante el rollout de correlación, `correlation_id` puede faltar en un evento v2
 del backend anterior; mobile usa entonces `batch_id`. La correlación es metadata
 diagnóstica y no cambia la identidad idempotente de un `event_id`.

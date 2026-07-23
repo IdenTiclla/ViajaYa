@@ -13,33 +13,54 @@ leases, ejecución y retención del scheduler; `/health/scheduled-actions` ofrec
 el corte JSON equivalente para diagnóstico. Shadow ejecuta el worker además del
 timer legacy, por lo que no debe acumular acciones `due` como comportamiento normal.
 
-Prometheus debe usar un job cuyo nombre comience con `viajaya-backend` y cargar
-`viajaya-realtime.rules.yml` mediante `rule_files`. Ejemplo mínimo:
+`prometheus.yml` conecta el scrape local, las reglas y Alertmanager. El job
+comienza con `viajaya-backend`, como esperan las alertas. El perfil de Compose
+expone las dos interfaces únicamente en loopback:
 
-```yaml
-rule_files:
-  - /etc/prometheus/rules/viajaya-realtime.rules.yml
+```bash
+# El backend debe publicar /metrics antes de iniciar el perfil.
+OPENMETRICS_ENABLED=true
 
-scrape_configs:
-  - job_name: viajaya-backend
-    metrics_path: /metrics
-    static_configs:
-      - targets: ["api:8000"]
+docker compose --profile monitoring up -d prometheus alertmanager
+
+# Prometheus:   http://127.0.0.1:9090
+# Alertmanager: http://127.0.0.1:9093
 ```
+
+Dentro de Docker, `host.docker.internal:8000` alcanza el backend de desarrollo
+que corre en el host. Staging y producción deben reemplazar el target y
+`external_labels.environment` por sus valores reales.
+
+El Alertmanager versionado usa un receptor sin salidas externas: permite
+comprobar agrupación, resolución y silencios desde su interfaz sin guardar
+credenciales. Para un entorno real, monta un archivo administrado por secretos:
+
+```bash
+VIAJAYA_ALERTMANAGER_CONFIG_PATH=/ruta/segura/alertmanager.yml \
+  docker compose --profile monitoring up -d alertmanager prometheus
+```
+
+Ese archivo no debe vivir en el repositorio. Debe configurar el receptor real y
+su política de escalamiento.
 
 Las reglas comunes asumen un Prometheus aislado por entorno. Si una misma
 instancia monitorea varios jobs ViajaYa, cada entorno debe copiar y acotar las
 reglas `absent(...)` a su `job` o label de entorno; una expresión genérica no
 puede descubrir el nombre de un job que desapareció por completo.
 
-Desde la raíz del repositorio se valida su sintaxis con la misma versión fijada
-en CI:
+Desde la raíz del repositorio se valida la configuración completa con las mismas
+versiones fijadas en CI:
 
 ```bash
 docker run --rm --entrypoint /bin/promtool \
-  -v "$PWD/ops/monitoring/prometheus:/rules:ro" \
+  -v "$PWD/ops/monitoring/prometheus:/etc/prometheus:ro" \
   prom/prometheus:v3.11.3 \
-  check rules /rules/viajaya-realtime.rules.yml
+  check config /etc/prometheus/prometheus.yml
+
+docker run --rm --entrypoint /bin/amtool \
+  -v "$PWD/ops/monitoring/alertmanager:/etc/alertmanager:ro" \
+  prom/alertmanager:v0.32.1 \
+  check-config /etc/alertmanager/alertmanager.yml
 ```
 
 Las reglas asumen un scrape cada 30–60 s. Los umbrales de 120 s para
@@ -49,8 +70,9 @@ deben ajustarse con datos de staging antes de promover cada modo live.
 `ViajaYaRealtimeNuevaCuarentena` usa el incremento de una gauge durable porque
 las cuarentenas nunca son podadas por la retención. Puede perder un incremento
 ocurrido durante una caída larga de Prometheus; al recuperarlo, operación debe
-revisar también el estado persistente en `/health/realtime`. Alertmanager y sus
-destinos se configuran fuera del repositorio para no versionar credenciales.
+revisar también el estado persistente en `/health/realtime`. Los destinos reales
+de Alertmanager se configuran fuera del repositorio para no versionar
+credenciales; la configuración local versionada no envía notificaciones.
 
 El despliegue debe restringir `/metrics` a Prometheus mediante ingress, firewall
 o política de red. El flag evita publicar accidentalmente el endpoint, pero no

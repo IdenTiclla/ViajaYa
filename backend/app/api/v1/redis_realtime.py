@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import uuid
+from collections import OrderedDict
 from collections.abc import Sequence
 from typing import Literal, Protocol
 
@@ -13,7 +14,10 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 from redis.asyncio import Redis
 
 from app.api.v1.realtime_outbox import serialize_realtime_outbox_batch_v2
-from app.api.v1.schemas.realtime import RealtimeEventEnvelopeV2
+from app.api.v1.schemas.realtime import (
+    LegacyRealtimeEventEnvelopeV2,
+    RealtimeEventEnvelopeV2,
+)
 from app.application.dto import RealtimeOutboxEvent
 from app.application.exceptions import InvalidRealtimeOutboxBatchError
 from app.application.interfaces import RealtimeDeliveryBridge
@@ -21,9 +25,12 @@ from app.infrastructure.realtime.hub import RealtimeHub, hub
 
 logger = logging.getLogger(__name__)
 
-_WIRE_VERSION = 1
+_LEGACY_WIRE_VERSION = 1
+_CORRELATED_WIRE_VERSION = 2
+_CORRELATED_CHANNEL_SUFFIX = ":correlation-v1"
 _MAX_WIRE_MESSAGE_BYTES = 1_000_000
 _MAX_RESYNC_STREAMS = 1000
+_MAX_RECENT_CORRELATED_BATCHES = 2048
 _SUBSCRIBER_POLL_SECONDS = 0.5
 
 
@@ -59,29 +66,74 @@ class RedisRealtimeUnavailableError(RuntimeError):
 class _WireMessage(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    wire_version: Literal[1] = 1
+
+class _WireMessageV1(_WireMessage):
+    wire_version: Literal[1] = _LEGACY_WIRE_VERSION
 
 
-class _BatchWireMessage(_WireMessage):
+class _WireMessageV2(_WireMessage):
+    wire_version: Literal[2] = _CORRELATED_WIRE_VERSION
+
+
+class _BatchWireMessageV1(_WireMessageV1):
+    kind: Literal["batch"] = "batch"
+    batch_id: uuid.UUID
+    batch_size: int = Field(strict=True, ge=1)
+    events: list[LegacyRealtimeEventEnvelopeV2] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_batch(self) -> _BatchWireMessageV1:
+        _validate_wire_batch(self)
+        return self
+
+
+class _BatchWireMessageV2(_WireMessageV2):
     kind: Literal["batch"] = "batch"
     batch_id: uuid.UUID
     batch_size: int = Field(strict=True, ge=1)
     events: list[RealtimeEventEnvelopeV2] = Field(min_length=1)
 
+    @model_validator(mode="before")
+    @classmethod
+    def require_explicit_correlation(cls, value: object) -> object:
+        if isinstance(value, dict):
+            events = value.get("events")
+            if isinstance(events, list) and any(
+                (
+                    event.get("correlation_id")
+                    if isinstance(event, dict)
+                    else getattr(event, "correlation_id", None)
+                )
+                is None
+                for event in events
+            ):
+                raise ValueError(
+                    "El wire correlacionado requiere correlation_id explícito."
+                )
+        return value
+
     @model_validator(mode="after")
-    def validate_batch(self) -> _BatchWireMessage:
-        if self.batch_size != len(self.events):
-            raise ValueError("La cardinalidad Redis no coincide con el batch.")
-        if any(event.batch_id != self.batch_id for event in self.events):
-            raise ValueError("Todos los eventos deben pertenecer al batch declarado.")
-        if [event.sequence for event in self.events] != list(range(len(self.events))):
-            raise ValueError("La secuencia Redis del batch no es contigua.")
-        if len({event.event_id for event in self.events}) != len(self.events):
-            raise ValueError("El batch Redis repite event_id.")
+    def validate_batch(self) -> _BatchWireMessageV2:
+        _validate_wire_batch(self)
         return self
 
 
-class _ResyncWireMessage(_WireMessage):
+def _validate_wire_batch(
+    message: _BatchWireMessageV1 | _BatchWireMessageV2,
+) -> None:
+    if message.batch_size != len(message.events):
+        raise ValueError("La cardinalidad Redis no coincide con el batch.")
+    if any(event.batch_id != message.batch_id for event in message.events):
+        raise ValueError("Todos los eventos deben pertenecer al batch declarado.")
+    if [event.sequence for event in message.events] != list(
+        range(len(message.events))
+    ):
+        raise ValueError("La secuencia Redis del batch no es contigua.")
+    if len({event.event_id for event in message.events}) != len(message.events):
+        raise ValueError("El batch Redis repite event_id.")
+
+
+class _ResyncWireMessage(_WireMessageV1):
     kind: Literal["resync"] = "resync"
     streams: list[str] = Field(min_length=1, max_length=_MAX_RESYNC_STREAMS)
 
@@ -113,7 +165,9 @@ class _ResyncWireMessage(_WireMessage):
         return self
 
 
-def _parse_wire_message(raw_message: str) -> _BatchWireMessage | _ResyncWireMessage:
+def _parse_wire_message(
+    raw_message: str,
+) -> _BatchWireMessageV1 | _BatchWireMessageV2 | _ResyncWireMessage:
     if len(raw_message.encode("utf-8")) > _MAX_WIRE_MESSAGE_BYTES:
         raise ValueError("El mensaje Redis excede el límite permitido.")
     decoded = json.loads(raw_message)
@@ -121,7 +175,12 @@ def _parse_wire_message(raw_message: str) -> _BatchWireMessage | _ResyncWireMess
         raise ValueError("El mensaje Redis debe ser un objeto.")
     kind = decoded.get("kind")
     if kind == "batch":
-        return _BatchWireMessage.model_validate(decoded)
+        wire_version = decoded.get("wire_version")
+        if wire_version == _LEGACY_WIRE_VERSION:
+            return _BatchWireMessageV1.model_validate(decoded)
+        if wire_version == _CORRELATED_WIRE_VERSION:
+            return _BatchWireMessageV2.model_validate(decoded)
+        raise ValueError("El batch Redis tiene una versión desconocida.")
     if kind == "resync":
         return _ResyncWireMessage.model_validate(decoded)
     raise ValueError("El mensaje Redis tiene un tipo desconocido.")
@@ -155,6 +214,7 @@ class RedisRealtimeBridge(RealtimeDeliveryBridge):
             raise ValueError("El backoff máximo de Redis no puede ser menor al base.")
         self._client = client
         self._channel = channel
+        self._correlated_channel = f"{channel}{_CORRELATED_CHANNEL_SUFFIX}"
         self._connect_timeout_seconds = connect_timeout_seconds
         self._reconnect_base_seconds = reconnect_base_seconds
         self._reconnect_max_seconds = reconnect_max_seconds
@@ -173,6 +233,7 @@ class RedisRealtimeBridge(RealtimeDeliveryBridge):
         self._reconnect_count = 0
         self._invalid_message_count = 0
         self._last_publish_subscriber_count = 0
+        self._recent_correlated_batches: OrderedDict[uuid.UUID, None] = OrderedDict()
 
     @classmethod
     def from_url(
@@ -257,12 +318,41 @@ class RedisRealtimeBridge(RealtimeDeliveryBridge):
                 "El proceso no mantiene una suscripción Redis confirmada."
             )
         envelopes = serialize_realtime_outbox_batch_v2(events)
-        message = _BatchWireMessage(
+        correlated_message = _BatchWireMessageV2(
             batch_id=events[0].batch_id,
             batch_size=len(events),
             events=[RealtimeEventEnvelopeV2.model_validate(item) for item in envelopes],
         )
-        await self._publish_wire(message)
+        legacy_message = _BatchWireMessageV1(
+            batch_id=events[0].batch_id,
+            batch_size=len(events),
+            events=[
+                LegacyRealtimeEventEnvelopeV2.model_validate(
+                    {
+                        key: value
+                        for key, value in envelope.items()
+                        if key != "correlation_id"
+                    }
+                )
+                for envelope in envelopes
+            ],
+        )
+        # Las réplicas antiguas solo están suscritas al canal original. El
+        # consumidor nuevo omite la copia legacy si ya observó la correlacionada;
+        # si Redis invierte el orden, el gate mobile tolera la segunda entrega
+        # porque la correlación diagnóstica no forma parte de su identidad.
+        correlated_subscribers = await self._publish_wire(
+            correlated_message,
+            channel=self._correlated_channel,
+        )
+        legacy_subscribers = await self._publish_wire(
+            legacy_message,
+            channel=self._channel,
+        )
+        self._last_publish_subscriber_count = min(
+            correlated_subscribers,
+            legacy_subscribers,
+        )
         self._published_batch_count += 1
 
     async def force_resync(self, streams: Sequence[str]) -> None:
@@ -271,7 +361,7 @@ class RedisRealtimeBridge(RealtimeDeliveryBridge):
             message = _ResyncWireMessage(
                 streams=unique_streams[offset : offset + _MAX_RESYNC_STREAMS]
             )
-            await self._publish_wire(message)
+            await self._publish_wire(message, channel=self._channel)
 
     async def run(self) -> None:
         if self._running:
@@ -289,7 +379,10 @@ class RedisRealtimeBridge(RealtimeDeliveryBridge):
                         ignore_subscribe_messages=True
                     ) as pubsub:
                         async with asyncio.timeout(self._connect_timeout_seconds):
-                            await pubsub.subscribe(self._channel)
+                            await pubsub.subscribe(
+                                self._channel,
+                                self._correlated_channel,
+                            )
                         self._connected = True
                         self._ready_event.set()
                         self._last_error = None
@@ -339,11 +432,13 @@ class RedisRealtimeBridge(RealtimeDeliveryBridge):
 
     async def _publish_wire(
         self,
-        message: _BatchWireMessage | _ResyncWireMessage,
-    ) -> None:
+        message: _BatchWireMessageV1 | _BatchWireMessageV2 | _ResyncWireMessage,
+        *,
+        channel: str,
+    ) -> int:
         payload = message.model_dump_json()
         if len(payload.encode("utf-8")) > _MAX_WIRE_MESSAGE_BYTES:
-            if isinstance(message, _BatchWireMessage):
+            if isinstance(message, (_BatchWireMessageV1, _BatchWireMessageV2)):
                 raise InvalidRealtimeOutboxBatchError(
                     "transport_limit",
                     "El batch realtime excede el límite seguro del transporte.",
@@ -351,13 +446,13 @@ class RedisRealtimeBridge(RealtimeDeliveryBridge):
             raise ValueError("La orden Redis excede el límite permitido.")
         async with asyncio.timeout(self._connect_timeout_seconds):
             subscriber_count = int(
-                await self._client.publish(self._channel, payload)
+                await self._client.publish(channel, payload)
             )
-        self._last_publish_subscriber_count = subscriber_count
         if subscriber_count < 1:
             raise RedisRealtimeUnavailableError(
                 "Redis no confirmó ningún suscriptor realtime."
             )
+        return subscriber_count
 
     async def _consume(self, message: dict[str, object]) -> None:
         if message.get("type") != "message":
@@ -376,8 +471,24 @@ class RedisRealtimeBridge(RealtimeDeliveryBridge):
 
         self._last_error = None
         self._hub.set_shared_transport_healthy(True)
-        if isinstance(wire_message, _BatchWireMessage):
+        if isinstance(wire_message, _BatchWireMessageV2):
             for event in wire_message.events:
+                await self._hub.broadcast_versioned(
+                    event.stream,
+                    event.model_dump(mode="json"),
+                )
+            self._remember_correlated_batch(wire_message.batch_id)
+            self._received_batch_count += 1
+            self._received_event_count += len(wire_message.events)
+            return
+
+        if isinstance(wire_message, _BatchWireMessageV1):
+            if wire_message.batch_id in self._recent_correlated_batches:
+                return
+            for legacy_event in wire_message.events:
+                event = RealtimeEventEnvelopeV2.model_validate(
+                    legacy_event.model_dump(mode="json")
+                )
                 await self._hub.broadcast_versioned(
                     event.stream,
                     event.model_dump(mode="json"),
@@ -388,6 +499,12 @@ class RedisRealtimeBridge(RealtimeDeliveryBridge):
 
         await self._hub.force_resync(wire_message.streams)
         self._resync_message_count += 1
+
+    def _remember_correlated_batch(self, batch_id: uuid.UUID) -> None:
+        self._recent_correlated_batches[batch_id] = None
+        self._recent_correlated_batches.move_to_end(batch_id)
+        while len(self._recent_correlated_batches) > _MAX_RECENT_CORRELATED_BATCHES:
+            self._recent_correlated_batches.popitem(last=False)
 
     async def _reject_invalid_message(self) -> None:
         self._invalid_message_count += 1

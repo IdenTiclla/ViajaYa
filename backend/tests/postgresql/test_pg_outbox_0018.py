@@ -285,6 +285,7 @@ async def test_upsert_concurrente_asigna_versiones_distintas(pg_test_db) -> None
                         topic=f"ride:{aggregate_id}",
                         aggregate_type="ride",
                         aggregate_id=aggregate_id,
+                        correlation_id=None,
                         payload={"type": event_type, "data": {}},
                     )
                 ]
@@ -321,6 +322,7 @@ async def test_rollback_no_consume_version_del_agregado(pg_test_db) -> None:
         topic=f"ride:{aggregate_id}",
         aggregate_type="ride",
         aggregate_id=aggregate_id,
+        correlation_id=None,
         payload={"type": "offer_created", "data": {}},
     )
 

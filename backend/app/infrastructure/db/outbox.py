@@ -35,6 +35,7 @@ def _to_event(row: RealtimeOutboxModel) -> RealtimeOutboxEvent:
     return RealtimeOutboxEvent(
         id=row.id,
         batch_id=row.batch_id,
+        correlation_id=row.correlation_id,
         sequence=row.sequence,
         batch_size=row.batch_size,
         event_type=row.event_type,
@@ -66,6 +67,19 @@ class SqlAlchemyRealtimeOutbox(RealtimeOutbox):
     ) -> list[RealtimeOutboxEvent]:
         if not events:
             raise ValueError("El lote de eventos no puede estar vacío.")
+
+        provided_correlation_ids = {
+            event.correlation_id
+            for event in events
+            if event.correlation_id is not None
+        }
+        if len(provided_correlation_ids) > 1:
+            raise ValueError("El lote de eventos mezcla correlation_id.")
+        correlation_id = (
+            next(iter(provided_correlation_ids))
+            if provided_correlation_ids
+            else uuid.uuid4()
+        )
 
         # Todos los productores adquieren locks en el mismo orden global para
         # que dos lotes con las mismas claves invertidas no formen un deadlock.
@@ -106,6 +120,7 @@ class SqlAlchemyRealtimeOutbox(RealtimeOutbox):
             next_stream_versions[event.topic] += 1
             row = RealtimeOutboxModel(
                 batch_id=batch_id,
+                correlation_id=correlation_id,
                 sequence=sequence,
                 batch_size=batch_size,
                 event_type=event.event_type,

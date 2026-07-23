@@ -69,6 +69,7 @@ def _row(
     return RealtimeOutboxModel(
         id=uuid.uuid4(),
         batch_id=batch_id,
+        correlation_id=uuid.uuid4(),
         sequence=sequence,
         batch_size=batch_size,
         event_type="ride_closed",

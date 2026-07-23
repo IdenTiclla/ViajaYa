@@ -401,6 +401,7 @@ def _v2_event_cases(messages: dict[str, NegotiationMessage]) -> list[_ContractCa
         event = RealtimeOutboxEvent(
             id=_uuid(100 + index),
             batch_id=_uuid(200 + index),
+            correlation_id=_uuid(300 + index),
             sequence=0,
             batch_size=1,
             event_type=route.message.type,

@@ -35,6 +35,7 @@ from app.application.use_cases.reconcile_missing_scheduled_actions import (
     ReconcileMissingScheduledActions,
 )
 from app.infrastructure.config import Settings, get_settings
+from app.infrastructure.correlation import REQUEST_ID_HEADER, CorrelationIdMiddleware
 from app.infrastructure.db.advisory_lock import PostgreSQLLiveLocalProcessLock
 from app.infrastructure.db.scheduled_actions_reconciliation import (
     CompositeMissingScheduledActionsReconciler,
@@ -489,7 +490,9 @@ def create_app(
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=[REQUEST_ID_HEADER],
     )
+    app.add_middleware(CorrelationIdMiddleware)
 
     register_exception_handlers(app)
     app.include_router(auth.router, prefix="/api/v1")

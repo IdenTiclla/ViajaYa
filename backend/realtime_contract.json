@@ -498,6 +498,7 @@
         "aggregate_type": "ride",
         "aggregate_version": 1,
         "batch_id": "00000000-0000-4000-8000-000000000201",
+        "correlation_id": "00000000-0000-4000-8000-000000000301",
         "data": {
           "created_at": "2026-07-18T12:00:00Z",
           "destination": {
@@ -547,6 +548,7 @@
         "aggregate_type": "ride",
         "aggregate_version": 2,
         "batch_id": "00000000-0000-4000-8000-000000000202",
+        "correlation_id": "00000000-0000-4000-8000-000000000302",
         "data": {
           "pool_version": 2,
           "reason": "terminal",
@@ -573,6 +575,7 @@
         "aggregate_type": "ride",
         "aggregate_version": 3,
         "batch_id": "00000000-0000-4000-8000-000000000203",
+        "correlation_id": "00000000-0000-4000-8000-000000000303",
         "data": {
           "created_at": "2026-07-18T12:00:00Z",
           "destination": {
@@ -623,6 +626,7 @@
         "aggregate_type": "ride",
         "aggregate_version": 4,
         "batch_id": "00000000-0000-4000-8000-000000000204",
+        "correlation_id": "00000000-0000-4000-8000-000000000304",
         "data": {
           "created_at": "2026-07-18T12:00:00Z",
           "driver": {
@@ -661,6 +665,7 @@
         "aggregate_type": "ride",
         "aggregate_version": 5,
         "batch_id": "00000000-0000-4000-8000-000000000205",
+        "correlation_id": "00000000-0000-4000-8000-000000000305",
         "data": {
           "offer_id": "00000000-0000-4000-8000-000000000004",
           "reason": "declined",
@@ -687,6 +692,7 @@
         "aggregate_type": "ride",
         "aggregate_version": 6,
         "batch_id": "00000000-0000-4000-8000-000000000206",
+        "correlation_id": "00000000-0000-4000-8000-000000000306",
         "data": {
           "driver_id": "00000000-0000-4000-8000-000000000003",
           "offer_id": "00000000-0000-4000-8000-000000000004",
@@ -713,6 +719,7 @@
         "aggregate_type": "ride",
         "aggregate_version": 7,
         "batch_id": "00000000-0000-4000-8000-000000000207",
+        "correlation_id": "00000000-0000-4000-8000-000000000307",
         "data": {
           "accepted_eta_min": 5,
           "accepted_price": "25.00",
@@ -777,6 +784,7 @@
         "aggregate_type": "driver",
         "aggregate_version": 8,
         "batch_id": "00000000-0000-4000-8000-000000000208",
+        "correlation_id": "00000000-0000-4000-8000-000000000308",
         "data": {
           "offers": [
             {
@@ -810,6 +818,7 @@
         "aggregate_type": "ride",
         "aggregate_version": 9,
         "batch_id": "00000000-0000-4000-8000-000000000209",
+        "correlation_id": "00000000-0000-4000-8000-000000000309",
         "data": {
           "driver_id": "00000000-0000-4000-8000-000000000003",
           "offer_id": "00000000-0000-4000-8000-000000000004",
@@ -837,6 +846,7 @@
         "aggregate_type": "ride",
         "aggregate_version": 10,
         "batch_id": "00000000-0000-4000-8000-000000000210",
+        "correlation_id": "00000000-0000-4000-8000-000000000310",
         "data": {
           "driver_id": "00000000-0000-4000-8000-000000000003",
           "offer_id": "00000000-0000-4000-8000-000000000004",
@@ -864,6 +874,7 @@
         "aggregate_type": "ride",
         "aggregate_version": 11,
         "batch_id": "00000000-0000-4000-8000-000000000211",
+        "correlation_id": "00000000-0000-4000-8000-000000000311",
         "data": {
           "accepted_eta_min": 5,
           "accepted_price": "25.00",
@@ -928,6 +939,7 @@
         "aggregate_type": "ride",
         "aggregate_version": 12,
         "batch_id": "00000000-0000-4000-8000-000000000212",
+        "correlation_id": "00000000-0000-4000-8000-000000000312",
         "data": {
           "accepted_eta_min": 5,
           "accepted_price": "25.00",

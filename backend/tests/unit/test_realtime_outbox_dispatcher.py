@@ -104,6 +104,7 @@ async def test_dispatch_once_consumes_sqlite_batch_without_calling_local_hub(
                     topic="pool:taxi",
                     aggregate_type="ride",
                     aggregate_id=ride_id,
+                    correlation_id=None,
                     payload={
                         "type": "ride_closed",
                         "data": {
@@ -298,6 +299,7 @@ async def test_preflight_rejects_a_pending_batch_without_anchor(
                     topic="pool:taxi",
                     aggregate_type="ride",
                     aggregate_id=ride_id,
+                    correlation_id=None,
                     payload={
                         "type": "ride_closed",
                         "data": {"ride_id": str(ride_id)},
@@ -308,6 +310,7 @@ async def test_preflight_rejects_a_pending_batch_without_anchor(
                     topic=f"ride:{ride_id}",
                     aggregate_type="ride",
                     aggregate_id=ride_id,
+                    correlation_id=None,
                     payload={
                         "type": "ride_status",
                         "data": {"ride_id": str(ride_id)},

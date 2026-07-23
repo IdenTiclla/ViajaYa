@@ -54,6 +54,16 @@ Los tests rápidos verifican que la creación del ride persiste la primera acci�
 de ausencia en la misma UoW y que el reconciliador repara búsquedas legacy de
 forma idempotente antes de habilitar múltiples workers.
 
+Cada respuesta HTTP incluye `X-Request-ID`. Para seguir una mutación hasta el
+cliente, busca ese UUID en el log sanitizado del request, en
+`realtime_outbox.correlation_id` y en `correlation_id` del envelope v2. Las
+acciones del scheduler usan su propio `scheduled_actions.id` como correlación.
+No uses JWT, query strings ni payloads como identificadores de diagnóstico.
+Durante un rolling deploy, los eventos creados o entregados por una réplica
+anterior usan `batch_id` como fallback estable. El bridge nuevo publica además
+una copia legacy en `REALTIME_REDIS_CHANNEL`; confirma que no haya resyncs por
+schema antes de retirar la compatibilidad en una fase futura.
+
 `test_pg_redis_restart_smoke.py` usa exclusivamente el servicio con perfil
 `redis_restart_test`: detiene Redis después del commit y antes del publish,
 comprueba el cierre 1012 y el retry pendiente, levanta el mismo contenedor y

@@ -189,6 +189,7 @@ class PendingRealtimeEvent:
     topic: str
     aggregate_type: str
     aggregate_id: uuid.UUID
+    correlation_id: uuid.UUID | None
     payload: dict[str, object]
 
 
@@ -198,6 +199,7 @@ class RealtimeOutboxEvent:
 
     id: uuid.UUID
     batch_id: uuid.UUID
+    correlation_id: uuid.UUID
     sequence: int
     batch_size: int
     event_type: str

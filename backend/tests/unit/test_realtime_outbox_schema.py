@@ -55,6 +55,7 @@ def test_outbox_declara_columnas_jsonb_constraints_e_indice_pending() -> None:
     assert tuple(table.columns.keys()) == (
         "id",
         "batch_id",
+        "correlation_id",
         "sequence",
         "batch_size",
         "event_type",
@@ -74,6 +75,7 @@ def test_outbox_declara_columnas_jsonb_constraints_e_indice_pending() -> None:
     )
     assert str(table.c.payload.type.compile(dialect=postgresql.dialect())) == "JSONB"
     assert str(table.c.payload.type.compile(dialect=sqlite.dialect())) == "JSON"
+    assert table.c.correlation_id.server_default is None
 
     unique_columns = {
         tuple(column.name for column in constraint.columns)

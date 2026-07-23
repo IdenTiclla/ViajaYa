@@ -33,6 +33,7 @@ def _event() -> RealtimeOutboxEvent:
     return RealtimeOutboxEvent(
         id=uuid.uuid4(),
         batch_id=uuid.uuid4(),
+        correlation_id=uuid.uuid4(),
         sequence=0,
         batch_size=1,
         event_type="ride_closed",

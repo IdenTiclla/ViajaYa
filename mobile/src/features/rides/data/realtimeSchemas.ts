@@ -293,6 +293,8 @@ const versionedEventMetadataSchema = z.object({
   kind: z.literal('event'),
   event_id: uuidSchema,
   batch_id: uuidSchema,
+  // Durante el rolling deploy, el backend anterior todavía omite este campo.
+  correlation_id: uuidSchema.optional(),
   sequence: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
   aggregate_type: z.enum(['ride', 'driver']),
   aggregate_id: uuidSchema,
@@ -599,6 +601,7 @@ const V2_KEYS = new Set([
   'kind',
   'event_id',
   'batch_id',
+  'correlation_id',
   'sequence',
   'aggregate_type',
   'aggregate_id',
@@ -684,6 +687,7 @@ export function toReplayEventMetadata(
   return {
     eventId: message.event_id,
     batchId: message.batch_id,
+    correlationId: message.correlation_id ?? message.batch_id,
     sequence: message.sequence,
     eventType: message.type,
     aggregateType: message.aggregate_type,

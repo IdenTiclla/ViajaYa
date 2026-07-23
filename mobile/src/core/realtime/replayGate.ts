@@ -9,6 +9,7 @@
 export type RealtimeEventMetadata = {
   eventId: string;
   batchId: string;
+  correlationId: string;
   sequence: number;
   eventType: string;
   aggregateType: string;

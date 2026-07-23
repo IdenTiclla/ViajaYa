@@ -37,6 +37,7 @@ def _event(
     return RealtimeOutboxEvent(
         id=event_id or uuid.uuid4(),
         batch_id=batch_id or uuid.uuid4(),
+        correlation_id=uuid.uuid4(),
         sequence=sequence,
         batch_size=batch_size,
         event_type=event_type,
@@ -333,6 +334,7 @@ def test_serializa_batch_unitario_outbox_a_envelope_v2() -> None:
         "kind": "event",
         "event_id": str(event.id),
         "batch_id": str(event.batch_id),
+        "correlation_id": str(event.correlation_id),
         "sequence": 0,
         "aggregate_type": "ride",
         "aggregate_id": str(event.aggregate_id),

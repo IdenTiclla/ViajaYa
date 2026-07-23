@@ -681,7 +681,7 @@ seguirán siendo la defensa final contra carreras.
 ## Despliegue incremental
 
 1. Publicar métricas y documentar el límite actual de un worker.
-2. Aplicar `0018`–`0022` y desplegar las tablas durables antes del backend productor.
+2. Aplicar `0018`–`0023` y desplegar las tablas durables antes del backend productor.
 3. Desplegar el dispatcher en `off` y luego activar `shadow` con recording
    `false` para certificar lifecycle y drenar backlog.
 4. Activar recording en sombra y comparar batches, payloads y métricas contra la
@@ -706,7 +706,14 @@ borre eventos pendientes.
 - Acciones programadas vencidas, reintentos y fallos definitivos.
 - Renovaciones y expiraciones de presencia.
 - Reconexiones Redis y mensajes descartados por versión/schema.
-- Request/correlation ID propagado a logs y eventos.
+- Request/correlation ID propagado a logs y eventos. **Implementado:**
+  `X-Request-ID` se valida como UUID o se reemplaza, se devuelve en HTTP y se
+  conserva en `realtime_outbox.correlation_id`/envelope v2. El histórico usa
+  `batch_id`; el scheduler usa el ID de acción y la migración mantiene un trigger
+  compatible con el productor anterior durante rolling deploy. Redis publica
+  temporalmente un wire correlacionado y otro legacy en canales separados; el
+  consumidor nuevo lee ambos, omite el legacy si ya vio el batch y el gate
+  tolera el orden inverso como una entrega duplicada.
 - Readiness que compruebe PostgreSQL y, cuando corresponda, Redis; liveness no
   dependerá de servicios externos.
 

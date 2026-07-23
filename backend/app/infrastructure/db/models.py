@@ -592,6 +592,10 @@ class RealtimeOutboxModel(Base):
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     batch_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    correlation_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        nullable=False,
+    )
     sequence: Mapped[int] = mapped_column(
         Integer, default=0, server_default="0", nullable=False
     )

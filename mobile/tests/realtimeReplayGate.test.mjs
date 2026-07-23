@@ -7,6 +7,7 @@ function event(overrides = {}) {
   return {
     eventId: 'event-1',
     batchId: 'batch-1',
+    correlationId: 'correlation-1',
     sequence: 0,
     eventType: 'offer_created',
     aggregateType: 'ride',
@@ -93,6 +94,7 @@ test('un evento viejo del agregado en otro stream conserva su delta', () => {
     event({
       eventId: 'event-2',
       batchId: 'batch-2',
+      correlationId: 'correlation-2',
       eventType: 'ride_paused',
       stream: 'driver:driver-1',
       streamVersion: 21,
@@ -192,6 +194,19 @@ test('el mismo event_id con otro payload fuerza resync', () => {
       }),
     ),
     { kind: 'resync', reason: 'event_id_conflict' },
+  );
+});
+
+test('la correlación diagnóstica no contradice un retry del mismo evento', () => {
+  const gate = createReplayGate();
+  establish(gate);
+  const first = gate.decideEvent(event());
+  assert.equal(first.kind, 'apply');
+  gate.commit(first.ticket);
+
+  assert.deepEqual(
+    gate.decideEvent(event({ correlationId: 'otra' })),
+    { kind: 'drop', reason: 'duplicate', ticket: null },
   );
 });
 

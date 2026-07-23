@@ -59,6 +59,7 @@ def _pending(aggregate_id: uuid.UUID, event_type: str) -> PendingRealtimeEvent:
         topic=f"ride:{aggregate_id}",
         aggregate_type="ride",
         aggregate_id=aggregate_id,
+        correlation_id=None,
         payload={"type": event_type, "data": {"ride_id": str(aggregate_id)}},
     )
 

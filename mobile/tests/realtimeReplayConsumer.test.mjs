@@ -57,6 +57,7 @@ function setup({ failEvent = false } = {}) {
             metadata: {
               eventId: message.eventId,
               batchId: `batch-${message.eventId}`,
+              correlationId: `correlation-${message.eventId}`,
               sequence: 0,
               eventType: 'offer_created',
               aggregateType: 'ride',
@@ -143,6 +144,7 @@ test('ejecuta los efectos visuales solo después de confirmar el cursor', async 
             metadata: {
               eventId: 'event-11',
               batchId: 'batch-11',
+              correlationId: 'correlation-11',
               sequence: 0,
               eventType: 'offer_created',
               aggregateType: 'ride',
@@ -266,6 +268,7 @@ test('invalidar durante un evento aborta su ticket y suprime el efecto', async (
             metadata: {
               eventId: 'event-11',
               batchId: 'batch-11',
+              correlationId: 'correlation-11',
               sequence: 0,
               eventType: 'offer_created',
               aggregateType: 'ride',

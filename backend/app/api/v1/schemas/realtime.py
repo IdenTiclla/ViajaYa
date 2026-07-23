@@ -326,8 +326,8 @@ def _validate_unique_watermarks(
         raise ValueError("Los watermarks no pueden repetir un stream.")
 
 
-class RealtimeEventEnvelopeV2(_Message):
-    """Envelope durable y ordenable de un delta realtime del contrato v2."""
+class _RealtimeEventEnvelopeV2Base(_Message):
+    """Campos v2 estables antes y después de añadir correlación."""
 
     schema_version: Literal[2]
     kind: Literal["event"]
@@ -349,7 +349,7 @@ class RealtimeEventEnvelopeV2(_Message):
         return _validate_canonical_stream(value)
 
     @model_validator(mode="after")
-    def validate_type_and_data(self) -> RealtimeEventEnvelopeV2:
+    def validate_type_and_data(self) -> _RealtimeEventEnvelopeV2Base:
         """Mantiene correlacionados el discriminador y su payload canónico."""
         try:
             message = parse_negotiation_message({"type": self.type, "data": self.data})
@@ -377,6 +377,27 @@ class RealtimeEventEnvelopeV2(_Message):
         if not isinstance(normalized, dict):  # pragma: no cover - los deltas son objetos
             raise ValueError("data debe ser un objeto para los eventos realtime.")
         self.data = normalized
+        return self
+
+
+class LegacyRealtimeEventEnvelopeV2(_RealtimeEventEnvelopeV2Base):
+    """Envelope exacto aceptado por réplicas anteriores durante el rollout."""
+
+
+class RealtimeEventEnvelopeV2(_RealtimeEventEnvelopeV2Base):
+    """Envelope v2 con correlación y lectura compatible del formato anterior.
+
+    El productor nuevo siempre envía ``correlation_id``. Durante un rolling
+    deploy, un consumidor nuevo puede recibir una copia anterior sin el campo;
+    ``batch_id`` es entonces el fallback estable y compartido por todo el lote.
+    """
+
+    correlation_id: uuid.UUID | None = None
+
+    @model_validator(mode="after")
+    def fill_legacy_correlation(self) -> RealtimeEventEnvelopeV2:
+        if self.correlation_id is None:
+            self.correlation_id = self.batch_id
         return self
 
 

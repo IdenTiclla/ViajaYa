@@ -188,6 +188,17 @@ detiene el dispatcher. SQLite omite esta exclusión solo en pruebas. Otro smoke 
 entre commit y publish, exige cierre 1012 y certifica el replay de la misma
 identidad durable después del restart.
 
+Durante el rollout de `0023`, el bridge nuevo se suscribe tanto a
+`REALTIME_REDIS_CHANNEL` como a su canal derivado `:correlation-v1`. Publica
+primero la copia correlacionada con `wire_version=2` y después una copia
+`wire_version=1` sin el campo nuevo en el canal original. Las réplicas antiguas
+solo reciben la segunda; las nuevas omiten la copia legacy si ya observaron el
+batch correlacionado. Si Redis invierte el orden, el gate mobile acepta la
+duplicación porque la correlación diagnóstica no altera la identidad del evento.
+También aceptan productores anteriores usando `batch_id` como correlación
+estable. No retires esta publicación dual mientras pueda quedar una réplica
+anterior activa.
+
 La migración `0022_scheduled_actions` debe aplicarse antes de desplegar el código
 que crea ofertas. La acción `expire_offer` se persiste en los tres modos. `off`
 mantiene el timer local sin consumir la cola; `shadow` ejecuta simultáneamente el
@@ -210,6 +221,16 @@ la misma UoW. El arranque y cada ciclo reconcilian búsquedas legacy dándoles u
 gracia completa desde la reconciliación. El worker toma fencing PostgreSQL, consulta Redis y solo
 cancela `SEARCHING && !paused` cuando no quedan lease ni gracia. Redis caído o
 recién recuperado aplaza la acción sin agotar sus reintentos.
+
+Toda solicitud HTTP acepta `X-Request-ID` solo si es un UUID válido; en caso
+contrario genera uno y siempre lo devuelve en la respuesta. El middleware
+registra ruta canónica, resultado, duración y `correlation_id`, nunca query,
+headers ni payload. La migración `0023_outbox_correlation_id` persiste ese UUID
+en cada evento durable y lo entrega en el envelope v2; los efectos del scheduler
+usan el ID de su acción como correlación estable después de un reinicio. El
+trigger PostgreSQL asigna `batch_id` a las filas de productores anteriores, de
+modo que todos los eventos de su fanout comparten una correlación durante el
+rolling deploy.
 
 `GET /health` y `GET /health/live` son liveness sin dependencias. `GET
 /health/ready` comprueba PostgreSQL, Redis cuando corresponde y que los workers
@@ -348,8 +369,8 @@ cerrar la app o perder ambos canales durante toda la gracia cancela la búsqueda
 ## Migraciones (Alembic)
 
 - Config: `alembic.ini` + `migrations/env.py` (engine **async** con `async_engine_from_config`).
-- **22 migraciones** en `migrations/versions/` (`0001_create_users` …
-  `0022_scheduled_actions`).
+- **23 migraciones** en `migrations/versions/` (`0001_create_users` …
+  `0023_outbox_correlation_id`).
 - Importante: los enums se persisten por **valor** minúsculo vía `values_callable=_enum_values`
   en `infrastructure/db/models.py` (migración `0006_normalize_enum_values`). No rompas esa convención
   o se caerán columnas existentes.

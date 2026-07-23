@@ -114,6 +114,22 @@ async def _receive_json(websocket) -> dict[str, object]:
     return value
 
 
+async def _receive_event_for_aggregate(
+    websocket,
+    *,
+    event_type: str,
+    aggregate_id: uuid.UUID,
+) -> RealtimeEventEnvelopeV2:
+    """Ignora backlog legítimo de otros agregados sobre un topic compartido."""
+    async with asyncio.timeout(10):
+        while True:
+            event = RealtimeEventEnvelopeV2.model_validate(
+                await _receive_json(websocket)
+            )
+            if event.type == event_type and event.aggregate_id == aggregate_id:
+                return event
+
+
 async def test_segundo_worker_live_redis_falla_hasta_compartir_presencia(
     pg_test_db,
 ) -> None:
@@ -284,10 +300,11 @@ async def test_dos_workers_negocian_con_presencia_compartida(
                     await _receive_json(driver_ws)
                 )
                 RideSnapshotMessageV2.model_validate(await _receive_json(rider_ws))
-                announced = RealtimeEventEnvelopeV2.model_validate(
-                    await _receive_json(driver_ws)
+                announced = await _receive_event_for_aggregate(
+                    driver_ws,
+                    event_type="ride_created",
+                    aggregate_id=uuid.UUID(ride_id),
                 )
-                assert announced.type == "ride_created"
                 assert announced.data["id"] == ride_id
 
                 offered = await second_client.post(
@@ -307,13 +324,12 @@ async def test_dos_workers_negocian_con_presencia_compartida(
                     headers=_headers(rider_token),
                 )
                 assert accepted.status_code == 200, accepted.text
-                driver_events = [
-                    RealtimeEventEnvelopeV2.model_validate(
-                        await _receive_json(driver_ws)
-                    )
-                    for _ in range(2)
-                ]
-                assert "offer_accepted" in {event.type for event in driver_events}
+                accepted_event = await _receive_event_for_aggregate(
+                    driver_ws,
+                    event_type="offer_accepted",
+                    aggregate_id=uuid.UUID(ride_id),
+                )
+                assert accepted_event.data["id"] == ride_id
     finally:
         await asyncio.gather(
             _stop_process(first_process, first_shutdown),

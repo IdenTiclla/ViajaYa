@@ -178,19 +178,18 @@ async def test_scheduler_cancela_solo_tras_ausencia_redis_confirmada(
                     == f"cancel_absent_ride:{ride.id}"
                 )
             )
-            outbox_count = len(
-                (
-                    await session.scalars(
-                        select(RealtimeOutboxModel).where(
-                            RealtimeOutboxModel.aggregate_id == ride.id
-                        )
+            outbox_rows = (
+                await session.scalars(
+                    select(RealtimeOutboxModel).where(
+                        RealtimeOutboxModel.aggregate_id == ride.id
                     )
-                ).all()
-            )
+                )
+            ).all()
         assert persisted_ride is not None
         assert persisted_ride.status is RideStatus.CANCELLED
         assert action is not None and action.status == "succeeded"
-        assert outbox_count >= 2
+        assert len(outbox_rows) >= 2
+        assert {row.correlation_id for row in outbox_rows} == {action.id}
     finally:
         if ride_id is not None:
             await redis_client.delete(f"{prefix}:ride:{ride_id}")

@@ -127,6 +127,9 @@ fallo del handler descarta la generación del socket y fuerza otro handshake sin
 perder los cursores ya confirmados. El gate v2 confirma cada ticket solo después
 de actualizar React Query/Zustand; duplicados y posiciones antiguas no mutan ni
 repiten avisos.
+Durante el rollout de correlación, `correlation_id` puede faltar en un evento v2
+del backend anterior; mobile usa entonces `batch_id`. La correlación es metadata
+diagnóstica y no cambia la identidad idempotente de un `event_id`.
 
 Eventos que escuchan los hooks (WS → mutación de caché React Query + estado Zustand + toast):
 

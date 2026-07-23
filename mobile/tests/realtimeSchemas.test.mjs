@@ -100,6 +100,7 @@ function eventMetadata(overrides = {}) {
     kind: 'event',
     event_id: eventId,
     batch_id: batchId,
+    correlation_id: '77777777-7777-4777-8777-777777777777',
     sequence: 0,
     aggregate_type: 'ride',
     aggregate_id: rideId,
@@ -279,7 +280,24 @@ test('acepta un evento v2 completo y conserva sus campos wire', () => {
   const metadata = toReplayEventMetadata(result.data);
   assert.equal(metadata.eventId, eventId);
   assert.equal(metadata.batchId, batchId);
+  assert.equal(
+    metadata.correlationId,
+    '77777777-7777-4777-8777-777777777777',
+  );
   assert.match(metadata.payloadFingerprint, /offer_created/);
+});
+
+test('acepta el evento del backend anterior y usa batch_id como correlación', () => {
+  const { correlation_id: _correlationId, ...legacyMetadata } = eventMetadata();
+  const result = passengerRealtimeMessageParser.safeParse({
+    ...legacyMetadata,
+    type: 'offer_created',
+    data: offer(),
+  });
+
+  assert.equal(result.success, true);
+  const metadata = toReplayEventMetadata(result.data);
+  assert.equal(metadata.correlationId, batchId);
 });
 
 test('evento v2 correlaciona tipo, agregado, stream y payload', () => {

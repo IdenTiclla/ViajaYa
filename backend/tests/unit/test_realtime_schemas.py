@@ -14,6 +14,7 @@ from app.api.v1.schemas.realtime import (
     DriverOffersSnapshotMessage,
     DriverSnapshotDataV2,
     DriverSnapshotMessageV2,
+    LegacyRealtimeEventEnvelopeV2,
     NegotiationMessage,
     OfferAcceptedMessage,
     OfferCreatedMessage,
@@ -384,6 +385,7 @@ def test_event_envelope_v2_is_strict_and_validates_type_data() -> None:
         kind="event",
         event_id=uuid.uuid4(),
         batch_id=uuid.uuid4(),
+        correlation_id=uuid.uuid4(),
         sequence=0,
         aggregate_type="ride",
         aggregate_id=ride_id,
@@ -407,10 +409,27 @@ def test_event_envelope_v2_is_strict_and_validates_type_data() -> None:
     invalid = dumped | {"data": {}, "extra": True}
     with pytest.raises(ValidationError):
         RealtimeEventEnvelopeV2.model_validate(invalid)
+    for required_field in ("schema_version",):
+        with pytest.raises(ValidationError):
+            RealtimeEventEnvelopeV2.model_validate(
+                {
+                    key: value
+                    for key, value in dumped.items()
+                    if key != required_field
+                }
+            )
+    legacy = {
+        key: value
+        for key, value in dumped.items()
+        if key != "correlation_id"
+    }
+    parsed_legacy = RealtimeEventEnvelopeV2.model_validate(legacy)
+    assert parsed_legacy.correlation_id == envelope.batch_id
+    assert "correlation_id" not in LegacyRealtimeEventEnvelopeV2.model_validate(
+        legacy
+    ).model_dump(mode="json")
     with pytest.raises(ValidationError):
-        RealtimeEventEnvelopeV2.model_validate(
-            {key: value for key, value in dumped.items() if key != "schema_version"}
-        )
+        LegacyRealtimeEventEnvelopeV2.model_validate(dumped)
     with pytest.raises(ValidationError):
         RealtimeEventEnvelopeV2.model_validate(
             dumped | {"occurred_at": datetime.now(), "stream": "pool:bicicleta"}
@@ -436,6 +455,7 @@ def test_offers_withdrawn_v2_requires_exact_references() -> None:
         "kind": "event",
         "event_id": str(uuid.uuid4()),
         "batch_id": str(uuid.uuid4()),
+        "correlation_id": str(uuid.uuid4()),
         "sequence": 0,
         "aggregate_type": "driver",
         "aggregate_id": str(driver_id),
@@ -472,6 +492,7 @@ def test_event_envelope_v2_correlates_aggregate_stream_and_payload() -> None:
         kind="event",
         event_id=uuid.uuid4(),
         batch_id=uuid.uuid4(),
+        correlation_id=uuid.uuid4(),
         sequence=0,
         aggregate_type="ride",
         aggregate_id=ride_id,

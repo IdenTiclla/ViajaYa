@@ -49,6 +49,7 @@ from app.application.dto import (
 )
 from app.domain.entities import Offer, ServiceType
 from app.domain.repositories import OpenRideDetail
+from app.infrastructure.correlation import current_correlation_id
 from app.infrastructure.realtime.hub import (
     driver_topic,
     hub,
@@ -75,12 +76,11 @@ async def _broadcast_pending(events: list[PendingRealtimeEvent]) -> None:
 def _pending_offer_event(
     ride_id: uuid.UUID, message: NegotiationMessage
 ) -> PendingRealtimeEvent:
-    return PendingRealtimeEvent(
-        event_type=message.type,
+    return _pending_realtime_event(
         topic=ride_topic(ride_id),
         aggregate_type="ride",
         aggregate_id=ride_id,
-        payload=dump_negotiation_message(message),
+        message=message,
     )
 
 
@@ -96,6 +96,7 @@ def _pending_realtime_event(
         topic=topic,
         aggregate_type=aggregate_type,
         aggregate_id=aggregate_id,
+        correlation_id=current_correlation_id(),
         payload=dump_negotiation_message(message),
     )
 

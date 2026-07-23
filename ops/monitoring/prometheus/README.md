@@ -68,7 +68,7 @@ Staging o producción deben añadir una regla sobre
 
 - Scrape o colección: consulta `/health/live`, `/health/ready`,
   `/health/realtime` y `/health/scheduled-actions`; confirma red, PostgreSQL y
-  migraciones `0018`–`0022`.
+  migraciones `0018`–`0023`.
 - Dispatcher o retención detenidos: revisa readiness y logs sanitizados del
   proceso; no reinicies otro consumidor hasta confirmar el advisory lock.
 - Redis desconectado o inestable: confirma `PING`, red y ACL. El proceso debe

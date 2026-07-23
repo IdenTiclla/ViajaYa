@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import uuid
 from collections.abc import AsyncIterator, Sequence
 
 import pytest
@@ -102,10 +103,10 @@ async def outbox_sessions(
     yield sessions
 
 
-async def _get(app, path: str):
+async def _get(app, path: str, *, headers: dict[str, str] | None = None):
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        return await client.get(path)
+        return await client.get(path, headers=headers)
 
 
 async def test_health_legacy_and_liveness_keep_the_exact_public_contract(
@@ -120,6 +121,44 @@ async def test_health_legacy_and_liveness_keep_the_exact_public_contract(
     assert legacy.json() == {"status": "ok"}
     assert live.status_code == 200
     assert live.json() == {"status": "ok"}
+
+
+async def test_app_echoes_request_id_without_changing_the_response_body(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    app = create_app(session_factory=sessions)
+    correlation_id = uuid.uuid4()
+
+    response = await _get(
+        app,
+        "/health/live",
+        headers={"X-Request-ID": str(correlation_id)},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+    assert response.headers["X-Request-ID"] == str(correlation_id)
+
+
+async def test_app_returns_request_id_on_unexpected_500(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    app = create_app(session_factory=sessions)
+    correlation_id = uuid.uuid4()
+
+    @app.get("/unexpected-error")
+    async def unexpected_error() -> None:
+        raise RuntimeError("detalle interno")
+
+    response = await _get(
+        app,
+        "/unexpected-error",
+        headers={"X-Request-ID": str(correlation_id)},
+    )
+
+    assert response.status_code == 500
+    assert response.text == "Internal Server Error"
+    assert response.headers["X-Request-ID"] == str(correlation_id)
 
 
 async def test_readiness_checks_database_and_reports_disabled_dispatcher(

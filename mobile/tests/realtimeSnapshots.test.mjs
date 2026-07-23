@@ -386,6 +386,7 @@ test('snapshot y delta v2 duplicado actualizan una caché real una sola vez', as
             metadata: {
               eventId: 'event-11',
               batchId: 'batch-11',
+              correlationId: 'correlation-11',
               sequence: 0,
               eventType: 'offer_created',
               aggregateType: 'ride',

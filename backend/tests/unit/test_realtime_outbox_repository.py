@@ -47,12 +47,14 @@ def _pending(
     *,
     aggregate_type: str = "ride",
     topic: str | None = None,
+    correlation_id: uuid.UUID | None = None,
 ) -> PendingRealtimeEvent:
     return PendingRealtimeEvent(
         event_type=event_type,
         topic=topic or f"ride:{aggregate_id}",
         aggregate_type=aggregate_type,
         aggregate_id=aggregate_id,
+        correlation_id=correlation_id,
         payload={"type": event_type, "data": {"ride_id": str(aggregate_id)}},
     )
 
@@ -62,21 +64,21 @@ async def test_add_batch_asigna_lote_secuencia_y_versiones_consecutivas(
 ) -> None:
     ride_id = uuid.uuid4()
     driver_id = uuid.uuid4()
+    pending = [
+        _pending(ride_id, "offer_withdrawn"),
+        _pending(ride_id, "offer_created"),
+        _pending(driver_id, "driver_notice", aggregate_type="driver"),
+    ]
     async with outbox_sessions() as session:
         outbox = SqlAlchemyRealtimeOutbox(session)
         unit_of_work = SqlAlchemyUnitOfWork(session)
-        saved = await outbox.add_batch(
-            [
-                _pending(ride_id, "offer_withdrawn"),
-                _pending(ride_id, "offer_created"),
-                _pending(driver_id, "driver_notice", aggregate_type="driver"),
-            ]
-        )
+        saved = await outbox.add_batch(pending)
         await unit_of_work.commit()
 
     assert [event.sequence for event in saved] == [0, 1, 2]
     assert [event.batch_size for event in saved] == [3, 3, 3]
     assert len({event.batch_id for event in saved}) == 1
+    assert len({event.correlation_id for event in saved}) == 1
     assert [event.aggregate_version for event in saved] == [1, 2, 1]
     assert [event.stream_version for event in saved] == [1, 2, 1]
     assert saved[1].payload["type"] == "offer_created"
@@ -88,6 +90,30 @@ async def test_add_batch_asigna_lote_secuencia_y_versiones_consecutivas(
     assert next_batch[0].aggregate_version == 3
     assert next_batch[0].stream_version == 3
     assert next_batch[0].batch_size == 1
+
+
+async def test_add_batch_rejects_mixed_explicit_correlations(
+    outbox_sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    ride_id = uuid.uuid4()
+    async with outbox_sessions() as session:
+        outbox = SqlAlchemyRealtimeOutbox(session)
+
+        with pytest.raises(ValueError, match="mezcla correlation_id"):
+            await outbox.add_batch(
+                [
+                    _pending(
+                        ride_id,
+                        "offer_withdrawn",
+                        correlation_id=uuid.uuid4(),
+                    ),
+                    _pending(
+                        ride_id,
+                        "offer_created",
+                        correlation_id=uuid.uuid4(),
+                    ),
+                ]
+            )
 
 
 async def test_add_batch_agrupa_y_reserva_las_claves_en_orden_determinista(

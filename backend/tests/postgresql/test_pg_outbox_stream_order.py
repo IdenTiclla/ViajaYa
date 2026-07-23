@@ -28,6 +28,7 @@ def _pending(
         topic=topic,
         aggregate_type="ride",
         aggregate_id=aggregate_id,
+        correlation_id=None,
         payload={"type": event_type, "data": {}},
     )
 

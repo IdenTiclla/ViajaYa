@@ -18,6 +18,7 @@ from app.application.exceptions import UnsupportedScheduledActionError
 from app.application.interfaces import PassengerPresenceLeaseStore, ScheduledActionExecutor
 from app.domain.entities import Offer
 from app.infrastructure.config import Settings
+from app.infrastructure.correlation import correlation_scope
 from app.infrastructure.db.clock import DatabaseClock, database_utc_now
 
 logger = logging.getLogger(__name__)
@@ -83,34 +84,35 @@ class ApplicationScheduledActionExecutor(ScheduledActionExecutor):
         self,
         action: ScheduledAction,
     ) -> Literal["succeeded", "deferred", "lost_lease"]:
-        async with self._session_factory() as session:
-            completed_at = await self._clock(session)
-            if action.action_type == "cancel_absent_ride":
-                if self._passenger_presence is None:
+        with correlation_scope(action.id):
+            async with self._session_factory() as session:
+                completed_at = await self._clock(session)
+                if action.action_type == "cancel_absent_ride":
+                    if self._passenger_presence is None:
+                        raise UnsupportedScheduledActionError(
+                            "cancel_absent_ride requiere presencia compartida."
+                        )
+                    result = await build_execute_cancel_absent_ride_scheduled_action(
+                        session,
+                        self._settings,
+                        self._passenger_presence,
+                    ).execute(action, completed_at)
+                    return result.status
+                if action.action_type != "expire_offer":
                     raise UnsupportedScheduledActionError(
-                        "cancel_absent_ride requiere presencia compartida."
+                        f"Tipo de acción no soportado: {action.action_type}."
                     )
-                result = await build_execute_cancel_absent_ride_scheduled_action(
+                result = await build_execute_expire_offer_scheduled_action(
                     session,
                     self._settings,
-                    self._passenger_presence,
                 ).execute(action, completed_at)
+                if (
+                    self._settings.scheduled_actions_mode == "shadow"
+                    and result.expired_offer is not None
+                ):
+                    # Shadow conserva la entrega legacy visible. Si el worker durable
+                    # gana la carrera al timer local, él debe publicar el mismo evento;
+                    # la mutación y el ack ya quedaron confirmados antes de este envío
+                    # best-effort, igual que en el camino HTTP histórico.
+                    _schedule_shadow_offer_expired(result.expired_offer)
                 return result.status
-            if action.action_type != "expire_offer":
-                raise UnsupportedScheduledActionError(
-                    f"Tipo de acción no soportado: {action.action_type}."
-                )
-            result = await build_execute_expire_offer_scheduled_action(
-                session,
-                self._settings,
-            ).execute(action, completed_at)
-            if (
-                self._settings.scheduled_actions_mode == "shadow"
-                and result.expired_offer is not None
-            ):
-                # Shadow conserva la entrega legacy visible. Si el worker durable
-                # gana la carrera al timer local, él debe publicar el mismo evento;
-                # la mutación y el ack ya quedaron confirmados antes de este envío
-                # best-effort, igual que en el camino HTTP histórico.
-                _schedule_shadow_offer_expired(result.expired_offer)
-            return result.status

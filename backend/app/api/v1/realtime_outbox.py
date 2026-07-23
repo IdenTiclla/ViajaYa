@@ -175,6 +175,7 @@ def _serialize_realtime_outbox_event_v2(
         kind="event",
         event_id=event.id,
         batch_id=event.batch_id,
+        correlation_id=event.correlation_id,
         sequence=event.sequence,
         aggregate_type=event.aggregate_type,
         aggregate_id=event.aggregate_id,

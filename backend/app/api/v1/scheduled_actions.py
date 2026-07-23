@@ -8,11 +8,14 @@ from typing import Literal
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.api.deps import build_execute_expire_offer_scheduled_action
+from app.api.deps import (
+    build_execute_cancel_absent_ride_scheduled_action,
+    build_execute_expire_offer_scheduled_action,
+)
 from app.api.v1 import events
 from app.application.dto import ScheduledAction
 from app.application.exceptions import UnsupportedScheduledActionError
-from app.application.interfaces import ScheduledActionExecutor
+from app.application.interfaces import PassengerPresenceLeaseStore, ScheduledActionExecutor
 from app.domain.entities import Offer
 from app.infrastructure.config import Settings
 from app.infrastructure.db.clock import DatabaseClock, database_utc_now
@@ -69,21 +72,34 @@ class ApplicationScheduledActionExecutor(ScheduledActionExecutor):
         settings: Settings,
         *,
         clock: DatabaseClock = database_utc_now,
+        passenger_presence: PassengerPresenceLeaseStore | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._settings = settings
         self._clock = clock
+        self._passenger_presence = passenger_presence
 
     async def execute(
         self,
         action: ScheduledAction,
-    ) -> Literal["succeeded", "lost_lease"]:
-        if action.action_type != "expire_offer":
-            raise UnsupportedScheduledActionError(
-                f"Tipo de acción no soportado: {action.action_type}."
-            )
+    ) -> Literal["succeeded", "deferred", "lost_lease"]:
         async with self._session_factory() as session:
             completed_at = await self._clock(session)
+            if action.action_type == "cancel_absent_ride":
+                if self._passenger_presence is None:
+                    raise UnsupportedScheduledActionError(
+                        "cancel_absent_ride requiere presencia compartida."
+                    )
+                result = await build_execute_cancel_absent_ride_scheduled_action(
+                    session,
+                    self._settings,
+                    self._passenger_presence,
+                ).execute(action, completed_at)
+                return result.status
+            if action.action_type != "expire_offer":
+                raise UnsupportedScheduledActionError(
+                    f"Tipo de acción no soportado: {action.action_type}."
+                )
             result = await build_execute_expire_offer_scheduled_action(
                 session,
                 self._settings,

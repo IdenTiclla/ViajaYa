@@ -92,6 +92,40 @@ async def test_live_redis_es_exclusivo_hasta_compartir_presencia(
     await successor.release()
 
 
+async def test_live_redis_comparte_lock_solo_con_presencia_durable(
+    pg_test_db,
+) -> None:
+    sessions = async_sessionmaker(
+        pg_test_db.engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+    )
+    redis_a = PostgreSQLLiveLocalProcessLock(
+        sessions,
+        mode="live_redis",
+        allow_live_redis_multiworker=True,
+    )
+    redis_b = PostgreSQLLiveLocalProcessLock(
+        sessions,
+        mode="live_redis",
+        allow_live_redis_multiworker=True,
+    )
+    old_redis = PostgreSQLLiveLocalProcessLock(sessions, mode="live_redis")
+    shadow = PostgreSQLLiveLocalProcessLock(sessions, mode="shadow")
+    live_local = PostgreSQLLiveLocalProcessLock(sessions, mode="live_local")
+
+    assert await asyncio.gather(redis_a.acquire(), redis_b.acquire()) == [True, True]
+    with pytest.raises(LiveLocalProcessLockUnavailableError):
+        await old_redis.acquire()
+    with pytest.raises(LiveLocalProcessLockUnavailableError):
+        await shadow.acquire()
+    with pytest.raises(LiveLocalProcessLockUnavailableError):
+        await live_local.acquire()
+
+    await redis_b.release()
+    await redis_a.release()
+
+
 async def test_clave_legada_impide_mezclar_binarios_en_rolling_deploy(
     pg_test_db,
 ) -> None:

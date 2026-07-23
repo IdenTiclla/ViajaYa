@@ -16,12 +16,12 @@ from app.application.exceptions import (
     UnsupportedScheduledActionError,
 )
 from app.application.interfaces import (
-    MissingOfferScheduledActionsReconciler,
+    MissingScheduledActionsReconciler,
     ScheduledActionExecutor,
 )
 from app.application.use_cases.claim_scheduled_action import ClaimScheduledAction
-from app.application.use_cases.reconcile_missing_offer_scheduled_actions import (
-    ReconcileMissingOfferScheduledActions,
+from app.application.use_cases.reconcile_missing_scheduled_actions import (
+    ReconcileMissingScheduledActions,
 )
 from app.application.use_cases.record_scheduled_action_failure import (
     RecordScheduledActionFailure,
@@ -52,7 +52,7 @@ class ScheduledActionsWorker:
         retry_max_seconds: float,
         clock: DatabaseClock = database_utc_now,
         reconciler_factory: (
-            Callable[[AsyncSession], MissingOfferScheduledActionsReconciler] | None
+            Callable[[AsyncSession], MissingScheduledActionsReconciler] | None
         ) = None,
         reconciliation_batch_limit: int = 1000,
     ) -> None:
@@ -85,6 +85,7 @@ class ScheduledActionsWorker:
         self._last_error: str | None = None
         self._claimed_count = 0
         self._succeeded_count = 0
+        self._deferred_count = 0
         self._retried_count = 0
         self._dead_count = 0
         self._recovered_lease_count = 0
@@ -104,6 +105,10 @@ class ScheduledActionsWorker:
     @property
     def succeeded_count(self) -> int:
         return self._succeeded_count
+
+    @property
+    def deferred_count(self) -> int:
+        return self._deferred_count
 
     @property
     def retried_count(self) -> int:
@@ -187,6 +192,15 @@ class ScheduledActionsWorker:
                 attempts=action.attempts,
                 lease_recovered=action.lease_recovered,
             )
+        if outcome == "deferred":
+            self._deferred_count += 1
+            return DispatchScheduledActionResult(
+                status="deferred",
+                action_id=action.id,
+                action_type=action.action_type,
+                attempts=action.attempts,
+                lease_recovered=action.lease_recovered,
+            )
         self._succeeded_count += 1
         return DispatchScheduledActionResult(
             status="succeeded",
@@ -217,7 +231,7 @@ class ScheduledActionsWorker:
                     await self._wait_for_work()
                     continue
 
-                if result.status in {"empty", "retried", "lost_lease"}:
+                if result.status in {"empty", "deferred", "retried", "lost_lease"}:
                     await self._wait_for_work()
                 elif result.status == "dead":
                     logger.error(
@@ -254,13 +268,13 @@ class ScheduledActionsWorker:
         # intervalo de polling evita escanear ofertas antes de cada claim.
         self._next_reconciliation_at = loop_now + self._poll_interval_seconds
         async with self._session_factory() as session:
-            created_count = await ReconcileMissingOfferScheduledActions(
+            created_count = await ReconcileMissingScheduledActions(
                 self._reconciler_factory(session),
                 SqlAlchemyUnitOfWork(session),
             ).execute(self._reconciliation_batch_limit)
         if created_count:
             logger.warning(
-                "Reconciliación reparó %s expiraciones durables ausentes.",
+                "Reconciliación reparó %s acciones durables ausentes.",
                 created_count,
             )
 

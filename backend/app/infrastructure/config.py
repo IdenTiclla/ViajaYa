@@ -84,6 +84,23 @@ class Settings(BaseSettings):
         gt=0,
         le=600,
     )
+    # El flag separa el despliegue del código de la promoción multiworker. Solo
+    # se habilita cuando Redis y cancel_absent_ride durable están activos.
+    realtime_shared_presence_enabled: bool = False
+    realtime_presence_key_prefix: str = Field(
+        default="viajaya:presence:v1",
+        min_length=1,
+        max_length=200,
+        pattern=r"^[A-Za-z0-9:._-]+$",
+    )
+    realtime_presence_lease_seconds: float = Field(default=30.0, gt=1, le=300)
+    realtime_presence_renew_interval_seconds: float = Field(
+        default=10.0,
+        gt=0,
+        le=120,
+    )
+    realtime_presence_grace_seconds: float = Field(default=120.0, gt=1, le=900)
+    realtime_presence_recheck_seconds: float = Field(default=5.0, gt=0, le=60)
 
     # Rollout independiente del scheduler: shadow hace dual-write pero conserva
     # el timer local; live entrega la ejecución al worker durable.
@@ -156,6 +173,13 @@ class Settings(BaseSettings):
                 "El backoff máximo de Redis no puede ser menor al base."
             )
         if (
+            self.realtime_presence_renew_interval_seconds
+            >= self.realtime_presence_lease_seconds
+        ):
+            raise ValueError(
+                "La renovación de presencia debe ocurrir antes de vencer su lease."
+            )
+        if (
             self.realtime_outbox_retry_max_seconds
             < self.realtime_outbox_retry_base_seconds
         ):
@@ -170,6 +194,14 @@ class Settings(BaseSettings):
             raise ValueError(
                 "SCHEDULED_ACTIONS_MODE=live requiere outbox recording en "
                 "modo live_local o live_redis."
+            )
+        if self.realtime_shared_presence_enabled and (
+            self.realtime_outbox_dispatch_mode != "live_redis"
+            or self.scheduled_actions_mode != "live"
+        ):
+            raise ValueError(
+                "REALTIME_SHARED_PRESENCE_ENABLED requiere live_redis y "
+                "SCHEDULED_ACTIONS_MODE=live."
             )
         if (
             self.scheduled_actions_retry_max_seconds

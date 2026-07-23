@@ -135,6 +135,12 @@ REALTIME_REDIS_CHANNEL (viajaya:realtime:v2),
 REALTIME_REDIS_CONNECT_TIMEOUT_SECONDS (2),
 REALTIME_REDIS_RECONNECT_BASE_SECONDS (0.5),
 REALTIME_REDIS_RECONNECT_MAX_SECONDS (30),
+REALTIME_SHARED_PRESENCE_ENABLED (false),
+REALTIME_PRESENCE_KEY_PREFIX (viajaya:presence:v1),
+REALTIME_PRESENCE_LEASE_SECONDS (30),
+REALTIME_PRESENCE_RENEW_INTERVAL_SECONDS (10),
+REALTIME_PRESENCE_GRACE_SECONDS (120),
+REALTIME_PRESENCE_RECHECK_SECONDS (5),
 SCHEDULED_ACTIONS_MODE (off|shadow|live; off por defecto),
 SCHEDULED_ACTIONS_POLL_INTERVAL_SECONDS (1),
 SCHEDULED_ACTIONS_LEASE_SECONDS (30),
@@ -173,11 +179,12 @@ está sano, los timers locales aplazan la cancelación por ausencia. Un publish 
 ningún suscriptor falla y conserva el batch para retry; un batch que supera el
 límite de bytes se aparta con `transport_limit` y fuerza snapshot en vez de
 reintentarse para siempre. Los advisory locks conservan la clave legada durante
-rolling deploy: varios `shadow` pueden convivir, pero `live_local` y `live_redis`
-son exclusivos y nunca se mezclan con shadow ni con binarios anteriores. Perder
-la sesión propietaria detiene el dispatcher. SQLite omite esta exclusión solo en
-pruebas. El gate PostgreSQL exige que un segundo proceso `live_redis` falle hasta
-implementar leases compartidos de presencia. Otro smoke detiene un Redis dedicado
+rolling deploy: varios `shadow` pueden convivir, `live_local` siempre es
+exclusivo y `live_redis` solo comparte el lock cuando
+`REALTIME_SHARED_PRESENCE_ENABLED=true`. El flag exige scheduler `live`; apagado,
+el segundo proceso sigue fallando. La promoción se hace después de desplegar el
+binario con el flag apagado en todas las réplicas. Perder la sesión propietaria
+detiene el dispatcher. SQLite omite esta exclusión solo en pruebas. Otro smoke detiene un Redis dedicado
 entre commit y publish, exige cierre 1012 y certifica el replay de la misma
 identidad durable después del restart.
 
@@ -194,6 +201,15 @@ de la migración. Deadlines, leases, backoff y la revalidación atómica al acep
 usan el reloj de PostgreSQL.
 Las acciones `succeeded/cancelled` se purgan por lotes después de 30 días; las
 acciones `dead` se conservan para intervención manual.
+
+La presencia compartida usa un sorted set Redis por ride y miembros separados
+`ws:{connection_id}`/`http`; Lua poda y evalúa leases con `Redis TIME` sin que
+una desconexión borre otra conexión. Cada renovación hace upsert generacional de
+`cancel_absent_ride`; la creación del ride ya persiste su primera generación en
+la misma UoW. El arranque y cada ciclo reconcilian búsquedas legacy dándoles una
+gracia completa desde la reconciliación. El worker toma fencing PostgreSQL, consulta Redis y solo
+cancela `SEARCHING && !paused` cuando no quedan lease ni gracia. Redis caído o
+recién recuperado aplaza la acción sin agotar sus reintentos.
 
 `GET /health` y `GET /health/live` son liveness sin dependencias. `GET
 /health/ready` comprueba PostgreSQL, Redis cuando corresponde y que los workers
@@ -321,8 +337,8 @@ offer_withdrawn, offer_accepted, offers_withdrawn (plural), offer_expired, ride_
   copia durable; la publicación directa continúa siendo la única entrega al
   cliente. Ambos modos live cambian ambas piezas de forma atómica: el dispatcher
   entrega metadata durable v2 y el hub bloquea la ruta directa legacy durante
-  todo el lifespan. `live_redis` prepara fanout entre hubs, pero el lock conserva
-  un solo worker hasta compartir presencia y `cancel_absent_ride` entre procesos.
+  todo el lifespan. `live_redis` habilita varios hubs solo detrás del flag de
+  presencia compartida y con `cancel_absent_ride` en el scheduler live.
 
 Presencia (`api/v1/presence.py`): la solicitud aparece en `/rides/open` mientras el pasajero esté
 conectado al WS o dentro de la ventana de gracia (`PRESENCE_GRACE_SECONDS = 120`). Minimizar/cambiar

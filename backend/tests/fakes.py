@@ -34,6 +34,7 @@ from app.application.interfaces import (
     RejectOfferEventRecorder,
     RepublishRideEventRecorder,
     RideReadRepository,
+    ScheduledActionScheduler,
     SocialIdentityVerifier,
     TokenService,
     UnitOfWork,
@@ -159,8 +160,13 @@ class InMemoryRideRequestRepository(RideRequestRepository):
         self._users = users
 
     async def add(self, ride: RideRequest) -> RideRequest:
-        self.rides.append(ride)
-        return ride
+        persisted = (
+            replace(ride, created_at=datetime.now(UTC))
+            if ride.created_at is None
+            else ride
+        )
+        self.rides.append(persisted)
+        return persisted
 
     async def add_if_no_active(self, ride: RideRequest) -> RideRequest | None:
         if await self.get_active_by_rider(ride.rider_id) is not None:
@@ -929,11 +935,15 @@ def create_ride_request_use_case(
     rides: InMemoryRideRequestRepository,
     *,
     unit_of_work: UnitOfWork | None = None,
+    scheduled_actions: ScheduledActionScheduler | None = None,
+    passenger_presence_grace_seconds: float = 120.0,
 ) -> CreateRideRequest:
     """Cablea CreateRideRequest con una frontera transaccional explícita."""
     return CreateRideRequest(
         rides,
         unit_of_work or InMemoryUnitOfWork(rides=rides),
+        scheduled_actions,
+        passenger_presence_grace_seconds=passenger_presence_grace_seconds,
     )
 
 

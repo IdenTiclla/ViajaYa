@@ -82,6 +82,28 @@ groups:
           summary: "El bridge Redis realtime está inestable"
           description: "El proceso intentó reconectar más de tres veces en diez minutos."
 
+      - alert: ViajaYaPresenciaCompartidaNoSana
+        expr: >-
+          viajaya_passenger_presence_enabled == 1
+          and on(job, instance)
+          viajaya_passenger_presence_healthy == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Un proceso no puede consultar la presencia compartida"
+          description: "Redis no permite decidir presencia; readiness debe retirarlo y cancel_absent_ride debe aplazarse."
+
+      - alert: ViajaYaPresenciaCompartidaInestable
+        expr: >-
+          increase(viajaya_passenger_presence_failures_total[10m]) > 3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "La presencia compartida está inestable"
+          description: "El cliente Redis de presencia falló más de tres veces en diez minutos."
+
       - alert: ViajaYaRealtimeRetencionDetenida
         expr: >-
           viajaya_realtime_outbox_retention_enabled == 1

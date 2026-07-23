@@ -42,8 +42,10 @@ class PostgreSQLLiveLocalProcessLock:
     reservada durante el lifespan sin mantener una transacción ociosa abierta.
     Durante el rolling deploy todos los modos conservan además la clave de la
     versión anterior: shadow la comparte y ambos live la toman en exclusiva.
-    Esto impide mezclar binarios viejos/nuevos y mantiene ``live_redis`` en un
-    único worker hasta introducir presencia compartida. Un mutex efímero
+    Esto impide mezclar binarios viejos/nuevos. ``live_redis`` solo comparte la
+    clave legada cuando el despliegue certifica presencia compartida; un binario
+    anterior, que todavía la toma en exclusiva, continúa bloqueando el rolling.
+    Un mutex efímero
     serializa únicamente la transición mientras cada grupo comprueba que el
     opuesto esté vacío.
 
@@ -58,9 +60,13 @@ class PostgreSQLLiveLocalProcessLock:
         *,
         exclusive: bool = True,
         mode: Literal["shadow", "live_local", "live_redis"] | None = None,
+        allow_live_redis_multiworker: bool = False,
     ) -> None:
         self._session_factory = session_factory
         self._mode = mode or ("live_local" if exclusive else "shadow")
+        if allow_live_redis_multiworker and self._mode != "live_redis":
+            raise ValueError("Solo live_redis puede habilitar el lock multiworker.")
+        self._allow_live_redis_multiworker = allow_live_redis_multiworker
         self._connection: AsyncConnection | None = None
         self._dialect_name: str | None = None
         self._backend_pid: int | None = None
@@ -113,7 +119,10 @@ class PostgreSQLLiveLocalProcessLock:
                     _SHADOW_LOCK_EXPRESSION,
                 ),
             }[self._mode]
-            legacy_shared = self._mode == "shadow"
+            legacy_shared = self._mode == "shadow" or (
+                self._mode == "live_redis"
+                and self._allow_live_redis_multiworker
+            )
             await self._lock(
                 connection,
                 _MODE_TRANSITION_LOCK_EXPRESSION,

@@ -43,11 +43,16 @@ canal aleatorio, publica un envelope durable y exige la misma identidad en ambos
 procesos simulados. Después mata las conexiones Pub/Sub, exige cierre 1012 de los
 sockets y espera la reconexión de ambos bridges.
 
-`test_pg_redis_multiworker_smoke.py` levanta un proceso Uvicorn sano e intenta
-arrancar un segundo contra la misma base. El segundo debe fallar: el transporte
-Redis está preparado, pero presencia y cancelación por ausencia aún son locales.
-El fanout a dos hubs se certifica en `test_pg_redis_realtime_bridge.py` sin abrir
-la puerta a un despliegue multiworker inseguro.
+`test_pg_redis_multiworker_smoke.py` conserva dos gates. Sin el flag compartido,
+un segundo Uvicorn debe fallar. Con `REALTIME_SHARED_PRESENCE_ENABLED=true` y el
+scheduler live, levanta dos procesos contra la misma PostgreSQL/Redis: el
+pasajero conecta al primero, el conductor al segundo, ambos reciben snapshots y
+la negociación `ride_created → offer_created → offer_accepted` cruza procesos.
+`test_pg_shared_passenger_presence.py` certifica además los scripts Lua, leases
+por conexión, gracia y `cancel_absent_ride` con fencing durable.
+Los tests rápidos verifican que la creación del ride persiste la primera acción
+de ausencia en la misma UoW y que el reconciliador repara búsquedas legacy de
+forma idempotente antes de habilitar múltiples workers.
 
 `test_pg_redis_restart_smoke.py` usa exclusivamente el servicio con perfil
 `redis_restart_test`: detiene Redis después del commit y antes del publish,
@@ -70,8 +75,9 @@ VIAJAYA_TEST_REDIS_RESTART_CONTAINER=viajaya_redis_restart_test \
   tests/postgresql/test_pg_redis_restart_smoke.py -q
 ```
 
-Estas pruebas certifican transporte, restart/replay y el gate de un solo worker;
-complementan los casos unitarios de mensaje inválido y ausencia de suscriptores.
+Estas pruebas certifican transporte, restart/replay y la promoción condicionada
+a multiworker; complementan los casos unitarios de leases, mensaje inválido y
+ausencia de suscriptores.
 El Redis normal de desarrollo/CI no se interrumpe durante el restart smoke.
 
 ## Crash/restart multiproceso

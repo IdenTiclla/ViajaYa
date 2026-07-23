@@ -988,6 +988,11 @@ export interface components {
              */
             database: "ok" | "error";
             /**
+             * Passenger Presence Store
+             * @enum {string}
+             */
+            passenger_presence_store: "ok" | "error" | "disabled";
+            /**
              * Realtime Outbox Dispatcher
              * @enum {string}
              */
@@ -1321,6 +1326,8 @@ export interface components {
             dead_count?: number | null;
             /** Dead Counts */
             dead_counts?: components["schemas"]["ScheduledActionDeadCountResponse"][] | null;
+            /** Deferred Count */
+            deferred_count?: number | null;
             /** Due Count */
             due_count?: number | null;
             /** Latest Succeeded At */

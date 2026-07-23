@@ -10,7 +10,11 @@ from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.application.dto import PendingScheduledAction, ScheduledAction
+from app.application.dto import (
+    PendingScheduledAction,
+    RenewableScheduledAction,
+    ScheduledAction,
+)
 from app.application.interfaces import ScheduledActionQueue
 from app.infrastructure.db.models import ScheduledActionModel
 
@@ -127,6 +131,64 @@ class SqlAlchemyScheduledActionRepository(ScheduledActionQueue):
         await self._session.refresh(row)
         return _to_action(row)
 
+    async def schedule_next(self, action: RenewableScheduledAction) -> ScheduledAction:
+        """Renueva una acción sin calcular su generación fuera de PostgreSQL."""
+        if not 1 <= len(action.dedupe_key.strip()) <= 255:
+            raise ValueError("La clave de deduplicación no es válida.")
+        if not 1 <= len(action.action_type.strip()) <= 64:
+            raise ValueError("El tipo de acción no es válido.")
+
+        values = {
+            "id": uuid.uuid4(),
+            "dedupe_key": action.dedupe_key,
+            "action_type": action.action_type,
+            "aggregate_id": action.aggregate_id,
+            "generation": 1,
+            "execute_at": action.execute_at,
+            "payload": dict(action.payload),
+            "status": "pending",
+            "attempts": 0,
+            "next_attempt_at": action.execute_at,
+            "locked_at": None,
+            "lock_token": None,
+            "last_error": None,
+            "terminal_at": None,
+        }
+        dialect_name = self._session.get_bind().dialect.name
+        if dialect_name == "postgresql":
+            statement = postgresql_insert(ScheduledActionModel).values(**values)
+            written_at = func.clock_timestamp()
+        elif dialect_name == "sqlite":
+            statement = sqlite_insert(ScheduledActionModel).values(**values)
+            written_at = datetime.now(UTC)
+        else:  # pragma: no cover - solo soportamos los motores del proyecto
+            raise RuntimeError(f"Dialect de scheduler no soportado: {dialect_name}")
+
+        excluded = statement.excluded
+        statement = statement.on_conflict_do_update(
+            index_elements=[ScheduledActionModel.dedupe_key],
+            set_={
+                "action_type": excluded.action_type,
+                "aggregate_id": excluded.aggregate_id,
+                "generation": ScheduledActionModel.generation + 1,
+                "execute_at": excluded.execute_at,
+                "payload": excluded.payload,
+                "status": "pending",
+                "attempts": 0,
+                "next_attempt_at": excluded.next_attempt_at,
+                "locked_at": None,
+                "lock_token": None,
+                "last_error": None,
+                "terminal_at": None,
+                "updated_at": written_at,
+            },
+        ).returning(ScheduledActionModel.id)
+        action_id = (await self._session.execute(statement)).scalar_one()
+        row = await self._session.get(ScheduledActionModel, action_id)
+        assert row is not None
+        await self._session.refresh(row)
+        return _to_action(row)
+
     async def claim_due(
         self,
         now: datetime,
@@ -171,6 +233,26 @@ class SqlAlchemyScheduledActionRepository(ScheduledActionQueue):
         await self._session.flush()
         await self._session.refresh(row)
         return _to_action(row, lease_recovered=lease_recovered)
+
+    async def lock_owned(
+        self,
+        action_id: uuid.UUID,
+        generation: int,
+        lock_token: uuid.UUID,
+    ) -> bool:
+        owned_id = (
+            await self._session.execute(
+                select(ScheduledActionModel.id)
+                .where(
+                    ScheduledActionModel.id == action_id,
+                    ScheduledActionModel.generation == generation,
+                    ScheduledActionModel.status == "running",
+                    ScheduledActionModel.lock_token == lock_token,
+                )
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        return owned_id is not None
 
     async def mark_succeeded(
         self,

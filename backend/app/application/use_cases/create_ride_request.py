@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from app.application.dto import CreateRideRequestInput
-from app.application.interfaces import UnitOfWork
+from datetime import UTC, timedelta
+
+from app.application.dto import CreateRideRequestInput, RenewableScheduledAction
+from app.application.interfaces import ScheduledActionScheduler, UnitOfWork
 from app.domain.entities import Location, RideRequest, User, UserRole
 from app.domain.exceptions import NotAuthorizedActionError, RideAlreadyActiveError
 from app.domain.repositories import RideRequestRepository
@@ -15,13 +17,23 @@ class CreateRideRequest:
         self,
         rides: RideRequestRepository,
         unit_of_work: UnitOfWork,
+        scheduled_actions: ScheduledActionScheduler | None = None,
+        *,
+        passenger_presence_grace_seconds: float = 120.0,
     ) -> None:
+        if passenger_presence_grace_seconds <= 0:
+            raise ValueError("La gracia de presencia debe ser positiva.")
         self._rides = rides
         self._unit_of_work = unit_of_work
+        self._scheduled_actions = scheduled_actions
+        self._passenger_presence_grace = timedelta(
+            seconds=passenger_presence_grace_seconds
+        )
 
     async def execute(self, rider: User, data: CreateRideRequestInput) -> RideRequest:
         try:
             ride = await self._create(rider, data)
+            await self._schedule_initial_absence_check(ride)
             await self._unit_of_work.commit()
             return ride
         except BaseException:
@@ -69,3 +81,24 @@ class CreateRideRequest:
         if created is None:
             raise RideAlreadyActiveError("Ya tienes una solicitud o un viaje activo.")
         return created
+
+    async def _schedule_initial_absence_check(self, ride: RideRequest) -> None:
+        """Cubre la ventana entre crear la búsqueda y abrir su primer canal."""
+        if self._scheduled_actions is None:
+            return
+        if ride.created_at is None:  # pragma: no cover - persistencia exige timestamp
+            raise RuntimeError("La solicitud persistida no tiene fecha de creación.")
+        created_at = (
+            ride.created_at.replace(tzinfo=UTC)
+            if ride.created_at.tzinfo is None
+            else ride.created_at.astimezone(UTC)
+        )
+        await self._scheduled_actions.schedule_next(
+            RenewableScheduledAction(
+                dedupe_key=f"cancel_absent_ride:{ride.id}",
+                action_type="cancel_absent_ride",
+                aggregate_id=ride.id,
+                execute_at=created_at + self._passenger_presence_grace,
+                payload={"ride_id": str(ride.id)},
+            )
+        )

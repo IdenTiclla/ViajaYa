@@ -34,6 +34,7 @@ class ReadinessChecksResponse(BaseModel):
     scheduled_actions_retention: Literal["ok", "error", "disabled"]
     realtime_outbox_dispatcher: Literal["ok", "error", "disabled"]
     realtime_redis_bridge: Literal["ok", "error", "disabled"]
+    passenger_presence_store: Literal["ok", "error", "disabled"]
     realtime_outbox_process_lock: Literal["ok", "error", "disabled"]
     realtime_outbox_retention: Literal["ok", "error", "disabled"]
 
@@ -92,6 +93,7 @@ class ScheduledActionsHealthResponse(BaseModel):
     latest_succeeded_at: datetime | None = None
     claimed_count: int | None = None
     succeeded_count: int | None = None
+    deferred_count: int | None = None
     retried_count: int | None = None
     dead_count: int | None = None
     recovered_lease_count: int | None = None
@@ -165,6 +167,19 @@ async def readiness(
         )
         redis_status = "ok" if redis_ready else "error"
 
+    presence_ready = True
+    presence_status: Literal["ok", "error", "disabled"] = "disabled"
+    if settings.realtime_shared_presence_enabled:
+        presence_store = request.app.state.passenger_presence_store
+        try:
+            if presence_store is None:
+                raise RuntimeError("Presencia compartida no inicializada.")
+            await asyncio.wait_for(presence_store.check(), timeout=2)
+            presence_ready = presence_store.healthy
+        except Exception:  # noqa: BLE001 - probe sanitario fail-closed
+            presence_ready = False
+        presence_status = "ok" if presence_ready else "error"
+
     process_lock_ready = True
     process_lock_status: Literal["ok", "error", "disabled"] = "disabled"
     if mode in {"shadow", "live_local", "live_redis"}:
@@ -224,6 +239,7 @@ async def readiness(
         database_ready
         and dispatcher_ready
         and redis_ready
+        and presence_ready
         and process_lock_ready
         and retention_ready
         and scheduled_ready
@@ -237,6 +253,7 @@ async def readiness(
             scheduled_actions_retention=scheduled_retention_status,
             realtime_outbox_dispatcher=dispatcher_status,
             realtime_redis_bridge=redis_status,
+            passenger_presence_store=presence_status,
             realtime_outbox_process_lock=process_lock_status,
             realtime_outbox_retention=retention_status,
         ),
@@ -430,6 +447,7 @@ async def scheduled_actions_health(
         latest_succeeded_at=snapshot.latest_succeeded_at,
         claimed_count=worker.claimed_count if worker is not None else 0,
         succeeded_count=worker.succeeded_count if worker is not None else 0,
+        deferred_count=worker.deferred_count if worker is not None else 0,
         retried_count=worker.retried_count if worker is not None else 0,
         dead_count=worker.dead_count if worker is not None else 0,
         recovered_lease_count=(

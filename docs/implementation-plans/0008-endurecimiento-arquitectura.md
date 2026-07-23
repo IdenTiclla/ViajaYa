@@ -320,8 +320,8 @@ Axios todavía continúe en segundo plano sin propagar `AbortSignal`.
 > a un canal compartido y mantiene un suscriptor por proceso. Pub/Sub no reemplaza
 > la durabilidad de PostgreSQL: una desconexión expulsa sockets con 1012 y un
 > publish sin suscriptores reintenta la fila. La clave advisory legada mantiene
-> `live_redis` exclusivo de un worker y evita mezclar binarios durante rolling
-> deploy hasta completar la presencia compartida.
+> `live_redis` exclusivo por defecto; solo se comparte después de desplegar el
+> binario compatible en todas las réplicas y activar presencia + scheduler live.
 > La suite PostgreSQL dispone además de inyección one-shot exclusiva de tests,
 > fuera del artefacto productivo. Por WebSocket TCP real certifica una entrega
 > duplicada, un salto de versión intencional, la continuidad posterior del
@@ -412,8 +412,9 @@ Ambos exigen `0018`–`0021`. La secuencia de flags es:
    con la publicación directa;
 4. `live_local` + recording `true`: solo después de drenar el backlog, entregar
    envelopes/snapshots v2 con exactamente un worker;
-5. `live_redis` + recording `true`: activar el transporte Redis con un solo
-   worker hasta completar leases de presencia y `cancel_absent_ride` durable.
+5. `live_redis` + recording `true`: activar el transporte Redis con un worker;
+6. scheduler `live` + `REALTIME_SHARED_PRESENCE_ENABLED=true`: promover a varias
+   réplicas solo después de que todas ejecuten el binario compatible.
 
 `off` + recording `true` no es una combinación desplegable. Antes de activar la
 entrega live se debe comprobar que no quede backlog sombra reproducible. El modo
@@ -598,32 +599,49 @@ Endurecimiento antes de promover la canary:
 - [x] La suite prueba dos hubs con broker simulado y con Redis real en CI; fuerza
   además la caída de suscriptores, el cierre 1012 y la reconexión.
 - [x] Rechazar el segundo proceso Uvicorn `live_redis` mientras la presencia siga
-  local; el fanout entre hubs se certifica sin habilitar un despliegue inseguro.
+  local y permitirlo únicamente con presencia compartida + scheduler live.
 - [x] Publicar batches canónicos de más de 1000 eventos cuando caben en el frame;
   si exceden bytes, cuarentena `transport_limit` + resnapshot evita retry infinito.
 - [x] Reiniciar un servidor Redis dedicado entre commit y publicación: el socket
   cierra 1012, el batch queda pendiente y el replay conserva `event_id`,
   `batch_id`, secuencia y versión después de la reconexión.
 
-Solo después de implementar la sección 3.3 y migrar `cancel_absent_ride` se
-permitirá configurar más de un worker API y ejecutar la negociación multiproceso.
+El smoke conserva el gate sin flag y certifica con flag dos Uvicorn reales: el
+pasajero y el conductor conectan a procesos distintos y completan la negociación.
 
 ### 3.3 Presencia compartida
 
-- Redis mantendrá **leases por conexión**, no un booleano único por ride. Una
+- [x] Redis mantiene **leases por conexión**, no un booleano único por ride. Una
   representación posible es un sorted set `presence:ride:{ride_id}` cuyos
   miembros sean `ws:{connection_id}` y `http`, con la expiración como score.
-- El gateway renovará su miembro periódicamente mientras el WS siga vivo; el
+- [x] El gateway renueva su miembro periódicamente mientras el WS sigue vivo; el
   endpoint `GET /rides/me/active` renovará el miembro HTTP.
-- Scripts Lua podarán miembros vencidos y comprobarán presencia sin una carrera
+- [x] Scripts Lua podan miembros vencidos y comprueban presencia sin una carrera
   entre dos conexiones o procesos. Desconectar una conexión nunca elimina la
   presencia aportada por otra.
-- Al desaparecer el último lease se hará upsert de una acción durable
+- [x] Cada actividad/desconexión hace upsert de una acción durable
   `cancel_absent_ride` para `now + 120 s`. Una reconexión o heartbeat incrementará
   su `generation` y moverá la fecha límite, invalidando ejecuciones anteriores.
-- El reaper solo cancelará si el ride sigue `SEARCHING`, no está pausado, venció
+- [x] Crear un ride agenda la primera generación en la misma transacción, de modo
+  que morir antes del primer WebSocket tampoco deje un `SEARCHING` huérfano. El
+  arranque y el worker reconcilian con una gracia completa las búsquedas creadas
+  por una versión anterior.
+- [x] El reaper solo cancela si el ride sigue `SEARCHING`, no está pausado, venció
   la generación vigente y Redis no confirma ningún lease vivo.
-- Si Redis no está disponible, el reaper aplaza la cancelación.
+- [x] Si Redis no está disponible o acaba de recuperarse, el reaper aplaza la
+  cancelación sin consumir el límite de reintentos.
+
+> **Progreso 2026-07-22:** `REALTIME_SHARED_PRESENCE_ENABLED=false` conserva un
+> rollout reversible. Activarlo exige `live_redis`, recording y scheduler live.
+> Los sorted sets usan `Redis TIME`, miembros `ws:{connection_id}`/`http`, TTL
+> acotado y Lua para podar/observar de forma atómica. Cada pulso incrementa en
+> PostgreSQL la generación de `cancel_absent_ride`; el executor toma fencing,
+> revalida Redis y confirma cancelación + outbox + ack en una sola UoW. El lock
+> legado sigue exclusivo sin flag y compartido con flag, bloqueando shadow y
+> live_local. Las suites reales cubren dos conexiones, expiración, cierre durable
+> y negociación completa entre dos procesos Uvicorn. La creación persiste además
+> la primera generación de ausencia antes del commit y el reconciliador cubre el
+> estado preexistente sin cancelar en masa durante el rollout.
 
 ### 3.4 Expiraciones y acciones diferidas
 
@@ -649,17 +667,16 @@ seguirán siendo la defensa final contra carreras.
 > una transacción y recupera claims abandonados con `FOR UPDATE SKIP LOCKED`.
 > PostgreSQL certifica dos claimers, token obsoleto, `SIGKILL` real tras confirmar
 > el claim, recuperación por lease y carrera entre timer shadow y worker sin
-> duplicar la outbox. `cancel_absent_ride` sigue
-> pendiente: no se migrará hasta que Redis aporte leases de presencia compartidos
-> y una generación durable; hacerlo antes permitiría cancelaciones falsas entre
-> procesos. `/health/scheduled-actions` y `/metrics` exponen únicamente conteos,
+> duplicar la outbox. `cancel_absent_ride` usa ahora los mismos claims, leases y
+> fencing, con una generación renovada por la presencia Redis. `/health/scheduled-actions` y `/metrics` exponen únicamente conteos,
 > edades y tipos acotados; Prometheus alerta worker detenido, backlog vencido,
 > leases estancados y acciones `dead` sin publicar payloads ni identificadores.
 > Claims, leases, retries y validación del TTL usan `clock_timestamp()` de
 > PostgreSQL. Una retención obligatoria elimina por lotes únicamente acciones
 > `succeeded/cancelled`; `dead` se conserva indefinidamente. El arranque y cada
-> ciclo del consumidor reconcilian ofertas que un pod anterior pudo crear después
-> del backfill, y la publicación legacy shadow se desacopla del timeout del handler.
+> ciclo del consumidor reconcilian ofertas y búsquedas sin acción que un pod
+> anterior pudo crear después del backfill, y la publicación legacy shadow se
+> desacopla del timeout del handler.
 
 ## Despliegue incremental
 
@@ -676,8 +693,8 @@ seguirán siendo la defensa final contra carreras.
 8. Probar reinicios forzados de API, Redis y workers. El crash API `live_local`,
    el restart total de Redis con replay y el crash del scheduler durable están
    certificados en procesos/contenedores reales.
-9. Implementar presencia compartida y recién entonces habilitar dos workers API
-   en staging; luego producción.
+9. Activar presencia compartida y dos workers API en staging; promover luego a
+   producción con el gate, métricas y rollback por flag.
 
 Cada paso debe tener un feature flag y rollback que no revierta migraciones ni
 borre eventos pendientes.
@@ -700,7 +717,7 @@ personales sin redacción.
 
 - Pasajero y conductor conectados a procesos distintos reciben todos los eventos.
 - Matar la API después del commit no pierde la notificación: certificado para
-  `live_local` uniproceso; deberá recertificarse sobre `live_redis`.
+  `live_local`; Redis certifica restart/replay y la negociación multiproceso.
 - Reiniciar workers no evita que una oferta venza ni deja una búsqueda abandonada.
 - Redis caído no provoca cancelaciones falsas.
 - Duplicar o reordenar eventos no revierte estados terminales en mobile.

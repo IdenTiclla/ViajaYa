@@ -5,7 +5,9 @@ Con `OPENMETRICS_ENABLED=true`, la API expone `/metrics` en formato OpenMetrics
 informa únicamente la configuración y los contadores locales; en `shadow`,
 `live_local` o `live_redis` añade el corte persistido de la outbox. En
 `live_redis` expone además conexión, reconexiones, mensajes inválidos, fanout y
-cantidad de sockets locales, sin publicar canales ni payloads.
+cantidad de sockets locales, sin publicar canales ni payloads. Si la presencia
+compartida está activa, añade salud y contadores de renovaciones, desconexiones,
+observaciones y fallos; nunca incluye ride IDs ni connection IDs.
 Cuando `SCHEDULED_ACTIONS_MODE=shadow|live`, el mismo documento añade backlog,
 leases, ejecución y retención del scheduler; `/health/scheduled-actions` ofrece
 el corte JSON equivalente para diagnóstico. Shadow ejecuta el worker además del
@@ -72,6 +74,9 @@ Staging o producción deben añadir una regla sobre
 - Redis desconectado o inestable: confirma `PING`, red y ACL. El proceso debe
   quedar fuera de readiness y cerrar sus sockets con 1012; no fuerces `published_at`
   porque PostgreSQL conserva el batch para retry cuando el publish falla.
+- Presencia compartida: confirma ambas señales Redis (bridge y store). Durante
+  la caída y durante una gracia completa después de recuperarse,
+  `cancel_absent_ride` debe aplazarse sin pasar a `dead`.
 - Backlog o reintentos: compara edad, batches y último publish. Conserva las
   filas pendientes para replay; no las marques manualmente como publicadas.
 - Cuarentena: registra el código, identifica el productor incompatible y fuerza

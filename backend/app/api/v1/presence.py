@@ -18,11 +18,19 @@ from typing import Any
 
 from anyio import CancelScope
 
-from app.api.deps import build_announce_open_ride, build_cancel_ride_on_disconnect
+from app.api.deps import (
+    build_announce_open_ride,
+    build_cancel_ride_on_disconnect,
+    build_disconnect_passenger_presence,
+    build_renew_passenger_presence,
+)
 from app.application.dto import Page
+from app.application.exceptions import PassengerPresenceUnavailableError
+from app.application.interfaces import PassengerPresenceLeaseStore
 from app.domain.entities import RideRequest, RideStatus
 from app.domain.repositories import OpenRideDetail
 from app.infrastructure.config import Settings, get_settings
+from app.infrastructure.db.clock import database_utc_now
 from app.infrastructure.db.repositories import SqlAlchemyRideRequestRepository
 from app.infrastructure.realtime.hub import hub, ride_topic
 
@@ -86,6 +94,115 @@ def present_rides(page: Page[OpenRideDetail]) -> Page[OpenRideDetail]:
         items=[detail for detail in page.items if is_ride_present(detail.ride)],
         next_cursor=page.next_cursor,
     )
+
+
+async def present_rides_shared(
+    page: Page[OpenRideDetail],
+    leases: PassengerPresenceLeaseStore,
+) -> Page[OpenRideDetail]:
+    """Filtra con Redis; ante duda conserva el pool para no ocultar búsquedas."""
+    try:
+        present_ids = await leases.present_ride_ids(
+            [detail.ride.id for detail in page.items]
+        )
+    except PassengerPresenceUnavailableError:
+        logger.warning("No se pudo filtrar el pool por presencia compartida.")
+        return page
+    return Page(
+        items=[
+            detail for detail in page.items if detail.ride.id in present_ids
+        ],
+        next_cursor=page.next_cursor,
+    )
+
+
+async def on_shared_passenger_connect(
+    ride_id: uuid.UUID,
+    connection_id: uuid.UUID,
+    session_factory: Callable[[], Any],
+    leases: PassengerPresenceLeaseStore,
+    settings: Settings,
+) -> None:
+    """Confirma el lease antes de anunciar una búsqueda en cualquier proceso."""
+    await renew_shared_passenger_connection(
+        ride_id,
+        connection_id,
+        session_factory,
+        leases,
+    )
+    await _announce_present_ride(ride_id, session_factory, settings)
+
+
+async def renew_shared_passenger_connection(
+    ride_id: uuid.UUID,
+    connection_id: uuid.UUID,
+    session_factory: Callable[[], Any],
+    leases: PassengerPresenceLeaseStore,
+) -> None:
+    """Renueva lease y generación durable desde el heartbeat del gateway."""
+    async with session_factory() as session:
+        observed_at = await database_utc_now(session)
+        await build_renew_passenger_presence(session, leases).execute(
+            ride_id,
+            observed_at,
+            source="websocket",
+            connection_id=connection_id,
+        )
+
+
+async def on_shared_passenger_activity(
+    ride_id: uuid.UUID,
+    session_factory: Callable[[], Any],
+    leases: PassengerPresenceLeaseStore,
+) -> None:
+    """Renueva el miembro HTTP y mueve su generación durable."""
+    async with session_factory() as session:
+        observed_at = await database_utc_now(session)
+        await build_renew_passenger_presence(session, leases).execute(
+            ride_id,
+            observed_at,
+            source="http",
+        )
+
+
+async def on_shared_passenger_disconnect(
+    ride_id: uuid.UUID,
+    connection_id: uuid.UUID,
+    session_factory: Callable[[], Any],
+    leases: PassengerPresenceLeaseStore,
+) -> None:
+    """Cierra solo una conexión y abre la gracia durable que aún corresponda."""
+    try:
+        async with session_factory() as session:
+            observed_at = await database_utc_now(session)
+            await build_disconnect_passenger_presence(session, leases).execute(
+                ride_id,
+                connection_id,
+                observed_at,
+            )
+    except Exception as error:  # noqa: BLE001 - desconexión fail-safe y sanitizada
+        # Una caída Redis no demuestra ausencia. La acción previa se aplazará
+        # por salud/recovery y el lease expirado conserva la decisión fail-safe.
+        logger.warning(
+            "No se pudo registrar una desconexión de presencia compartida (%s).",
+            type(error).__name__,
+        )
+
+
+async def _announce_present_ride(
+    ride_id: uuid.UUID,
+    session_factory: Callable[[], Any],
+    settings: Settings,
+) -> None:
+    try:
+        async with session_factory() as session:
+            detail = await build_announce_open_ride(session, settings).execute(ride_id)
+        if detail is not None:
+            from app.api.v1 import events
+
+            await events.publish_ride_created(detail)
+    except Exception:
+        logger.exception("No se pudo anunciar la presencia del viaje %s", ride_id)
 
 
 async def on_passenger_connect(

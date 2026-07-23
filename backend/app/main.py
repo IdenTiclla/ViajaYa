@@ -31,13 +31,15 @@ from app.application.interfaces import (
     RealtimeOutboxBatchPublisher,
     RealtimeOutboxBatchValidator,
 )
-from app.application.use_cases.reconcile_missing_offer_scheduled_actions import (
-    ReconcileMissingOfferScheduledActions,
+from app.application.use_cases.reconcile_missing_scheduled_actions import (
+    ReconcileMissingScheduledActions,
 )
 from app.infrastructure.config import Settings, get_settings
 from app.infrastructure.db.advisory_lock import PostgreSQLLiveLocalProcessLock
 from app.infrastructure.db.scheduled_actions_reconciliation import (
+    CompositeMissingScheduledActionsReconciler,
     SqlAlchemyMissingOfferScheduledActionsReconciler,
+    SqlAlchemyMissingPassengerPresenceActionsReconciler,
 )
 from app.infrastructure.db.session import async_session_factory, get_session
 from app.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
@@ -48,6 +50,9 @@ from app.infrastructure.realtime.outbox_dispatcher import (
 )
 from app.infrastructure.realtime.outbox_retention import (
     PublishedRealtimeOutboxRetentionWorker,
+)
+from app.infrastructure.realtime.passenger_presence import (
+    RedisPassengerPresenceStore,
 )
 from app.infrastructure.scheduled_actions.retention import (
     TerminalScheduledActionsRetentionWorker,
@@ -64,6 +69,7 @@ def create_app(
     realtime_outbox_batch_validator: RealtimeOutboxBatchValidator | None = None,
     realtime_outbox_batch_publisher: RealtimeOutboxBatchPublisher | None = None,
     realtime_redis_bridge: RealtimeDeliveryBridge | None = None,
+    passenger_presence_store: RedisPassengerPresenceStore | None = None,
 ) -> FastAPI:
     resolved_settings = settings or get_settings()
     resolved_session_factory = session_factory or async_session_factory
@@ -84,6 +90,13 @@ def create_app(
         and realtime_redis_bridge is not None
     ):
         raise ValueError("No se pueden inyectar dos transportes realtime live.")
+    if (
+        passenger_presence_store is not None
+        and not resolved_settings.realtime_shared_presence_enabled
+    ):
+        raise ValueError(
+            "Un almacén de presencia inyectado requiere presencia compartida."
+        )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -98,6 +111,7 @@ def create_app(
         scheduled_retention_worker: TerminalScheduledActionsRetentionWorker | None = None
         scheduled_retention_task: asyncio.Task[None] | None = None
         process_lock: PostgreSQLLiveLocalProcessLock | None = None
+        shared_presence: RedisPassengerPresenceStore | None = None
         app.state.realtime_outbox_dispatcher = None
         app.state.realtime_outbox_dispatcher_task = None
         app.state.realtime_redis_bridge = None
@@ -109,6 +123,7 @@ def create_app(
         app.state.scheduled_actions_task = None
         app.state.scheduled_actions_retention_worker = None
         app.state.scheduled_actions_retention_task = None
+        app.state.passenger_presence_store = None
         previous_legacy_delivery = hub.legacy_delivery_enabled
         previous_shared_transport_health = hub.shared_transport_healthy
         mode = resolved_settings.realtime_outbox_dispatch_mode
@@ -117,6 +132,9 @@ def create_app(
                 process_lock = PostgreSQLLiveLocalProcessLock(
                     resolved_session_factory,
                     mode=mode,
+                    allow_live_redis_multiworker=(
+                        resolved_settings.realtime_shared_presence_enabled
+                    ),
                 )
                 app.state.live_local_process_lock = process_lock
                 await process_lock.acquire()
@@ -154,6 +172,27 @@ def create_app(
                 await redis_bridge.wait_until_ready(
                     resolved_settings.realtime_redis_connect_timeout_seconds
                 )
+
+            if resolved_settings.realtime_shared_presence_enabled:
+                shared_presence = (
+                    passenger_presence_store
+                    if passenger_presence_store is not None
+                    else RedisPassengerPresenceStore.from_url(
+                        resolved_settings.realtime_redis_url,
+                        key_prefix=resolved_settings.realtime_presence_key_prefix,
+                        lease_seconds=(
+                            resolved_settings.realtime_presence_lease_seconds
+                        ),
+                        grace_seconds=(
+                            resolved_settings.realtime_presence_grace_seconds
+                        ),
+                        timeout_seconds=(
+                            resolved_settings.realtime_redis_connect_timeout_seconds
+                        ),
+                    )
+                )
+                await shared_presence.preflight()
+                app.state.passenger_presence_store = shared_presence
 
             if mode in {"shadow", "live_local", "live_redis"}:
                 batch_validator = (
@@ -252,11 +291,30 @@ def create_app(
                 ),
             )
             await scheduled_retention_worker.preflight()
-            async with resolved_session_factory() as reconciliation_session:
-                await ReconcileMissingOfferScheduledActions(
+
+            def build_scheduled_actions_reconciler(
+                reconciliation_session: AsyncSession,
+            ) -> CompositeMissingScheduledActionsReconciler:
+                reconcilers = []
+                if resolved_settings.realtime_shared_presence_enabled:
+                    reconcilers.append(
+                        SqlAlchemyMissingPassengerPresenceActionsReconciler(
+                            reconciliation_session,
+                            grace_seconds=(
+                                resolved_settings.realtime_presence_grace_seconds
+                            ),
+                        )
+                    )
+                reconcilers.append(
                     SqlAlchemyMissingOfferScheduledActionsReconciler(
                         reconciliation_session
-                    ),
+                    )
+                )
+                return CompositeMissingScheduledActionsReconciler(*reconcilers)
+
+            async with resolved_session_factory() as reconciliation_session:
+                await ReconcileMissingScheduledActions(
+                    build_scheduled_actions_reconciler(reconciliation_session),
                     SqlAlchemyUnitOfWork(reconciliation_session),
                 ).execute(resolved_settings.scheduled_actions_retention_batch_limit)
 
@@ -266,6 +324,7 @@ def create_app(
                     ApplicationScheduledActionExecutor(
                         resolved_session_factory,
                         resolved_settings,
+                        passenger_presence=shared_presence,
                     ),
                     poll_interval_seconds=(
                         resolved_settings.scheduled_actions_poll_interval_seconds
@@ -281,9 +340,7 @@ def create_app(
                     retry_max_seconds=(
                         resolved_settings.scheduled_actions_retry_max_seconds
                     ),
-                    reconciler_factory=(
-                        SqlAlchemyMissingOfferScheduledActionsReconciler
-                    ),
+                    reconciler_factory=build_scheduled_actions_reconciler,
                     reconciliation_batch_limit=(
                         resolved_settings.scheduled_actions_retention_batch_limit
                     ),
@@ -394,6 +451,8 @@ def create_app(
                     await asyncio.gather(redis_bridge_task, return_exceptions=True)
             if redis_bridge is not None:
                 await redis_bridge.aclose()
+            if shared_presence is not None:
+                await shared_presence.aclose()
             hub.set_shared_transport_healthy(previous_shared_transport_health)
             hub.set_legacy_delivery_enabled(previous_legacy_delivery)
             if process_lock is not None:
@@ -411,6 +470,7 @@ def create_app(
     app.state.scheduled_actions_task = None
     app.state.scheduled_actions_retention_worker = None
     app.state.scheduled_actions_retention_task = None
+    app.state.passenger_presence_store = None
 
     async def resolved_get_session() -> AsyncIterator[AsyncSession]:
         async with resolved_session_factory() as session:

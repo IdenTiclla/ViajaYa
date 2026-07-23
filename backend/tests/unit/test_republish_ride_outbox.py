@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import timedelta
 from decimal import Decimal
 
 import pytest
@@ -21,6 +22,9 @@ from app.application.dto import (
     LocationInput,
     RideRepublishedResult,
 )
+from app.application.use_cases.reconcile_missing_scheduled_actions import (
+    ReconcileMissingScheduledActions,
+)
 from app.application.use_cases.update_ride_fare import UpdateRideFare
 from app.domain.entities import (
     Location,
@@ -36,11 +40,15 @@ from app.infrastructure.db.models import (
     RealtimeOutboxModel,
     RealtimeStreamVersionModel,
     RideRequestModel,
+    ScheduledActionModel,
 )
 from app.infrastructure.db.outbox import SqlAlchemyRealtimeOutbox
 from app.infrastructure.db.repositories import (
     SqlAlchemyRideRequestRepository,
     SqlAlchemyUserRepository,
+)
+from app.infrastructure.db.scheduled_actions_reconciliation import (
+    SqlAlchemyMissingPassengerPresenceActionsReconciler,
 )
 from app.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from app.infrastructure.realtime.hub import pool_topic, ride_topic
@@ -325,10 +333,73 @@ async def test_create_commits_without_announcing_before_presence(session_factory
     async with session_factory() as session:
         rider = await SqlAlchemyUserRepository(session).add(_rider())
 
-        ride = await get_create_ride_request(session).execute(rider, _input())
+        ride = await get_create_ride_request(
+            session,
+            Settings(_env_file=None),
+        ).execute(rider, _input())
 
         ride_row = await session.get(RideRequestModel, ride.id)
         event_count = await session.scalar(select(func.count(RealtimeOutboxModel.id)))
         assert ride_row is not None
         assert ride_row.status is RideStatus.SEARCHING
         assert event_count == 0
+
+
+async def test_create_with_shared_presence_persists_initial_absence_action(
+    session_factory,
+) -> None:
+    settings = Settings(
+        _env_file=None,
+        realtime_outbox_dispatch_mode="live_redis",
+        realtime_outbox_recording_enabled=True,
+        scheduled_actions_mode="live",
+        realtime_shared_presence_enabled=True,
+        realtime_presence_grace_seconds=120,
+    )
+    async with session_factory() as session:
+        rider = await SqlAlchemyUserRepository(session).add(_rider())
+
+        ride = await get_create_ride_request(session, settings).execute(rider, _input())
+
+        action = await session.scalar(
+            select(ScheduledActionModel).where(
+                ScheduledActionModel.dedupe_key
+                == f"cancel_absent_ride:{ride.id}"
+            )
+        )
+        assert action is not None
+        assert ride.created_at is not None
+        assert action.action_type == "cancel_absent_ride"
+        assert action.generation == 1
+        assert action.execute_at - ride.created_at == timedelta(seconds=120)
+
+
+async def test_shared_presence_reconciles_searching_rides_from_previous_version(
+    session_factory,
+) -> None:
+    async with session_factory() as session:
+        rider = await SqlAlchemyUserRepository(session).add(_rider())
+        ride = await get_create_ride_request(
+            session,
+            Settings(_env_file=None),
+        ).execute(rider, _input())
+
+        reconciler = ReconcileMissingScheduledActions(
+            SqlAlchemyMissingPassengerPresenceActionsReconciler(
+                session,
+                grace_seconds=120,
+            ),
+            SqlAlchemyUnitOfWork(session),
+        )
+        assert await reconciler.execute(100) == 1
+        assert await reconciler.execute(100) == 0
+
+        action = await session.scalar(
+            select(ScheduledActionModel).where(
+                ScheduledActionModel.aggregate_id == ride.id,
+                ScheduledActionModel.action_type == "cancel_absent_ride",
+            )
+        )
+        assert action is not None
+        assert action.payload == {"ride_id": str(ride.id)}
+        assert action.execute_at > ride.created_at

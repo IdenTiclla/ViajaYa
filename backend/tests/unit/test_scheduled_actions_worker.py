@@ -334,6 +334,25 @@ def test_settings_define_rollout_independiente_y_seguro() -> None:
         scheduled_actions_mode="live",
     )
     assert live.scheduled_actions_mode == "live"
+    with pytest.raises(ValidationError, match="requiere live_redis"):
+        Settings(
+            _env_file=None,
+            realtime_shared_presence_enabled=True,
+        )
+    shared = Settings(
+        _env_file=None,
+        realtime_outbox_dispatch_mode="live_redis",
+        realtime_outbox_recording_enabled=True,
+        scheduled_actions_mode="live",
+        realtime_shared_presence_enabled=True,
+    )
+    assert shared.realtime_shared_presence_enabled is True
+    with pytest.raises(ValidationError, match="antes de vencer"):
+        Settings(
+            _env_file=None,
+            realtime_presence_lease_seconds=10,
+            realtime_presence_renew_interval_seconds=10,
+        )
     with pytest.raises(ValidationError, match="menor al lease"):
         Settings(
             _env_file=None,

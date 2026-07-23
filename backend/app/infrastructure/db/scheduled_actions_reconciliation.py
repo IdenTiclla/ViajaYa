@@ -1,24 +1,28 @@
-"""Reconciliación SQLAlchemy de ofertas sin expiración durable."""
+"""Reconciliación SQLAlchemy de acciones durables ausentes."""
 
 from __future__ import annotations
 
-from datetime import UTC
+from datetime import UTC, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.dto import PendingScheduledAction
-from app.application.interfaces import MissingOfferScheduledActionsReconciler
-from app.domain.entities import OfferStatus
+from app.application.interfaces import MissingScheduledActionsReconciler
+from app.domain.entities import OfferStatus, RideStatus
 from app.domain.ride_policy import OFFER_TTL
-from app.infrastructure.db.models import OfferModel, ScheduledActionModel
+from app.infrastructure.db.models import (
+    OfferModel,
+    RideRequestModel,
+    ScheduledActionModel,
+)
 from app.infrastructure.db.scheduled_actions import (
     SqlAlchemyScheduledActionRepository,
 )
 
 
 class SqlAlchemyMissingOfferScheduledActionsReconciler(
-    MissingOfferScheduledActionsReconciler
+    MissingScheduledActionsReconciler
 ):
     """Repara por lotes la ventana entre migración y productor nuevo."""
 
@@ -68,3 +72,79 @@ class SqlAlchemyMissingOfferScheduledActionsReconciler(
                 )
             )
         return len(missing)
+
+
+class SqlAlchemyMissingPassengerPresenceActionsReconciler(
+    MissingScheduledActionsReconciler
+):
+    """Da una gracia completa a búsquedas previas al productor compartido."""
+
+    def __init__(self, session: AsyncSession, *, grace_seconds: float) -> None:
+        if grace_seconds <= 0:
+            raise ValueError("La gracia de presencia debe ser positiva.")
+        self._session = session
+        self._grace = timedelta(seconds=grace_seconds)
+
+    async def reconcile(self, action_limit: int) -> int:
+        if action_limit <= 0:
+            raise ValueError("El límite de reconciliación debe ser positivo.")
+
+        already_scheduled = (
+            select(ScheduledActionModel.id)
+            .where(
+                ScheduledActionModel.action_type == "cancel_absent_ride",
+                ScheduledActionModel.aggregate_id == RideRequestModel.id,
+            )
+            .exists()
+        )
+        ride_ids = (
+            await self._session.execute(
+                select(RideRequestModel.id)
+                .where(
+                    RideRequestModel.status == RideStatus.SEARCHING,
+                    ~already_scheduled,
+                )
+                .order_by(RideRequestModel.created_at, RideRequestModel.id)
+                .limit(action_limit)
+            )
+        ).scalars().all()
+        if not ride_ids:
+            return 0
+
+        database_now = (await self._session.scalar(select(func.now())))
+        assert database_now is not None
+        database_now = (
+            database_now.replace(tzinfo=UTC)
+            if database_now.tzinfo is None
+            else database_now.astimezone(UTC)
+        )
+        actions = SqlAlchemyScheduledActionRepository(self._session)
+        for ride_id in ride_ids:
+            await actions.schedule(
+                PendingScheduledAction(
+                    dedupe_key=f"cancel_absent_ride:{ride_id}",
+                    action_type="cancel_absent_ride",
+                    aggregate_id=ride_id,
+                    generation=1,
+                    execute_at=database_now + self._grace,
+                    payload={"ride_id": str(ride_id)},
+                )
+            )
+        return len(ride_ids)
+
+
+class CompositeMissingScheduledActionsReconciler(MissingScheduledActionsReconciler):
+    """Ejecuta un lote acotado por cada clase de acción independiente."""
+
+    def __init__(self, *reconcilers: MissingScheduledActionsReconciler) -> None:
+        if not reconcilers:
+            raise ValueError("Se requiere al menos un reconciliador.")
+        self._reconcilers = reconcilers
+
+    async def reconcile(self, action_limit: int) -> int:
+        if action_limit <= 0:
+            raise ValueError("El límite de reconciliación debe ser positivo.")
+        created_count = 0
+        for reconciler in self._reconcilers:
+            created_count += await reconciler.reconcile(action_limit)
+        return created_count

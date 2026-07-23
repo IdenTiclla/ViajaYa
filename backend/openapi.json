@@ -819,6 +819,15 @@
             "title": "Database",
             "type": "string"
           },
+          "passenger_presence_store": {
+            "enum": [
+              "ok",
+              "error",
+              "disabled"
+            ],
+            "title": "Passenger Presence Store",
+            "type": "string"
+          },
           "realtime_outbox_dispatcher": {
             "enum": [
               "ok",
@@ -880,6 +889,7 @@
           "scheduled_actions_retention",
           "realtime_outbox_dispatcher",
           "realtime_redis_bridge",
+          "passenger_presence_store",
           "realtime_outbox_process_lock",
           "realtime_outbox_retention"
         ],
@@ -1887,6 +1897,17 @@
               }
             ],
             "title": "Dead Counts"
+          },
+          "deferred_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deferred Count"
           },
           "due_count": {
             "anyOf": [

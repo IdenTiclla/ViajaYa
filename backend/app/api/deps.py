@@ -12,6 +12,7 @@ from typing import Annotated
 
 from fastapi import Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from starlette.requests import HTTPConnection
 
 from app.api.v1.realtime_outbox import (
     DisabledAcceptOfferEventRecorder,
@@ -39,6 +40,7 @@ from app.api.v1.realtime_outbox import (
 )
 from app.application.interfaces import (
     CancelRideEventRecorder,
+    PassengerPresenceLeaseStore,
     RealtimeSnapshotReader,
     RepublishRideEventRecorder,
     RideReadRepository,
@@ -61,8 +63,14 @@ from app.application.use_cases.create_offer import CreateOffer
 from app.application.use_cases.create_ride_request import CreateRideRequest
 from app.application.use_cases.create_saved_place import CreateSavedPlace
 from app.application.use_cases.delete_saved_place import DeleteSavedPlace
+from app.application.use_cases.disconnect_passenger_presence import (
+    DisconnectPassengerPresence,
+)
 from app.application.use_cases.dismiss_open_ride import DismissOpenRide
 from app.application.use_cases.edit_ride import EditRide
+from app.application.use_cases.execute_cancel_absent_ride_scheduled_action import (
+    ExecuteCancelAbsentRideScheduledAction,
+)
 from app.application.use_cases.execute_expire_offer_scheduled_action import (
     ExecuteExpireOfferScheduledAction,
 )
@@ -91,6 +99,7 @@ from app.application.use_cases.rate_ride import RateRide
 from app.application.use_cases.refresh_token import RefreshToken
 from app.application.use_cases.register_user import RegisterUser
 from app.application.use_cases.reject_offer import RejectOffer
+from app.application.use_cases.renew_passenger_presence import RenewPassengerPresence
 from app.application.use_cases.set_driver_online import SetDriverOnline
 from app.application.use_cases.skip_ride_rating import SkipRideRating
 from app.application.use_cases.update_ride_fare import UpdateRideFare
@@ -156,6 +165,19 @@ def get_session_factory() -> async_sessionmaker[AsyncSession]:
 SessionFactoryDep = Annotated[
     async_sessionmaker[AsyncSession],
     Depends(get_session_factory),
+]
+
+
+def get_passenger_presence_lease_store(
+    connection: HTTPConnection,
+) -> PassengerPresenceLeaseStore | None:
+    """Expone la instancia creada por el lifespan tanto a HTTP como a WS."""
+    return connection.app.state.passenger_presence_store
+
+
+PassengerPresenceLeaseStoreDep = Annotated[
+    PassengerPresenceLeaseStore | None,
+    Depends(get_passenger_presence_lease_store),
 ]
 
 
@@ -318,10 +340,22 @@ def get_authenticate_with_oauth(
     return AuthenticateWithOAuth(users, tokens, verifiers)
 
 
-def get_create_ride_request(session: SessionDep) -> CreateRideRequest:
+def get_create_ride_request(
+    session: SessionDep,
+    settings: SettingsDep,
+) -> CreateRideRequest:
+    scheduled_actions = (
+        SqlAlchemyScheduledActionRepository(session)
+        if settings.realtime_shared_presence_enabled
+        else None
+    )
     return CreateRideRequest(
         SqlAlchemyRideRequestRepository(session, commit_add=False),
         SqlAlchemyUnitOfWork(session),
+        scheduled_actions,
+        passenger_presence_grace_seconds=(
+            settings.realtime_presence_grace_seconds
+        ),
     )
 
 
@@ -476,6 +510,48 @@ def build_execute_expire_offer_scheduled_action(
         actions,
         SqlAlchemyUnitOfWork(session),
         recorder,
+    )
+
+
+def build_execute_cancel_absent_ride_scheduled_action(
+    session: AsyncSession,
+    settings: Settings,
+    leases: PassengerPresenceLeaseStore,
+) -> ExecuteCancelAbsentRideScheduledAction:
+    """Cablea presencia Redis, cierre de búsqueda, outbox y ack en una UoW."""
+    actions = SqlAlchemyScheduledActionRepository(session)
+    return ExecuteCancelAbsentRideScheduledAction(
+        SqlAlchemyOfferRepository(session, commit_cancel=False),
+        SqlAlchemyUserRepository(session),
+        actions,
+        SqlAlchemyUnitOfWork(session),
+        _cancel_ride_recorder(session, settings),
+        leases,
+        unavailable_recheck_seconds=settings.realtime_presence_recheck_seconds,
+    )
+
+
+def build_renew_passenger_presence(
+    session: AsyncSession,
+    leases: PassengerPresenceLeaseStore,
+) -> RenewPassengerPresence:
+    """Cablea lease Redis y generación durable en una transacción corta."""
+    return RenewPassengerPresence(
+        leases,
+        SqlAlchemyScheduledActionRepository(session),
+        SqlAlchemyUnitOfWork(session),
+    )
+
+
+def build_disconnect_passenger_presence(
+    session: AsyncSession,
+    leases: PassengerPresenceLeaseStore,
+) -> DisconnectPassengerPresence:
+    """Cablea la desconexión de un lease y su nueva generación durable."""
+    return DisconnectPassengerPresence(
+        leases,
+        SqlAlchemyScheduledActionRepository(session),
+        SqlAlchemyUnitOfWork(session),
     )
 
 

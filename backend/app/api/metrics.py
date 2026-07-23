@@ -30,7 +30,7 @@ router = APIRouter(tags=["metrics"])
 
 OPENMETRICS_CONTENT_TYPE = CONTENT_TYPE_LATEST
 _QUARANTINE_CODES = frozenset(get_args(RealtimeOutboxQuarantineCode))
-_SCHEDULED_ACTION_TYPES = frozenset({"expire_offer"})
+_SCHEDULED_ACTION_TYPES = frozenset({"cancel_absent_ride", "expire_offer"})
 
 
 def _quarantine_code(value: str) -> str:
@@ -90,6 +90,7 @@ def render_realtime_openmetrics(
     scheduled_worker_error: bool = False,
     scheduled_claimed_count: int = 0,
     scheduled_succeeded_count: int = 0,
+    scheduled_deferred_count: int = 0,
     scheduled_retried_count: int = 0,
     scheduled_dead_count: int = 0,
     scheduled_recovered_lease_count: int = 0,
@@ -99,6 +100,12 @@ def render_realtime_openmetrics(
     scheduled_retention_deleted_action_count: int = 0,
     scheduled_snapshot: ScheduledActionsOperationalSnapshot | None = None,
     scheduled_scrape_success: bool = True,
+    shared_presence_enabled: bool = False,
+    shared_presence_healthy: bool = False,
+    presence_renewal_count: int = 0,
+    presence_disconnect_count: int = 0,
+    presence_observation_count: int = 0,
+    presence_failure_count: int = 0,
 ) -> str:
     """Renderiza solo agregados operativos, sin payloads, topics ni errores."""
     document = _OpenMetricsDocument()
@@ -310,6 +317,11 @@ def render_realtime_openmetrics(
             scheduled_succeeded_count,
         ),
         (
+            "deferred",
+            "Acciones aplazadas de forma segura por este proceso.",
+            scheduled_deferred_count,
+        ),
+        (
             "retried",
             "Acciones reprogramadas por este proceso desde su arranque.",
             scheduled_retried_count,
@@ -406,6 +418,48 @@ def render_realtime_openmetrics(
                 "gauge",
                 [({}, scheduled_snapshot.latest_succeeded_at.timestamp())],
             )
+
+    document.metric(
+        "viajaya_passenger_presence_enabled",
+        "Indica si este proceso usa leases Redis compartidos de presencia.",
+        "gauge",
+        [({}, int(shared_presence_enabled))],
+    )
+    document.metric(
+        "viajaya_passenger_presence_healthy",
+        "Indica si el cliente Redis de presencia está sano.",
+        "gauge",
+        [({}, int(shared_presence_healthy))],
+    )
+    for name, help_text, value in (
+        (
+            "renewals",
+            "Leases WebSocket o pulsos HTTP renovados desde el arranque.",
+            presence_renewal_count,
+        ),
+        (
+            "disconnects",
+            "Leases WebSocket cerrados desde el arranque.",
+            presence_disconnect_count,
+        ),
+        (
+            "observations",
+            "Solicitudes evaluadas por presencia desde el arranque.",
+            presence_observation_count,
+        ),
+        (
+            "failures",
+            "Fallos sanitizados del cliente de presencia desde el arranque.",
+            presence_failure_count,
+        ),
+    ):
+        document.metric(
+            f"viajaya_passenger_presence_{name}",
+            help_text,
+            "counter",
+            [({}, value)],
+            sample_name=f"viajaya_passenger_presence_{name}_total",
+        )
 
     if snapshot is None:
         return document.render()
@@ -536,6 +590,7 @@ async def metrics(
     redis_error = bool(
         redis_bridge is not None and redis_bridge.last_error is not None
     )
+    passenger_presence = request.app.state.passenger_presence_store
 
     now = datetime.now(UTC)
     snapshot: RealtimeOutboxOperationalSnapshot | None = None
@@ -631,6 +686,11 @@ async def metrics(
             scheduled_retried_count=(
                 scheduled_worker.retried_count if scheduled_worker is not None else 0
             ),
+            scheduled_deferred_count=(
+                scheduled_worker.deferred_count
+                if scheduled_worker is not None
+                else 0
+            ),
             scheduled_dead_count=(
                 scheduled_worker.dead_count if scheduled_worker is not None else 0
             ),
@@ -651,5 +711,29 @@ async def metrics(
             ),
             scheduled_snapshot=scheduled_snapshot,
             scheduled_scrape_success=scheduled_scrape_success,
+            shared_presence_enabled=settings.realtime_shared_presence_enabled,
+            shared_presence_healthy=bool(
+                passenger_presence is not None and passenger_presence.healthy
+            ),
+            presence_renewal_count=(
+                passenger_presence.renewal_count
+                if passenger_presence is not None
+                else 0
+            ),
+            presence_disconnect_count=(
+                passenger_presence.disconnect_count
+                if passenger_presence is not None
+                else 0
+            ),
+            presence_observation_count=(
+                passenger_presence.observation_count
+                if passenger_presence is not None
+                else 0
+            ),
+            presence_failure_count=(
+                passenger_presence.failure_count
+                if passenger_presence is not None
+                else 0
+            ),
         )
     )

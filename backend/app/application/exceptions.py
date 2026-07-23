@@ -23,3 +23,7 @@ class InvalidScheduledActionError(ValueError):
 
 class UnsupportedScheduledActionError(ValueError):
     """No existe un handler desplegado para el tipo de acción reclamado."""
+
+
+class PassengerPresenceUnavailableError(RuntimeError):
+    """La presencia compartida no puede tomar una decisión segura."""

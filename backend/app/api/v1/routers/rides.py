@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.deps import (
     CurrentUserDep,
+    PassengerPresenceLeaseStoreDep,
     SessionFactoryDep,
     SettingsDep,
     build_expire_offer_and_complete_scheduled_action,
@@ -39,7 +40,6 @@ from app.api.deps import (
 )
 from app.api.v1 import events, presence
 from app.api.v1.pagination import decode_cursor
-from app.api.v1.presence import present_rides
 from app.api.v1.schemas.offers import OfferCreate, OfferResponse
 from app.api.v1.schemas.ratings import RatingCreate, RatingResponse
 from app.api.v1.schemas.rides import (
@@ -171,6 +171,8 @@ async def recent_destinations(
 async def open_rides(
     current_user: CurrentUserDep,
     use_case: Annotated[ListOpenRides, Depends(get_list_open_rides)],
+    settings: SettingsDep,
+    passenger_presence: PassengerPresenceLeaseStoreDep,
     cursor: Annotated[str | None, Query(max_length=512)] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> OpenRidePageResponse:
@@ -180,7 +182,12 @@ async def open_rides(
     no se muestran.
     """
     page = await use_case.execute(current_user, decode_cursor(cursor), limit)
-    return OpenRidePageResponse.from_page(present_rides(page))
+    if settings.realtime_shared_presence_enabled:
+        if passenger_presence is not None:
+            page = await presence.present_rides_shared(page, passenger_presence)
+    else:
+        page = presence.present_rides(page)
+    return OpenRidePageResponse.from_page(page)
 
 
 @router.post("/{ride_id}/dismiss", status_code=status.HTTP_204_NO_CONTENT)
@@ -255,6 +262,7 @@ async def passenger_active_ride(
     use_case: Annotated[GetPassengerActiveRide, Depends(get_passenger_active_ride)],
     session_factory: SessionFactoryDep,
     settings: SettingsDep,
+    passenger_presence: PassengerPresenceLeaseStoreDep,
 ) -> RideResponse | None:
     """Solicitud o viaje no terminal del pasajero, para recuperar el flujo."""
     detail = await use_case.execute(current_user)
@@ -263,11 +271,21 @@ async def passenger_active_ride(
         and detail.ride.status is RideStatus.SEARCHING
         and not detail.ride.paused
     ):
-        await presence.on_passenger_activity(
-            detail.ride.id,
-            session_factory,
-            settings,
-        )
+        if (
+            settings.realtime_shared_presence_enabled
+            and passenger_presence is not None
+        ):
+            await presence.on_shared_passenger_activity(
+                detail.ride.id,
+                session_factory,
+                passenger_presence,
+            )
+        else:
+            await presence.on_passenger_activity(
+                detail.ride.id,
+                session_factory,
+                settings,
+            )
     return RideResponse.from_detail(detail) if detail is not None else None
 
 

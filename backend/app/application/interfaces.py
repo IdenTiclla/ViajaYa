@@ -21,6 +21,7 @@ from app.application.dto import (
     DriverRealtimeSnapshot,
     Page,
     PageCursor,
+    PassengerPresenceObservation,
     PassengerRealtimeSnapshot,
     PendingRealtimeEvent,
     PendingScheduledAction,
@@ -28,6 +29,7 @@ from app.application.dto import (
     RealtimeOutboxEvent,
     RealtimeOutboxOperationalState,
     RealtimeOutboxQuarantineCode,
+    RenewableScheduledAction,
     RideDetail,
     RideHistoryItem,
     RidePausedResult,
@@ -59,6 +61,10 @@ class ScheduledActionScheduler(ABC):
     async def schedule(self, action: PendingScheduledAction) -> ScheduledAction:
         """Inserta o renueva una acción por una generación estrictamente mayor."""
 
+    @abstractmethod
+    async def schedule_next(self, action: RenewableScheduledAction) -> ScheduledAction:
+        """Inserta la primera generación o incrementa la vigente bajo un único CAS."""
+
 
 class ScheduledActionQueue(ScheduledActionScheduler):
     """Reclama y finaliza acciones mediante leases recuperables."""
@@ -70,6 +76,15 @@ class ScheduledActionQueue(ScheduledActionScheduler):
         stale_before: datetime,
     ) -> ScheduledAction | None:
         """Reclama una acción vencida o recupera un lease abandonado."""
+
+    @abstractmethod
+    async def lock_owned(
+        self,
+        action_id: uuid.UUID,
+        generation: int,
+        lock_token: uuid.UUID,
+    ) -> bool:
+        """Bloquea la fila solo si el caller conserva generación y fencing."""
 
     @abstractmethod
     async def mark_succeeded(
@@ -109,8 +124,46 @@ class ScheduledActionExecutor(ABC):
     """Ejecuta el caso de uso asociado y confirma la acción en su misma UoW."""
 
     @abstractmethod
-    async def execute(self, action: ScheduledAction) -> Literal["succeeded", "lost_lease"]:
+    async def execute(
+        self,
+        action: ScheduledAction,
+    ) -> Literal["succeeded", "deferred", "lost_lease"]:
         """Procesa una acción reclamada sin exponer detalles de infraestructura."""
+
+
+class PassengerPresenceLeaseStore(ABC):
+    """Coordina leases de presencia compartidos sin convertir Redis en negocio."""
+
+    @abstractmethod
+    async def renew_websocket(
+        self,
+        ride_id: uuid.UUID,
+        connection_id: uuid.UUID,
+    ) -> float:
+        """Renueva una conexión y devuelve segundos hasta su cancelación segura."""
+
+    @abstractmethod
+    async def disconnect_websocket(
+        self,
+        ride_id: uuid.UUID,
+        connection_id: uuid.UUID,
+    ) -> float:
+        """Cierra solo ese lease y devuelve la fecha límite global restante."""
+
+    @abstractmethod
+    async def renew_http(self, ride_id: uuid.UUID) -> float:
+        """Registra el heartbeat HTTP y devuelve su gracia restante."""
+
+    @abstractmethod
+    async def observe(self, ride_id: uuid.UUID) -> PassengerPresenceObservation:
+        """Comprueba leases y gracia usando un corte atómico del transporte."""
+
+    @abstractmethod
+    async def present_ride_ids(
+        self,
+        ride_ids: Sequence[uuid.UUID],
+    ) -> set[uuid.UUID]:
+        """Devuelve qué solicitudes siguen visibles bajo lease o gracia."""
 
 
 class ScheduledActionsOperationalReader(ABC):
@@ -137,12 +190,12 @@ class TerminalScheduledActionsRetention(ABC):
         """Marca para borrado un chunk acotado y devuelve cuántas filas eliminó."""
 
 
-class MissingOfferScheduledActionsReconciler(ABC):
-    """Repara ofertas legacy que todavía no tienen una expiración durable."""
+class MissingScheduledActionsReconciler(ABC):
+    """Repara agregados legacy que todavía no tienen su acción durable."""
 
     @abstractmethod
     async def reconcile(self, action_limit: int) -> int:
-        """Agenda un chunk de expiraciones ausentes y devuelve cuántas creó."""
+        """Agenda un chunk de acciones ausentes y devuelve cuántas creó."""
 
 
 class RealtimeOutbox(ABC):

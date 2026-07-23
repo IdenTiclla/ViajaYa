@@ -59,7 +59,8 @@ marcada explícitamente como test mediante `VIAJAYA_TEST_DATABASE_URL`.
 - [x] Ciclo de vida del viaje, historial, ganancias y calificaciones.
 - [x] Actualización en vivo por WebSocket y cancelación por ausencia.
 - [x] CI con PostgreSQL real, contratos OpenAPI/WS y tipos mobile generados.
-- [ ] Tiempo real durable y soporte multiworker mediante outbox/Redis.
+- [x] Tiempo real durable y soporte multiworker mediante outbox, Redis y
+  presencia compartida (activación operativa todavía detrás de flags).
 
 Las reglas vigentes y el endurecimiento pendiente viven en
 `docs/implementation-plans/0007-cancela-busqueda-pasajero-ausente.md` y

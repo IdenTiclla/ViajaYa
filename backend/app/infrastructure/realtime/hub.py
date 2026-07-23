@@ -13,6 +13,7 @@ Topics:
 from __future__ import annotations
 
 import asyncio
+import time
 import uuid
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
@@ -42,6 +43,7 @@ class RealtimeHub:
         # Solo ``live_redis`` conmuta esta señal. Los demás modos no dependen
         # de un transporte compartido y permanecen fail-safe por defecto.
         self._shared_transport_healthy = True
+        self._shared_transport_recovered_at: float | None = None
 
     @property
     def legacy_delivery_enabled(self) -> bool:
@@ -59,7 +61,18 @@ class RealtimeHub:
 
     def set_shared_transport_healthy(self, healthy: bool) -> None:
         """Actualiza la salud usada por presencia sin exponer detalles Redis."""
+        if healthy and not self._shared_transport_healthy:
+            self._shared_transport_recovered_at = time.monotonic()
         self._shared_transport_healthy = healthy
+
+    def shared_transport_recovery_grace_remaining(self, grace_seconds: float) -> float:
+        """Devuelve la barrera restante tras recuperar el transporte compartido."""
+        if not self._shared_transport_healthy:
+            return grace_seconds
+        recovered_at = self._shared_transport_recovered_at
+        if recovered_at is None:
+            return 0.0
+        return max(0.0, grace_seconds - (time.monotonic() - recovered_at))
 
     def _is_subscribed(self, ws: WebSocket) -> bool:
         return any(ws in subscribers for subscribers in self._topics.values())

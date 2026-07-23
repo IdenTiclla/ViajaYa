@@ -62,6 +62,26 @@ class PendingScheduledAction:
 
 
 @dataclass(frozen=True, slots=True)
+class RenewableScheduledAction:
+    """Acción cuya siguiente generación se asigna atómicamente al renovarla."""
+
+    dedupe_key: str
+    action_type: str
+    aggregate_id: uuid.UUID
+    execute_at: datetime
+    payload: dict[str, object]
+
+
+@dataclass(frozen=True, slots=True)
+class PassengerPresenceObservation:
+    """Corte Redis de presencia sin exponer conexiones ni claves internas."""
+
+    live: bool
+    present: bool
+    retry_after_seconds: float
+
+
+@dataclass(frozen=True, slots=True)
 class ScheduledAction:
     """Estado durable de una acción, incluido su lease cuando está reclamada."""
 
@@ -88,7 +108,14 @@ class ScheduledAction:
 class DispatchScheduledActionResult:
     """Resultado sanitizado de procesar como máximo una acción diferida."""
 
-    status: Literal["empty", "succeeded", "retried", "dead", "lost_lease"]
+    status: Literal[
+        "empty",
+        "succeeded",
+        "deferred",
+        "retried",
+        "dead",
+        "lost_lease",
+    ]
     action_id: uuid.UUID | None = None
     action_type: str | None = None
     attempts: int = 0
@@ -101,6 +128,14 @@ class ExecuteExpireOfferScheduledActionResult:
 
     status: Literal["succeeded", "lost_lease"]
     expired_offer: Offer | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ExecuteCancelAbsentRideScheduledActionResult:
+    """Resultado cercado del cierre durable de una búsqueda ausente."""
+
+    status: Literal["succeeded", "deferred", "lost_lease"]
+    cancelled_ride: CancelRideResult | None = None
 
 
 @dataclass(frozen=True, slots=True)

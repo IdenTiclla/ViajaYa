@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import StaticPool
 
-from app.application.dto import PendingScheduledAction
+from app.application.dto import PendingScheduledAction, RenewableScheduledAction
 from app.infrastructure.db.models import ScheduledActionModel
 from app.infrastructure.db.scheduled_actions import (
     SqlAlchemyScheduledActionRepository,
@@ -88,6 +88,64 @@ async def test_schedule_deduplica_y_solo_una_generacion_mayor_renueva(
     assert renewed.execute_at == now + timedelta(hours=2)
     assert renewed.status == "pending"
     assert renewed.attempts == 0
+
+
+async def test_schedule_next_incrementa_generacion_y_revoca_un_lease_vigente(
+    action_sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    now = datetime.now(UTC)
+    key = "cancel_absent_ride:ride-1"
+    ride_id = uuid.uuid5(uuid.NAMESPACE_URL, key)
+    renewable = RenewableScheduledAction(
+        dedupe_key=key,
+        action_type="cancel_absent_ride",
+        aggregate_id=ride_id,
+        execute_at=now,
+        payload={"ride_id": str(ride_id)},
+    )
+    async with action_sessions() as session:
+        repository = SqlAlchemyScheduledActionRepository(session)
+        first = await repository.schedule_next(renewable)
+        await SqlAlchemyUnitOfWork(session).commit()
+
+    async with action_sessions() as session:
+        repository = SqlAlchemyScheduledActionRepository(session)
+        claimed = await repository.claim_due(now, now - timedelta(minutes=1))
+        assert claimed is not None and claimed.lock_token is not None
+        await SqlAlchemyUnitOfWork(session).commit()
+
+    async with action_sessions() as session:
+        repository = SqlAlchemyScheduledActionRepository(session)
+        renewed = await repository.schedule_next(
+            RenewableScheduledAction(
+                dedupe_key=key,
+                action_type="cancel_absent_ride",
+                aggregate_id=ride_id,
+                execute_at=now + timedelta(minutes=2),
+                payload={"ride_id": str(ride_id)},
+            )
+        )
+        await SqlAlchemyUnitOfWork(session).commit()
+
+    assert renewed.id == first.id
+    assert renewed.generation == 2
+    assert renewed.status == "pending"
+    assert renewed.lock_token is None
+    assert renewed.attempts == 0
+
+    async with action_sessions() as session:
+        repository = SqlAlchemyScheduledActionRepository(session)
+        assert not await repository.lock_owned(
+            claimed.id,
+            claimed.generation,
+            claimed.lock_token,
+        )
+        assert not await repository.mark_succeeded(
+            claimed.id,
+            claimed.generation,
+            claimed.lock_token,
+            now,
+        )
 
 
 async def test_claim_respeta_deadline_y_recupera_lease_con_token_nuevo(

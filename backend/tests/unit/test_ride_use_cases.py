@@ -3,11 +3,17 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import timedelta
 from decimal import Decimal
 
 import pytest
 
-from app.application.dto import CreateOfferInput, CreateRideRequestInput, LocationInput
+from app.application.dto import (
+    CreateOfferInput,
+    CreateRideRequestInput,
+    LocationInput,
+    RenewableScheduledAction,
+)
 from app.application.use_cases.list_recent_destinations import ListRecentDestinations
 from app.domain.entities import (
     OfferStatus,
@@ -53,6 +59,20 @@ def _rider(email: str = "rider@viajaya.com") -> User:
     return User(full_name="Pasajero", email=email)
 
 
+class _CapturingScheduledActions:
+    def __init__(self, *, error: BaseException | None = None) -> None:
+        self.actions: list[RenewableScheduledAction] = []
+        self._error = error
+
+    async def schedule(self, _action) -> None:
+        raise AssertionError("La creación debe asignar la generación atómicamente.")
+
+    async def schedule_next(self, action: RenewableScheduledAction) -> None:
+        if self._error is not None:
+            raise self._error
+        self.actions.append(action)
+
+
 async def test_create_ride_request_persists_searching():
     repo = InMemoryRideRequestRepository()
     rider = _rider()
@@ -66,6 +86,41 @@ async def test_create_ride_request_persists_searching():
     assert ride.fare == Decimal("25.00")
     assert ride.destination.name == "Trabajo"
     assert len(repo.rides) == 1
+
+
+async def test_create_ride_request_schedules_initial_absence_in_same_flow() -> None:
+    repo = InMemoryRideRequestRepository()
+    actions = _CapturingScheduledActions()
+
+    ride = await create_ride_request_use_case(
+        repo,
+        scheduled_actions=actions,  # type: ignore[arg-type]
+        passenger_presence_grace_seconds=120,
+    ).execute(_rider(), _input())
+
+    assert ride.created_at is not None
+    assert len(actions.actions) == 1
+    action = actions.actions[0]
+    assert action.dedupe_key == f"cancel_absent_ride:{ride.id}"
+    assert action.payload == {"ride_id": str(ride.id)}
+    assert action.execute_at - ride.created_at == timedelta(seconds=120)
+
+
+async def test_create_ride_request_rolls_back_if_absence_schedule_fails() -> None:
+    repo = InMemoryRideRequestRepository()
+    unit_of_work = InMemoryUnitOfWork(rides=repo)
+    actions = _CapturingScheduledActions(error=RuntimeError("scheduler caído"))
+
+    with pytest.raises(RuntimeError, match="scheduler caído"):
+        await create_ride_request_use_case(
+            repo,
+            unit_of_work=unit_of_work,
+            scheduled_actions=actions,  # type: ignore[arg-type]
+        ).execute(_rider(), _input())
+
+    assert repo.rides == []
+    assert unit_of_work.commits == 0
+    assert unit_of_work.rollbacks == 1
 
 
 async def test_create_ride_request_keeps_chosen_payment_method():

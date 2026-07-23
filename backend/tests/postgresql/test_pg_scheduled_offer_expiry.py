@@ -15,8 +15,8 @@ from app.api.deps import (
 )
 from app.api.v1.scheduled_actions import ApplicationScheduledActionExecutor
 from app.application.dto import CreateOfferInput
-from app.application.use_cases.reconcile_missing_offer_scheduled_actions import (
-    ReconcileMissingOfferScheduledActions,
+from app.application.use_cases.reconcile_missing_scheduled_actions import (
+    ReconcileMissingScheduledActions,
 )
 from app.domain.entities import (
     Location,
@@ -282,7 +282,7 @@ async def test_shadow_reconcilia_oferta_creada_despues_del_backfill(
 
     try:
         async with sessions() as session:
-            reconciled = await ReconcileMissingOfferScheduledActions(
+            reconciled = await ReconcileMissingScheduledActions(
                 SqlAlchemyMissingOfferScheduledActionsReconciler(session),
                 SqlAlchemyUnitOfWork(session),
             ).execute(1000)

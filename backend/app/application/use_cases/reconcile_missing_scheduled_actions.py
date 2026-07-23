@@ -1,19 +1,16 @@
-"""Caso de uso: repara expiraciones ausentes durante un rolling deploy."""
+"""Caso de uso: repara acciones durables ausentes durante un despliegue."""
 
 from __future__ import annotations
 
-from app.application.interfaces import (
-    MissingOfferScheduledActionsReconciler,
-    UnitOfWork,
-)
+from app.application.interfaces import MissingScheduledActionsReconciler, UnitOfWork
 
 
-class ReconcileMissingOfferScheduledActions:
+class ReconcileMissingScheduledActions:
     """Persiste un lote acotado y confirma la reparación en una sola UoW."""
 
     def __init__(
         self,
-        reconciler: MissingOfferScheduledActionsReconciler,
+        reconciler: MissingScheduledActionsReconciler,
         unit_of_work: UnitOfWork,
     ) -> None:
         self._reconciler = reconciler

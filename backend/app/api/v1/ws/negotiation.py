@@ -10,6 +10,8 @@ usuario no autorizado → cierre con código 1008.
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import uuid
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -18,6 +20,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 
 from app.api.deps import (
+    PassengerPresenceLeaseStoreDep,
     SessionFactoryDep,
     SettingsDep,
     build_expire_offer_and_complete_scheduled_action,
@@ -41,6 +44,7 @@ from app.api.v1.schemas.realtime import (
 )
 from app.api.v1.schemas.rides import OpenRidePageResponse, OpenRideResponse, RideResponse
 from app.application.dto import OfferDetail, Page
+from app.application.interfaces import PassengerPresenceLeaseStore
 from app.application.use_cases.build_driver_realtime_snapshot import (
     BuildDriverRealtimeSnapshot,
 )
@@ -72,6 +76,7 @@ from app.infrastructure.realtime.ws_auth import (
 from app.infrastructure.security.jwt_service import JwtTokenService
 
 router = APIRouter(tags=["ws"])
+logger = logging.getLogger(__name__)
 
 _POLICY_VIOLATION = 1008
 
@@ -92,12 +97,51 @@ async def _drain(websocket: WebSocket) -> None:
         pass
 
 
+async def _drain_passenger_with_shared_presence(
+    websocket: WebSocket,
+    ride_id: uuid.UUID,
+    connection_id: uuid.UUID,
+    session_factory: SessionFactoryDep,
+    leases: PassengerPresenceLeaseStore,
+    renew_interval_seconds: float,
+) -> None:
+    """Renueva el lease aunque el canal de bajada no reciba mensajes."""
+    async def renew() -> None:
+        while True:
+            await asyncio.sleep(renew_interval_seconds)
+            try:
+                await presence.renew_shared_passenger_connection(
+                    ride_id,
+                    connection_id,
+                    session_factory,
+                    leases,
+                )
+            except Exception as error:  # noqa: BLE001 - cierre fail-safe
+                logger.warning(
+                    "Falló la renovación del lease WebSocket (%s).",
+                    type(error).__name__,
+                )
+                await websocket.close(code=1012)
+                return
+
+    drain_task = asyncio.create_task(_drain(websocket))
+    renew_task = asyncio.create_task(renew())
+    _done, pending = await asyncio.wait(
+        {drain_task, renew_task},
+        return_when=asyncio.FIRST_COMPLETED,
+    )
+    for task in pending:
+        task.cancel()
+    await asyncio.gather(drain_task, renew_task, return_exceptions=True)
+
+
 @router.websocket("/ws/rides/{ride_id}")
 async def passenger_ws(
     websocket: WebSocket,
     ride_id: uuid.UUID,
     session_factory: SessionFactoryDep,
     settings: SettingsDep,
+    passenger_presence: PassengerPresenceLeaseStoreDep,
     snapshot_builder: Annotated[
         BuildPassengerRealtimeSnapshot,
         Depends(get_build_passenger_realtime_snapshot),
@@ -107,6 +151,7 @@ async def passenger_ws(
     token = token_from_subprotocol(websocket)
     await websocket.accept(subprotocol=AUTH_SUBPROTOCOL if token else None)
     topic = ride_topic(ride_id)
+    connection_id = uuid.uuid4()
     subscribed = False
     try:
         async with session_factory() as session:
@@ -150,12 +195,51 @@ async def passenger_ws(
         # Presencia: la solicitud aparece en el pool mientras el pasajero esté
         # presente (conectado o dentro de la ventana de gracia). El ``finally``
         # también cubre una desconexión durante esta revalidación.
-        await presence.on_passenger_connect(ride_id, session_factory, settings)
-        await _drain(websocket)
+        if settings.realtime_shared_presence_enabled:
+            if passenger_presence is None:
+                await websocket.close(code=1012)
+                return
+            try:
+                await presence.on_shared_passenger_connect(
+                    ride_id,
+                    connection_id,
+                    session_factory,
+                    passenger_presence,
+                    settings,
+                )
+            except Exception as error:  # noqa: BLE001 - cierre fail-safe
+                logger.warning(
+                    "No se pudo confirmar la presencia WebSocket (%s).",
+                    type(error).__name__,
+                )
+                await websocket.close(code=1012)
+                return
+            await _drain_passenger_with_shared_presence(
+                websocket,
+                ride_id,
+                connection_id,
+                session_factory,
+                passenger_presence,
+                settings.realtime_presence_renew_interval_seconds,
+            )
+        else:
+            await presence.on_passenger_connect(ride_id, session_factory, settings)
+            await _drain(websocket)
     finally:
         if subscribed:
             hub.unsubscribe(topic, websocket)
-            presence.on_passenger_disconnect(ride_id, session_factory, settings)
+            if (
+                settings.realtime_shared_presence_enabled
+                and passenger_presence is not None
+            ):
+                await presence.on_shared_passenger_disconnect(
+                    ride_id,
+                    connection_id,
+                    session_factory,
+                    passenger_presence,
+                )
+            else:
+                presence.on_passenger_disconnect(ride_id, session_factory, settings)
 
 
 @router.websocket("/ws/driver")
@@ -163,6 +247,7 @@ async def driver_ws(
     websocket: WebSocket,
     session_factory: SessionFactoryDep,
     settings: SettingsDep,
+    passenger_presence: PassengerPresenceLeaseStoreDep,
     snapshot_builder: Annotated[
         BuildDriverRealtimeSnapshot,
         Depends(get_build_driver_realtime_snapshot),
@@ -216,9 +301,18 @@ async def driver_ws(
                     "live_redis",
                 }:
                     captured = await snapshot_builder.execute(user)
+                    open_rides = captured.open_rides
+                    if settings.realtime_shared_presence_enabled:
+                        if passenger_presence is not None:
+                            open_rides = await presence.present_rides_shared(
+                                open_rides,
+                                passenger_presence,
+                            )
+                    else:
+                        open_rides = presence.present_rides(open_rides)
                     captured = replace(
                         captured,
-                        open_rides=presence.present_rides(captured.open_rides),
+                        open_rides=open_rides,
                     )
                     await websocket.send_json(
                         build_driver_snapshot_message_v2(captured).model_dump(
@@ -226,11 +320,17 @@ async def driver_ws(
                         )
                     )
                 else:
-                    open_rides_page = (
-                        presence.present_rides(await ListOpenRides(rides).execute(user))
-                        if user.is_online
-                        else Page(items=[])
-                    )
+                    open_rides_page = Page(items=[])
+                    if user.is_online:
+                        open_rides_page = await ListOpenRides(rides).execute(user)
+                        if settings.realtime_shared_presence_enabled:
+                            if passenger_presence is not None:
+                                open_rides_page = await presence.present_rides_shared(
+                                    open_rides_page,
+                                    passenger_presence,
+                                )
+                        else:
+                            open_rides_page = presence.present_rides(open_rides_page)
                     snapshot = OpenRidePageResponse.from_page(open_rides_page)
                     paused_snapshot = [
                         OpenRideResponse.from_open_ride(detail)

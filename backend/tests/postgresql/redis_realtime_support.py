@@ -93,6 +93,7 @@ def run_redis_realtime_server_process(
     redis_channel: str,
     jwt_secret: str,
     shutdown: Any,
+    shared_presence_enabled: bool = False,
 ) -> None:
     """Punto de entrada picklable de una réplica API con hub local propio."""
     _validate_test_database_url(database_url)
@@ -114,6 +115,14 @@ def run_redis_realtime_server_process(
         realtime_redis_connect_timeout_seconds=2,
         realtime_redis_reconnect_base_seconds=0.05,
         realtime_redis_reconnect_max_seconds=0.2,
+        realtime_shared_presence_enabled=shared_presence_enabled,
+        realtime_presence_key_prefix=f"{redis_channel}:presence",
+        realtime_presence_lease_seconds=2,
+        realtime_presence_renew_interval_seconds=0.5,
+        realtime_presence_grace_seconds=2,
+        realtime_presence_recheck_seconds=0.1,
+        scheduled_actions_mode="live" if shared_presence_enabled else "off",
+        scheduled_actions_poll_interval_seconds=0.05,
     )
     app = create_app(settings=settings, session_factory=sessions)
     server = uvicorn.Server(

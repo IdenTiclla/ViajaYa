@@ -11,7 +11,6 @@
  * conductores en vivo.
  */
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
   Animated,
@@ -50,6 +49,7 @@ export function SearchingDriversScreen({
   cancelPending,
   cancelError,
   onCancelRequest,
+  onEditReady,
   onRetry,
 }: {
   rideId: string | null;
@@ -61,9 +61,9 @@ export function SearchingDriversScreen({
   cancelPending: boolean;
   cancelError?: unknown;
   onCancelRequest: () => void;
+  onEditReady: (rideId?: string) => void;
   onRetry?: () => void;
 }) {
-  const router = useRouter();
   const updateFare = useUpdateRideFare();
   const pauseForEdit = usePauseForEdit();
   const negotiationBusy = cancelPending || updateFare.isPending || pauseForEdit.isPending;
@@ -138,13 +138,12 @@ export function SearchingDriversScreen({
   const onBack = () => {
     if (negotiationBusy) return;
     if (!rideId) {
-      router.replace('/(app)/booking/configure');
+      onEditReady();
       return;
     }
     // Pausa la búsqueda antes de editar: así se oculta del pool sin cancelarla.
     pauseForEdit.mutate(rideId, {
-      onSuccess: () =>
-        router.replace({ pathname: '/(app)/booking/configure', params: { rideId } }),
+      onSuccess: () => onEditReady(rideId),
     });
   };
 

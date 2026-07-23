@@ -113,7 +113,9 @@ export function OffersScreen() {
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [offerToReject, setOfferToReject] = useState<Offer | null>(null);
   const [returningHome, setReturningHome] = useState(false);
+  const [editTarget, setEditTarget] = useState<{ rideId?: string } | null>(null);
   const returningHomeRef = useRef(false);
+  const editingRef = useRef(false);
   const confirmationVisible = confirming || (assigned && acceptIntent);
   const activeOfferToReject =
     offerToReject && visibleOffers.some((offer) => offer.id === offerToReject.id)
@@ -127,6 +129,12 @@ export function OffersScreen() {
     setReturningHome(true);
   }, []);
 
+  const beginEdit = useCallback((targetRideId?: string) => {
+    if (editingRef.current) return;
+    editingRef.current = true;
+    setEditTarget({ rideId: targetRideId });
+  }, []);
+
   // Primero desmonta mapa, marcadores y diálogos. En el siguiente frame vuelve
   // al Tabs que ya existe debajo, evitando dos árboles nativos superpuestos.
   useEffect(() => {
@@ -134,6 +142,32 @@ export function OffersScreen() {
     const frame = requestAnimationFrame(() => router.dismissTo('/(app)/(tabs)'));
     return () => cancelAnimationFrame(frame);
   }, [returningHome, router]);
+
+  // Fabric procesa los cambios nativos por frame. Desmontar primero el mapa y
+  // navegar dos frames despues evita que react-native-maps reutilice una vista
+  // que Android todavia considera hija del arbol anterior.
+  useEffect(() => {
+    if (!editTarget) return;
+
+    let navigationFrame: number | null = null;
+    const teardownFrame = requestAnimationFrame(() => {
+      navigationFrame = requestAnimationFrame(() => {
+        if (editTarget.rideId) {
+          router.replace({
+            pathname: '/booking/configure',
+            params: { rideId: editTarget.rideId },
+          });
+        } else {
+          router.replace('/booking/configure');
+        }
+      });
+    });
+
+    return () => {
+      cancelAnimationFrame(teardownFrame);
+      if (navigationFrame != null) cancelAnimationFrame(navigationFrame);
+    };
+  }, [editTarget, router]);
 
   // Backup: si el viaje queda asignado por otra vía (p. ej. WS), ir al viaje.
   useEffect(() => {
@@ -202,8 +236,7 @@ export function OffersScreen() {
     ) return;
     // Pausa la solicitud (la oculta del pool) y abre la edición sin cancelar.
     pauseForEdit.mutate(id, {
-      onSuccess: () =>
-        router.replace({ pathname: '/booking/configure', params: { rideId: id } }),
+      onSuccess: () => beginEdit(id),
     });
   };
 
@@ -237,9 +270,10 @@ export function OffersScreen() {
     acceptOffer.isPending ||
     rejectOffer.isPending ||
     pauseForEdit.isPending ||
-    cancelRide.isPending;
+    cancelRide.isPending ||
+    editTarget != null;
 
-  if (returningHome) return <View style={styles.root} />;
+  if (returningHome || editTarget) return <View style={styles.root} />;
 
   if (assigned && !confirmationVisible) {
     // El viaje quedó asignado: el overlay ya navegó, o este es el respaldo.
@@ -260,6 +294,7 @@ export function OffersScreen() {
         cancelPending={cancelRide.isPending}
         cancelError={cancelRide.isError ? cancelRide.error : undefined}
         onCancelRequest={cancelRequest}
+        onEditReady={beginEdit}
         onRetry={() => {
           void rideQuery.refetch();
           void offersQuery.refetch();

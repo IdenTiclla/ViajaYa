@@ -12,6 +12,7 @@ Define `VIAJAYA_TEST_DATABASE_URL` con una base PostgreSQL desechable y ejecuta:
 
 ```bash
 cd backend
+VIAJAYA_TEST_REDIS_URL=redis://localhost:6379/15 \
 .venv/bin/pytest \
   tests/postgresql/test_pg_realtime_network_smoke.py \
   tests/postgresql/test_pg_realtime_fault_smoke.py \
@@ -31,6 +32,9 @@ con sus timers de presencia/expiración. La limpieza física ocurre al desmontar
 la fixture PostgreSQL de la suite. No registran JWT, payloads ni la URL de base
 de datos.
 
+Los casos `live_local` no requieren Redis. Las variantes de crash
+`live_redis` se omiten si `VIAJAYA_TEST_REDIS_URL` no está definida; al
+habilitarlas usan un canal aleatorio y no escriben estado durable en Redis.
 Este smoke forma parte del job `Backend · PostgreSQL real` de CI porque vive en
 `tests/postgresql/`; no requiere cuentas seed ni un backend levantado de
 antemano.
@@ -96,7 +100,9 @@ El smoke de crash usa dos procesos Uvicorn consecutivos, el mismo socket
 loopback, la misma PostgreSQL y el mismo secreto JWT fijo de prueba. Las
 compuertas son objetos IPC anónimos del runner; no existen endpoints, variables
 de corrupción ni controles remotos en `app`. Requiere POSIX por el uso explícito
-de `SIGKILL`; en otros sistemas la prueba se omite.
+de `SIGKILL`; en otros sistemas la prueba se omite. Cada caso se ejecuta primero
+en `live_local` y después en `live_redis`. La segunda variante usa el bridge,
+Pub/Sub y suscripción reales sobre un canal aislado.
 
 Certifica separadamente estas dos ventanas:
 
@@ -116,9 +122,10 @@ publicación, el proceso de recuperación se detiene antes del replay únicament
 dentro del arnés para permitir que el socket TCP real observe la reentrega.
 En el camino exitoso también verifica cancelación, conductor offline, drenado y
 shutdown coordinado de la instancia recuperada. Si una aserción ya falló, un app
-`off` aislado intenta limpiar ese estado sin ocultar el error primario.
+`off` aislado intenta limpiar ese estado sin ocultar el error primario. El
+2026-07-23 pasaron las cuatro combinaciones de ventana y transporte.
 
-## Cobertura todavía manual
+## Pase del dev build React Native
 
 El pase headless no sustituye el runtime React Native. El observador técnico de
 desarrollo conserva en un buffer acotado y escribe con el prefijo `[realtime]`
@@ -127,32 +134,86 @@ scope `passenger|driver`, categorías cerradas, secuencia y hora; nunca rutas,
 IDs de viaje, tokens, frames ni payloads. El buffer está deshabilitado fuera de
 `__DEV__`.
 
-Para cerrar la certificación se debe usar un dev build —nunca Expo Go— y
-observar que el hook productivo:
+El runner `scripts/mobile_realtime_smoke.py` permite repetir el pase con un dev
+build —nunca Expo Go— sin agregar controles al artefacto productivo. Arranca una
+API `live_local` sobre una base PostgreSQL desechable, crea una cuenta efímera de
+conductor y arma los fallos únicamente por referencia directa dentro del
+proceso.
 
-- descarta un duplicado sin repetir estado ni avisos;
-- detecta un hueco y aplica un snapshot de reconexión;
-- se recupera de un frame inválido;
-- recibe el cierre `1012` posterior a una cuarentena confirmada y converge.
-
-La evidencia puede capturarse desde Metro o, en Android, filtrando logcat:
+Primero lleva la base desechable a `head` y arranca el runner:
 
 ```bash
-adb logcat -v time | rg '\[realtime\]'
+cd backend
+DATABASE_URL="$VIAJAYA_TEST_DATABASE_URL" .venv/bin/alembic upgrade head
+.venv/bin/python -m scripts.mobile_realtime_smoke
 ```
+
+En otra terminal levanta un Metro separado del entorno habitual:
+
+```bash
+cd mobile
+API_URL=http://10.0.2.2:8002/api/v1 \
+  npx expo start --dev-client --port 8082
+```
+
+En Android Emulator, `10.0.2.2` resuelve al host para la API. Para Metro es más
+estable crear el reverse ADB y abrir el dev client por loopback:
+
+```bash
+adb -s emulator-5554 reverse tcp:8082 tcp:8082
+adb -s emulator-5554 shell am start -a android.intent.action.VIEW \
+  -d 'exp+viajaya://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8082'
+adb -s emulator-5554 logcat -v time | rg '\[realtime\]'
+```
+
+Inicia sesión con las credenciales efímeras que imprime el runner, concede la
+ubicación mientras se usa la app y espera `connected` +
+`snapshot_applied`. Luego ejecuta, uno por uno, los comandos interactivos:
+
+```text
+duplicate
+gap
+invalid_frame
+quarantine
+quit
+```
+
+El hook productivo debe:
+
+- descartar un duplicado sin repetir estado ni avisos;
+- detectar un hueco y aplicar un snapshot de reconexión;
+- recuperarse de un frame inválido;
+- recibir el cierre `1012` posterior a una cuarentena confirmada y converger.
 
 Los escenarios deben mostrar respectivamente `dropped/duplicate`,
 `resync/stream_gap`, `invalid_frame` seguido de `resync/invalid_frame`, y
 `closed` con código `1012` seguido de `connected` y `snapshot_applied`.
 
-Ese pase requiere un emulador o dispositivo solicitado expresamente. El arnés
-one-shot de los tests puede reutilizarse al diseñar el proxy o runner móvil, pero
-no se deben añadir endpoints administrativos ni flags de corrupción al artefacto
-productivo.
+`quit` cancela los rides propios, deja al conductor offline, retira únicamente
+la cuarentena artificial conocida y apaga la API. Después detén el Metro
+temporal y el AVD, y devuelve la base desechable a `base`. No interrumpas el
+backend, Metro o Redis habituales.
 
 La evidencia manual debe registrar commit, dispositivo o AVD, estado de
 `/health/ready` y `/health/realtime`, resultado por escenario y un extracto
 sanitizado de logcat. Nunca debe conservar JWT, payloads, DSN ni datos personales.
+
+### Evidencia 2026-07-23
+
+- Fuente: `19a18da` más el runner y pruebas documentados en esta entrega.
+- Runtime: dev build Expo SDK 56 sobre `viajaya_pasajero`, Android 14.
+- API aislada: `live_local`, Alembic `0023`; `/health/ready=status=ok`,
+  dispatcher y advisory lock sanos. `/health/realtime=status=ok`, sin pendientes
+  ni retries al comenzar.
+- Duplicado: `dropped/duplicate`.
+- Hueco: `resync/stream_gap`; al volver la app a primer plano se observó
+  `connected` + `snapshot_applied`.
+- Frame inválido: `invalid_frame` sobre metadatos sanitizados,
+  `resync/invalid_frame`, cierre local, reconexión y snapshot.
+- Cuarentena: el dispatcher confirmó `invalid_payload`; el dev build recibió
+  cierre `1012`, reconectó y aplicó snapshot.
+- Limpieza: el cierre normal del runner se verificó con código `0`; el AVD y los
+  servicios `:8002`/`:8082` se apagaron y `test_viajaya` volvió a `base`.
 
 ## Límites del smoke headless
 
@@ -160,12 +221,11 @@ sanitizado de logcat. Nunca debe conservar JWT, payloads, DSN ni datos personale
 - El smoke base certifica un proceso `live_local`; el smoke Redis certifica dos
   procesos únicamente con presencia compartida y scheduler durable activos.
 - Usa el cliente Python `websockets`, no el WebSocket nativo de React Native.
-- Cierra y abre explícitamente otra conexión; no prueba backoff, AppState ni red
-  móvil.
+- El pase de dev build cubre el WebSocket nativo y reconexión en AVD, pero no una
+  red móvil real, TLS, suspensión prolongada ni cambio de red.
 - Inyecta duplicado, hueco y cuarentena solo mediante el arnés one-shot de
-  tests. Fuerza `SIGKILL` y restart de un único proceso `live_local`, pero no
-  cubre caída del host o PostgreSQL, crash API durante `live_redis`, frame
-  inválido por TCP ni el hook React Native.
+  tests/runner. Fuerza `SIGKILL` y restart en `live_local|live_redis`, pero no
+  cubre caída del host o PostgreSQL.
 - Certifica la recuperación durable de expiración de ofertas en la suite
   PostgreSQL específica de `scheduled_actions`; este smoke de realtime no
   vuelve a ejecutar ese escenario. La cancelación por ausencia conserva su

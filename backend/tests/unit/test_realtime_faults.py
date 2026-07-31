@@ -277,6 +277,43 @@ async def test_publisher_gap_serializa_todo_y_omite_solo_el_primer_objetivo() ->
     assert broadcasts[0][1]["stream_version"] == 9
 
 
+async def test_publisher_envia_frame_invalido_y_luego_publica_el_batch() -> None:
+    event = _event()
+    controller = RealtimeFaultController()
+    controller.arm(
+        RealtimeFaultPlan(
+            action="invalid_frame",
+            event_type=event.event_type,
+            topic=event.topic,
+        )
+    )
+    delegate = RecordingPublisher()
+    broadcasts: list[tuple[str, dict[str, object]]] = []
+
+    async def broadcast(topic: str, envelope: dict[str, object]) -> None:
+        broadcasts.append((topic, envelope))
+
+    publisher = FaultInjectingRealtimeOutboxBatchPublisher(
+        delegate,
+        controller,
+        broadcast,
+    )
+
+    await publisher.publish([event])
+
+    assert broadcasts == [
+        (
+            event.topic,
+            {
+                "type": event.event_type,
+                "data": {},
+            },
+        )
+    ]
+    assert delegate.published == [[event]]
+    assert controller.plan is not None and controller.plan.hit is True
+
+
 async def test_publisher_delega_sin_match_y_delega_force_resync() -> None:
     event = _event()
     controller = RealtimeFaultController()

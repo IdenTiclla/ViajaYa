@@ -36,6 +36,7 @@ from app.main import create_app
 from tests.postgresql import test_pg_realtime_network_smoke as network_support
 from tests.postgresql.realtime_crash_support import (
     CrashWindow,
+    RealtimeDispatchMode,
     run_realtime_server_process,
 )
 
@@ -139,7 +140,11 @@ async def _bootstrap_ride(pg_test_db) -> _Bootstrap:
             )
 
 
-async def _wait_ready(base_url: str, process) -> None:
+async def _wait_ready(
+    base_url: str,
+    process,
+    dispatch_mode: RealtimeDispatchMode,
+) -> None:
     deadline = time.monotonic() + _OPERATION_TIMEOUT_SECONDS
     async with httpx.AsyncClient(
         base_url=base_url,
@@ -160,6 +165,8 @@ async def _wait_ready(base_url: str, process) -> None:
                     assert payload["checks"]["database"] == "ok"
                     assert payload["checks"]["realtime_outbox_dispatcher"] == "ok"
                     assert payload["checks"]["realtime_outbox_process_lock"] == "ok"
+                    if dispatch_mode == "live_redis":
+                        assert payload["checks"]["realtime_redis_bridge"] == "ok"
                     return
             except httpx.HTTPError:
                 pass
@@ -213,8 +220,11 @@ def _start_process(
     reached,
     release,
     crash_window: CrashWindow | None = None,
+    dispatch_mode: RealtimeDispatchMode = "live_local",
     event: _OutboxEventState | None = None,
     published=None,
+    redis_url: str | None = None,
+    redis_channel: str | None = None,
 ):
     process = context.Process(
         target=run_realtime_server_process,
@@ -230,11 +240,14 @@ def _start_process(
         ),
         kwargs={
             "crash_window": crash_window,
+            "dispatch_mode": dispatch_mode,
             "event_id": str(event.id) if event is not None else None,
             "batch_id": str(event.batch_id) if event is not None else None,
             "published": published,
+            "redis_url": redis_url,
+            "redis_channel": redis_channel,
         },
-        name=f"realtime-{mode}-smoke",
+        name=f"realtime-{dispatch_mode}-{mode}-smoke",
     )
     process.start()
     return process
@@ -377,9 +390,20 @@ async def _fallback_cleanup_business(pg_test_db, bootstrap: _Bootstrap) -> None:
             )
 
 
-async def _exercise_crash_window(pg_test_db, window: CrashWindow) -> None:
+async def _exercise_crash_window(
+    pg_test_db,
+    window: CrashWindow,
+    dispatch_mode: RealtimeDispatchMode,
+) -> None:
     if os.name != "posix":
         pytest.skip("El smoke de SIGKILL y socket heredado requiere POSIX.")
+    redis_url: str | None = None
+    redis_channel: str | None = None
+    if dispatch_mode == "live_redis":
+        redis_url = os.getenv("VIAJAYA_TEST_REDIS_URL")
+        if not redis_url:
+            pytest.skip("Define VIAJAYA_TEST_REDIS_URL para certificar el crash live_redis.")
+        redis_channel = f"viajaya:test:crash:{uuid.uuid4().hex}"
     sessions = async_sessionmaker[AsyncSession](
         pg_test_db.engine,
         expire_on_commit=False,
@@ -411,8 +435,11 @@ async def _exercise_crash_window(pg_test_db, window: CrashWindow) -> None:
             reached=crash_reached,
             release=crash_release,
             crash_window=window,
+            dispatch_mode=dispatch_mode,
+            redis_url=redis_url,
+            redis_channel=redis_channel,
         )
-        await _wait_ready(base_url, crash_process)
+        await _wait_ready(base_url, crash_process, dispatch_mode)
         first_websocket, initial = await _connect_snapshot(base_url, bootstrap)
         initial_watermark = initial.watermarks[0].stream_version
 
@@ -468,10 +495,13 @@ async def _exercise_crash_window(pg_test_db, window: CrashWindow) -> None:
             shutdown=recovery_shutdown,
             reached=recovery_reached,
             release=recovery_release,
+            dispatch_mode=dispatch_mode,
             event=unlocked,
             published=recovery_published,
+            redis_url=redis_url,
+            redis_channel=redis_channel,
         )
-        await _wait_ready(base_url, recovery_process)
+        await _wait_ready(base_url, recovery_process, dispatch_mode)
         await _wait_event(recovery_reached, "recovery before_publish")
         async with httpx.AsyncClient(
             base_url=base_url,
@@ -574,13 +604,17 @@ async def _exercise_crash_window(pg_test_db, window: CrashWindow) -> None:
                 pass
 
 
+@pytest.mark.parametrize("dispatch_mode", ["live_local", "live_redis"])
 async def test_crash_tras_commit_antes_de_publicar_no_pierde_evento(
     pg_test_db,
+    dispatch_mode: RealtimeDispatchMode,
 ) -> None:
-    await _exercise_crash_window(pg_test_db, "before_publish")
+    await _exercise_crash_window(pg_test_db, "before_publish", dispatch_mode)
 
 
+@pytest.mark.parametrize("dispatch_mode", ["live_local", "live_redis"])
 async def test_crash_tras_publicar_reentrega_identidad_exacta(
     pg_test_db,
+    dispatch_mode: RealtimeDispatchMode,
 ) -> None:
-    await _exercise_crash_window(pg_test_db, "after_publish")
+    await _exercise_crash_window(pg_test_db, "after_publish", dispatch_mode)

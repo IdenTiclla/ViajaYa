@@ -7,15 +7,18 @@
 > **Estrategia:** evolución incremental del monolito modular; no se divide en
 > microservicios.
 
-> **Validación local 2026-07-22:** pasaron las 556 pruebas rápidas y las 67
+> **Validación local 2026-07-23:** pasaron las 557 pruebas rápidas y las 69
 > pruebas PostgreSQL/Redis opt-in, incluidas las pruebas TCP, crash/replay,
 > reinicio de Redis, scheduler durable y dos workers con presencia compartida.
 > También pasaron Ruff, exportación y generación OpenAPI, `oasdiff`, TypeScript,
 > lint y los 10 tests mobile. `promtool` validó 21 reglas; `amtool` validó la
 > configuración y el perfil Compose arrancó ambos servicios en loopback y
-> aceptó una alerta sintética local. Permanecen abiertos únicamente el rollout
-> con tráfico representativo, la integración real del receptor/perímetro de
-> métricas y el pase del dev build en un dispositivo o AVD.
+> aceptó una alerta sintética local. Un AVD Android 14 ejecutó además el hook
+> React Native productivo frente a duplicado, hueco, frame inválido y
+> cuarentena/cierre `1012`; todos convergieron mediante snapshot. El smoke de
+> crash/replay cubre ahora las dos ventanas críticas tanto en `live_local` como
+> en `live_redis`. Permanecen abiertos únicamente el rollout con tráfico
+> representativo y la integración real del receptor/perímetro de métricas.
 
 ## Contexto
 
@@ -124,9 +127,13 @@ infraestructura.
 > con cursor keyset y mobile las consume con React Query infinito. `0017` pasó el
 > ciclo `0016 → 0017 → 0016 → 0017` y la carrera de asignación en una base
 > PostgreSQL desechable. La base local `viajaya` está actualmente en `0023`, por
-> lo que incluye `0017`; aún falta comprobar `EXPLAIN` con volumen representativo
-> y aplicar/certificar la cadena completa en un entorno desplegado. El workflow
-> CI ejecuta la suite PostgreSQL opt-in sobre una base desechable.
+> lo que incluye `0017`. Un ensayo local con 25 000 usuarios, 220 000 rides y
+> 300 000 ofertas confirmó los índices esperados mediante
+> `EXPLAIN (ANALYZE, BUFFERS)`: las páginas habituales de historial quedaron
+> por debajo de 1 ms, el pool caliente alrededor de 3 ms y las consultas
+> extremas/cold entre 33 y 73 ms. Aún falta aplicar y calibrar la cadena completa
+> con el volumen y tráfico reales de un entorno desplegado. El workflow CI
+> ejecuta la suite PostgreSQL opt-in sobre una base desechable.
 
 ### Paginación
 
@@ -589,14 +596,18 @@ Endurecimiento antes de promover la canary:
   y el nuevo handshake devuelve un snapshot autoritativo cuyo watermark cubre
   esa versión. La duplicación es la semántica esperada de entrega al menos una
   vez.
-- [ ] Ejecutar el pase del hook productivo en un dev build React Native frente
+- [x] Repetir ambas ventanas de crash con el bridge y la suscripción reales de
+  Redis: el replay conserva la identidad durable y converge por snapshot en
+  `live_redis`, sin controles remotos ni flags productivos.
+- [x] Ejecutar el pase del hook productivo en un dev build React Native frente
   a duplicado, hueco, frame inválido y cuarentena/cierre `1012`, y conservar la
   evidencia indicada en
   `docs/runbooks/smoke-realtime.md`.
-  El observador sanitizado de desarrollo ya conserva código de cierre, causa de
-  descarte y motivo de resync en un buffer acotado y en logs `[realtime]`. La
-  tarea permanece abierta hasta ejecutar y documentar los cuatro escenarios en
-  un dispositivo o AVD.
+  El runner interactivo vive fuera de `app`, arma fallos one-shot por referencia
+  directa y no expone controles por red. El pase del 2026-07-23 usó un AVD
+  Android 14 y confirmó `dropped/duplicate`, `resync/stream_gap`,
+  `invalid_frame` + `resync/invalid_frame` y cierre `1012`, todos seguidos de
+  reconexión y snapshot cuando corresponde.
 - [x] Hacer indivisible la aplicación de snapshots entre React Query y Zustand,
   e impedir que un handler ya iniciado emita efectos después de invalidar su
   generación. Cada socket físico abre una generación, los commits revalidan su
@@ -717,9 +728,9 @@ seguirán siendo la defensa final contra carreras.
    watermarks.
 6. Activar `live_redis` con un worker API y comparar eventos/snapshots.
 7. Desactivar temporizadores y publicación directa mediante feature flags.
-8. Probar reinicios forzados de API, Redis y workers. El crash API `live_local`,
-   el restart total de Redis con replay y el crash del scheduler durable están
-   certificados en procesos/contenedores reales.
+8. Probar reinicios forzados de API, Redis y workers. El crash API en
+   `live_local|live_redis`, el restart total de Redis con replay y el crash del
+   scheduler durable están certificados en procesos/contenedores reales.
 9. Activar presencia compartida y dos workers API en staging; promover luego a
    producción con el gate, métricas y rollback por flag.
 
@@ -751,7 +762,8 @@ personales sin redacción.
 
 - Pasajero y conductor conectados a procesos distintos reciben todos los eventos.
 - Matar la API después del commit no pierde la notificación: certificado para
-  `live_local`; Redis certifica restart/replay y la negociación multiproceso.
+  `live_local` y `live_redis`; Redis certifica además restart total/replay y la
+  negociación multiproceso.
 - Reiniciar workers no evita que una oferta venza ni deja una búsqueda abandonada.
 - Redis caído no provoca cancelaciones falsas.
 - Duplicar o reordenar eventos no revierte estados terminales en mobile.

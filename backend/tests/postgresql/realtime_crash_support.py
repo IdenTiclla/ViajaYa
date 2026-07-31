@@ -9,6 +9,7 @@ from collections.abc import Sequence
 from typing import Any, Literal, TypeAlias
 
 import uvicorn
+from redis.asyncio import Redis
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
@@ -17,12 +18,14 @@ from app.api.v1.realtime_outbox import (
     CanonicalRealtimeOutboxBatchValidator,
     LocalHubRealtimeOutboxBatchPublisher,
 )
+from app.api.v1.redis_realtime import RedisRealtimeBridge
 from app.application.dto import RealtimeOutboxEvent
 from app.application.interfaces import RealtimeOutboxBatchPublisher
 from app.infrastructure.config import Settings
 from app.main import create_app
 
 CrashWindow: TypeAlias = Literal["before_publish", "after_publish"]
+RealtimeDispatchMode: TypeAlias = Literal["live_local", "live_redis"]
 
 _COORDINATION_TIMEOUT_SECONDS = 30.0
 
@@ -135,6 +138,83 @@ class RecoveryGateRealtimeOutboxBatchPublisher(RealtimeOutboxBatchPublisher):
         await self._delegate.force_resync(streams)
 
 
+class CrashGateRedisRealtimeBridge(RedisRealtimeBridge):
+    """Bridge Redis real con la misma compuerta exacta del crash local."""
+
+    def __init__(
+        self,
+        *args: Any,
+        ride_id: uuid.UUID,
+        window: CrashWindow,
+        reached: Any,
+        release: Any,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self._target_ride_id = ride_id
+        self._window = window
+        self._reached = reached
+        self._release = release
+        self._hit = False
+
+    async def publish(self, events: Sequence[RealtimeOutboxEvent]) -> None:
+        matches = not self._hit and _matches_target(
+            events,
+            ride_id=self._target_ride_id,
+        )
+        if matches and self._window == "before_publish":
+            self._hit = True
+            self._reached.set()
+            await _wait_release(self._release)
+
+        await super().publish(events)
+
+        if matches and self._window == "after_publish":
+            self._hit = True
+            self._reached.set()
+            await _wait_release(self._release)
+
+
+class RecoveryGateRedisRealtimeBridge(RedisRealtimeBridge):
+    """Bridge Redis real que retiene el replay hasta conectar el cliente."""
+
+    def __init__(
+        self,
+        *args: Any,
+        ride_id: uuid.UUID,
+        event_id: uuid.UUID,
+        batch_id: uuid.UUID,
+        reached: Any,
+        release: Any,
+        published: Any,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self._target_ride_id = ride_id
+        self._event_id = event_id
+        self._batch_id = batch_id
+        self._reached = reached
+        self._release = release
+        self._published = published
+        self._hit = False
+
+    async def publish(self, events: Sequence[RealtimeOutboxEvent]) -> None:
+        matches = not self._hit and _matches_target(
+            events,
+            ride_id=self._target_ride_id,
+            event_id=self._event_id,
+            batch_id=self._batch_id,
+        )
+        if matches:
+            self._hit = True
+            self._reached.set()
+            await _wait_release(self._release)
+
+        await super().publish(events)
+        if matches:
+            self._published.set()
+
+
 def _validate_test_database_url(database_url: str) -> None:
     url = make_url(database_url)
     database = url.database or ""
@@ -155,9 +235,12 @@ def run_realtime_server_process(
     release: Any,
     *,
     crash_window: CrashWindow | None = None,
+    dispatch_mode: RealtimeDispatchMode = "live_local",
     event_id: str | None = None,
     batch_id: str | None = None,
     published: Any | None = None,
+    redis_url: str | None = None,
+    redis_channel: str | None = None,
 ) -> None:
     """Punto de entrada picklable del proceso Uvicorn exclusivo de tests."""
     _validate_test_database_url(database_url)
@@ -168,42 +251,91 @@ def run_realtime_server_process(
         _env_file=None,
         database_url=database_url,
         jwt_secret=jwt_secret,
-        realtime_outbox_dispatch_mode="live_local",
+        realtime_outbox_dispatch_mode=dispatch_mode,
         realtime_outbox_recording_enabled=True,
         realtime_outbox_poll_interval_seconds=0.01,
+        realtime_outbox_retry_base_seconds=0.05,
+        realtime_outbox_retry_max_seconds=0.1,
         realtime_outbox_shutdown_timeout_seconds=2,
+        realtime_redis_url=redis_url or "redis://localhost:6379/0",
+        realtime_redis_channel=redis_channel or "viajaya:realtime",
+        realtime_redis_connect_timeout_seconds=2,
+        realtime_redis_reconnect_base_seconds=0.05,
+        realtime_redis_reconnect_max_seconds=0.2,
     )
-    delegate = LocalHubRealtimeOutboxBatchPublisher()
-    if mode == "crash":
-        if crash_window is None:
-            raise RuntimeError("La instancia crash requiere una ventana exacta.")
-        publisher: RealtimeOutboxBatchPublisher = (
-            CrashGateRealtimeOutboxBatchPublisher(
+    app_options: dict[str, object] = {}
+    if dispatch_mode == "live_local":
+        delegate = LocalHubRealtimeOutboxBatchPublisher()
+        if mode == "crash":
+            if crash_window is None:
+                raise RuntimeError("La instancia crash requiere una ventana exacta.")
+            publisher: RealtimeOutboxBatchPublisher = CrashGateRealtimeOutboxBatchPublisher(
                 delegate,
                 ride_id=resolved_ride_id,
                 window=crash_window,
                 reached=reached,
                 release=release,
             )
-        )
+        else:
+            if event_id is None or batch_id is None or published is None:
+                raise RuntimeError("La recuperación requiere la identidad durable.")
+            publisher = RecoveryGateRealtimeOutboxBatchPublisher(
+                delegate,
+                ride_id=resolved_ride_id,
+                event_id=uuid.UUID(event_id),
+                batch_id=uuid.UUID(batch_id),
+                reached=reached,
+                release=release,
+                published=published,
+            )
+        app_options["realtime_outbox_batch_publisher"] = publisher
     else:
-        if event_id is None or batch_id is None or published is None:
-            raise RuntimeError("La recuperación requiere la identidad durable.")
-        publisher = RecoveryGateRealtimeOutboxBatchPublisher(
-            delegate,
-            ride_id=resolved_ride_id,
-            event_id=uuid.UUID(event_id),
-            batch_id=uuid.UUID(batch_id),
-            reached=reached,
-            release=release,
-            published=published,
+        if not redis_url or not redis_channel:
+            raise RuntimeError("El crash live_redis requiere URL y canal aislados.")
+        client = Redis.from_url(
+            redis_url,
+            decode_responses=True,
+            socket_connect_timeout=2,
+            socket_timeout=2,
+            health_check_interval=1,
         )
+        bridge_options = {
+            "channel": redis_channel,
+            "connect_timeout_seconds": 2,
+            "reconnect_base_seconds": 0.05,
+            "reconnect_max_seconds": 0.2,
+        }
+        if mode == "crash":
+            if crash_window is None:
+                raise RuntimeError("La instancia crash requiere una ventana exacta.")
+            bridge = CrashGateRedisRealtimeBridge(
+                client,
+                ride_id=resolved_ride_id,
+                window=crash_window,
+                reached=reached,
+                release=release,
+                **bridge_options,
+            )
+        else:
+            if event_id is None or batch_id is None or published is None:
+                raise RuntimeError("La recuperación requiere la identidad durable.")
+            bridge = RecoveryGateRedisRealtimeBridge(
+                client,
+                ride_id=resolved_ride_id,
+                event_id=uuid.UUID(event_id),
+                batch_id=uuid.UUID(batch_id),
+                reached=reached,
+                release=release,
+                published=published,
+                **bridge_options,
+            )
+        app_options["realtime_redis_bridge"] = bridge
 
     app = create_app(
         settings=settings,
         session_factory=sessions,
         realtime_outbox_batch_validator=CanonicalRealtimeOutboxBatchValidator(),
-        realtime_outbox_batch_publisher=publisher,
+        **app_options,
     )
     server = uvicorn.Server(
         uvicorn.Config(

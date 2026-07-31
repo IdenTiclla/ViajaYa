@@ -21,10 +21,15 @@ from app.application.interfaces import (
     RealtimeOutboxBatchValidator,
 )
 
-RealtimeFaultAction: TypeAlias = Literal["duplicate", "gap", "quarantine"]
+RealtimeFaultAction: TypeAlias = Literal[
+    "duplicate",
+    "gap",
+    "invalid_frame",
+    "quarantine",
+]
 RealtimeBroadcast: TypeAlias = Callable[[str, dict[str, object]], Awaitable[None]]
 
-_PUBLISH_ACTIONS = frozenset({"duplicate", "gap"})
+_PUBLISH_ACTIONS = frozenset({"duplicate", "gap", "invalid_frame"})
 _QUARANTINE_ACTIONS = frozenset({"quarantine"})
 _QUARANTINE_REASON = "Fallo de cuarentena inyectado por el smoke realtime."
 
@@ -131,7 +136,7 @@ class FaultInjectingRealtimeOutboxBatchValidator(RealtimeOutboxBatchValidator):
 
 
 class FaultInjectingRealtimeOutboxBatchPublisher(RealtimeOutboxBatchPublisher):
-    """Inyecta duplicado o hueco y delega cualquier publicación normal."""
+    """Inyecta un fallo de entrega y delega cualquier publicación normal."""
 
     def __init__(
         self,
@@ -154,6 +159,17 @@ class FaultInjectingRealtimeOutboxBatchPublisher(RealtimeOutboxBatchPublisher):
 
         if match.plan.action == "duplicate":
             await self._delegate.publish(events)
+            await self._delegate.publish(events)
+            return
+
+        if match.plan.action == "invalid_frame":
+            await self._broadcast(
+                match.plan.topic,
+                {
+                    "type": match.plan.event_type,
+                    "data": {},
+                },
+            )
             await self._delegate.publish(events)
             return
 

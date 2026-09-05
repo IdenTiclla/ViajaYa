@@ -123,7 +123,7 @@ export function SavedPlacesScreen() {
     .slice(0, 4);
 
   return (
-    <SafeAreaView style={styles.root} edges={['top']}>
+    <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.back}
@@ -148,7 +148,7 @@ export function SavedPlacesScreen() {
           />
         }>
         <Text style={styles.subtitle}>
-          Administra tus destinos frecuentes para reservar más rápido.
+          Toca un lugar para usarlo como destino. Usa Editar para cambiar sus datos.
         </Text>
 
         {areaError ? (
@@ -201,7 +201,7 @@ export function SavedPlacesScreen() {
                     </View>
                     <View style={styles.rowText}>
                       <Text style={styles.rowTitle}>{item.label}</Text>
-                      <Text style={styles.rowAddress} numberOfLines={1}>
+                      <Text style={styles.rowAddress}>
                         {item.place.address}
                       </Text>
                     </View>
@@ -209,12 +209,10 @@ export function SavedPlacesScreen() {
                   <TouchableOpacity
                     style={styles.editButton}
                     onPress={() => edit(item)}
-                    hitSlop={8}
                     accessibilityRole="button"
                     accessibilityLabel={`Editar ${item.label}`}>
-                    <View style={styles.editIcon}>
-                      <Ionicons name="pencil" size={20} color={colors.primary} />
-                    </View>
+                    <Ionicons name="pencil-outline" size={18} color={colors.primary} />
+                    <Text style={styles.editLabel}>Editar</Text>
                   </TouchableOpacity>
                 </View>
               );
@@ -237,7 +235,7 @@ export function SavedPlacesScreen() {
                   accessibilityRole="button"
                   accessibilityLabel={`Guardar ${r.name}`}>
                   <Ionicons name="add" size={16} color={colors.primary} />
-                  <Text style={styles.chipText} numberOfLines={1}>
+                  <Text style={styles.chipText}>
                     {r.name}
                   </Text>
                 </TouchableOpacity>
@@ -259,7 +257,10 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   back: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { fontSize: fontSize.lg, fontWeight: fontWeight.semibold, color: colors.text },
+  headerTitle: {
+    flex: 1, textAlign: 'center', fontSize: fontSize.lg,
+    fontWeight: fontWeight.semibold, color: colors.text,
+  },
 
   scroll: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xl },
   subtitle: { fontSize: fontSize.sm, color: colors.textSecondary, marginBottom: spacing.md },
@@ -279,12 +280,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
-    height: 52,
+    minHeight: 52,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     borderRadius: radius.md,
     backgroundColor: colors.primary,
     marginBottom: spacing.lg,
   },
   addButtonText: {
+    flexShrink: 1,
+    textAlign: 'center',
     color: colors.textOnPrimary,
     fontSize: fontSize.md,
     fontWeight: fontWeight.semibold,
@@ -292,15 +297,12 @@ const styles = StyleSheet.create({
 
   list: { gap: spacing.sm },
   row: {
-    flexDirection: 'row',
-    alignItems: 'center',
     borderRadius: radius.lg,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
   },
   rowMain: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
@@ -314,24 +316,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  rowText: { flex: 1 },
+  rowText: { flex: 1, minWidth: 0, gap: spacing.xs },
   rowTitle: { fontSize: fontSize.md, fontWeight: fontWeight.medium, color: colors.text },
   rowAddress: { fontSize: fontSize.sm, color: colors.textSecondary },
   editButton: {
-    width: 52,
-    height: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.xs,
-  },
-  editIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surfaceMuted,
+    flexDirection: 'row',
+    gap: spacing.xs,
+    minHeight: 48,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  editLabel: { fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.primary },
 
   recentBox: {
     marginTop: spacing.lg,
@@ -343,7 +342,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   recentBoxHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  recentBoxTitle: { fontSize: fontSize.sm, color: colors.textSecondary },
+  recentBoxTitle: { flex: 1, fontSize: fontSize.sm, color: colors.textSecondary },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   chip: {
     flexDirection: 'row',
@@ -351,10 +350,11 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     maxWidth: '100%',
     paddingHorizontal: spacing.md,
-    height: 36,
+    minHeight: 48,
+    paddingVertical: spacing.sm,
     borderRadius: radius.pill,
     backgroundColor: `${colors.primary}11`,
   },
-  chipText: { fontSize: fontSize.sm, color: colors.primary, fontWeight: fontWeight.medium },
+  chipText: { flexShrink: 1, fontSize: fontSize.sm, color: colors.primary, fontWeight: fontWeight.medium },
 
 });

@@ -1,8 +1,8 @@
 /**
  * Historial de viajes (pasajero o conductor) — diseño Stitch "Historial de Viajes".
  *
- * Tabs Completados / Cancelados; cada tarjeta muestra el destino, la fecha, la
- * contraparte (vehículo) y el precio. El backend infiere el rol desde el token,
+ * Tabs Completados / Cancelados; cada tarjeta muestra la ruta, la fecha, la
+ * contraparte y el importe. El backend infiere el rol desde el token,
  * así que la misma pantalla sirve para ambos roles.
  */
 import { Ionicons } from '@expo/vector-icons';
@@ -24,7 +24,7 @@ import { SERVICE_META } from '@/features/booking/domain/serviceCatalog';
 import { useRideHistory } from '@/features/rides/application/useCloseFlow';
 import { formatBolivianos } from '@/features/rides/domain/money';
 import type { RideHistoryItem, RideStatus } from '@/features/rides/domain/types';
-import { FeedbackState } from '@/shared/components';
+import { Button, FeedbackState } from '@/shared/components';
 
 const VEHICLE_LABELS = { taxi: 'Taxi', moto: 'Moto' } as const;
 
@@ -38,6 +38,7 @@ function formatDate(iso: string | null): string {
   return new Date(iso).toLocaleString('es-BO', {
     day: '2-digit',
     month: 'short',
+    year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
   });
@@ -55,10 +56,12 @@ export function RideHistoryScreen() {
     hasNextPage,
     fetchNextPage,
     isFetchingNextPage,
+    isFetchNextPageError,
+    isRefetchError,
   } = useRideHistory(tab);
   const retry = () => void refetch();
   const loadMore = () => {
-    if (hasNextPage && !isFetchingNextPage) {
+    if (hasNextPage && !isFetchingNextPage && !isFetchNextPageError) {
       void fetchNextPage();
     }
   };
@@ -66,6 +69,7 @@ export function RideHistoryScreen() {
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
       <Text style={styles.header}>Historial</Text>
+      <Text style={styles.subtitle}>Consulta tus rutas y los detalles de cada viaje.</Text>
 
       <View style={styles.tabs}>
         {TABS.map((t) => {
@@ -91,14 +95,39 @@ export function RideHistoryScreen() {
         renderItem={({ item }) => <HistoryCard item={item} />}
         onEndReached={loadMore}
         onEndReachedThreshold={0.35}
+        ListHeaderComponent={
+          isRefetchError && data.length > 0 ? (
+            <FeedbackState
+              compact
+              icon="cloud-offline-outline"
+              title="No pudimos actualizar los viajes"
+              message="Sigues viendo el historial cargado anteriormente."
+              actionLabel="Reintentar"
+              onAction={retry}
+            />
+          ) : null
+        }
         ListFooterComponent={
           isFetchingNextPage ? (
-            <ActivityIndicator style={styles.pageLoader} color={colors.primary} />
+            <ActivityIndicator
+              accessibilityLabel="Cargando más viajes"
+              style={styles.pageLoader}
+              color={colors.primary}
+            />
+          ) : isFetchNextPageError ? (
+            <View style={styles.pageError}>
+              <Text style={styles.cardMeta}>No pudimos cargar más viajes.</Text>
+              <Button
+                title="Reintentar cargar más"
+                variant="secondary"
+                onPress={() => void fetchNextPage()}
+              />
+            </View>
           ) : null
         }
         refreshControl={
           <RefreshControl
-            refreshing={!isPending && isRefetching}
+            refreshing={!isPending && isRefetching && !isFetchingNextPage}
             onRefresh={retry}
             tintColor={colors.primary}
             colors={[colors.primary]}
@@ -121,7 +150,9 @@ export function RideHistoryScreen() {
               compact
               icon="time-outline"
               title={`No tienes viajes ${tab === 'completed' ? 'completados' : 'cancelados'}`}
-              message="Cuando tengas movimientos aparecerán aquí."
+              message={tab === 'completed'
+                ? 'Al terminar un viaje, podrás consultar aquí su ruta e importe.'
+                : 'Si cancelas un viaje, sus detalles aparecerán aquí.'}
             />
           )
         }
@@ -140,23 +171,51 @@ function HistoryCard({ item }: { item: RideHistoryItem }) {
 
   return (
     <View style={styles.card}>
-      <View style={styles.cardIcon}>
-        <Ionicons name={SERVICE_META[item.service].icon} size={20} color={colors.primary} />
+      <View style={styles.cardHeader}>
+        <View style={styles.cardIcon}>
+          <Ionicons name={SERVICE_META[item.service].icon} size={20} color={colors.primary} />
+        </View>
+        <View style={styles.cardInfo}>
+          <Text style={styles.serviceLabel}>{SERVICE_META[item.service].label}</Text>
+          <Text style={styles.cardMeta}>{formatDate(item.createdAt)}</Text>
+        </View>
       </View>
-      <View style={styles.cardInfo}>
-        <Text style={styles.cardDest} numberOfLines={1}>
-          {item.destination.name}
-        </Text>
-        <Text style={styles.cardMeta} numberOfLines={1}>
-          {formatDate(item.createdAt)}
-          {vehicle ? ` · ${vehicle}` : ''}
-        </Text>
+      <View style={styles.routeRow}>
+        <Ionicons name="ellipse-outline" size={16} color={colors.textSecondary} />
+        <View style={styles.cardInfo}>
+          <Text style={styles.cardMeta}>Origen</Text>
+          <Text style={styles.routeText}>{item.origin.name}</Text>
+        </View>
       </View>
-      <View style={styles.cardRight}>
-        <Text style={styles.cardPrice}>Bs {formatBolivianos(item.price)}</Text>
+      <View style={styles.routeRow}>
+        <Ionicons name="location" size={16} color={colors.primary} />
+        <View style={styles.cardInfo}>
+          <Text style={styles.cardMeta}>Destino</Text>
+          <Text style={styles.cardDest}>{item.destination.name}</Text>
+        </View>
+      </View>
+      {cp ? (
+        <View style={styles.participant}>
+          <Ionicons name="person-outline" size={16} color={colors.textSecondary} />
+          <Text style={styles.participantText}>
+            {[cp.fullName, vehicle, cp.plate].filter(Boolean).join(' · ')}
+          </Text>
+        </View>
+      ) : null}
+      <View style={styles.cardFooter}>
+        <View style={styles.cardInfo}>
+          <Text style={styles.cardMeta}>
+            {item.status === 'cancelled' ? 'Importe de referencia' : 'Importe del viaje'}
+          </Text>
+          <Text style={styles.cardPrice}>Bs {formatBolivianos(item.price)}</Text>
+          <Text style={styles.cardMeta}>{item.payment === 'cash' ? 'Efectivo' : 'QR'}</Text>
+        </View>
         {item.myRating != null && (
-          <View style={styles.rating}>
-            <Ionicons name="star" size={12} color={colors.accent} />
+          <View
+            style={styles.rating}
+            accessible
+            accessibilityLabel={`Tu calificación: ${item.myRating} de 5 estrellas`}>
+            <Ionicons name="star" size={16} color={colors.primary} />
             <Text style={styles.ratingText}>{item.myRating.toFixed(1)}</Text>
           </View>
         )}
@@ -174,27 +233,62 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
   },
-  tabs: { flexDirection: 'row', gap: spacing.sm, padding: spacing.lg, paddingBottom: spacing.sm },
+  subtitle: {
+    paddingHorizontal: spacing.lg,
+    marginTop: spacing.xs,
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+  },
+  tabs: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    padding: spacing.lg,
+    paddingBottom: spacing.sm,
+  },
   tab: {
     flex: 1,
+    flexBasis: 160,
+    minWidth: 160,
+    minHeight: 48,
+    justifyContent: 'center',
     alignItems: 'center',
     paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
     borderRadius: radius.pill,
     backgroundColor: colors.surfaceMuted,
   },
   tabActive: { backgroundColor: colors.primary },
-  tabText: { fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textSecondary },
+  tabText: {
+    maxWidth: '100%',
+    textAlign: 'center',
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.semibold,
+    color: colors.textSecondary,
+  },
   tabTextActive: { color: colors.textOnPrimary },
 
   list: { flexGrow: 1, padding: spacing.lg, paddingTop: 0, gap: spacing.sm },
   card: {
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: spacing.md,
     padding: spacing.md,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  serviceLabel: { fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.primary },
+  routeRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
+  routeText: { fontSize: fontSize.sm, color: colors.text },
+  participant: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  participantText: { flex: 1, fontSize: fontSize.xs, color: colors.textSecondary },
+  cardFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: spacing.sm,
   },
   cardIcon: {
     width: 40,
@@ -204,13 +298,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  cardInfo: { flex: 1, gap: 2 },
+  cardInfo: { flex: 1, minWidth: 0, gap: spacing.xs },
   cardDest: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.text },
   cardMeta: { fontSize: fontSize.xs, color: colors.textSecondary },
-  cardRight: { alignItems: 'flex-end', gap: 2 },
   cardPrice: { fontSize: fontSize.md, fontWeight: fontWeight.bold, color: colors.text },
-  rating: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  ratingText: { fontSize: fontSize.xs, color: colors.textSecondary },
+  rating: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
+    backgroundColor: colors.surfaceMuted, borderRadius: radius.pill, padding: spacing.sm,
+  },
+  ratingText: { fontSize: fontSize.sm, color: colors.primary, fontWeight: fontWeight.semibold },
   pageLoader: { marginVertical: spacing.md },
+  pageError: { gap: spacing.sm, paddingVertical: spacing.md },
 
 });

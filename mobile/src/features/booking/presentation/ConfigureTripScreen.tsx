@@ -38,8 +38,12 @@ import {
   getPlaceStreetName,
   isPlaceLabelResolved,
 } from '@/features/booking/domain/placeLabels';
-import { SERVICE_OPTIONS } from '@/features/booking/domain/serviceCatalog';
 import type { Coordinates, PaymentMethod } from '@/features/booking/domain/types';
+import {
+  SelectableOptionCards,
+  type SelectableOption,
+} from '@/features/booking/presentation/SelectableOptionCards';
+import { ServiceTypeSelector } from '@/features/booking/presentation/ServiceTypeSelector';
 import { useCancelRide, useEditRide } from '@/features/rides/application/useRideMutations';
 import { formatBolivianosInput } from '@/features/rides/domain/money';
 import {
@@ -51,9 +55,9 @@ import { RoutePinMarker } from '@/features/rides/presentation/RoutePinMarker';
 import { RoutePolyline } from '@/features/rides/presentation/RoutePolyline';
 import { Button, ConfirmDialog, FeedbackState } from '@/shared/components';
 
-const PAYMENTS: { id: PaymentMethod; label: string; icon: 'qr-code' | 'cash' }[] = [
-  { id: 'qr', label: 'QR', icon: 'qr-code' },
-  { id: 'cash', label: 'Efectivo', icon: 'cash' },
+const PAYMENTS: readonly SelectableOption<PaymentMethod>[] = [
+  { id: 'cash', label: 'Efectivo', icon: 'cash', accessibilityLabel: 'Pagar con efectivo' },
+  { id: 'qr', label: 'QR', icon: 'qr-code', accessibilityLabel: 'Pagar con QR' },
 ];
 
 // Mismo encuadre lateral del mapa de solicitudes del conductor. Abajo se usa el
@@ -482,59 +486,10 @@ export function ConfigureTripScreen() {
             )}
 
         <Text style={styles.fieldLabel}>Tipo de servicio</Text>
-        <View style={styles.serviceOptions}>
-          {SERVICE_OPTIONS.map((s) => {
-            const active = service === s.id;
-            return (
-              <TouchableOpacity
-                key={s.id}
-                style={[styles.serviceOption, active && styles.serviceChipActive]}
-                onPress={() => setService(s.id)}
-                accessibilityRole="radio"
-                accessibilityState={{ checked: active }}
-                accessibilityLabel={s.label}>
-                <Ionicons
-                  name={s.icon}
-                  size={20}
-                  color={active ? colors.textOnPrimary : colors.text}
-                />
-                <Text
-                  numberOfLines={2}
-                  style={[
-                    styles.serviceOptionText,
-                    active && styles.serviceChipTextActive,
-                  ]}>
-                  {s.shortLabel}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        <ServiceTypeSelector value={service} onChange={setService} />
 
         <Text style={styles.fieldLabel}>Método de pago</Text>
-        <View style={styles.services}>
-          {PAYMENTS.map((p) => {
-            const active = payment === p.id;
-            return (
-              <TouchableOpacity
-                key={p.id}
-                style={[styles.serviceChip, active && styles.serviceChipActive]}
-                onPress={() => setPayment(p.id)}
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-                accessibilityLabel={`Pagar con ${p.label}`}>
-                <Ionicons
-                  name={p.icon}
-                  size={20}
-                  color={active ? colors.textOnPrimary : colors.text}
-                />
-                <Text style={[styles.serviceChipText, active && styles.serviceChipTextActive]}>
-                  {p.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        <SelectableOptionCards options={PAYMENTS} value={payment} onChange={setPayment} />
 
         <Text style={styles.fieldLabel}>Tu oferta</Text>
         <View style={styles.fareRow}>
@@ -732,44 +687,6 @@ const styles = StyleSheet.create({
   estimateText: { fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: colors.text },
 
   fieldLabel: { fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.text },
-  services: { flexDirection: 'row', gap: spacing.md },
-  serviceOptions: { flexDirection: 'row', gap: spacing.sm },
-  serviceOption: {
-    flex: 1,
-    minWidth: 0,
-    height: 50,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    paddingHorizontal: 2,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  serviceOptionText: {
-    fontSize: fontSize.xs,
-    lineHeight: 15,
-    fontWeight: fontWeight.medium,
-    color: colors.text,
-    textAlign: 'center',
-  },
-  serviceChip: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    height: 40,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  serviceChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  serviceChipText: { fontSize: fontSize.md, fontWeight: fontWeight.medium, color: colors.text },
-  serviceChipTextActive: { color: colors.textOnPrimary },
-
   fareRow: {
     flexDirection: 'row',
     alignItems: 'center',

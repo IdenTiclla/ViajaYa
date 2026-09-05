@@ -34,9 +34,9 @@ import {
   getPlaceStreetName,
   isPlaceLabelResolved,
 } from '@/features/booking/domain/placeLabels';
-import { SERVICE_OPTIONS } from '@/features/booking/domain/serviceCatalog';
 import type { Coordinates, Place } from '@/features/booking/domain/types';
 import { CenterPin } from '@/features/booking/presentation/CenterPin';
+import { ServiceTypeSelector } from '@/features/booking/presentation/ServiceTypeSelector';
 import { useCurrentLocation } from '@/features/home/application/useCurrentLocation';
 import {
   PASSENGER_ACTIVE_RIDE_KEY,
@@ -521,33 +521,8 @@ export function HomeScreen() {
             <Text style={styles.searchPlaceholder}>¿A dónde?</Text>
           </TouchableOpacity>
 
-          <View style={styles.services}>
-            {SERVICE_OPTIONS.map((option) => {
-              const selected = service === option.id;
-              return (
-                <TouchableOpacity
-                  key={option.id}
-                  style={[styles.serviceCard, selected && styles.serviceCardSelected]}
-                  onPress={() => setService(option.id)}
-                  accessibilityRole="radio"
-                  accessibilityState={{ checked: selected }}
-                  accessibilityLabel={option.label}>
-                  <View style={[styles.serviceIcon, selected && styles.serviceIconSelected]}>
-                    <Ionicons
-                      name={option.icon}
-                      size={20}
-                      color={selected ? colors.textOnPrimary : colors.primaryDark}
-                    />
-                  </View>
-                  <Text
-                    style={[styles.serviceLabel, selected && styles.serviceLabelSelected]}
-                    numberOfLines={2}>
-                    {option.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+          <Text style={styles.serviceSectionLabel}>Tipo de servicio</Text>
+          <ServiceTypeSelector value={service} onChange={setService} />
 
           {validRecentPlaces.length > 0 && (
             <>
@@ -759,40 +734,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceMuted,
   },
   searchPlaceholder: { color: colors.placeholder, fontSize: fontSize.md },
-
-  services: { flexDirection: 'row', gap: spacing.sm },
-  serviceCard: {
-    flex: 1,
-    minWidth: 0,
-    height: 76,
-    paddingHorizontal: spacing.xs,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.md,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-  },
-  serviceCardSelected: { borderColor: colors.primary, backgroundColor: colors.surfaceMuted },
-  serviceIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: radius.sm,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  serviceIconSelected: { backgroundColor: colors.primary },
-  serviceLabel: {
-    fontSize: fontSize.xs,
-    lineHeight: 15,
+  serviceSectionLabel: {
+    fontSize: fontSize.sm,
     fontWeight: fontWeight.semibold,
     color: colors.text,
-    textAlign: 'center',
   },
-  serviceLabelSelected: { color: colors.primaryDark },
 
   recentHeader: {
     flexDirection: 'row',

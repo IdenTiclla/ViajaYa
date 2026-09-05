@@ -174,7 +174,7 @@ export function ConfigureTripScreen() {
 
   // Intercepta flecha, gesto y back de Android. Una solicitud pausada requiere
   // confirmar la cancelación antes de salir al inicio.
-  usePreventRemove(isEditing && !allowExit, () => {
+  usePreventRemove(isEditing && Boolean(existingRide) && !allowExit, () => {
     if (!editRide.isPending && !cancelRecoveryRide.isPending) requestEditExit();
   });
 
@@ -279,6 +279,10 @@ export function ConfigureTripScreen() {
     return (
       <SafeAreaView style={styles.root}>
         <FeedbackState loading title="Cargando tu solicitud…" />
+        <Button title="Volver al inicio" variant="secondary" onPress={() => {
+          setExitHome(true);
+          setAllowExit(true);
+        }} />
       </SafeAreaView>
     );
   }
@@ -293,6 +297,10 @@ export function ConfigureTripScreen() {
           actionLabel="Reintentar"
           onAction={() => void editQuery.refetch()}
         />
+        <Button title="Volver al inicio" variant="secondary" onPress={() => {
+          setExitHome(true);
+          setAllowExit(true);
+        }} />
         {cancelRecoveryRide.isError && (
           <Text style={styles.error}>{getApiErrorMessage(cancelRecoveryRide.error)}</Text>
         )}

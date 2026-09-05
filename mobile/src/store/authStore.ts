@@ -6,6 +6,8 @@
  */
 import { create } from 'zustand';
 
+import { conTiempoLimite } from '@/core/async/conTiempoLimite';
+import { getApiErrorMessage } from '@/core/errors/apiError';
 import { setOnSessionExpired } from '@/core/http/client';
 import { tokenStorage } from '@/core/http/tokenStorage';
 import { authRepository } from '@/features/auth/data/authRepository';
@@ -17,11 +19,14 @@ import type {
   User,
 } from '@/features/auth/domain/types';
 
-type Status = 'loading' | 'authenticated' | 'unauthenticated';
+type Status = 'loading' | 'error' | 'authenticated' | 'unauthenticated';
+
+let generacionSesion = 0;
 
 type AuthState = {
   user: User | null;
   status: Status;
+  startupError: string | null;
   bootstrap: () => Promise<void>;
   signIn: (payload: LoginPayload) => Promise<void>;
   signUp: (payload: RegisterPayload) => Promise<void>;
@@ -31,26 +36,37 @@ type AuthState = {
 
 export const useAuthStore = create<AuthState>((set) => {
   async function applySession(result: AuthResult): Promise<void> {
+    generacionSesion += 1;
     await tokenStorage.save(result.tokens);
-    set({ user: result.user, status: 'authenticated' });
+    set({ user: result.user, status: 'authenticated', startupError: null });
   }
 
   return {
     user: null,
     status: 'loading',
+    startupError: null,
 
     async bootstrap() {
-      const tokens = await tokenStorage.get();
-      if (!tokens) {
-        set({ user: null, status: 'unauthenticated' });
-        return;
-      }
+      const generacion = ++generacionSesion;
+      set({ status: 'loading', startupError: null });
       try {
-        const user = await authRepository.me();
-        set({ user, status: 'authenticated' });
-      } catch {
-        await tokenStorage.clear();
-        set({ user: null, status: 'unauthenticated' });
+        const restaurar = async () => {
+          const tokens = await tokenStorage.get();
+          return tokens ? authRepository.me() : null;
+        };
+        const user = await conTiempoLimite(
+          restaurar(), 30_000, 'La sesión tardó demasiado en cargar. Vuelve a intentar.',
+        );
+        if (generacion !== generacionSesion) return;
+        set({ user, status: user ? 'authenticated' : 'unauthenticated' });
+      } catch (error) {
+        if (generacion !== generacionSesion) return;
+        set({
+          user: null,
+          status: 'error',
+          startupError: getApiErrorMessage(error,
+            error instanceof Error ? error.message : 'No pudimos recuperar tu sesión.'),
+        });
       }
     },
 
@@ -67,13 +83,15 @@ export const useAuthStore = create<AuthState>((set) => {
     },
 
     async signOut() {
+      generacionSesion += 1;
       await tokenStorage.clear();
-      set({ user: null, status: 'unauthenticated' });
+      set({ user: null, status: 'unauthenticated', startupError: null });
     },
   };
 });
 
-// Si el refresco de token falla (sesión expirada), el cliente HTTP cierra sesión.
+// El cliente HTTP ya eliminó las credenciales. No duplicar el borrado nativo.
 setOnSessionExpired(() => {
-  void useAuthStore.getState().signOut();
+  generacionSesion += 1;
+  useAuthStore.setState({ user: null, status: 'unauthenticated', startupError: null });
 });

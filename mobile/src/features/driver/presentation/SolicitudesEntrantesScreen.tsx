@@ -93,9 +93,7 @@ export function SolicitudesEntrantesScreen() {
   const pendingRatingRide = pendingRatingQuery.ride;
   const flowLoading =
     activeQuery.isLoading ||
-    (!activeRide &&
-      (pendingRatingQuery.isLoading ||
-        (!pendingRatingRide && pendingRatingQuery.isFetching)));
+    (!activeRide && pendingRatingQuery.isLoading);
   const flowError =
     !activeRide && (activeQuery.isError || pendingRatingQuery.isError);
   const openRidesEnabled =
@@ -293,10 +291,6 @@ export function SolicitudesEntrantesScreen() {
     return <ViajeEnCursoConductorScreen ride={activeRide} />;
   }
 
-  if (flowLoading) {
-    return <DriverFlowRecovery />;
-  }
-
   if (flowError) {
     return (
       <DriverFlowRecovery
@@ -309,6 +303,10 @@ export function SolicitudesEntrantesScreen() {
         }}
       />
     );
+  }
+
+  if (flowLoading) {
+    return <DriverFlowRecovery />;
   }
 
   if (pendingRatingRide) {

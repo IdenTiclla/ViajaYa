@@ -248,6 +248,8 @@ export function OfertaEnviadaScreen() {
   if (
     !sentOffer &&
     !openRide &&
+    !activeRideQuery.isError &&
+    !openRidesQuery.isError &&
     (activeRideQuery.isLoading || openRidesQuery.isLoading)
   ) {
     return <OfferRecoveryScreen onBack={backToList} />;

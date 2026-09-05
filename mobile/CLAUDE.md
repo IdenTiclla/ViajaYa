@@ -193,10 +193,30 @@ usa `#16308C` para splash/adaptiveIcon.
 - **Request interceptor**: adjunta `Authorization: Bearer <accessToken>` desde `tokenStorage`.
 - **Response interceptor**: ante 401 (si la URL no está en `NO_REFRESH_PATHS` y no es `_retry`),
   dispara `refreshAccessToken()` **compartido** (dedupe de concurrencia) → `POST /auth/refresh` →
-  guarda el nuevo par → reintenta el original. Si falla: `tokenStorage.clear()` + `onSessionExpired()`
-  (registrado por `authStore` → auto-logout).
+  guarda el nuevo par → reintenta el original. Solo un refresh rechazado con 401
+  (o sin credenciales) ejecuta `tokenStorage.clear()` + `onSessionExpired()`;
+  red, timeout y 5xx conservan la sesión para reintentar. El refresh compartido
+  siempre se libera en `finally`, incluso si falla SecureStore.
 - `env.apiUrl` viene de `app.config.ts` → `extra.apiUrl`; `env.wsUrl` se deriva con `toWsUrl()`.
 - Tokens en `expo-secure-store` (`viajaya.accessToken`/`viajaya.refreshToken`), nunca en AsyncStorage plano.
+- El refresh también pasa por `api` con `skipAuth: true` y el timeout de 15 s;
+  nunca debe quedar una renovación de sesión sin límite de espera.
+- Home verifica activo y después calificación con un límite total de 30 s en
+  `features/home/application/confirmarRecuperacion.ts`. Un fallo o timeout muestra
+  Reintentar antes que el indicador de carga; reintentar repite la verificación
+  completa. Una respuesta tardía no autoriza navegación después del timeout.
+- Leer SecureStore tiene un límite de 5 s. El arranque completo tiene 30 s y
+  muestra `SessionRecoveryScreen` con Reintentar si falla; conserva credenciales
+  ante errores transitorios. Una generación evita restaurar un arranque anterior
+  después de otro intento o de expirar la sesión.
+- Confirmar/omitir calificación libera la mutación al recibir el éxito HTTP;
+  las invalidaciones posteriores corren en segundo plano. Una lectura antigua se
+  cancela antes de retirar de caché ese cierre, conservando otros pendientes.
+- Las pantallas de recuperación priorizan errores sobre cargas de otras consultas.
+  Una actualización en segundo plano no reemplaza por un spinner una pantalla ya
+  verificada. Sin detalle de viaje, Viaje, Calificación y Edición permiten volver
+  al inicio; una solicitud inaccesible también permite salir de Ofertas. Esa
+  salida no cancela viajes: Home vuelve a consultar el estado autoritativo.
 
 ## Contrato con backend
 

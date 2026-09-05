@@ -7,6 +7,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { colors } from '@/core/theme';
+import { SessionRecoveryScreen } from '@/features/auth/presentation/SessionRecoveryScreen';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
 import { usePassengerToasts } from '@/features/booking/application/usePassengerToasts';
 import { useDriverRequests } from '@/features/driver/application/useDriverRequests';
@@ -42,6 +43,8 @@ function RootNavigator() {
     const readyTimer = setTimeout(() => setReadyIdentity(identity), 0);
     return () => clearTimeout(readyTimer);
   }, [identity, readyIdentity, status]);
+
+  if (status === 'error') return <SessionRecoveryScreen />;
 
   if (status === 'loading' || readyIdentity !== identity) {
     return (

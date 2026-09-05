@@ -4,6 +4,8 @@
  */
 import * as SecureStore from 'expo-secure-store';
 
+import { conTiempoLimite } from '@/core/async/conTiempoLimite';
+
 const ACCESS_KEY = 'viajaya.accessToken';
 const REFRESH_KEY = 'viajaya.refreshToken';
 
@@ -11,10 +13,10 @@ export type TokenPair = { accessToken: string; refreshToken: string };
 
 export const tokenStorage = {
   async get(): Promise<TokenPair | null> {
-    const [accessToken, refreshToken] = await Promise.all([
+    const [accessToken, refreshToken] = await conTiempoLimite(Promise.all([
       SecureStore.getItemAsync(ACCESS_KEY),
       SecureStore.getItemAsync(REFRESH_KEY),
-    ]);
+    ]), 5_000, 'No pudimos leer tu sesión. Vuelve a intentar.');
     if (!accessToken || !refreshToken) return null;
     return { accessToken, refreshToken };
   },

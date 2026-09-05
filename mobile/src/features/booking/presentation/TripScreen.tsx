@@ -84,7 +84,7 @@ export function TripScreen() {
   const { ride, isLoading, isError, error, refetch } = useRide(id);
   const cancelRide = useCancelRide();
   const [confirmCancel, setConfirmCancel] = useState(false);
-  useBlockHardwareBack(Boolean(id) && ride?.status !== 'cancelled' && ride?.status !== 'completed');
+  useBlockHardwareBack(Boolean(ride) && ride?.status !== 'cancelled' && ride?.status !== 'completed');
 
   const goHome = () => router.dismissTo('/(app)/(tabs)');
   const closeAndGoHome = () => {
@@ -121,6 +121,7 @@ export function TripScreen() {
     return (
       <SafeAreaView style={styles.fallback}>
         <FeedbackState loading title="Cargando tu viaje…" />
+        <Button title="Volver al inicio" variant="secondary" onPress={goHome} />
       </SafeAreaView>
     );
   }
@@ -135,6 +136,7 @@ export function TripScreen() {
           actionLabel="Reintentar"
           onAction={() => void refetch()}
         />
+        <Button title="Volver al inicio" variant="secondary" onPress={goHome} />
       </SafeAreaView>
     );
   }

@@ -45,7 +45,7 @@ import { deriveOfferTags, primaryTag, type OfferTagKind } from '@/features/rides
 import type { Offer } from '@/features/rides/domain/types';
 import { OfferLifeTimer } from '@/features/rides/presentation/OfferLifeTimer';
 import { TripRouteMap } from '@/features/rides/presentation/TripRouteMap';
-import { ConfirmDialog } from '@/shared/components';
+import { Button, ConfirmDialog, FeedbackState } from '@/shared/components';
 
 const SERVICE_LABELS = { taxi: 'Taxi', moto: 'Moto' } as const;
 
@@ -76,7 +76,7 @@ export function OffersScreen() {
   // "Viaje cancelado"). El handler de cancelar ya envía al inicio directamente.
   const assigned = !!ride && ride.status !== 'searching' && ride.status !== 'cancelled';
   const cancelled = ride?.status === 'cancelled';
-  useBlockHardwareBack(Boolean(id) && !cancelled);
+  useBlockHardwareBack(Boolean(ride) && !cancelled);
   const offersQuery = useRideOffers(id, !assigned && !cancelled);
   const { offers } = offersQuery;
   const acceptOffer = useAcceptOffer();
@@ -274,6 +274,20 @@ export function OffersScreen() {
     editTarget != null;
 
   if (returningHome || editTarget) return <View style={styles.root} />;
+
+  if (!id || (!ride && rideQuery.isError)) {
+    return (
+      <SafeAreaView style={styles.root}>
+        <FeedbackState
+          title={id ? 'No pudimos cargar tu solicitud' : 'La solicitud no es válida'}
+          message={id ? getApiErrorMessage(rideQuery.error) : undefined}
+          actionLabel={id ? 'Reintentar' : undefined}
+          onAction={id ? () => void rideQuery.refetch() : undefined}
+        />
+        <Button title="Volver al inicio" variant="secondary" onPress={beginReturnHome} />
+      </SafeAreaView>
+    );
+  }
 
   if (assigned && !confirmationVisible) {
     // El viaje quedó asignado: el overlay ya navegó, o este es el respaldo.

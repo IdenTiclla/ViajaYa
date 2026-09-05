@@ -37,9 +37,10 @@ export function RatingScreen() {
   const { rideId } = useLocalSearchParams<{ rideId?: string }>();
   const id = rideId ?? null;
   const { ride, isLoading, isError, error, refetch } = useRide(id);
-  useBlockHardwareBack(Boolean(id));
+  useBlockHardwareBack(Boolean(ride));
 
-  const goHome = () => {
+  const goHome = () => router.dismissTo('/(app)/(tabs)');
+  const closeAndGoHome = () => {
     if (id) {
       queryClient.setQueryData<Ride | null>(PASSENGER_ACTIVE_RIDE_KEY, (current) =>
         current?.id === id ? null : current,
@@ -48,7 +49,7 @@ export function RatingScreen() {
         current?.id === id ? null : current,
       );
     }
-    router.dismissTo('/(app)/(tabs)');
+    goHome();
   };
 
   if (!id) {
@@ -66,6 +67,9 @@ export function RatingScreen() {
     return (
       <SafeAreaView style={[styles.root, styles.center]}>
         <ActivityIndicator size="large" color={colors.primary} />
+        <View style={styles.action}>
+          <Button title="Volver al inicio" variant="secondary" onPress={goHome} />
+        </View>
       </SafeAreaView>
     );
   }
@@ -77,6 +81,18 @@ export function RatingScreen() {
         {isError && <Text style={styles.errorHint}>{getApiErrorMessage(error)}</Text>}
         <View style={styles.action}>
           <Button title="Reintentar" onPress={() => void refetch()} />
+          <Button title="Volver al inicio" variant="secondary" onPress={goHome} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (ride.status !== 'completed') {
+    return (
+      <SafeAreaView style={[styles.root, styles.center]}>
+        <Text style={styles.errorTitle}>Este viaje no está pendiente de calificación</Text>
+        <View style={styles.action}>
+          <Button title="Volver al inicio" onPress={goHome} />
         </View>
       </SafeAreaView>
     );
@@ -107,7 +123,7 @@ export function RatingScreen() {
             rateeRole="driver"
             counterpartName={ride.driver?.fullName ?? null}
             counterpartVehicle={vehicle}
-            onDone={goHome}
+            onDone={closeAndGoHome}
           />
         </ScrollView>
       </KeyboardAvoidingView>

@@ -104,13 +104,19 @@ export function useSocialAuth({ onError }: Options = {}) {
 
   const signInWithGoogle = useCallback(() => {
     setPending('google');
-    void promptGoogle();
-  }, [promptGoogle]);
+    void promptGoogle().catch(() => {
+      setPending(null);
+      onError?.('No se pudo abrir el acceso con Google. Inténtalo nuevamente.');
+    });
+  }, [promptGoogle, onError]);
 
   const signInWithFacebook = useCallback(() => {
     setPending('facebook');
-    void promptFacebook();
-  }, [promptFacebook]);
+    void promptFacebook().catch(() => {
+      setPending(null);
+      onError?.('No se pudo abrir el acceso con Facebook. Inténtalo nuevamente.');
+    });
+  }, [promptFacebook, onError]);
 
   return {
     signInWithGoogle,

@@ -19,9 +19,11 @@ import {
   getBoliviaPlaceError,
 } from '@/features/booking/domain/bolivia';
 import type { Coordinates, Place, PlaceSuggestion } from '@/features/booking/domain/types';
+import { locationService } from '@/features/home/data/locationService';
 
 const AUTOCOMPLETE_ENDPOINT = 'https://places.googleapis.com/v1/places:autocomplete';
 const DETAILS_ENDPOINT = 'https://places.googleapis.com/v1/places';
+const CALLE_SIN_NOMBRE_RE = /^(?:unnamed road|calle sin nombre|v[ií]a sin nombre|camino sin nombre)$/i;
 
 /** Radio (m) alrededor del origen para priorizar resultados cercanos. */
 const BIAS_RADIUS_METERS = 50_000;
@@ -87,7 +89,7 @@ export async function autocomplete(
       .filter((p): p is NonNullable<typeof p> => Boolean(p?.placeId))
       .map((p) => ({
         placeId: p.placeId!,
-        name: p.structuredFormat?.mainText?.text ?? p.text?.text ?? 'Lugar',
+        name: p.structuredFormat?.mainText?.text ?? p.text?.text ?? '',
         address: p.structuredFormat?.secondaryText?.text ?? '',
       }));
   } catch (error) {
@@ -100,15 +102,24 @@ type DetailsResponse = {
   location?: { latitude?: number; longitude?: number };
   displayName?: { text?: string };
   formattedAddress?: string;
-  addressComponents?: { shortText?: string; types?: string[] }[];
+  addressComponents?: { shortText?: string; longText?: string; types?: string[] }[];
 };
+
+function addressComponentText(
+  components: DetailsResponse['addressComponents'],
+  type: string,
+): string | null {
+  const component = components?.find((item) => item.types?.includes(type));
+  return component?.shortText?.trim() || component?.longText?.trim() || null;
+}
 
 function streetFromAddressComponents(
   components: DetailsResponse['addressComponents'],
 ): string | null {
-  const street = components?.find((component) => component.types?.includes('route'))?.shortText;
-  const number = components?.find((component) => component.types?.includes('street_number'))?.shortText;
-  return [street, number].filter(Boolean).join(' ') || null;
+  const street = addressComponentText(components, 'route');
+  if (!street || CALLE_SIN_NOMBRE_RE.test(street)) return null;
+  const number = addressComponentText(components, 'street_number');
+  return number ? `${street} ${number}` : street;
 }
 
 /**
@@ -142,14 +153,27 @@ export async function placeDetails(
     const countryCode =
       data.addressComponents
         ?.find((component) => component.types?.includes('country'))
-        ?.shortText?.toUpperCase() ?? null;
+        ?.shortText?.trim()
+        .toUpperCase() ?? null;
     const street = streetFromAddressComponents(data.addressComponents);
+    const coordinates = { latitude, longitude };
+    // Places puede omitir `route` en POI, plazas o barrios. En ese caso usamos
+    // sus coordenadas para buscar la vía cercana antes de mostrar el nombre genérico.
+    const nearbyStreet = street
+      ? null
+      : await locationService.reverseGeocodeNearestStreet(coordinates);
 
     const place: Place = {
-      coordinates: { latitude, longitude },
-      name: street || suggestion.name || data.displayName?.text || 'Lugar',
-      address: suggestion.address || data.formattedAddress || '',
-      countryCode,
+      coordinates,
+      name:
+        street ||
+        nearbyStreet?.name ||
+        data.displayName?.text?.trim() ||
+        suggestion.name.trim() ||
+        data.formattedAddress?.split(',')[0]?.trim() ||
+        'Lugar',
+      address: data.formattedAddress || nearbyStreet?.address || suggestion.address || '',
+      countryCode: countryCode ?? nearbyStreet?.countryCode ?? null,
     };
     const areaError = getBoliviaPlaceError(place);
     if (areaError) throw new Error(areaError);

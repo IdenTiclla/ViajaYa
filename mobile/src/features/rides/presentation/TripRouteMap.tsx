@@ -5,14 +5,14 @@
  */
 import { useEffect, useRef } from 'react';
 import { StyleSheet } from 'react-native';
-import MapView, { Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
+import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 
-import { colors } from '@/core/theme';
 import { getPlaceStreetName } from '@/features/booking/domain/placeLabels';
 import type { Coordinates, Place } from '@/features/booking/domain/types';
 import { useRoute } from '@/features/booking/application/useRoute';
 import { declutteredMapStyle } from '@/features/booking/presentation/mapStyle';
 import { RoutePinMarker } from '@/features/rides/presentation/RoutePinMarker';
+import { RoutePolyline } from '@/features/rides/presentation/RoutePolyline';
 
 export function TripRouteMap({
   origin,
@@ -50,8 +50,18 @@ export function TripRouteMap({
 
   const fit = (animated: boolean) => {
     if (polyline.length < 2) return;
+    // `fitToCoordinates` solo considera las coordenadas de los pines, no las
+    // vistas personalizadas de sus tooltips. Reservamos ese espacio para que
+    // los nombres de origen y destino no se recorten contra los bordes.
+    const tooltipTopInset = showPlaceNamesInTooltip ? 44 : 0;
+    const tooltipSideInset = showPlaceNamesInTooltip ? 88 : 50;
     mapRef.current?.fitToCoordinates(polyline, {
-      edgePadding: { top: topPadding, right: 50, bottom: bottomPadding, left: 50 },
+      edgePadding: {
+        top: topPadding + tooltipTopInset,
+        right: tooltipSideInset,
+        bottom: bottomPadding,
+        left: tooltipSideInset,
+      },
       animated,
     });
   };
@@ -68,7 +78,10 @@ export function TripRouteMap({
       style={StyleSheet.absoluteFill}
       initialRegion={region}
       customMapStyle={declutteredMapStyle}
-      onMapReady={() => fit(false)}>
+      onMapReady={() => fit(false)}
+      // En algunos Android el mapa queda listo antes de recibir su tamaño final.
+      // Reencuadrar tras el layout mantiene el trayecto centrado al navegar.
+      onLayout={() => fit(false)}>
       <RoutePinMarker
         kind="A"
         coordinate={origin.coordinates}
@@ -79,12 +92,7 @@ export function TripRouteMap({
         coordinate={destination.coordinates}
         label={showPlaceNamesInTooltip ? `Destino: ${getPlaceStreetName(destination)}` : 'Destino'}
       />
-      {polyline.length >= 2 && (
-        <>
-          <Polyline coordinates={polyline} strokeColor={colors.surface} strokeWidth={9} />
-          <Polyline coordinates={polyline} strokeColor={colors.primary} strokeWidth={5} />
-        </>
-      )}
+      <RoutePolyline coordinates={polyline} />
     </MapView>
   );
 }

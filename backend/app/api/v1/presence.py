@@ -18,15 +18,20 @@ from typing import Any
 
 from anyio import CancelScope
 
-from app.application.dto import RideDetail
-from app.application.use_cases.cancel_ride_on_disconnect import CancelRideOnDisconnect
+from app.api.deps import (
+    build_announce_open_ride,
+    build_cancel_ride_on_disconnect,
+    build_disconnect_passenger_presence,
+    build_renew_passenger_presence,
+)
+from app.application.dto import Page
+from app.application.exceptions import PassengerPresenceUnavailableError
+from app.application.interfaces import PassengerPresenceLeaseStore
 from app.domain.entities import RideRequest, RideStatus
 from app.domain.repositories import OpenRideDetail
-from app.infrastructure.db.repositories import (
-    SqlAlchemyOfferRepository,
-    SqlAlchemyRideRequestRepository,
-    SqlAlchemyUserRepository,
-)
+from app.infrastructure.config import Settings, get_settings
+from app.infrastructure.db.clock import database_utc_now
+from app.infrastructure.db.repositories import SqlAlchemyRideRequestRepository
 from app.infrastructure.realtime.hub import hub, ride_topic
 
 logger = logging.getLogger(__name__)
@@ -36,6 +41,9 @@ logger = logging.getLogger(__name__)
 # la app siga abierta. La consulta HTTP de viaje activo renueva esta ventana, por
 # lo que solo se cancela cuando desaparecen ambos canales durante dos minutos.
 PRESENCE_GRACE_SECONDS = 120.0
+# Un timer live_redis nunca interpreta una caída del transporte como abandono.
+# El polling corto permanece cancelable por una reconexión real del pasajero.
+TRANSPORT_HEALTH_RECHECK_SECONDS = 1.0
 
 # Instante (reloj monótono) de la última desconexión por ``ride_id``. Mientras
 # haya conexión viva no se usa (``has_subscribers`` manda).
@@ -47,6 +55,23 @@ _pending_cancels: dict[uuid.UUID, asyncio.Task[None]] = {}
 # la cancela: incluye tanto la transacción como la publicación de sus eventos.
 _critical_cancels: dict[uuid.UUID, asyncio.Task[None]] = {}
 _CANCEL_TASKS: set[asyncio.Task[None]] = set()
+
+
+async def shutdown_presence_tasks() -> None:
+    """Detiene timers y espera cierres críticos antes de apagar la API."""
+    pending_tasks = set(_pending_cancels.values())
+    for task in pending_tasks:
+        task.cancel()
+
+    tasks = set(_CANCEL_TASKS)
+    tasks.update(_critical_cancels.values())
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    _pending_cancels.clear()
+    _critical_cancels.clear()
+    _CANCEL_TASKS.clear()
+    _last_seen.clear()
 
 
 def is_ride_present(ride: RideRequest) -> bool:
@@ -63,13 +88,127 @@ def is_ride_present(ride: RideRequest) -> bool:
     return False
 
 
-def present_rides(details: list[OpenRideDetail]) -> list[OpenRideDetail]:
-    """Filtra una lista de solicitudes enriquecidas a solo las que tienen pasajero presente."""
-    return [detail for detail in details if is_ride_present(detail.ride)]
+def present_rides(page: Page[OpenRideDetail]) -> Page[OpenRideDetail]:
+    """Filtra los items presentes sin alterar la posición de continuación SQL."""
+    return Page(
+        items=[detail for detail in page.items if is_ride_present(detail.ride)],
+        next_cursor=page.next_cursor,
+    )
+
+
+async def present_rides_shared(
+    page: Page[OpenRideDetail],
+    leases: PassengerPresenceLeaseStore,
+) -> Page[OpenRideDetail]:
+    """Filtra con Redis; ante duda conserva el pool para no ocultar búsquedas."""
+    try:
+        present_ids = await leases.present_ride_ids(
+            [detail.ride.id for detail in page.items]
+        )
+    except PassengerPresenceUnavailableError:
+        logger.warning("No se pudo filtrar el pool por presencia compartida.")
+        return page
+    return Page(
+        items=[
+            detail for detail in page.items if detail.ride.id in present_ids
+        ],
+        next_cursor=page.next_cursor,
+    )
+
+
+async def on_shared_passenger_connect(
+    ride_id: uuid.UUID,
+    connection_id: uuid.UUID,
+    session_factory: Callable[[], Any],
+    leases: PassengerPresenceLeaseStore,
+    settings: Settings,
+) -> None:
+    """Confirma el lease antes de anunciar una búsqueda en cualquier proceso."""
+    await renew_shared_passenger_connection(
+        ride_id,
+        connection_id,
+        session_factory,
+        leases,
+    )
+    await _announce_present_ride(ride_id, session_factory, settings)
+
+
+async def renew_shared_passenger_connection(
+    ride_id: uuid.UUID,
+    connection_id: uuid.UUID,
+    session_factory: Callable[[], Any],
+    leases: PassengerPresenceLeaseStore,
+) -> None:
+    """Renueva lease y generación durable desde el heartbeat del gateway."""
+    async with session_factory() as session:
+        observed_at = await database_utc_now(session)
+        await build_renew_passenger_presence(session, leases).execute(
+            ride_id,
+            observed_at,
+            source="websocket",
+            connection_id=connection_id,
+        )
+
+
+async def on_shared_passenger_activity(
+    ride_id: uuid.UUID,
+    session_factory: Callable[[], Any],
+    leases: PassengerPresenceLeaseStore,
+) -> None:
+    """Renueva el miembro HTTP y mueve su generación durable."""
+    async with session_factory() as session:
+        observed_at = await database_utc_now(session)
+        await build_renew_passenger_presence(session, leases).execute(
+            ride_id,
+            observed_at,
+            source="http",
+        )
+
+
+async def on_shared_passenger_disconnect(
+    ride_id: uuid.UUID,
+    connection_id: uuid.UUID,
+    session_factory: Callable[[], Any],
+    leases: PassengerPresenceLeaseStore,
+) -> None:
+    """Cierra solo una conexión y abre la gracia durable que aún corresponda."""
+    try:
+        async with session_factory() as session:
+            observed_at = await database_utc_now(session)
+            await build_disconnect_passenger_presence(session, leases).execute(
+                ride_id,
+                connection_id,
+                observed_at,
+            )
+    except Exception as error:  # noqa: BLE001 - desconexión fail-safe y sanitizada
+        # Una caída Redis no demuestra ausencia. La acción previa se aplazará
+        # por salud/recovery y el lease expirado conserva la decisión fail-safe.
+        logger.warning(
+            "No se pudo registrar una desconexión de presencia compartida (%s).",
+            type(error).__name__,
+        )
+
+
+async def _announce_present_ride(
+    ride_id: uuid.UUID,
+    session_factory: Callable[[], Any],
+    settings: Settings,
+) -> None:
+    try:
+        async with session_factory() as session:
+            detail = await build_announce_open_ride(session, settings).execute(ride_id)
+        if detail is not None:
+            from app.api.v1 import events
+
+            await events.publish_ride_created(detail)
+    except Exception:
+        logger.exception("No se pudo anunciar la presencia del viaje %s", ride_id)
 
 
 async def on_passenger_connect(
-    ride_id: uuid.UUID, session_factory: Callable[[], Any]
+    ride_id: uuid.UUID,
+    session_factory: Callable[[], Any],
+    settings: Settings | None = None,
 ) -> None:
     """El pasajero abrió/recuperó su conexión.
 
@@ -81,11 +220,17 @@ async def on_passenger_connect(
     # Esta revalidación debe cerrar su sesión antes de propagar ese cierre; dura
     # solo una lectura y no mantiene viva la conexión WebSocket.
     with CancelScope(shield=True):
-        await _revalidate_passenger_connect(ride_id, session_factory)
+        await _revalidate_passenger_connect(
+            ride_id,
+            session_factory,
+            settings or get_settings(),
+        )
 
 
 async def on_passenger_activity(
-    ride_id: uuid.UUID, session_factory: Callable[[], Any]
+    ride_id: uuid.UUID,
+    session_factory: Callable[[], Any],
+    settings: Settings | None = None,
 ) -> None:
     """Renueva la presencia desde el polling HTTP de una app todavía activa.
 
@@ -95,11 +240,17 @@ async def on_passenger_activity(
     espera su resultado para no revivir una solicitud cancelada.
     """
     with CancelScope(shield=True):
-        await _revalidate_passenger_activity(ride_id, session_factory)
+        await _revalidate_passenger_activity(
+            ride_id,
+            session_factory,
+            settings or get_settings(),
+        )
 
 
 async def _revalidate_passenger_connect(
-    ride_id: uuid.UUID, session_factory: Callable[[], Any]
+    ride_id: uuid.UUID,
+    session_factory: Callable[[], Any],
+    settings: Settings,
 ) -> None:
     _last_seen.pop(ride_id, None)
     pending = _pending_cancels.pop(ride_id, None)
@@ -110,22 +261,28 @@ async def _revalidate_passenger_connect(
     if critical is not None and critical is not asyncio.current_task():
         await asyncio.shield(critical)
 
-    async with session_factory() as session:
-        rides = SqlAlchemyRideRequestRepository(session)
-        detail = await rides.open_ride_with_rider(ride_id)
+    try:
+        async with session_factory() as session:
+            detail = await build_announce_open_ride(
+                session,
+                settings,
+            ).execute(ride_id)
 
-    if (
-        detail is not None
-        and detail.ride.status is RideStatus.SEARCHING
-        and not detail.ride.paused
-    ):
-        from app.api.v1 import events
+        if detail is not None:
+            from app.api.v1 import events
 
-        await events.publish_ride_created(detail)
+            await events.publish_ride_created(detail)
+    except Exception:
+        # La conexión viva sigue siendo una señal válida de presencia. Un fallo
+        # del anuncio no debe cerrar el socket y convertirlo en una ausencia;
+        # snapshots/polling conservan la convergencia mientras la outbox alerta.
+        logger.exception("No se pudo anunciar la presencia del viaje %s", ride_id)
 
 
 async def _revalidate_passenger_activity(
-    ride_id: uuid.UUID, session_factory: Callable[[], Any]
+    ride_id: uuid.UUID,
+    session_factory: Callable[[], Any],
+    settings: Settings,
 ) -> None:
     if hub.has_subscribers(ride_topic(ride_id)):
         return
@@ -152,11 +309,13 @@ async def _revalidate_passenger_activity(
         # Reutiliza el mismo cierre diferido que una desconexión. Cada respuesta
         # HTTP exitosa mueve la ventana; si el polling también desaparece, este
         # último temporizador termina limpiando la búsqueda abandonada.
-        on_passenger_disconnect(ride_id, session_factory)
+        on_passenger_disconnect(ride_id, session_factory, settings)
 
 
 def on_passenger_disconnect(
-    ride_id: uuid.UUID, session_factory: Callable[[], Any]
+    ride_id: uuid.UUID,
+    session_factory: Callable[[], Any],
+    settings: Settings | None = None,
 ) -> None:
     """El pasajero se desconectó: arranca la ventana de gracia.
 
@@ -182,6 +341,7 @@ def on_passenger_disconnect(
         ride_id,
         session_factory,
         disconnected_at,
+        settings or get_settings(),
     )
 
 
@@ -189,6 +349,7 @@ def _start_cancel_timer(
     ride_id: uuid.UUID,
     session_factory: Callable[[], Any],
     disconnected_at: float,
+    settings: Settings,
 ) -> None:
     if (
         _last_seen.get(ride_id) != disconnected_at
@@ -202,7 +363,7 @@ def _start_cancel_timer(
     # final se toma bajo lock en la base después de la gracia. El contexto vacío
     # desacopla el worker del cancel-scope del transporte que lo originó.
     task = asyncio.create_task(
-        _cancel_after_grace(ride_id, session_factory),
+        _cancel_after_grace(ride_id, session_factory, settings),
         context=contextvars.Context(),
     )
     _pending_cancels[ride_id] = task
@@ -213,17 +374,19 @@ def _start_cancel_timer(
 async def _cancel_after_grace(
     ride_id: uuid.UUID,
     session_factory: Callable[[], Any],
+    settings: Settings,
 ) -> None:
     # El worker vive más que el handler WS que lo originó. El shield bloquea la
     # cancelación del scope AnyIO del transporte; ``Task.cancel()`` directo (la
     # reconexión durante el sleep) sigue atravesándolo.
     with CancelScope(shield=True):
-        await _run_cancel_after_grace(ride_id, session_factory)
+        await _run_cancel_after_grace(ride_id, session_factory, settings)
 
 
 async def _run_cancel_after_grace(
     ride_id: uuid.UUID,
     session_factory: Callable[[], Any],
+    settings: Settings,
 ) -> None:
     """Cancela la búsqueda si la ausencia persiste y publica su desenlace."""
     current = asyncio.current_task()
@@ -234,6 +397,28 @@ async def _run_cancel_after_grace(
         # Reconectar solo puede llegar aquí, durante la espera cancelable.
         return
 
+    transport_was_unhealthy = False
+    while settings.realtime_outbox_dispatch_mode == "live_redis":
+        if not hub.shared_transport_healthy:
+            transport_was_unhealthy = True
+            try:
+                await asyncio.sleep(TRANSPORT_HEALTH_RECHECK_SECONDS)
+            except asyncio.CancelledError:
+                # Una reconexión/actividad HTTP gana incluso durante una caída larga.
+                return
+            continue
+        if not transport_was_unhealthy:
+            break
+
+        # Al volver Redis no se cancela de inmediato: el cliente recibe una
+        # ventana completa para atravesar readiness/LB y renovar su presencia.
+        transport_was_unhealthy = False
+        _last_seen[ride_id] = time.monotonic()
+        try:
+            await asyncio.sleep(PRESENCE_GRACE_SECONDS)
+        except asyncio.CancelledError:
+            return
+
     # No hay ``await`` entre quitar la tarea cancelable y registrar la fase
     # crítica: otra coroutine nunca observa una ventana intermedia.
     if _pending_cancels.get(ride_id) is not current:
@@ -243,20 +428,16 @@ async def _run_cancel_after_grace(
 
     try:
         async with session_factory() as session:
-            offers = SqlAlchemyOfferRepository(session)
-            users = SqlAlchemyUserRepository(session)
-            result = await CancelRideOnDisconnect(offers).execute(ride_id)
+            result = await build_cancel_ride_on_disconnect(
+                session,
+                settings,
+            ).execute(ride_id)
             if result is None:
                 return
-            rider = await users.get_by_id(result.ride.rider_id)
 
         from app.api.v1 import events
 
-        detail = RideDetail(ride=result.ride, rider=rider)
-        await events.publish_ride_status(detail)
-        await events.publish_ride_closed(result.ride.id, result.ride.service_type)
-        for offer in result.cancelled_offers:
-            await events.publish_offer_rejected(offer, reason="ride_cancelled")
+        await events.publish_ride_cancelled(result)
     except asyncio.CancelledError:
         raise
     except Exception:

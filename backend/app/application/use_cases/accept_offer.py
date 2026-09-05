@@ -10,8 +10,11 @@ retiran.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 
 from app.application.dto import AcceptOfferResult, RideDetail
+from app.application.interfaces import AcceptOfferEventRecorder, UnitOfWork
 from app.domain.entities import OfferStatus, RideStatus, User
 from app.domain.exceptions import (
     DriverUnavailableError,
@@ -24,16 +27,36 @@ from app.domain.repositories import OfferRepository, RideRequestRepository
 from app.domain.ride_policy import is_offer_expired
 
 
+async def _utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
 class AcceptOffer:
     def __init__(
         self,
         rides: RideRequestRepository,
         offers: OfferRepository,
+        unit_of_work: UnitOfWork,
+        event_recorder: AcceptOfferEventRecorder,
+        clock: Callable[[], Awaitable[datetime]] = _utc_now,
     ) -> None:
         self._rides = rides
         self._offers = offers
+        self._unit_of_work = unit_of_work
+        self._event_recorder = event_recorder
+        self._clock = clock
 
     async def execute(self, rider: User, offer_id: uuid.UUID) -> AcceptOfferResult:
+        try:
+            result = await self._mutate(rider, offer_id)
+            await self._event_recorder.record(result)
+            await self._unit_of_work.commit()
+            return result
+        except BaseException:
+            await self._unit_of_work.rollback()
+            raise
+
+    async def _mutate(self, rider: User, offer_id: uuid.UUID) -> AcceptOfferResult:
         offer = await self._offers.get_by_id(offer_id)
         if offer is None:
             raise OfferNotFoundError("La oferta no existe.")
@@ -47,12 +70,12 @@ class AcceptOffer:
             raise InvalidRideTransitionError("El viaje ya no está buscando conductor.")
         if offer.status is not OfferStatus.PENDING:
             raise InvalidRideTransitionError("La oferta ya no está disponible.")
-        if is_offer_expired(offer):
+        if is_offer_expired(offer, await self._clock()):
             raise InvalidRideTransitionError("La oferta expiró; elige otra.")
-
         # Asignación atómica: re-verifica bajo lock que la oferta siga PENDING,
-        # el viaje SEARCHING y el conductor libre. Si algo cambió (race con
-        # cancel, oferta retirada o un accept previo), devuelve None → 409.
+        # el viaje SEARCHING, el conductor libre y el TTL con el reloj de la BD.
+        # Si algo cambió (race con cancel, expiración, retiro o accept previo),
+        # devuelve None → 409.
         acceptance = await self._offers.accept_atomically(offer_id)
         if acceptance is None:
             raise DriverUnavailableError("El viaje ya no está disponible.")
@@ -64,6 +87,6 @@ class AcceptOffer:
                 driver=acceptance.driver,
                 accepted_offer=acceptance.accepted_offer,
             ),
-            withdrawn_ride_ids=acceptance.withdrawn_ride_ids,
+            withdrawn_offers=acceptance.withdrawn_offers,
             losing_driver_ids=acceptance.losing_driver_ids,
         )

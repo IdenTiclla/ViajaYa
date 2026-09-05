@@ -11,13 +11,14 @@ from __future__ import annotations
 import uuid
 
 from app.application.dto import RidePausedResult
+from app.application.interfaces import PauseRideEventRecorder, UnitOfWork
 from app.domain.entities import RideStatus, User
 from app.domain.exceptions import (
     InvalidRideTransitionError,
     NotAuthorizedActionError,
     RideNotFoundError,
 )
-from app.domain.repositories import OfferRepository, RideRequestRepository
+from app.domain.repositories import OfferRepository, OpenRideDetail, RideRequestRepository
 
 
 class PauseRideForEdit:
@@ -25,11 +26,25 @@ class PauseRideForEdit:
         self,
         rides: RideRequestRepository,
         offers: OfferRepository,
+        unit_of_work: UnitOfWork,
+        event_recorder: PauseRideEventRecorder,
     ) -> None:
         self._rides = rides
         self._offers = offers
+        self._unit_of_work = unit_of_work
+        self._event_recorder = event_recorder
 
     async def execute(self, rider: User, ride_id: uuid.UUID) -> RidePausedResult:
+        try:
+            result = await self._mutate(rider, ride_id)
+            await self._event_recorder.record(result)
+            await self._unit_of_work.commit()
+            return result
+        except BaseException:
+            await self._unit_of_work.rollback()
+            raise
+
+    async def _mutate(self, rider: User, ride_id: uuid.UUID) -> RidePausedResult:
         ride = await self._rides.get_by_id(ride_id)
         if ride is None:
             raise RideNotFoundError("La solicitud de viaje no existe.")
@@ -41,7 +56,6 @@ class PauseRideForEdit:
             )
         if ride.paused:
             raise InvalidRideTransitionError("La solicitud ya se está modificando.")
-
         transition = await self._offers.pause_ride_atomically(
             ride_id,
             expected_fare=ride.fare,
@@ -50,7 +64,14 @@ class PauseRideForEdit:
             raise InvalidRideTransitionError(
                 "La solicitud cambió de estado y ya no se puede modificar."
             )
+        open_detail = await self._rides.open_ride_with_rider(ride_id)
+        if open_detail is None:
+            raise RideNotFoundError("No se pudo enriquecer la solicitud de viaje.")
         return RidePausedResult(
             ride=transition.ride,
             paused_offers=transition.affected_offers,
+            open_detail=OpenRideDetail(
+                ride=transition.ride,
+                rider=open_detail.rider,
+            ),
         )

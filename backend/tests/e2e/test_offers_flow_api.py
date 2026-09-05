@@ -88,26 +88,99 @@ async def test_dismissed_request_persists_for_driver_until_passenger_updates_it(
 
     assert any(
         ride["id"] == ride_id
-        for ride in (await client.get(f"{RIDES}/open", headers=first_driver_h)).json()
+        for ride in (await client.get(f"{RIDES}/open", headers=first_driver_h)).json()[
+            "items"
+        ]
     )
     dismissed = await client.post(f"{RIDES}/{ride_id}/dismiss", headers=first_driver_h)
     assert dismissed.status_code == 204, dismissed.text
 
     first_pool = await client.get(f"{RIDES}/open", headers=first_driver_h)
     second_pool = await client.get(f"{RIDES}/open", headers=second_driver_h)
-    assert all(ride["id"] != ride_id for ride in first_pool.json())
-    assert any(ride["id"] == ride_id for ride in second_pool.json())
+    assert all(ride["id"] != ride_id for ride in first_pool.json()["items"])
+    assert any(ride["id"] == ride_id for ride in second_pool.json()["items"])
 
     updated = await client.patch(
         f"{RIDES}/{ride_id}/fare", json={"fare": "30.00"}, headers=rider_h
     )
     assert updated.status_code == 200, updated.text
     renewed_pool = await client.get(f"{RIDES}/open", headers=first_driver_h)
-    renewed = next(ride for ride in renewed_pool.json() if ride["id"] == ride_id)
+    renewed = next(
+        ride for ride in renewed_pool.json()["items"] if ride["id"] == ride_id
+    )
     assert renewed["fare"] == "30.00"
     assert renewed["pool_version"] == 2
 
     hub.unsubscribe(ride_topic(uuid.UUID(ride_id)), presence)
+
+
+async def test_open_rides_uses_opaque_keyset_cursor(client, session_factory):
+    _, first_rider_token = await _register(client, "pool-page-rider-1@example.com")
+    _, second_rider_token = await _register(client, "pool-page-rider-2@example.com")
+    _, driver_token = await _register(client, "pool-page-driver@example.com")
+    await _promote_to_driver(
+        session_factory,
+        "pool-page-driver@example.com",
+        VehicleType.TAXI,
+    )
+    first = await client.post(
+        RIDES,
+        json=_ride_payload(),
+        headers=_headers(first_rider_token),
+    )
+    second = await client.post(
+        RIDES,
+        json=_ride_payload(),
+        headers=_headers(second_rider_token),
+    )
+    presences = [_mark_present(first.json()["id"]), _mark_present(second.json()["id"])]
+    driver_h = _headers(driver_token)
+    try:
+        complete = (await client.get(f"{RIDES}/open", headers=driver_h)).json()
+        first_page = (
+            await client.get(f"{RIDES}/open", params={"limit": 1}, headers=driver_h)
+        ).json()
+        second_page = (
+            await client.get(
+                f"{RIDES}/open",
+                params={"limit": 1, "cursor": first_page["next_cursor"]},
+                headers=driver_h,
+            )
+        ).json()
+
+        assert complete["next_cursor"] is None
+        assert first_page["next_cursor"] is not None
+        assert second_page["next_cursor"] is None
+        assert [item["id"] for item in first_page["items"] + second_page["items"]] == [
+            item["id"] for item in complete["items"]
+        ]
+    finally:
+        hub.unsubscribe(ride_topic(uuid.UUID(first.json()["id"])), presences[0])
+        hub.unsubscribe(ride_topic(uuid.UUID(second.json()["id"])), presences[1])
+
+
+async def test_pagination_rejects_invalid_cursor_and_limits(client, session_factory):
+    _, driver_token = await _register(client, "pagination-driver@example.com")
+    await _promote_to_driver(
+        session_factory,
+        "pagination-driver@example.com",
+        VehicleType.TAXI,
+    )
+    headers = _headers(driver_token)
+
+    assert (
+        await client.get(f"{RIDES}/open", params={"cursor": "inválido"}, headers=headers)
+    ).status_code == 422
+    assert (
+        await client.get(f"{RIDES}/history", params={"cursor": "inválido"}, headers=headers)
+    ).status_code == 422
+    for limit in (0, 101):
+        assert (
+            await client.get(f"{RIDES}/open", params={"limit": limit}, headers=headers)
+        ).status_code == 422
+        assert (
+            await client.get(f"{RIDES}/history", params={"limit": limit}, headers=headers)
+        ).status_code == 422
 
 
 async def _complete_ride(client, rider_h: dict[str, str], driver_h: dict[str, str]) -> str:
@@ -157,7 +230,7 @@ async def test_full_ride_flow(client, session_factory):
     # --- los conductores ven la solicitud abierta ---
     open_resp = await client.get(f"{RIDES}/open", headers=d1_h)
     assert open_resp.status_code == 200
-    assert any(r["id"] == ride_id for r in open_resp.json())
+    assert any(r["id"] == ride_id for r in open_resp.json()["items"])
 
     # --- driver1 acepta al precio; driver2 contraoferta ---
     o1 = await client.post(
@@ -227,7 +300,7 @@ async def test_driver_cannot_offer_on_other_service(client, session_factory):
 
     # el conductor de moto no ve la solicitud de taxi
     open_resp = await client.get(f"{RIDES}/open", headers=_headers(moto_token))
-    assert all(r["id"] != ride_id for r in open_resp.json())
+    assert all(r["id"] != ride_id for r in open_resp.json()["items"])
 
     # y si intenta ofertar, recibe 403
     offer = await client.post(
@@ -265,7 +338,7 @@ async def test_taxi_and_moto_drivers_can_serve_delivery(client, session_factory)
             assert visible.status_code == 200, visible.text
             assert [ride_id] == [
                 ride["id"]
-                for ride in visible.json()
+                for ride in visible.json()["items"]
                 if ride["service_type"] == "delivery"
             ]
 
@@ -325,6 +398,14 @@ async def test_passenger_active_ride_and_duplicate_request(client, session_facto
         f"{RIDES}/offers/{offer.json()['id']}/accept", headers=rider_h
     )
     assert accepted.status_code == 200, accepted.text
+
+    driver_active = await client.get(
+        "/api/v1/drivers/me/active-ride",
+        headers=driver_h,
+    )
+    assert driver_active.status_code == 200, driver_active.text
+    assert driver_active.json()["id"] == ride_id
+    assert driver_active.json()["status"] == "accepted"
 
     active = await client.get(f"{RIDES}/me/active", headers=rider_h)
     assert active.status_code == 200, active.text
@@ -454,7 +535,10 @@ async def test_close_flow_rating_history_earnings(client, session_factory):
     # el historial del pasajero lista el viaje con su calificación
     hist = await client.get(f"{RIDES}/history", params={"status": "completed"}, headers=rider_h)
     assert hist.status_code == 200
-    assert any(h["id"] == ride_id and h["my_rating"] == 5 for h in hist.json())
+    assert any(
+        h["id"] == ride_id and h["my_rating"] == 5
+        for h in hist.json()["items"]
+    )
 
     # las ganancias del conductor reflejan el viaje (25.00)
     earn = await client.get("/api/v1/drivers/me/earnings", headers=drv_h)
@@ -484,6 +568,25 @@ async def test_pending_rating_recovers_latest_completed_for_both_roles(
 
     first_id = await _complete_ride(client, rider_h, driver_h)
     second_id = await _complete_ride(client, rider_h, driver_h)
+
+    complete_history = (
+        await client.get(f"{RIDES}/history", params={"limit": 100}, headers=rider_h)
+    ).json()
+    first_history_page = (
+        await client.get(f"{RIDES}/history", params={"limit": 1}, headers=rider_h)
+    ).json()
+    second_history_page = (
+        await client.get(
+            f"{RIDES}/history",
+            params={"limit": 1, "cursor": first_history_page["next_cursor"]},
+            headers=rider_h,
+        )
+    ).json()
+    assert first_history_page["next_cursor"] is not None
+    assert [
+        item["id"]
+        for item in first_history_page["items"] + second_history_page["items"]
+    ] == [item["id"] for item in complete_history["items"]]
 
     rider_pending = await client.get(endpoint, headers=rider_h)
     driver_pending = await client.get(endpoint, headers=driver_h)

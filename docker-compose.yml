@@ -17,5 +17,63 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7.4-alpine
+    container_name: viajaya_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis_restart_test:
+    image: redis:7.4-alpine
+    container_name: viajaya_redis_restart_test
+    profiles: ["restart-smoke"]
+    ports:
+      - "127.0.0.1:6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 1s
+      retries: 20
+
+  prometheus:
+    image: prom/prometheus:v3.11.3
+    container_name: viajaya_prometheus
+    profiles: ["monitoring"]
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./ops/monitoring/prometheus:/etc/prometheus:ro
+      - viajaya_prometheus_data:/prometheus
+    depends_on:
+      - alertmanager
+
+  alertmanager:
+    image: prom/alertmanager:v0.32.1
+    container_name: viajaya_alertmanager
+    profiles: ["monitoring"]
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    ports:
+      - "127.0.0.1:9093:9093"
+    volumes:
+      - ${VIAJAYA_ALERTMANAGER_CONFIG_PATH:-./ops/monitoring/alertmanager/alertmanager.yml}:/etc/alertmanager/alertmanager.yml:ro
+      - viajaya_alertmanager_data:/alertmanager
+
 volumes:
   viajaya_pgdata:
+  viajaya_prometheus_data:
+  viajaya_alertmanager_data:

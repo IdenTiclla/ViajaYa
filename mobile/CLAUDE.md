@@ -91,6 +91,12 @@ Las rutas ocultas declaran `tabBarButton: () => null` (ej. el `index` redirect d
 
 - **Server state → React Query** (`QueryClient` singleton: `retry:1`, `staleTime:30s`). Polling lento
   (15–20 s) como respaldo del WS en `useOpenRides`, `useRideOffers`, `useRide`, `useDriverActiveRide`.
+- Las `queryFn` de viajes propagan `signal` hasta Axios. Conserva esa cadena al
+  añadir consultas para que `cancelQueries` cancele también el transporte HTTP.
+- El pool abierto y el historial usan `useInfiniteQuery` sobre el contrato
+  `{items, next_cursor}`. La caché `['open-rides']` es `InfiniteData`: los eventos
+  WS deben usar `features/rides/application/openRidesCache.ts`, no escribir arrays
+  directamente.
 - **Estado de sesión/cliente → Zustand**: `authStore` (sesión), `useBookingStore` (reserva),
   `useDriverRequests` (conjuntos `dismissed`/`offered`/`rejected`/`taken`/`expired`/`paused` del
   conductor), `usePassengerToasts` / `useDriverToasts` (toasts efímeros, máx 3).
@@ -117,15 +123,55 @@ Infra: `core/realtime/socket.ts` — `openSocket(path, onMessage)`. Backoff expo
 reemplaza sockets suspendidos al volver a foreground (`AppState`) y procesa los mensajes en orden.
 **Solo bajada**: parsea `{type,data}` y lo pasa al callback.
 
+Los hooks usan parsers duales legacy/v2. Cada conexión debe completar primero
+su snapshot y no puede mezclar protocolos: un hueco, conflicto, frame inválido o
+fallo del handler descarta la generación del socket y fuerza otro handshake sin
+perder los cursores ya confirmados. El gate v2 confirma cada ticket solo después
+de actualizar React Query/Zustand; duplicados y posiciones antiguas no mutan ni
+repiten avisos.
+En un dev build, `core/realtime/diagnostics.ts` conserva un buffer acotado y
+emite logs `[realtime]` con conexión, snapshot, código de cierre, causa de
+descarte y resync. No añadas rutas, IDs, tokens, frames ni payloads a ese
+contrato; permanece deshabilitado fuera de `__DEV__`.
+Durante el rollout de correlación, `correlation_id` puede faltar en un evento v2
+del backend anterior; mobile usa entonces `batch_id`. La correlación es metadata
+diagnóstica y no cambia la identidad idempotente de un `event_id`.
+
 Eventos que escuchan los hooks (WS → mutación de caché React Query + estado Zustand + toast):
 
 - **Pasajero** (`/ws/rides/{rideId}`): `offers_snapshot`, `offer_created`, `offer_withdrawn`
   (salvo `reason==='superseded'`), `offer_expired`, `ride_status`.
 - **Conductor** (`/ws/driver`): `open_rides_snapshot`, `driver_offers_snapshot` (rehidrata
-  ofertas pendientes tras reiniciar), `ride_created` (upsert + `clearPaused` +
-  `clearDismissed` — revive la tarjeta descartada al subir el fare), `ride_closed`, `ride_paused`,
+  ofertas pendientes tras reiniciar), `ride_created`, `ride_closed`, `ride_paused`,
   `offer_accepted`, `offer_expired`, `offer_rejected` (`ride_taken`/`ride_cancelled`/`declined`),
   `offers_withdrawn`, `ride_status`, `driver_active_ride` (snapshot al reconectar).
+
+Los reducers de `ride_status` son monótonos y contrastan detalle + viaje activo;
+el mismo estado sí refresca el payload. `offer_expired` aplica por `offer_id`
+exacto y solo notifica si retiró la oferta vigente. `offers_withdrawn` elimina
+por los pares exactos `{ride_id, offer_id}` cuando están presentes, para que un
+resumen atrasado no borre una reoferta; `ride_ids` se conserva como fallback
+legacy. El éxito HTTP al pasar offline vacía además las ofertas vivas para
+tolerar una caída del WebSocket.
+
+El store del conductor conserva tombstones acotados por `offer_id`, rides
+terminales, generaciones del pool y un token por intento HTTP. `markOffered` es
+un CAS: el `201` tardío
+de una oferta rechazada, expirada, pausada, aceptada, tomada, cancelada o retirada
+no puede revivirla, ni una respuesta anterior ganar a otra petición. Los eventos
+`ride_created` duplicados o atrasados no limpian desenlaces de otra generación.
+`ride_closed` lleva `pool_version` y `reason=paused|terminal`: solo un cierre
+aplicable retira la tarjeta y la oferta visible, y un terminal domina una pausa
+de la misma generación. Un snapshot PostgreSQL `PENDING` sí corrige guards locales
+contradictorios, incluida una expiración por reloj adelantado.
+
+El snapshot v2 del pasajero reemplaza detalle, activo y ofertas bajo un único
+watermark `ride:*`. El del conductor reemplaza pool abierto, pausados, ofertas y
+`active_ride` (también cuando es `null`) con los watermarks de su vehículo,
+delivery y `driver:*`. Para arbitrar un `201` concurrente no se comparan fechas:
+PostgreSQL no ordena commits con `now()`. El store registra qué intentos locales
+ya estaban en vuelo al aplicar el snapshot; si uno ausente resuelve después,
+fuerza otro handshake que decide autoritativamente si sigue `PENDING`.
 
 ## Tema (design system)
 
@@ -170,7 +216,7 @@ aquí.** Mantén ambos lados en sintonía.
 
 ### Enums de dominio (mobile)
 
-`ServiceType = 'taxi' | 'moto'` · `PaymentMethod = 'qr' | 'cash'` ·
+`ServiceType = 'taxi' | 'moto' | 'delivery'` · `PaymentMethod = 'qr' | 'cash'` ·
 `RideStatus = 'searching' | 'accepted' | 'arriving' | 'in_progress' | 'completed' | 'cancelled'` ·
 `OfferStatus = 'pending' | 'accepted' | 'rejected' | 'expired'`. Oferta TTL = 30 s. Moneda = Bs (bolivianos).
 

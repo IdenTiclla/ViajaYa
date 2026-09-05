@@ -5,13 +5,16 @@ Separados de las entidades de dominio.
 
 from __future__ import annotations
 
+import re
+import unicodedata
 import uuid
-from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
-from app.application.dto import RideDetail, RideHistoryItem
+from app.api.v1.pagination import encode_cursor
+from app.api.v1.schemas.datetimes import UtcAwareDatetime
+from app.application.dto import Page, RideDetail, RideHistoryItem
 from app.domain.entities import (
     Location,
     PaymentMethod,
@@ -46,9 +49,60 @@ class PointSchema(BaseModel):
         )
 
 
+_COORDINATES_ONLY = re.compile(
+    r"^-?\d{1,2}(?:\.\d+)?\s*,\s*-?\d{1,3}(?:\.\d+)?$"
+)
+_COORDINATE_VALUE = re.compile(r"^-?\d{1,3}(?:\.\d+)?$")
+_PROVISIONAL_NAMES = {
+    "ubicacion seleccionada",
+    "direccion seleccionada",
+    "direccion pendiente",
+    "direccion no disponible",
+    "obteniendo direccion...",
+    "obteniendo lugar...",
+    "origen",
+    "destino",
+    "lugar",
+}
+
+
+def _normalize_label(value: str) -> str:
+    decomposed = unicodedata.normalize("NFD", value.strip().casefold())
+    without_accents = "".join(char for char in decomposed if unicodedata.category(char) != "Mn")
+    return without_accents.replace("…", "...")
+
+
+def _is_useful_label(value: str) -> bool:
+    normalized = _normalize_label(value)
+    return (
+        bool(normalized)
+        and normalized not in _PROVISIONAL_NAMES
+        and not _COORDINATES_ONLY.fullmatch(normalized)
+        and not _COORDINATE_VALUE.fullmatch(normalized)
+    )
+
+
+class PointInputSchema(PointSchema):
+    """Punto entrante: nunca admite una etiqueta provisional como nombre final."""
+
+    @model_validator(mode="after")
+    def normalize_readable_name(self) -> PointInputSchema:
+        if _is_useful_label(self.name):
+            self.name = self.name.strip()
+        else:
+            address_first_line = self.address.split(",", maxsplit=1)[0].strip()
+            if _is_useful_label(self.address) and _is_useful_label(address_first_line):
+                self.name = address_first_line
+            else:
+                raise ValueError("Falta obtener un nombre legible para la ubicación seleccionada.")
+
+        self.address = self.address.strip() if _is_useful_label(self.address) else self.name
+        return self
+
+
 class CreateRideRequestRequest(BaseModel):
-    origin: PointSchema
-    destination: PointSchema
+    origin: PointInputSchema
+    destination: PointInputSchema
     service_type: ServiceType
     fare: Decimal = Field(gt=0, max_digits=10, decimal_places=2)
     payment_method: PaymentMethod = PaymentMethod.CASH
@@ -66,7 +120,7 @@ class RideRequestResponse(BaseModel):
     payment_method: PaymentMethod
     origin: PointSchema
     destination: PointSchema
-    created_at: datetime | None
+    created_at: UtcAwareDatetime | None
 
     @classmethod
     def from_entity(cls, ride: RideRequest) -> RideRequestResponse:
@@ -99,7 +153,7 @@ class OpenRideRiderResponse(BaseModel):
 
     id: uuid.UUID
     full_name: str
-    rating: float | None = None
+    rating: float | None
     trips_completed: int
 
 
@@ -114,7 +168,7 @@ class OpenRideResponse(BaseModel):
     destination: PointSchema
     rider: OpenRideRiderResponse
     pool_version: int
-    created_at: datetime | None
+    created_at: UtcAwareDatetime | None
 
     @classmethod
     def from_open_ride(cls, detail: OpenRideDetail) -> OpenRideResponse:
@@ -135,6 +189,20 @@ class OpenRideResponse(BaseModel):
             ),
             pool_version=ride.pool_version,
             created_at=ride.created_at,
+        )
+
+
+class OpenRidePageResponse(BaseModel):
+    """Página de solicitudes abiertas ordenadas de forma estable."""
+
+    items: list[OpenRideResponse]
+    next_cursor: str | None
+
+    @classmethod
+    def from_page(cls, page: Page[OpenRideDetail]) -> OpenRidePageResponse:
+        return cls(
+            items=[OpenRideResponse.from_open_ride(item) for item in page.items],
+            next_cursor=encode_cursor(page.next_cursor),
         )
 
 
@@ -175,9 +243,9 @@ class RideResponse(BaseModel):
     driver: RideDriverSchema | None
     accepted_price: Decimal | None
     accepted_eta_min: int | None
-    created_at: datetime | None
-    completed_at: datetime | None
-    cancelled_at: datetime | None
+    created_at: UtcAwareDatetime | None
+    completed_at: UtcAwareDatetime | None
+    cancelled_at: UtcAwareDatetime | None
 
     @classmethod
     def from_detail(cls, detail: RideDetail) -> RideResponse:
@@ -249,10 +317,10 @@ class HistoryCounterpartSchema(BaseModel):
 
     id: uuid.UUID
     full_name: str
-    rating: float | None = None
-    vehicle_type: VehicleType | None = None
-    vehicle_model: str | None = None
-    plate: str | None = None
+    rating: float | None
+    vehicle_type: VehicleType | None
+    vehicle_model: str | None
+    plate: str | None
 
 
 class RideHistoryItemResponse(BaseModel):
@@ -265,9 +333,9 @@ class RideHistoryItemResponse(BaseModel):
     origin: PointSchema
     destination: PointSchema
     price: Decimal
-    my_rating: int | None = None
-    counterpart: HistoryCounterpartSchema | None = None
-    created_at: datetime | None = None
+    my_rating: int | None
+    counterpart: HistoryCounterpartSchema | None
+    created_at: UtcAwareDatetime | None
 
     @classmethod
     def from_item(cls, item: RideHistoryItem) -> RideHistoryItemResponse:
@@ -295,4 +363,18 @@ class RideHistoryItemResponse(BaseModel):
                 else None
             ),
             created_at=ride.completed_at or ride.cancelled_at or ride.created_at,
+        )
+
+
+class RideHistoryPageResponse(BaseModel):
+    """Página del historial de un pasajero o conductor."""
+
+    items: list[RideHistoryItemResponse]
+    next_cursor: str | None
+
+    @classmethod
+    def from_page(cls, page: Page[RideHistoryItem]) -> RideHistoryPageResponse:
+        return cls(
+            items=[RideHistoryItemResponse.from_item(item) for item in page.items],
+            next_cursor=encode_cursor(page.next_cursor),
         )

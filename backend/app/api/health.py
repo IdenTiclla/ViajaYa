@@ -1,0 +1,462 @@
+"""Probes operativos y estado sanitario sin datos sensibles."""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+from datetime import UTC, datetime
+from typing import Literal
+
+from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+from sqlalchemy import text
+
+from app.api.deps import (
+    RealtimeOutboxOperationalSnapshotDep,
+    ScheduledActionsOperationalSnapshotDep,
+    SessionFactoryDep,
+    SettingsDep,
+)
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(tags=["health"])
+
+
+class HealthResponse(BaseModel):
+    status: Literal["ok"] = "ok"
+
+
+class ReadinessChecksResponse(BaseModel):
+    database: Literal["ok", "error"]
+    scheduled_actions_worker: Literal["ok", "error", "disabled"]
+    scheduled_actions_retention: Literal["ok", "error", "disabled"]
+    realtime_outbox_dispatcher: Literal["ok", "error", "disabled"]
+    realtime_redis_bridge: Literal["ok", "error", "disabled"]
+    passenger_presence_store: Literal["ok", "error", "disabled"]
+    realtime_outbox_process_lock: Literal["ok", "error", "disabled"]
+    realtime_outbox_retention: Literal["ok", "error", "disabled"]
+
+
+class ReadinessResponse(BaseModel):
+    status: Literal["ok", "unavailable"]
+    checks: ReadinessChecksResponse
+
+
+class QuarantinedBatchCountResponse(BaseModel):
+    code: str
+    batch_count: int
+
+
+class RealtimeHealthResponse(BaseModel):
+    status: Literal["ok", "disabled", "unavailable"]
+    mode: Literal["off", "shadow", "live_local", "live_redis"]
+    retention_days: int
+    captured_at: datetime | None = None
+    pending_event_count: int | None = None
+    pending_batch_count: int | None = None
+    retrying_batch_count: int | None = None
+    quarantined_batches: list[QuarantinedBatchCountResponse] | None = None
+    max_pending_age_seconds: float | None = None
+    latest_publish_delay_seconds: float | None = None
+    latest_published_at: datetime | None = None
+    retention_deleted_batch_count: int | None = None
+    retention_deleted_event_count: int | None = None
+    redis_connected: bool | None = None
+    redis_published_batch_count: int | None = None
+    redis_received_batch_count: int | None = None
+    redis_received_event_count: int | None = None
+    redis_resync_message_count: int | None = None
+    redis_reconnect_count: int | None = None
+    redis_invalid_message_count: int | None = None
+    redis_last_publish_subscriber_count: int | None = None
+
+
+class ScheduledActionDeadCountResponse(BaseModel):
+    action_type: str
+    action_count: int
+
+
+class ScheduledActionsHealthResponse(BaseModel):
+    status: Literal["ok", "disabled", "unavailable"]
+    mode: Literal["off", "shadow", "live"]
+    captured_at: datetime | None = None
+    pending_count: int | None = None
+    due_count: int | None = None
+    running_count: int | None = None
+    stale_count: int | None = None
+    retrying_count: int | None = None
+    dead_counts: list[ScheduledActionDeadCountResponse] | None = None
+    oldest_due_age_seconds: float | None = None
+    next_due_at: datetime | None = None
+    latest_succeeded_at: datetime | None = None
+    claimed_count: int | None = None
+    succeeded_count: int | None = None
+    deferred_count: int | None = None
+    retried_count: int | None = None
+    dead_count: int | None = None
+    recovered_lease_count: int | None = None
+    retention_days: int | None = None
+    retention_deleted_action_count: int | None = None
+
+
+@router.get("/health", response_model=HealthResponse)
+async def health() -> HealthResponse:
+    """Contrato de liveness histórico, conservado sin cambios."""
+    return HealthResponse()
+
+
+@router.get("/health/live", response_model=HealthResponse)
+async def liveness() -> HealthResponse:
+    """Solo certifica que el proceso puede responder; no consulta dependencias."""
+    return HealthResponse()
+
+
+@router.get(
+    "/health/ready",
+    response_model=ReadinessResponse,
+    responses={503: {"model": ReadinessResponse}},
+)
+async def readiness(
+    request: Request,
+    settings: SettingsDep,
+    session_factory: SessionFactoryDep,
+) -> ReadinessResponse | JSONResponse:
+    """Comprueba PostgreSQL y los workers habilitados, sin filtrar errores."""
+    database_ready = True
+    try:
+        async with asyncio.timeout(2):
+            async with session_factory() as session:
+                await session.execute(text("SELECT 1"))
+                await session.rollback()
+    except Exception as error:  # noqa: BLE001 - probe sanitario
+        database_ready = False
+        logger.warning(
+            "Falló el probe de readiness de PostgreSQL (%s).",
+            type(error).__name__,
+        )
+
+    mode = settings.realtime_outbox_dispatch_mode
+    dispatcher_ready = True
+    dispatcher_status: Literal["ok", "error", "disabled"] = "disabled"
+    dispatcher = None
+    if mode in {"shadow", "live_local", "live_redis"}:
+        dispatcher = request.app.state.realtime_outbox_dispatcher
+        dispatcher_task = request.app.state.realtime_outbox_dispatcher_task
+        dispatcher_ready = bool(
+            dispatcher is not None
+            and dispatcher.running
+            and dispatcher_task is not None
+            and not dispatcher_task.done()
+        )
+        dispatcher_status = "ok" if dispatcher_ready else "error"
+
+    redis_ready = True
+    redis_status: Literal["ok", "error", "disabled"] = "disabled"
+    if mode == "live_redis":
+        redis_bridge = request.app.state.realtime_redis_bridge
+        redis_bridge_task = request.app.state.realtime_redis_bridge_task
+        redis_ready = bool(
+            redis_bridge is not None
+            and redis_bridge.running
+            and redis_bridge.connected
+            and redis_bridge.last_error is None
+            and redis_bridge_task is not None
+            and not redis_bridge_task.done()
+        )
+        redis_status = "ok" if redis_ready else "error"
+
+    presence_ready = True
+    presence_status: Literal["ok", "error", "disabled"] = "disabled"
+    if settings.realtime_shared_presence_enabled:
+        presence_store = request.app.state.passenger_presence_store
+        try:
+            if presence_store is None:
+                raise RuntimeError("Presencia compartida no inicializada.")
+            await asyncio.wait_for(presence_store.check(), timeout=2)
+            presence_ready = presence_store.healthy
+        except Exception:  # noqa: BLE001 - probe sanitario fail-closed
+            presence_ready = False
+        presence_status = "ok" if presence_ready else "error"
+
+    process_lock_ready = True
+    process_lock_status: Literal["ok", "error", "disabled"] = "disabled"
+    if mode in {"shadow", "live_local", "live_redis"}:
+        process_lock = request.app.state.live_local_process_lock
+        try:
+            process_lock_ready = bool(
+                process_lock is not None
+                and await asyncio.wait_for(process_lock.check(), timeout=2)
+            )
+        except Exception:  # noqa: BLE001 - probe sanitario fail-closed
+            process_lock_ready = False
+        process_lock_status = "ok" if process_lock_ready else "error"
+        if not process_lock_ready and dispatcher is not None:
+            # La pérdida de la sesión libera el advisory lock en PostgreSQL.
+            # Detener el consumidor evita dos claims mientras el pod se repone.
+            dispatcher.stop()
+
+    retention_ready = True
+    retention_status: Literal["ok", "error", "disabled"] = "disabled"
+    if settings.realtime_outbox_published_retention_days > 0:
+        retention_worker = request.app.state.realtime_outbox_retention_worker
+        retention_task = request.app.state.realtime_outbox_retention_task
+        retention_ready = bool(
+            retention_worker is not None
+            and retention_worker.running
+            and retention_task is not None
+            and not retention_task.done()
+        )
+        retention_status = "ok" if retention_ready else "error"
+
+    scheduled_ready = True
+    scheduled_status: Literal["ok", "error", "disabled"] = "disabled"
+    if settings.scheduled_actions_mode in {"shadow", "live"}:
+        scheduled_worker = request.app.state.scheduled_actions_worker
+        scheduled_task = request.app.state.scheduled_actions_task
+        scheduled_ready = bool(
+            scheduled_worker is not None
+            and scheduled_worker.running
+            and scheduled_task is not None
+            and not scheduled_task.done()
+        )
+        scheduled_status = "ok" if scheduled_ready else "error"
+
+    scheduled_retention_ready = True
+    scheduled_retention_status: Literal["ok", "error", "disabled"] = "disabled"
+    scheduled_retention_worker = request.app.state.scheduled_actions_retention_worker
+    scheduled_retention_task = request.app.state.scheduled_actions_retention_task
+    scheduled_retention_ready = bool(
+        scheduled_retention_worker is not None
+        and scheduled_retention_worker.running
+        and scheduled_retention_task is not None
+        and not scheduled_retention_task.done()
+    )
+    scheduled_retention_status = "ok" if scheduled_retention_ready else "error"
+
+    ready = (
+        database_ready
+        and dispatcher_ready
+        and redis_ready
+        and presence_ready
+        and process_lock_ready
+        and retention_ready
+        and scheduled_ready
+        and scheduled_retention_ready
+    )
+    response = ReadinessResponse(
+        status="ok" if ready else "unavailable",
+        checks=ReadinessChecksResponse(
+            database="ok" if database_ready else "error",
+            scheduled_actions_worker=scheduled_status,
+            scheduled_actions_retention=scheduled_retention_status,
+            realtime_outbox_dispatcher=dispatcher_status,
+            realtime_redis_bridge=redis_status,
+            passenger_presence_store=presence_status,
+            realtime_outbox_process_lock=process_lock_status,
+            realtime_outbox_retention=retention_status,
+        ),
+    )
+    if ready:
+        return response
+    return JSONResponse(status_code=503, content=response.model_dump(mode="json"))
+
+
+@router.get(
+    "/health/realtime",
+    response_model=RealtimeHealthResponse,
+    response_model_exclude_none=True,
+    responses={503: {"model": RealtimeHealthResponse}},
+)
+async def realtime_health(
+    request: Request,
+    settings: SettingsDep,
+    use_case: RealtimeOutboxOperationalSnapshotDep,
+) -> RealtimeHealthResponse | JSONResponse:
+    """Expone métricas acotadas de outbox sin topics, payloads ni errores."""
+    mode = settings.realtime_outbox_dispatch_mode
+    retention_days = settings.realtime_outbox_published_retention_days
+    if mode == "off" and retention_days == 0:
+        return RealtimeHealthResponse(
+            status="disabled",
+            mode=mode,
+            retention_days=retention_days,
+        )
+
+    try:
+        async with asyncio.timeout(2):
+            snapshot = await use_case.execute(datetime.now(UTC))
+    except Exception as error:  # noqa: BLE001 - probe sanitario
+        logger.warning(
+            "Falló el snapshot operativo de la outbox (%s).",
+            type(error).__name__,
+        )
+        response = RealtimeHealthResponse(
+            status="unavailable",
+            mode=mode,
+            retention_days=retention_days,
+        )
+        return JSONResponse(
+            status_code=503,
+            content=response.model_dump(mode="json", exclude_none=True),
+        )
+
+    retention_worker = request.app.state.realtime_outbox_retention_worker
+    redis_bridge = request.app.state.realtime_redis_bridge
+    redis_healthy = bool(
+        mode != "live_redis"
+        or (
+            redis_bridge is not None
+            and redis_bridge.running
+            and redis_bridge.connected
+            and redis_bridge.last_error is None
+        )
+    )
+    response = RealtimeHealthResponse(
+        status="ok" if redis_healthy else "unavailable",
+        mode=mode,
+        captured_at=snapshot.captured_at,
+        pending_event_count=snapshot.pending_event_count,
+        pending_batch_count=snapshot.pending_batch_count,
+        retrying_batch_count=snapshot.retrying_batch_count,
+        quarantined_batches=[
+            QuarantinedBatchCountResponse(
+                code=item.code,
+                batch_count=item.batch_count,
+            )
+            for item in snapshot.quarantined_batches
+        ],
+        max_pending_age_seconds=snapshot.max_pending_age_seconds,
+        latest_publish_delay_seconds=snapshot.latest_publish_delay_seconds,
+        latest_published_at=snapshot.latest_published_at,
+        retention_days=retention_days,
+        retention_deleted_batch_count=(
+            retention_worker.deleted_batch_count
+            if retention_worker is not None
+            else 0
+        ),
+        retention_deleted_event_count=(
+            retention_worker.deleted_event_count
+            if retention_worker is not None
+            else 0
+        ),
+        redis_connected=(
+            redis_bridge.connected if redis_bridge is not None else None
+        ),
+        redis_published_batch_count=(
+            getattr(redis_bridge, "published_batch_count", 0)
+            if redis_bridge is not None
+            else None
+        ),
+        redis_received_batch_count=(
+            getattr(redis_bridge, "received_batch_count", 0)
+            if redis_bridge is not None
+            else None
+        ),
+        redis_received_event_count=(
+            getattr(redis_bridge, "received_event_count", 0)
+            if redis_bridge is not None
+            else None
+        ),
+        redis_resync_message_count=(
+            getattr(redis_bridge, "resync_message_count", 0)
+            if redis_bridge is not None
+            else None
+        ),
+        redis_reconnect_count=(
+            getattr(redis_bridge, "reconnect_count", 0)
+            if redis_bridge is not None
+            else None
+        ),
+        redis_invalid_message_count=(
+            getattr(redis_bridge, "invalid_message_count", 0)
+            if redis_bridge is not None
+            else None
+        ),
+        redis_last_publish_subscriber_count=(
+            getattr(redis_bridge, "last_publish_subscriber_count", 0)
+            if redis_bridge is not None
+            else None
+        ),
+    )
+    if redis_healthy:
+        return response
+    return JSONResponse(
+        status_code=503,
+        content=response.model_dump(mode="json", exclude_none=True),
+    )
+
+
+@router.get(
+    "/health/scheduled-actions",
+    response_model=ScheduledActionsHealthResponse,
+    response_model_exclude_none=True,
+    responses={503: {"model": ScheduledActionsHealthResponse}},
+)
+async def scheduled_actions_health(
+    request: Request,
+    settings: SettingsDep,
+    use_case: ScheduledActionsOperationalSnapshotDep,
+) -> ScheduledActionsHealthResponse | JSONResponse:
+    """Expone backlog y leases agregados, nunca payloads ni identificadores."""
+    mode = settings.scheduled_actions_mode
+    if mode == "off":
+        return ScheduledActionsHealthResponse(status="disabled", mode=mode)
+
+    try:
+        async with asyncio.timeout(2):
+            snapshot = await use_case.execute(
+                datetime.now(UTC),
+                lease_seconds=settings.scheduled_actions_lease_seconds,
+            )
+    except Exception as error:  # noqa: BLE001 - probe sanitario
+        logger.warning(
+            "Falló el snapshot operativo de scheduled_actions (%s).",
+            type(error).__name__,
+        )
+        response = ScheduledActionsHealthResponse(
+            status="unavailable",
+            mode=mode,
+        )
+        return JSONResponse(
+            status_code=503,
+            content=response.model_dump(mode="json", exclude_none=True),
+        )
+
+    worker = request.app.state.scheduled_actions_worker
+    retention_worker = request.app.state.scheduled_actions_retention_worker
+    return ScheduledActionsHealthResponse(
+        status="ok",
+        mode=mode,
+        captured_at=snapshot.captured_at,
+        pending_count=snapshot.pending_count,
+        due_count=snapshot.due_count,
+        running_count=snapshot.running_count,
+        stale_count=snapshot.stale_count,
+        retrying_count=snapshot.retrying_count,
+        dead_counts=[
+            ScheduledActionDeadCountResponse(
+                action_type=item.action_type,
+                action_count=item.action_count,
+            )
+            for item in snapshot.dead_counts
+        ],
+        oldest_due_age_seconds=snapshot.oldest_due_age_seconds,
+        next_due_at=snapshot.next_due_at,
+        latest_succeeded_at=snapshot.latest_succeeded_at,
+        claimed_count=worker.claimed_count if worker is not None else 0,
+        succeeded_count=worker.succeeded_count if worker is not None else 0,
+        deferred_count=worker.deferred_count if worker is not None else 0,
+        retried_count=worker.retried_count if worker is not None else 0,
+        dead_count=worker.dead_count if worker is not None else 0,
+        recovered_lease_count=(
+            worker.recovered_lease_count if worker is not None else 0
+        ),
+        retention_days=settings.scheduled_actions_terminal_retention_days,
+        retention_deleted_action_count=(
+            retention_worker.deleted_action_count
+            if retention_worker is not None
+            else 0
+        ),
+    )

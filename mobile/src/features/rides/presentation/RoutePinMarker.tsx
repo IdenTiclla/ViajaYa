@@ -13,34 +13,50 @@ import { Marker } from 'react-native-maps';
 
 import { colors, fontWeight, radius, spacing } from '@/core/theme';
 import type { Coordinates } from '@/features/booking/domain/types';
+import { PinLoadingIndicator } from '@/shared/components';
 
 type Props = {
   kind: 'A' | 'B';
   coordinate: Coordinates;
   /** Texto del tooltip (p. ej. "Origen", "Destino"). */
   label: string;
+  /** Oculta el tooltip cuando la información se presenta fuera del mapa. */
+  showTooltip?: boolean;
+  /** Reduce ligeramente la tipografía para compensar el escalado del marcador nativo. */
+  compactTooltip?: boolean;
+  /** Muestra un control de edición unido al marcador. */
+  showEditControl?: boolean;
   /** Atenuar el pin (p. ej. orígenes no seleccionados en el mapa de solicitudes). */
   dim?: boolean;
-  /** Muestra un lápiz sobre el tooltip; al tocar el marcador se invoca `onPress`. */
-  showEditControl?: boolean;
+  /** Jerarquía del marcador cuando varios puntos se superponen. */
+  zIndex?: number;
+  /** Indica que todavía se está resolviendo el nombre de este punto. */
+  loading?: boolean;
   onPress?: () => void;
 };
 
 // Compacto para no tapar la ruta ni otros puntos cercanos en el mapa.
-const PIN_SIZE = 20;
+const PIN_SIZE = 18;
 
 export function RoutePinMarker({
   kind,
   coordinate,
   label,
-  dim,
+  showTooltip = true,
+  compactTooltip,
   showEditControl,
+  dim,
+  zIndex,
+  loading = false,
   onPress,
 }: Props) {
   return (
     <Marker
       coordinate={coordinate}
-      anchor={{ x: 0.5, y: showEditControl ? 0.87 : 0.72 }}
+      // En Google Maps Android las polilíneas y los marcadores son capas
+      // separadas; un z-index explícito mantiene el pin visible sobre la ruta.
+      zIndex={zIndex ?? 10}
+      anchor={{ x: 0.5, y: showEditControl ? 0.87 : showTooltip ? 0.72 : 0.5 }}
       onPress={onPress}>
       <View style={styles.wrap}>
         {showEditControl && (
@@ -49,15 +65,23 @@ export function RoutePinMarker({
               styles.editControl,
               kind === 'A' ? styles.editOrigin : styles.editDestination,
             ]}>
-            <Ionicons name="create" size={14} color={colors.textOnPrimary} />
+            <Ionicons name="create" size={11} color={colors.textOnPrimary} />
+            <Text style={styles.editText}>Editar</Text>
           </View>
         )}
-        <View style={styles.tooltip}>
-          <Text style={styles.tooltipText}>{label}</Text>
-        </View>
+        {showTooltip && (
+          <View style={styles.tooltip}>
+            <Text style={[styles.tooltipText, compactTooltip && styles.tooltipTextCompact]}>
+              {label}
+            </Text>
+          </View>
+        )}
         <View
           style={[styles.pinBase, kind === 'A' ? styles.pinA : styles.pinB, dim && styles.pinDim]}>
-          <Text style={styles.pinLabel}>{kind}</Text>
+          <Text style={[styles.pinLabel, loading && styles.pinLabelLoading]}>{kind}</Text>
+          <View style={styles.pinLoader} pointerEvents="none">
+            <PinLoadingIndicator loading={loading} color={colors.textOnPrimary} compact />
+          </View>
         </View>
       </View>
     </Marker>
@@ -67,12 +91,14 @@ export function RoutePinMarker({
 const styles = StyleSheet.create({
   wrap: { alignItems: 'center' },
   editControl: {
-    width: 28,
-    height: 28,
+    width: 56,
+    height: 22,
     marginBottom: spacing.xs,
     borderRadius: radius.pill,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 3,
     borderWidth: 2,
     borderColor: colors.surface,
     shadowColor: '#000',
@@ -83,6 +109,7 @@ const styles = StyleSheet.create({
   },
   editOrigin: { backgroundColor: colors.primary },
   editDestination: { backgroundColor: colors.danger },
+  editText: { color: colors.textOnPrimary, fontSize: 9, fontWeight: fontWeight.bold },
   tooltip: {
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,
@@ -104,6 +131,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     textAlign: 'center',
   },
+  tooltipTextCompact: { fontSize: 9 },
   pinBase: {
     width: PIN_SIZE,
     height: PIN_SIZE,
@@ -122,4 +150,14 @@ const styles = StyleSheet.create({
   pinB: { backgroundColor: colors.danger },
   pinDim: { opacity: 0.5 },
   pinLabel: { color: colors.textOnPrimary, fontSize: 10, fontWeight: fontWeight.bold },
+  pinLabelLoading: { opacity: 0 },
+  pinLoader: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });

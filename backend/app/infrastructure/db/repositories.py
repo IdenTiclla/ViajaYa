@@ -6,10 +6,19 @@ import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import case, func, or_, select, tuple_, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.application.dto import (
+    DriverEarnings,
+    EarningsItem,
+    Page,
+    PageCursor,
+    RideDetail,
+    RideHistoryItem,
+)
+from app.application.interfaces import RideReadRepository
 from app.domain.entities import (
     AuthProvider,
     Location,
@@ -41,8 +50,10 @@ from app.domain.repositories import (
     RiderSummary,
     SavedPlaceRepository,
     UserRepository,
+    WithdrawnOfferReference,
 )
 from app.domain.ride_policy import is_offer_expired
+from app.infrastructure.db.clock import DatabaseClock, database_utc_now
 from app.infrastructure.db.models import (
     DriverRideDismissalModel,
     OfferModel,
@@ -119,8 +130,14 @@ def _to_entity(row: UserModel) -> User:
 
 
 class SqlAlchemyUserRepository(UserRepository):
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        *,
+        commit_set_online: bool = True,
+    ) -> None:
         self._session = session
+        self._commit_set_online = commit_set_online
 
     async def get_by_id(self, user_id: uuid.UUID) -> User | None:
         row = await self._session.get(UserModel, user_id)
@@ -189,9 +206,13 @@ class SqlAlchemyUserRepository(UserRepository):
         )
         row = result.scalar_one_or_none()
         if row is None:  # pragma: no cover - el caso de uso valida antes
-            await self._session.rollback()
+            if self._commit_set_online:
+                await self._session.rollback()
             raise ValueError("user not found")
-        await self._session.commit()
+        if self._commit_set_online:
+            await self._session.commit()
+        else:
+            await self._session.flush()
         await self._session.refresh(row)
         return _to_entity(row)
 
@@ -227,8 +248,16 @@ def _ride_to_entity(row: RideRequestModel) -> RideRequest:
 
 
 class SqlAlchemyRideRequestRepository(RideRequestRepository):
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        *,
+        commit_add: bool = True,
+        commit_update_if_state: bool = True,
+    ) -> None:
         self._session = session
+        self._commit_add = commit_add
+        self._commit_update_if_state = commit_update_if_state
 
     async def add(self, ride: RideRequest) -> RideRequest:
         row = RideRequestModel(
@@ -254,7 +283,10 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
             cancelled_at=ride.cancelled_at,
         )
         self._session.add(row)
-        await self._session.commit()
+        if self._commit_add:
+            await self._session.commit()
+        else:
+            await self._session.flush()
         await self._session.refresh(row)
         return _ride_to_entity(row)
 
@@ -370,10 +402,14 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
             .returning(RideRequestModel.id)
         )
         if result.scalar_one_or_none() is None:
-            await self._session.rollback()
+            if self._commit_update_if_state:
+                await self._session.rollback()
             return None
 
-        await self._session.commit()
+        if self._commit_update_if_state:
+            await self._session.commit()
+        else:
+            await self._session.flush()
         row = await self._session.get(RideRequestModel, ride.id, populate_existing=True)
         if row is None:  # pragma: no cover - el UPDATE acaba de devolver este id
             return None
@@ -415,7 +451,13 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
         return [_ride_to_entity(row) for row in result.scalars().all()]
 
     async def list_open_with_rider_for_vehicle(
-        self, vehicle_type: VehicleType, *, driver_id: uuid.UUID | None = None
+        self,
+        vehicle_type: VehicleType,
+        *,
+        driver_id: uuid.UUID | None = None,
+        before_created_at: datetime | None = None,
+        before_id: uuid.UUID | None = None,
+        limit: int | None = None,
     ) -> list[OpenRideDetail]:
         # Una sola query: JOIN con el pasajero + subquery correlacionada que cuenta
         # sus viajes completados. Así el pool de solicitudes (alto volumen, refresco
@@ -439,7 +481,6 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
                 RideRequestModel.status == RideStatus.SEARCHING,
                 RideRequestModel.paused.is_(False),
             )
-            .order_by(RideRequestModel.created_at.desc())
         )
         if driver_id is not None:
             statement = statement.outerjoin(
@@ -452,6 +493,25 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
                     DriverRideDismissalModel.pool_version != RideRequestModel.pool_version,
                 )
             )
+        if (before_created_at is None) != (before_id is None):
+            raise ValueError("El cursor del pool requiere fecha e id.")
+        if before_created_at is not None and before_id is not None:
+            created_key = RideRequestModel.created_at
+            cursor_key = before_created_at
+            if self._session.bind is not None and self._session.bind.dialect.name == "sqlite":
+                # SQLite persiste CURRENT_TIMESTAMP sin fracción, pero serializa
+                # binds DateTime con ``.000000``. ``datetime`` iguala ambas formas.
+                created_key = func.datetime(created_key)
+                cursor_key = func.datetime(cursor_key)
+            statement = statement.where(
+                tuple_(created_key, RideRequestModel.id) < tuple_(cursor_key, before_id)
+            )
+        statement = statement.order_by(
+            RideRequestModel.created_at.desc(),
+            RideRequestModel.id.desc(),
+        )
+        if limit is not None:
+            statement = statement.limit(limit)
         result = await self._session.execute(statement)
         details: list[OpenRideDetail] = []
         for ride_row, user_row, trips in result.all():
@@ -545,6 +605,29 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
             return None
         return OpenRideDetail(ride=ride, rider=rider)
 
+    async def lock_open_ride_with_rider_for_announcement(
+        self, ride_id: uuid.UUID
+    ) -> OpenRideDetail | None:
+        row = (
+            await self._session.execute(
+                select(RideRequestModel)
+                .where(
+                    RideRequestModel.id == ride_id,
+                    RideRequestModel.status == RideStatus.SEARCHING,
+                    RideRequestModel.paused.is_(False),
+                )
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            return None
+
+        rider = await self.rider_summary(row.rider_id)
+        if rider is None:
+            return None
+        return OpenRideDetail(ride=_ride_to_entity(row), rider=rider)
+
     async def list_by_driver(self, driver_id: uuid.UUID) -> list[RideRequest]:
         result = await self._session.execute(
             select(RideRequestModel)
@@ -597,6 +680,183 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
             .order_by(RideRequestModel.created_at.desc())
         )
         return [_ride_to_entity(row) for row in result.scalars().all()]
+
+
+class SqlAlchemyRideReadRepository(RideReadRepository):
+    """Consultas enriquecidas de viajes sin escrituras ni cargas N+1."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def get_active_for_driver(self, driver_id: uuid.UUID) -> RideDetail | None:
+        result = await self._session.execute(
+            select(RideRequestModel, UserModel, OfferModel)
+            .join(UserModel, UserModel.id == RideRequestModel.rider_id)
+            .outerjoin(OfferModel, OfferModel.id == RideRequestModel.accepted_offer_id)
+            .where(
+                RideRequestModel.driver_id == driver_id,
+                RideRequestModel.status.in_(_ACTIVE_RIDE_STATUSES),
+            )
+            .order_by(
+                RideRequestModel.created_at.desc(),
+                RideRequestModel.id.desc(),
+            )
+            .limit(1)
+        )
+        row = result.first()
+        if row is None:
+            return None
+        ride_row, rider_row, offer_row = row
+        return RideDetail(
+            ride=_ride_to_entity(ride_row),
+            rider=_to_entity(rider_row),
+            accepted_offer=_offer_to_entity(offer_row) if offer_row is not None else None,
+        )
+
+    async def list_history_items(
+        self,
+        user_id: uuid.UUID,
+        role: UserRole,
+        statuses: set[RideStatus],
+        cursor: PageCursor | None,
+        limit: int,
+    ) -> Page[RideHistoryItem]:
+        participant = (
+            RideRequestModel.driver_id
+            if role is UserRole.DRIVER
+            else RideRequestModel.rider_id
+        )
+        counterpart_id = (
+            RideRequestModel.rider_id
+            if role is UserRole.DRIVER
+            else RideRequestModel.driver_id
+        )
+        agreed_price = func.coalesce(OfferModel.price, RideRequestModel.fare)
+        statement = (
+            select(
+                RideRequestModel,
+                UserModel,
+                agreed_price,
+                RideRatingModel.score,
+            )
+            .outerjoin(UserModel, UserModel.id == counterpart_id)
+            .outerjoin(OfferModel, OfferModel.id == RideRequestModel.accepted_offer_id)
+            .outerjoin(
+                RideRatingModel,
+                (RideRatingModel.ride_id == RideRequestModel.id)
+                & (RideRatingModel.rater_id == user_id),
+            )
+            .where(participant == user_id, RideRequestModel.status.in_(statuses))
+            .order_by(
+                RideRequestModel.created_at.desc(),
+                RideRequestModel.id.desc(),
+            )
+            .limit(limit + 1)
+        )
+        if cursor is not None:
+            created_key = RideRequestModel.created_at
+            cursor_key = cursor.created_at
+            if self._session.bind is not None and self._session.bind.dialect.name == "sqlite":
+                created_key = func.datetime(created_key)
+                cursor_key = func.datetime(cursor_key)
+            statement = statement.where(
+                tuple_(created_key, RideRequestModel.id) < tuple_(cursor_key, cursor.id)
+            )
+        result = await self._session.execute(statement)
+        rows = result.all()
+        has_more = len(rows) > limit
+        items = [
+            RideHistoryItem(
+                ride=_ride_to_entity(ride_row),
+                counterpart=_to_entity(counterpart_row) if counterpart_row is not None else None,
+                price=Decimal(str(price)),
+                my_rating=score,
+            )
+            for ride_row, counterpart_row, price, score in rows[:limit]
+        ]
+        next_cursor = None
+        if has_more and items:
+            last = items[-1].ride
+            if last.created_at is None:  # pragma: no cover - la BD no permite NULL
+                raise ValueError("Un viaje persistido debe tener created_at.")
+            next_cursor = PageCursor(created_at=last.created_at, id=last.id)
+        return Page(items=items, next_cursor=next_cursor)
+
+    async def get_driver_earnings_summary(
+        self,
+        driver_id: uuid.UUID,
+        day_start_utc: datetime,
+        day_end_utc: datetime,
+        recent_limit: int,
+    ) -> DriverEarnings:
+        agreed_price = func.coalesce(OfferModel.price, RideRequestModel.fare)
+        completed_at = func.coalesce(
+            RideRequestModel.completed_at,
+            RideRequestModel.created_at,
+        )
+        completed_key = completed_at
+        day_start_key = day_start_utc
+        day_end_key = day_end_utc
+        if self._session.bind is not None and self._session.bind.dialect.name == "sqlite":
+            completed_key = func.datetime(completed_key)
+            day_start_key = func.datetime(day_start_key)
+            day_end_key = func.datetime(day_end_key)
+        today = (completed_key >= day_start_key) & (completed_key < day_end_key)
+        totals = (
+            await self._session.execute(
+                select(
+                    func.coalesce(func.sum(agreed_price), Decimal("0")),
+                    func.count(RideRequestModel.id),
+                    func.coalesce(
+                        func.sum(case((today, agreed_price), else_=Decimal("0"))),
+                        Decimal("0"),
+                    ),
+                    func.coalesce(func.sum(case((today, 1), else_=0)), 0),
+                )
+                .select_from(RideRequestModel)
+                .outerjoin(OfferModel, OfferModel.id == RideRequestModel.accepted_offer_id)
+                .where(
+                    RideRequestModel.driver_id == driver_id,
+                    RideRequestModel.status == RideStatus.COMPLETED,
+                )
+            )
+        ).one()
+        recent_result = await self._session.execute(
+            select(
+                RideRequestModel.id,
+                RideRequestModel.destination_name,
+                agreed_price,
+                completed_at,
+            )
+            .outerjoin(OfferModel, OfferModel.id == RideRequestModel.accepted_offer_id)
+            .where(
+                RideRequestModel.driver_id == driver_id,
+                RideRequestModel.status == RideStatus.COMPLETED,
+            )
+            .order_by(
+                completed_at.desc(),
+                RideRequestModel.created_at.desc(),
+                RideRequestModel.id.desc(),
+            )
+            .limit(recent_limit)
+        )
+        recent = [
+            EarningsItem(
+                ride_id=ride_id,
+                destination_name=destination_name,
+                price=Decimal(str(price)),
+                completed_at=finished_at,
+            )
+            for ride_id, destination_name, price, finished_at in recent_result.all()
+        ]
+        total_all, trips_all, total_today, trips_today = totals
+        return DriverEarnings(
+            total_today=Decimal(str(total_today or 0)),
+            trips_today=int(trips_today or 0),
+            total_all_time=Decimal(str(total_all or 0)),
+            trips_all_time=int(trips_all or 0),
+            recent=recent,
+        )
 
 
 class SqlAlchemyPendingRatingRepository(PendingRatingRepository):
@@ -662,8 +922,30 @@ def _offer_to_entity(row: OfferModel) -> Offer:
 
 
 class SqlAlchemyOfferRepository(OfferRepository):
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        *,
+        commit_create_or_supersede: bool = True,
+        commit_accept: bool = True,
+        commit_pause: bool = True,
+        commit_cancel: bool = True,
+        commit_reject_if_pending: bool = True,
+        commit_mark_expired_if_pending: bool = True,
+        commit_set_driver_offline: bool = True,
+        clock: DatabaseClock = database_utc_now,
+    ) -> None:
         self._session = session
+        # Migración incremental: estas mutaciones participan del UoW; los demás
+        # métodos todavía conservan sus commits internos.
+        self._commit_create_or_supersede = commit_create_or_supersede
+        self._commit_accept = commit_accept
+        self._commit_pause = commit_pause
+        self._commit_cancel = commit_cancel
+        self._commit_reject_if_pending = commit_reject_if_pending
+        self._commit_mark_expired_if_pending = commit_mark_expired_if_pending
+        self._commit_set_driver_offline = commit_set_driver_offline
+        self._clock = clock
 
     async def add(self, offer: Offer) -> Offer:
         row = OfferModel(
@@ -698,7 +980,8 @@ class SqlAlchemyOfferRepository(OfferRepository):
             or driver_row.vehicle_type is None
             or not driver_row.is_online
         ):
-            await self._session.rollback()
+            if self._commit_create_or_supersede:
+                await self._session.rollback()
             return None
 
         ride_row = (
@@ -759,7 +1042,10 @@ class SqlAlchemyOfferRepository(OfferRepository):
             status=offer.status,
         )
         self._session.add(row)
-        await self._session.commit()
+        if self._commit_create_or_supersede:
+            await self._session.commit()
+        else:
+            await self._session.flush()
         await self._session.refresh(row)
         return OfferCreation(
             offer=_offer_to_entity(row),
@@ -792,9 +1078,13 @@ class SqlAlchemyOfferRepository(OfferRepository):
             .returning(OfferModel.id)
         )
         if result.scalar_one_or_none() is None:
-            await self._session.rollback()
+            if self._commit_reject_if_pending:
+                await self._session.rollback()
             return None
-        await self._session.commit()
+        if self._commit_reject_if_pending:
+            await self._session.commit()
+        else:
+            await self._session.flush()
         row = await self._session.get(OfferModel, offer_id, populate_existing=True)
         return _offer_to_entity(row) if row else None
 
@@ -874,7 +1164,8 @@ class SqlAlchemyOfferRepository(OfferRepository):
             or driver_row.role is not UserRole.DRIVER
             or driver_row.vehicle_type is None
         ):
-            await self._session.rollback()
+            if self._commit_set_driver_offline:
+                await self._session.rollback()
             return None
 
         active_ride = (
@@ -888,7 +1179,8 @@ class SqlAlchemyOfferRepository(OfferRepository):
             )
         ).first()
         if active_ride is not None:
-            await self._session.rollback()
+            if self._commit_set_driver_offline:
+                await self._session.rollback()
             return None
 
         offer_rows = (
@@ -898,7 +1190,7 @@ class SqlAlchemyOfferRepository(OfferRepository):
                     OfferModel.driver_id == driver_id,
                     OfferModel.status.in_(_ACTIVE_OFFER_STATUSES),
                 )
-                .order_by(OfferModel.created_at.desc())
+                .order_by(OfferModel.created_at.desc(), OfferModel.id)
                 .with_for_update()
                 .execution_options(populate_existing=True)
             )
@@ -911,7 +1203,10 @@ class SqlAlchemyOfferRepository(OfferRepository):
         for row in offer_rows:
             row.status = OfferStatus.REJECTED
         driver_row.is_online = False
-        await self._session.commit()
+        if self._commit_set_driver_offline:
+            await self._session.commit()
+        else:
+            await self._session.flush()
         await self._session.refresh(driver_row)
         return DriverOfflineTransition(
             driver=_to_entity(driver_row),
@@ -965,7 +1260,10 @@ class SqlAlchemyOfferRepository(OfferRepository):
             row.status = OfferStatus.REJECTED
 
         updated_ride = _ride_to_entity(ride_row)
-        await self._session.commit()
+        if self._commit_cancel:
+            await self._session.commit()
+        else:
+            await self._session.flush()
         return RideOffersTransition(
             ride=updated_ride,
             affected_offers=live_offers,
@@ -1017,7 +1315,10 @@ class SqlAlchemyOfferRepository(OfferRepository):
             row.status = OfferStatus.REJECTED
 
         updated_ride = _ride_to_entity(ride_row)
-        await self._session.commit()
+        if self._commit_pause:
+            await self._session.commit()
+        else:
+            await self._session.flush()
         return RideOffersTransition(
             ride=updated_ride,
             affected_offers=live_offers,
@@ -1068,8 +1369,11 @@ class SqlAlchemyOfferRepository(OfferRepository):
         for row in offer_rows:
             row.status = OfferStatus.REJECTED
 
-        await self._session.commit()
-        await self._session.refresh(ride_row)
+        if self._commit_cancel:
+            await self._session.commit()
+            await self._session.refresh(ride_row)
+        else:
+            await self._session.flush()
         return RideAutoCancellation(
             ride=_ride_to_entity(ride_row),
             cancelled_offers=live_offers,
@@ -1133,9 +1437,19 @@ class SqlAlchemyOfferRepository(OfferRepository):
         if offer_row is None or offer_row.status is not OfferStatus.PENDING:
             await self._session.rollback()
             return None
-        if is_offer_expired(_offer_to_entity(offer_row)):
-            offer_row.status = OfferStatus.EXPIRED
-            await self._session.commit()
+        # La decisión monetaria se toma con el mismo reloj autoritativo que el
+        # scheduler y después de adquirir todos los locks de la aceptación.
+        now = (
+            await self._clock(self._session)
+            if self._session.get_bind().dialect.name == "postgresql"
+            else datetime.now(UTC)
+        )
+        if is_offer_expired(_offer_to_entity(offer_row), now):
+            # La expiración tiene su propio caso de uso. En el modo UoW de
+            # aceptación no se confirma un efecto lateral sin su evento durable.
+            if self._commit_accept:
+                offer_row.status = OfferStatus.EXPIRED
+                await self._session.commit()
             return None
 
         # El conductor debe estar libre: sin ningún viaje activo.
@@ -1157,14 +1471,18 @@ class SqlAlchemyOfferRepository(OfferRepository):
         # avisa a esos pasajeros (excluimos la solicitud actual).
         others = (
             await self._session.execute(
-                select(OfferModel.ride_id).where(
+                select(OfferModel.id, OfferModel.ride_id).where(
                     OfferModel.driver_id == driver_row.id,
                     OfferModel.id != offer_id,
+                    OfferModel.ride_id != ride_row.id,
                     OfferModel.status.in_(_ACTIVE_OFFER_STATUSES),
-                )
+                ).order_by(OfferModel.ride_id, OfferModel.id)
             )
-        ).scalars().all()
-        withdrawn_ride_ids = [rid for rid in dict.fromkeys(others) if rid != ride_row.id]
+        ).all()
+        withdrawn_offers = [
+            WithdrawnOfferReference(ride_id=row.ride_id, offer_id=row.id)
+            for row in others
+        ]
 
         # Otros conductores con ofertas vivas en ESTE viaje: pierden la carrera y
         # hay que avisarles que el viaje ya fue tomado.
@@ -1197,7 +1515,10 @@ class SqlAlchemyOfferRepository(OfferRepository):
         ride_row.accepted_offer_id = offer_row.id
         ride_row.status = RideStatus.ACCEPTED
 
-        await self._session.commit()
+        if self._commit_accept:
+            await self._session.commit()
+        else:
+            await self._session.flush()
         await self._session.refresh(offer_row)
         await self._session.refresh(ride_row)
         await self._session.refresh(driver_row)
@@ -1205,7 +1526,7 @@ class SqlAlchemyOfferRepository(OfferRepository):
             ride=_ride_to_entity(ride_row),
             accepted_offer=_offer_to_entity(offer_row),
             driver=_to_entity(driver_row),
-            withdrawn_ride_ids=withdrawn_ride_ids,
+            withdrawn_offers=withdrawn_offers,
             losing_driver_ids=losing_driver_ids,
         )
 
@@ -1215,18 +1536,30 @@ class SqlAlchemyOfferRepository(OfferRepository):
         # aquí no se toca). Bloqueo de fila para serializar contra accept_atomically.
         offer_row = (
             await self._session.execute(
-                select(OfferModel).where(OfferModel.id == offer_id).with_for_update()
+                select(OfferModel)
+                .where(OfferModel.id == offer_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
             )
         ).scalar_one_or_none()
-        if (
-            offer_row is None
-            or offer_row.status is not OfferStatus.PENDING
-            or not is_offer_expired(_offer_to_entity(offer_row))
-        ):
-            await self._session.rollback()
+        if offer_row is None or offer_row.status is not OfferStatus.PENDING:
+            if self._commit_mark_expired_if_pending:
+                await self._session.rollback()
+            return None
+
+        # Debe leerse después del ``FOR UPDATE``. Si esta consulta esperó a
+        # otra transacción, usar el inicio de la transacción podría considerar
+        # fresca una oferta cuyo TTL venció mientras esperaba el bloqueo.
+        now = await self._clock(self._session)
+        if not is_offer_expired(_offer_to_entity(offer_row), now):
+            if self._commit_mark_expired_if_pending:
+                await self._session.rollback()
             return None
         offer_row.status = OfferStatus.EXPIRED
-        await self._session.commit()
+        if self._commit_mark_expired_if_pending:
+            await self._session.commit()
+        else:
+            await self._session.flush()
         await self._session.refresh(offer_row)
         return _offer_to_entity(offer_row)
 

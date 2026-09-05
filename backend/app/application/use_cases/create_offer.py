@@ -9,7 +9,17 @@ from __future__ import annotations
 
 import uuid
 
-from app.application.dto import CreateOfferInput, CreateOfferResult, OfferDetail
+from app.application.dto import (
+    CreateOfferInput,
+    CreateOfferResult,
+    OfferDetail,
+    PendingScheduledAction,
+)
+from app.application.interfaces import (
+    CreateOfferEventRecorder,
+    ScheduledActionScheduler,
+    UnitOfWork,
+)
 from app.domain.entities import Offer, RideStatus, User, vehicle_can_serve
 from app.domain.exceptions import (
     DriverUnavailableError,
@@ -19,15 +29,57 @@ from app.domain.exceptions import (
     RideNotFoundError,
 )
 from app.domain.repositories import OfferRepository, RideRequestRepository
+from app.domain.ride_policy import offer_expires_at
 from app.domain.value_objects import FareOffer
 
 
 class CreateOffer:
-    def __init__(self, rides: RideRequestRepository, offers: OfferRepository) -> None:
+    def __init__(
+        self,
+        rides: RideRequestRepository,
+        offers: OfferRepository,
+        unit_of_work: UnitOfWork,
+        event_recorder: CreateOfferEventRecorder,
+        scheduled_actions: ScheduledActionScheduler | None = None,
+    ) -> None:
         self._rides = rides
         self._offers = offers
+        self._unit_of_work = unit_of_work
+        self._event_recorder = event_recorder
+        self._scheduled_actions = scheduled_actions
 
     async def execute(
+        self, driver: User, ride_id: uuid.UUID, data: CreateOfferInput
+    ) -> CreateOfferResult:
+        try:
+            result = await self._mutate(driver, ride_id, data)
+            await self._event_recorder.record(result)
+            await self._schedule_expiration(result)
+            await self._unit_of_work.commit()
+            return result
+        except BaseException:
+            await self._unit_of_work.rollback()
+            raise
+
+    async def _schedule_expiration(self, result: CreateOfferResult) -> None:
+        if self._scheduled_actions is None:
+            return
+        offer = result.detail.offer
+        execute_at = offer_expires_at(offer)
+        if execute_at is None:  # pragma: no cover - persistencia exige created_at
+            raise RuntimeError("La oferta persistida no tiene fecha de creación.")
+        await self._scheduled_actions.schedule(
+            PendingScheduledAction(
+                dedupe_key=f"expire_offer:{offer.id}",
+                action_type="expire_offer",
+                aggregate_id=offer.id,
+                generation=1,
+                execute_at=execute_at,
+                payload={"offer_id": str(offer.id)},
+            )
+        )
+
+    async def _mutate(
         self, driver: User, ride_id: uuid.UUID, data: CreateOfferInput
     ) -> CreateOfferResult:
         if not driver.is_driver or driver.vehicle_type is None:

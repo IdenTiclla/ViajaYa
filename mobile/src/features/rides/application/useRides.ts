@@ -7,9 +7,13 @@
  * vía principal. Las consultas de un viaje concreto dejan de refrescarse cuando
  * el viaje llega a un estado terminal (`completed`/`cancelled`).
  */
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 
+import { flattenOpenRides } from '@/features/rides/application/openRidesCache';
+import {
+  copyPassengerActiveRideToDetail,
+} from '@/features/rides/application/rideStatusReducer';
 import { ridesRepository } from '@/features/rides/data/ridesRepository';
 import type { Ride } from '@/features/rides/domain/types';
 
@@ -29,18 +33,25 @@ function isTerminal(status: Ride['status'] | undefined): boolean {
 
 /** Conductor: solicitudes abiertas de su tipo de vehículo. */
 export function useOpenRides(enabled = true) {
-  const query = useQuery({
+  const query = useInfiniteQuery({
     queryKey: ['open-rides'],
-    queryFn: () => ridesRepository.getOpenRides(),
+    queryFn: ({ pageParam, signal }) =>
+      ridesRepository.getOpenRides(pageParam, undefined, signal),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     refetchInterval: enabled ? POLL_OPEN_MS : false,
     enabled,
   });
   return {
-    rides: query.data ?? [],
+    rides: flattenOpenRides(query.data),
     isLoading: query.isPending,
     isError: query.isError,
     error: query.error,
     refetch: query.refetch,
+    hasNextPage: query.hasNextPage,
+    fetchNextPage: query.fetchNextPage,
+    isFetchingNextPage: query.isFetchingNextPage,
+    isFetchNextPageError: query.isFetchNextPageError,
   };
 }
 
@@ -52,7 +63,8 @@ export function useRideOffers(
   const active = enabled && !!rideId;
   const query = useQuery({
     queryKey: ['ride-offers', rideId],
-    queryFn: () => ridesRepository.listOffers(rideId as string),
+    queryFn: ({ signal }) =>
+      ridesRepository.listOffers(rideId as string, signal),
     refetchInterval: active ? POLL_OFFERS_MS : false,
     enabled: active,
   });
@@ -69,7 +81,8 @@ export function useRideOffers(
 export function useRide(rideId: string | null) {
   const query = useQuery({
     queryKey: ['ride', rideId],
-    queryFn: () => ridesRepository.getRide(rideId as string),
+    queryFn: ({ signal }) =>
+      ridesRepository.getRide(rideId as string, signal),
     enabled: !!rideId,
     refetchInterval: (q) => (isTerminal(q.state.data?.status) ? false : POLL_RIDE_MS),
   });
@@ -87,7 +100,8 @@ export function usePassengerActiveRide() {
   const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: PASSENGER_ACTIVE_RIDE_KEY,
-    queryFn: () => ridesRepository.getPassengerActiveRide(),
+    queryFn: ({ signal }) =>
+      ridesRepository.getPassengerActiveRide(signal),
     refetchInterval: (q) =>
       isTerminal(q.state.data?.status) ? false : POLL_ACTIVE_MS,
   });
@@ -96,9 +110,13 @@ export function usePassengerActiveRide() {
   // evita una segunda carga al recuperar Offers, Configure o Trip.
   useEffect(() => {
     if (query.data) {
-      queryClient.setQueryData(['ride', query.data.id], query.data);
+      copyPassengerActiveRideToDetail(
+        queryClient,
+        query.data,
+        query.dataUpdatedAt,
+      );
     }
-  }, [query.data, queryClient]);
+  }, [query.data, query.dataUpdatedAt, queryClient]);
 
   return {
     ride: query.data ?? null,
@@ -116,7 +134,7 @@ export function useDriverActiveRide(
 ) {
   const query = useQuery({
     queryKey: DRIVER_ACTIVE_RIDE_KEY,
-    queryFn: () => ridesRepository.getActiveRide(),
+    queryFn: ({ signal }) => ridesRepository.getActiveRide(signal),
     enabled,
     refetchInterval: (q) =>
       enabled && !isTerminal(q.state.data?.status) ? POLL_ACTIVE_MS : false,
@@ -136,7 +154,7 @@ export function usePendingRatingRide(enabled = true) {
   const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: PENDING_RATING_RIDE_KEY,
-    queryFn: () => ridesRepository.getPendingRatingRide(),
+    queryFn: ({ signal }) => ridesRepository.getPendingRatingRide(signal),
     enabled,
   });
 

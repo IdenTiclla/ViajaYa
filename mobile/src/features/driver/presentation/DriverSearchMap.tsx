@@ -14,7 +14,7 @@ import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 import { declutteredMapStyle } from '@/features/booking/presentation/mapStyle';
-import type { Coordinates } from '@/features/home/data/locationService';
+import type { Coordinates } from '@/core/domain/geo';
 import type { WatchStatus } from '@/features/home/application/useWatchPosition';
 
 // Zoom de navegación urbano: muestra unas manzanas alrededor del conductor.

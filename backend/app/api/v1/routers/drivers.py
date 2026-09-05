@@ -31,9 +31,7 @@ async def set_online(
 ) -> UserResponse:
     """Alterna la disponibilidad del conductor (en línea/desconectado)."""
     result = await use_case.execute(current_user, body.is_online)
-    await events.publish_driver_offline_offers(
-        result.driver.id, result.withdrawn_offers
-    )
+    await events.publish_driver_offline_offers(result)
     return UserResponse.from_entity(result.driver)
 
 

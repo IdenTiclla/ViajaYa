@@ -1,0 +1,4328 @@
+{
+  "components": {
+    "schemas": {
+      "AuthProvider": {
+        "description": "Origen de la identidad del usuario.",
+        "enum": [
+          "local",
+          "google",
+          "facebook"
+        ],
+        "title": "AuthProvider",
+        "type": "string"
+      },
+      "AuthResponse": {
+        "description": "Respuesta de register / login / oauth: tokens + datos del usuario.",
+        "properties": {
+          "tokens": {
+            "$ref": "#/components/schemas/TokenResponse"
+          },
+          "user": {
+            "$ref": "#/components/schemas/UserResponse"
+          }
+        },
+        "required": [
+          "user",
+          "tokens"
+        ],
+        "title": "AuthResponse",
+        "type": "object"
+      },
+      "CreateRideRequestRequest": {
+        "properties": {
+          "destination": {
+            "$ref": "#/components/schemas/PointInputSchema"
+          },
+          "fare": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,8}|(?=[\\d.]{1,11}0*$)\\d{0,8}\\.\\d{0,2}0*$)",
+                "type": "string"
+              }
+            ],
+            "title": "Fare"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/PointInputSchema"
+          },
+          "payment_method": {
+            "$ref": "#/components/schemas/PaymentMethod",
+            "default": "cash"
+          },
+          "service_type": {
+            "$ref": "#/components/schemas/ServiceType"
+          }
+        },
+        "required": [
+          "origin",
+          "destination",
+          "service_type",
+          "fare"
+        ],
+        "title": "CreateRideRequestRequest",
+        "type": "object"
+      },
+      "DriverEarningsResponse": {
+        "description": "Resumen de ganancias del conductor (hoy, histórico y recientes).",
+        "properties": {
+          "recent": {
+            "items": {
+              "$ref": "#/components/schemas/EarningsItemResponse"
+            },
+            "title": "Recent",
+            "type": "array"
+          },
+          "total_all_time": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Total All Time",
+            "type": "string"
+          },
+          "total_today": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Total Today",
+            "type": "string"
+          },
+          "trips_all_time": {
+            "title": "Trips All Time",
+            "type": "integer"
+          },
+          "trips_today": {
+            "title": "Trips Today",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total_today",
+          "trips_today",
+          "total_all_time",
+          "trips_all_time",
+          "recent"
+        ],
+        "title": "DriverEarningsResponse",
+        "type": "object"
+      },
+      "EarningsItemResponse": {
+        "description": "Una línea del desglose de ganancias.",
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "destination_name": {
+            "title": "Destination Name",
+            "type": "string"
+          },
+          "price": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Price",
+            "type": "string"
+          },
+          "ride_id": {
+            "format": "uuid",
+            "title": "Ride Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ride_id",
+          "destination_name",
+          "price",
+          "completed_at"
+        ],
+        "title": "EarningsItemResponse",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HealthResponse": {
+        "properties": {
+          "status": {
+            "const": "ok",
+            "default": "ok",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "HealthResponse",
+        "type": "object"
+      },
+      "HistoryCounterpartSchema": {
+        "description": "La otra parte del viaje en el historial (conductor o pasajero).",
+        "properties": {
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "plate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plate"
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rating"
+          },
+          "vehicle_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vehicle Model"
+          },
+          "vehicle_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VehicleType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "full_name",
+          "rating",
+          "vehicle_type",
+          "vehicle_model",
+          "plate"
+        ],
+        "title": "HistoryCounterpartSchema",
+        "type": "object"
+      },
+      "LoginRequest": {
+        "properties": {
+          "email": {
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          },
+          "password": {
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "LoginRequest",
+        "type": "object"
+      },
+      "OAuthRequest": {
+        "description": "Token emitido por el proveedor (id_token de Google / access_token de Facebook).",
+        "properties": {
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "title": "OAuthRequest",
+        "type": "object"
+      },
+      "OfferCreate": {
+        "description": "Oferta de un conductor: aceptar al precio del pasajero o contraofertar.\n\nSi ``accept_at_fare`` es ``True`` se ignora ``price`` (se toma el del viaje).\nSi es ``False`` (contraoferta) ``price`` es obligatorio.",
+        "properties": {
+          "accept_at_fare": {
+            "default": true,
+            "title": "Accept At Fare",
+            "type": "boolean"
+          },
+          "eta_min": {
+            "anyOf": [
+              {
+                "maximum": 240.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eta Min"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,8}|(?=[\\d.]{1,11}0*$)\\d{0,8}\\.\\d{0,2}0*$)",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price"
+          }
+        },
+        "title": "OfferCreate",
+        "type": "object"
+      },
+      "OfferDriverSchema": {
+        "description": "Datos públicos del conductor que hace la oferta.",
+        "properties": {
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "plate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plate"
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rating"
+          },
+          "vehicle_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vehicle Model"
+          },
+          "vehicle_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VehicleType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "full_name",
+          "rating",
+          "vehicle_type",
+          "plate",
+          "vehicle_model"
+        ],
+        "title": "OfferDriverSchema",
+        "type": "object"
+      },
+      "OfferResponse": {
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "driver": {
+            "$ref": "#/components/schemas/OfferDriverSchema"
+          },
+          "eta_min": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eta Min"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "price": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Price",
+            "type": "string"
+          },
+          "ride_id": {
+            "format": "uuid",
+            "title": "Ride Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/OfferStatus"
+          }
+        },
+        "required": [
+          "id",
+          "ride_id",
+          "price",
+          "eta_min",
+          "status",
+          "driver",
+          "created_at",
+          "expires_at"
+        ],
+        "title": "OfferResponse",
+        "type": "object"
+      },
+      "OfferStatus": {
+        "description": "Estado de una oferta de un conductor sobre una solicitud de viaje.\n\nEl pasajero tiene la decisión final: al aceptar una oferta ``PENDING`` esta\npasa a ``ACCEPTED`` y el viaje se asigna a ese conductor (transacción\natómica); las demás ofertas vivas del viaje quedan ``REJECTED``. ``EXPIRED``\naplica cuando vence el TTL de 30 s sin que el pasajero la aceptara.",
+        "enum": [
+          "pending",
+          "accepted",
+          "rejected",
+          "expired"
+        ],
+        "title": "OfferStatus",
+        "type": "string"
+      },
+      "OnlineRequest": {
+        "description": "Cuerpo para alternar disponibilidad del conductor.",
+        "properties": {
+          "is_online": {
+            "title": "Is Online",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "is_online"
+        ],
+        "title": "OnlineRequest",
+        "type": "object"
+      },
+      "OpenRidePageResponse": {
+        "description": "Página de solicitudes abiertas ordenadas de forma estable.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OpenRideResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "OpenRidePageResponse",
+        "type": "object"
+      },
+      "OpenRideResponse": {
+        "description": "Solicitud abierta tal como la ve un conductor en su lista.",
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "destination": {
+            "$ref": "#/components/schemas/PointSchema"
+          },
+          "fare": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Fare",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/PointSchema"
+          },
+          "payment_method": {
+            "$ref": "#/components/schemas/PaymentMethod"
+          },
+          "pool_version": {
+            "title": "Pool Version",
+            "type": "integer"
+          },
+          "rider": {
+            "$ref": "#/components/schemas/OpenRideRiderResponse"
+          },
+          "service_type": {
+            "$ref": "#/components/schemas/ServiceType"
+          }
+        },
+        "required": [
+          "id",
+          "service_type",
+          "fare",
+          "payment_method",
+          "origin",
+          "destination",
+          "rider",
+          "pool_version",
+          "created_at"
+        ],
+        "title": "OpenRideResponse",
+        "type": "object"
+      },
+      "OpenRideRiderResponse": {
+        "description": "Datos públicos del pasajero que el conductor ve en una solicitud abierta.",
+        "properties": {
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rating"
+          },
+          "trips_completed": {
+            "title": "Trips Completed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "full_name",
+          "rating",
+          "trips_completed"
+        ],
+        "title": "OpenRideRiderResponse",
+        "type": "object"
+      },
+      "PaymentMethod": {
+        "description": "Forma de pago elegida para el viaje.\n\nPor ahora la app soporta pago por QR y pago en efectivo.",
+        "enum": [
+          "qr",
+          "cash"
+        ],
+        "title": "PaymentMethod",
+        "type": "string"
+      },
+      "PointInputSchema": {
+        "description": "Punto entrante: nunca admite una etiqueta provisional como nombre final.",
+        "properties": {
+          "address": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Address",
+            "type": "string"
+          },
+          "country_code": {
+            "anyOf": [
+              {
+                "maxLength": 2,
+                "minLength": 2,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country Code"
+          },
+          "latitude": {
+            "maximum": 90.0,
+            "minimum": -90.0,
+            "title": "Latitude",
+            "type": "number"
+          },
+          "longitude": {
+            "maximum": 180.0,
+            "minimum": -180.0,
+            "title": "Longitude",
+            "type": "number"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "latitude",
+          "longitude",
+          "name",
+          "address"
+        ],
+        "title": "PointInputSchema",
+        "type": "object"
+      },
+      "PointSchema": {
+        "description": "Un punto del viaje en el contrato HTTP.",
+        "properties": {
+          "address": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Address",
+            "type": "string"
+          },
+          "country_code": {
+            "anyOf": [
+              {
+                "maxLength": 2,
+                "minLength": 2,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country Code"
+          },
+          "latitude": {
+            "maximum": 90.0,
+            "minimum": -90.0,
+            "title": "Latitude",
+            "type": "number"
+          },
+          "longitude": {
+            "maximum": 180.0,
+            "minimum": -180.0,
+            "title": "Longitude",
+            "type": "number"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "latitude",
+          "longitude",
+          "name",
+          "address"
+        ],
+        "title": "PointSchema",
+        "type": "object"
+      },
+      "QuarantinedBatchCountResponse": {
+        "properties": {
+          "batch_count": {
+            "title": "Batch Count",
+            "type": "integer"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "batch_count"
+        ],
+        "title": "QuarantinedBatchCountResponse",
+        "type": "object"
+      },
+      "RatingCreate": {
+        "description": "Cuerpo para calificar un viaje completado (1–5 + comentario opcional).",
+        "properties": {
+          "comment": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
+          "score": {
+            "maximum": 5.0,
+            "minimum": 1.0,
+            "title": "Score",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "score"
+        ],
+        "title": "RatingCreate",
+        "type": "object"
+      },
+      "RatingResponse": {
+        "properties": {
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "ratee_id": {
+            "format": "uuid",
+            "title": "Ratee Id",
+            "type": "string"
+          },
+          "rater_id": {
+            "format": "uuid",
+            "title": "Rater Id",
+            "type": "string"
+          },
+          "ride_id": {
+            "format": "uuid",
+            "title": "Ride Id",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "ride_id",
+          "rater_id",
+          "ratee_id",
+          "score"
+        ],
+        "title": "RatingResponse",
+        "type": "object"
+      },
+      "ReadinessChecksResponse": {
+        "properties": {
+          "database": {
+            "enum": [
+              "ok",
+              "error"
+            ],
+            "title": "Database",
+            "type": "string"
+          },
+          "passenger_presence_store": {
+            "enum": [
+              "ok",
+              "error",
+              "disabled"
+            ],
+            "title": "Passenger Presence Store",
+            "type": "string"
+          },
+          "realtime_outbox_dispatcher": {
+            "enum": [
+              "ok",
+              "error",
+              "disabled"
+            ],
+            "title": "Realtime Outbox Dispatcher",
+            "type": "string"
+          },
+          "realtime_outbox_process_lock": {
+            "enum": [
+              "ok",
+              "error",
+              "disabled"
+            ],
+            "title": "Realtime Outbox Process Lock",
+            "type": "string"
+          },
+          "realtime_outbox_retention": {
+            "enum": [
+              "ok",
+              "error",
+              "disabled"
+            ],
+            "title": "Realtime Outbox Retention",
+            "type": "string"
+          },
+          "realtime_redis_bridge": {
+            "enum": [
+              "ok",
+              "error",
+              "disabled"
+            ],
+            "title": "Realtime Redis Bridge",
+            "type": "string"
+          },
+          "scheduled_actions_retention": {
+            "enum": [
+              "ok",
+              "error",
+              "disabled"
+            ],
+            "title": "Scheduled Actions Retention",
+            "type": "string"
+          },
+          "scheduled_actions_worker": {
+            "enum": [
+              "ok",
+              "error",
+              "disabled"
+            ],
+            "title": "Scheduled Actions Worker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "database",
+          "scheduled_actions_worker",
+          "scheduled_actions_retention",
+          "realtime_outbox_dispatcher",
+          "realtime_redis_bridge",
+          "passenger_presence_store",
+          "realtime_outbox_process_lock",
+          "realtime_outbox_retention"
+        ],
+        "title": "ReadinessChecksResponse",
+        "type": "object"
+      },
+      "ReadinessResponse": {
+        "properties": {
+          "checks": {
+            "$ref": "#/components/schemas/ReadinessChecksResponse"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "unavailable"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "checks"
+        ],
+        "title": "ReadinessResponse",
+        "type": "object"
+      },
+      "RealtimeHealthResponse": {
+        "properties": {
+          "captured_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Captured At"
+          },
+          "latest_publish_delay_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Publish Delay Seconds"
+          },
+          "latest_published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Published At"
+          },
+          "max_pending_age_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Pending Age Seconds"
+          },
+          "mode": {
+            "enum": [
+              "off",
+              "shadow",
+              "live_local",
+              "live_redis"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "pending_batch_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Batch Count"
+          },
+          "pending_event_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Event Count"
+          },
+          "quarantined_batches": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/QuarantinedBatchCountResponse"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quarantined Batches"
+          },
+          "redis_connected": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Redis Connected"
+          },
+          "redis_invalid_message_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Redis Invalid Message Count"
+          },
+          "redis_last_publish_subscriber_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Redis Last Publish Subscriber Count"
+          },
+          "redis_published_batch_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Redis Published Batch Count"
+          },
+          "redis_received_batch_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Redis Received Batch Count"
+          },
+          "redis_received_event_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Redis Received Event Count"
+          },
+          "redis_reconnect_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Redis Reconnect Count"
+          },
+          "redis_resync_message_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Redis Resync Message Count"
+          },
+          "retention_days": {
+            "title": "Retention Days",
+            "type": "integer"
+          },
+          "retention_deleted_batch_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retention Deleted Batch Count"
+          },
+          "retention_deleted_event_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retention Deleted Event Count"
+          },
+          "retrying_batch_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retrying Batch Count"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "disabled",
+              "unavailable"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "mode",
+          "retention_days"
+        ],
+        "title": "RealtimeHealthResponse",
+        "type": "object"
+      },
+      "RecentDestinationResponse": {
+        "properties": {
+          "address": {
+            "title": "Address",
+            "type": "string"
+          },
+          "country_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country Code"
+          },
+          "latitude": {
+            "title": "Latitude",
+            "type": "number"
+          },
+          "longitude": {
+            "title": "Longitude",
+            "type": "number"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "latitude",
+          "longitude",
+          "name",
+          "address"
+        ],
+        "title": "RecentDestinationResponse",
+        "type": "object"
+      },
+      "RefreshRequest": {
+        "properties": {
+          "refresh_token": {
+            "title": "Refresh Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "refresh_token"
+        ],
+        "title": "RefreshRequest",
+        "type": "object"
+      },
+      "RegisterRequest": {
+        "properties": {
+          "email": {
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          },
+          "full_name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Full Name",
+            "type": "string"
+          },
+          "password": {
+            "maxLength": 128,
+            "minLength": 8,
+            "title": "Password",
+            "type": "string"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          }
+        },
+        "required": [
+          "full_name",
+          "email",
+          "password"
+        ],
+        "title": "RegisterRequest",
+        "type": "object"
+      },
+      "RideDriverSchema": {
+        "description": "Datos del conductor asignado, expuestos al pasajero durante el viaje.",
+        "properties": {
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "plate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plate"
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rating"
+          },
+          "vehicle_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vehicle Model"
+          },
+          "vehicle_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VehicleType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "full_name",
+          "phone",
+          "rating",
+          "vehicle_type",
+          "plate",
+          "vehicle_model"
+        ],
+        "title": "RideDriverSchema",
+        "type": "object"
+      },
+      "RideEdit": {
+        "description": "Cambios a guardar al modificar una solicitud pausada (mismos campos que al crear).",
+        "properties": {
+          "destination": {
+            "$ref": "#/components/schemas/PointInputSchema"
+          },
+          "fare": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,8}|(?=[\\d.]{1,11}0*$)\\d{0,8}\\.\\d{0,2}0*$)",
+                "type": "string"
+              }
+            ],
+            "title": "Fare"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/PointInputSchema"
+          },
+          "payment_method": {
+            "$ref": "#/components/schemas/PaymentMethod",
+            "default": "cash"
+          },
+          "service_type": {
+            "$ref": "#/components/schemas/ServiceType"
+          }
+        },
+        "required": [
+          "origin",
+          "destination",
+          "service_type",
+          "fare"
+        ],
+        "title": "RideEdit",
+        "type": "object"
+      },
+      "RideFareUpdate": {
+        "description": "Nuevo monto ofertado por el pasajero mientras busca conductor.",
+        "properties": {
+          "fare": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,8}|(?=[\\d.]{1,11}0*$)\\d{0,8}\\.\\d{0,2}0*$)",
+                "type": "string"
+              }
+            ],
+            "title": "Fare"
+          }
+        },
+        "required": [
+          "fare"
+        ],
+        "title": "RideFareUpdate",
+        "type": "object"
+      },
+      "RideHistoryItemResponse": {
+        "description": "Un viaje del historial, listo para pintar la tarjeta.",
+        "properties": {
+          "counterpart": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HistoryCounterpartSchema"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "destination": {
+            "$ref": "#/components/schemas/PointSchema"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "my_rating": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "My Rating"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/PointSchema"
+          },
+          "payment_method": {
+            "$ref": "#/components/schemas/PaymentMethod"
+          },
+          "price": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Price",
+            "type": "string"
+          },
+          "service_type": {
+            "$ref": "#/components/schemas/ServiceType"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RideStatus"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "service_type",
+          "payment_method",
+          "origin",
+          "destination",
+          "price",
+          "my_rating",
+          "counterpart",
+          "created_at"
+        ],
+        "title": "RideHistoryItemResponse",
+        "type": "object"
+      },
+      "RideHistoryPageResponse": {
+        "description": "Página del historial de un pasajero o conductor.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RideHistoryItemResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "RideHistoryPageResponse",
+        "type": "object"
+      },
+      "RideRequestResponse": {
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "destination": {
+            "$ref": "#/components/schemas/PointSchema"
+          },
+          "fare": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Fare",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/PointSchema"
+          },
+          "payment_method": {
+            "$ref": "#/components/schemas/PaymentMethod"
+          },
+          "service_type": {
+            "$ref": "#/components/schemas/ServiceType"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RideStatus"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "service_type",
+          "fare",
+          "payment_method",
+          "origin",
+          "destination",
+          "created_at"
+        ],
+        "title": "RideRequestResponse",
+        "type": "object"
+      },
+      "RideResponse": {
+        "description": "Detalle completo de un viaje (polling de estado para ambos lados).",
+        "properties": {
+          "accepted_eta_min": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accepted Eta Min"
+          },
+          "accepted_price": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accepted Price"
+          },
+          "cancelled_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancelled At"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "destination": {
+            "$ref": "#/components/schemas/PointSchema"
+          },
+          "driver": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RideDriverSchema"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fare": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Fare",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/PointSchema"
+          },
+          "paused": {
+            "title": "Paused",
+            "type": "boolean"
+          },
+          "payment_method": {
+            "$ref": "#/components/schemas/PaymentMethod"
+          },
+          "rider": {
+            "$ref": "#/components/schemas/RideRiderSchema"
+          },
+          "rider_id": {
+            "format": "uuid",
+            "title": "Rider Id",
+            "type": "string"
+          },
+          "service_type": {
+            "$ref": "#/components/schemas/ServiceType"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RideStatus"
+          }
+        },
+        "required": [
+          "id",
+          "rider_id",
+          "status",
+          "service_type",
+          "fare",
+          "payment_method",
+          "origin",
+          "destination",
+          "paused",
+          "rider",
+          "driver",
+          "accepted_price",
+          "accepted_eta_min",
+          "created_at",
+          "completed_at",
+          "cancelled_at"
+        ],
+        "title": "RideResponse",
+        "type": "object"
+      },
+      "RideRiderSchema": {
+        "description": "Datos del pasajero, visibles para el conductor asignado.",
+        "properties": {
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rating"
+          }
+        },
+        "required": [
+          "id",
+          "full_name",
+          "phone",
+          "rating"
+        ],
+        "title": "RideRiderSchema",
+        "type": "object"
+      },
+      "RideStatus": {
+        "description": "Estado del ciclo de vida de una solicitud de viaje.\n\nFlujo: ``SEARCHING`` (publicada, esperando ofertas) → ``ACCEPTED`` (el\npasajero eligió una oferta y hay conductor asignado) → ``ARRIVING`` (el\nconductor va al origen) → ``IN_PROGRESS`` (viaje en curso) → ``COMPLETED``.\n``CANCELLED`` es posible antes de ``IN_PROGRESS``.",
+        "enum": [
+          "searching",
+          "accepted",
+          "arriving",
+          "in_progress",
+          "completed",
+          "cancelled"
+        ],
+        "title": "RideStatus",
+        "type": "string"
+      },
+      "RideStatusUpdate": {
+        "description": "Avance de estado del viaje solicitado por el conductor.",
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/RideStatus"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "RideStatusUpdate",
+        "type": "object"
+      },
+      "SaveSavedPlaceRequest": {
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/SavedPlaceCategory"
+          },
+          "label": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "location": {
+            "$ref": "#/components/schemas/PointInputSchema"
+          }
+        },
+        "required": [
+          "label",
+          "category",
+          "location"
+        ],
+        "title": "SaveSavedPlaceRequest",
+        "type": "object"
+      },
+      "SavedPlaceCategory": {
+        "description": "Categoría de un lugar guardado; define el ícono en la app.",
+        "enum": [
+          "home",
+          "work",
+          "gym",
+          "other"
+        ],
+        "title": "SavedPlaceCategory",
+        "type": "string"
+      },
+      "SavedPlaceResponse": {
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/SavedPlaceCategory"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "location": {
+            "$ref": "#/components/schemas/PointSchema"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "category",
+          "location",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "SavedPlaceResponse",
+        "type": "object"
+      },
+      "ScheduledActionDeadCountResponse": {
+        "properties": {
+          "action_count": {
+            "title": "Action Count",
+            "type": "integer"
+          },
+          "action_type": {
+            "title": "Action Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action_type",
+          "action_count"
+        ],
+        "title": "ScheduledActionDeadCountResponse",
+        "type": "object"
+      },
+      "ScheduledActionsHealthResponse": {
+        "properties": {
+          "captured_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Captured At"
+          },
+          "claimed_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Claimed Count"
+          },
+          "dead_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dead Count"
+          },
+          "dead_counts": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ScheduledActionDeadCountResponse"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dead Counts"
+          },
+          "deferred_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deferred Count"
+          },
+          "due_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Count"
+          },
+          "latest_succeeded_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Succeeded At"
+          },
+          "mode": {
+            "enum": [
+              "off",
+              "shadow",
+              "live"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "next_due_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Due At"
+          },
+          "oldest_due_age_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oldest Due Age Seconds"
+          },
+          "pending_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Count"
+          },
+          "recovered_lease_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recovered Lease Count"
+          },
+          "retention_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retention Days"
+          },
+          "retention_deleted_action_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retention Deleted Action Count"
+          },
+          "retried_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retried Count"
+          },
+          "retrying_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retrying Count"
+          },
+          "running_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Running Count"
+          },
+          "stale_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stale Count"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "disabled",
+              "unavailable"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "succeeded_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Succeeded Count"
+          }
+        },
+        "required": [
+          "status",
+          "mode"
+        ],
+        "title": "ScheduledActionsHealthResponse",
+        "type": "object"
+      },
+      "ServiceType": {
+        "description": "Tipo de servicio solicitado por un pasajero.",
+        "enum": [
+          "taxi",
+          "moto",
+          "delivery"
+        ],
+        "title": "ServiceType",
+        "type": "string"
+      },
+      "TokenResponse": {
+        "properties": {
+          "access_token": {
+            "title": "Access Token",
+            "type": "string"
+          },
+          "refresh_token": {
+            "title": "Refresh Token",
+            "type": "string"
+          },
+          "token_type": {
+            "default": "bearer",
+            "title": "Token Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token",
+          "refresh_token"
+        ],
+        "title": "TokenResponse",
+        "type": "object"
+      },
+      "UserResponse": {
+        "properties": {
+          "auth_provider": {
+            "$ref": "#/components/schemas/AuthProvider"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "email": {
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          },
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_online": {
+            "title": "Is Online",
+            "type": "boolean"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "plate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plate"
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rating"
+          },
+          "role": {
+            "$ref": "#/components/schemas/UserRole"
+          },
+          "vehicle_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vehicle Model"
+          },
+          "vehicle_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VehicleType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "full_name",
+          "email",
+          "phone",
+          "auth_provider",
+          "role",
+          "vehicle_type",
+          "plate",
+          "vehicle_model",
+          "rating",
+          "is_online",
+          "created_at"
+        ],
+        "title": "UserResponse",
+        "type": "object"
+      },
+      "UserRole": {
+        "description": "Rol del usuario en la plataforma.\n\nDefine qué navegación y acciones ve la app: el pasajero publica solicitudes,\nel conductor responde con ofertas. ``DELIVERY`` se reserva para repartos.",
+        "enum": [
+          "passenger",
+          "driver",
+          "delivery"
+        ],
+        "title": "UserRole",
+        "type": "string"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "VehicleType": {
+        "description": "Tipo fisico de vehiculo registrado por un conductor.",
+        "enum": [
+          "taxi",
+          "moto"
+        ],
+        "title": "VehicleType",
+        "type": "string"
+      }
+    }
+  },
+  "info": {
+    "title": "ViajaYa API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/auth/login": {
+      "post": {
+        "operationId": "login_api_v1_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Login",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "operationId": "me_api_v1_auth_me_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Me",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/oauth/{provider}": {
+      "post": {
+        "operationId": "oauth_login_api_v1_auth_oauth__provider__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "title": "Provider",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OAuthRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Oauth Login",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/refresh": {
+      "post": {
+        "operationId": "refresh_api_v1_auth_refresh_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Refresh",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/register": {
+      "post": {
+        "operationId": "register_api_v1_auth_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Register",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/drivers/me/active-ride": {
+      "get": {
+        "description": "Viaje en curso asignado al conductor, o ``null`` si no tiene ninguno.",
+        "operationId": "active_ride_api_v1_drivers_me_active_ride_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/RideResponse"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Active Ride Api V1 Drivers Me Active Ride Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Active Ride",
+        "tags": [
+          "drivers"
+        ]
+      }
+    },
+    "/api/v1/drivers/me/earnings": {
+      "get": {
+        "description": "Resumen de ganancias del conductor (hoy, histórico y viajes recientes).",
+        "operationId": "earnings_api_v1_drivers_me_earnings_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriverEarningsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Earnings",
+        "tags": [
+          "drivers"
+        ]
+      }
+    },
+    "/api/v1/drivers/me/online": {
+      "post": {
+        "description": "Alterna la disponibilidad del conductor (en línea/desconectado).",
+        "operationId": "set_online_api_v1_drivers_me_online_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OnlineRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Online",
+        "tags": [
+          "drivers"
+        ]
+      }
+    },
+    "/api/v1/rides": {
+      "post": {
+        "operationId": "create_ride_api_v1_rides_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRideRequestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RideRequestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Ride",
+        "tags": [
+          "rides"
+        ]
+      }
+    },
+    "/api/v1/rides/history": {
+      "get": {
+        "description": "Historial de viajes terminales del usuario (pasajero o conductor).",
+        "operationId": "ride_history_api_v1_rides_history_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RideStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RideHistoryPageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ride History",
+        "tags": [
+          "rides"
+        ]
+      }
+    },
+    "/api/v1/rides/me/active": {
+      "get": {
+        "description": "Solicitud o viaje no terminal del pasajero, para recuperar el flujo.",
+        "operationId": "passenger_active_ride_api_v1_rides_me_active_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/RideResponse"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Passenger Active Ride Api V1 Rides Me Active Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Passenger Active Ride",
+        "tags": [
+          "rides"
+        ]
+      }
+    },
+    "/api/v1/rides/me/pending-rating": {
+      "get": {
+        "description": "Último viaje completado que el usuario actual todavía no calificó.",
+        "operationId": "pending_rating_ride_api_v1_rides_me_pending_rating_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/RideResponse"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Pending Rating Ride Api V1 Rides Me Pending Rating Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Pending Rating Ride",
+        "tags": [
+          "rides"
+        ]
+      }
+    },
+    "/api/v1/rides/offers/{offer_id}/accept": {
+      "post": {
+        "description": "El pasajero acepta una oferta: le asigna el viaje (decisión final).\n\nLas demás ofertas vivas del viaje quedan rechazadas en la misma transacción.",
+        "operationId": "accept_offer_api_v1_rides_offers__offer_id__accept_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "offer_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Offer Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RideResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Accept Offer",
+        "tags": [
+          "rides"
+        ]
+      }
+    },
+    "/api/v1/rides/offers/{offer_id}/reject": {
+      "post": {
+        "description": "El pasajero rechaza una oferta concreta; el conductor lo ve en vivo.",
+        "operationId": "reject_offer_api_v1_rides_offers__offer_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "offer_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Offer Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reject Offer",
+        "tags": [
+          "rides"
+        ]
+      }
+    },
+    "/api/v1/rides/offers/{offer_id}/withdraw": {
+      "post": {
+        "description": "El conductor retira su oferta (o se niega a confirmarla); el pasajero deja de verla.",
+        "operationId": "withdraw_offer_api_v1_rides_offers__offer_id__withdraw_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "offer_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Offer Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Withdraw Offer",
+        "tags": [
+          "rides"
+        ]
+      }
+    },
+    "/api/v1/rides/open": {
+      "get": {
+        "description": "Solicitudes abiertas del tipo de vehículo del conductor (en línea).\n\nSolo las que tienen al pasajero presente (conexión WS viva): las abandonadas\nno se muestran.",
+        "operationId": "open_rides_api_v1_rides_open_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenRidePageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Open Rides",
+        "tags": [
+          "rides"
+        ]
+      }
+    },
+    "/api/v1/rides/recent-destinations": {
+      "get": {
+        "operationId": "recent_destinations_api_v1_rides_recent_destinations_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RecentDestinationResponse"
+                  },
+                  "title": "Response Recent Destinations Api V1 Rides Recent Destinations Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Recent Destinations",
+        "tags": [
+          "rides"
+        ]
+      }
+    },
+    "/api/v1/rides/{ride_id}": {
+      "get": {
+        "description": "Detalle del viaje para polling (pasajero o conductor asignado).",
+        "operationId": "get_ride_api_v1_rides__ride_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ride_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Ride Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RideResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Ride",
+        "tags": [
+          "rides"
+        ]
+      },
+      "patch": {
+        "description": "Guarda los cambios de una solicitud pausada y la vuelve a publicar en el pool.",
+        "operationId": "edit_ride_api_v1_rides__ride_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ride_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Ride Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RideEdit"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RideResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Edit Ride",
+        "tags": [
+          "rides"
+        ]
+      }
+    },
+    "/api/v1/rides/{ride_id}/cancel": {
+      "post": {
+        "description": "Cancela el viaje (pasajero o conductor asignado), antes de iniciarlo.",
+        "operationId": "cancel_ride_api_v1_rides__ride_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ride_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Ride Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RideResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Ride",
+        "tags": [
+          "rides"
+        ]
+      }
+    },
+    "/api/v1/rides/{ride_id}/dismiss": {
+      "post": {
+        "description": "Oculta para este conductor la versión vigente de una solicitud abierta.",
+        "operationId": "dismiss_open_ride_api_v1_rides__ride_id__dismiss_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ride_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Ride Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Dismiss Open Ride",
+        "tags": [
+          "rides"
+        ]
+      }
+    },
+    "/api/v1/rides/{ride_id}/fare": {
+      "patch": {
+        "description": "El pasajero ajusta su oferta mientras se buscan conductores.",
+        "operationId": "update_fare_api_v1_rides__ride_id__fare_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ride_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Ride Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RideFareUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RideResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Fare",
+        "tags": [
+          "rides"
+        ]
+      }
+    },
+    "/api/v1/rides/{ride_id}/offers": {
+      "get": {
+        "description": "Ofertas pendientes recibidas por el pasajero para su viaje.",
+        "operationId": "list_offers_api_v1_rides__ride_id__offers_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ride_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Ride Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OfferResponse"
+                  },
+                  "title": "Response List Offers Api V1 Rides  Ride Id  Offers Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Offers",
+        "tags": [
+          "rides"
+        ]
+      },
+      "post": {
+        "description": "El conductor oferta sobre un viaje (aceptar al precio, contraofertar o mejorar).",
+        "operationId": "create_offer_api_v1_rides__ride_id__offers_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ride_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Ride Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OfferCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OfferResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Offer",
+        "tags": [
+          "rides"
+        ]
+      }
+    },
+    "/api/v1/rides/{ride_id}/pause-edit": {
+      "post": {
+        "description": "Pausa la solicitud para editarla (Modificar): la oculta del pool y retira ofertas.",
+        "operationId": "pause_ride_for_edit_api_v1_rides__ride_id__pause_edit_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ride_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Ride Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RideResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Pause Ride For Edit",
+        "tags": [
+          "rides"
+        ]
+      }
+    },
+    "/api/v1/rides/{ride_id}/rating": {
+      "post": {
+        "description": "Califica al otro participante tras completarse el viaje.",
+        "operationId": "rate_ride_api_v1_rides__ride_id__rating_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ride_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Ride Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RatingCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RatingResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rate Ride",
+        "tags": [
+          "rides"
+        ]
+      }
+    },
+    "/api/v1/rides/{ride_id}/rating/skip": {
+      "post": {
+        "description": "Cierra la calificación pendiente sin alterar la reputación.",
+        "operationId": "skip_ride_rating_api_v1_rides__ride_id__rating_skip_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ride_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Ride Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Skip Ride Rating",
+        "tags": [
+          "rides"
+        ]
+      }
+    },
+    "/api/v1/rides/{ride_id}/status": {
+      "patch": {
+        "description": "El conductor asignado avanza el estado del viaje.",
+        "operationId": "update_status_api_v1_rides__ride_id__status_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ride_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Ride Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RideStatusUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RideResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Status",
+        "tags": [
+          "rides"
+        ]
+      }
+    },
+    "/api/v1/saved-places": {
+      "get": {
+        "operationId": "list_saved_places_api_v1_saved_places_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SavedPlaceResponse"
+                  },
+                  "title": "Response List Saved Places Api V1 Saved Places Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Saved Places",
+        "tags": [
+          "saved-places"
+        ]
+      },
+      "post": {
+        "operationId": "create_saved_place_api_v1_saved_places_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveSavedPlaceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedPlaceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Saved Place",
+        "tags": [
+          "saved-places"
+        ]
+      }
+    },
+    "/api/v1/saved-places/{place_id}": {
+      "delete": {
+        "operationId": "delete_saved_place_api_v1_saved_places__place_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "place_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Place Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Saved Place",
+        "tags": [
+          "saved-places"
+        ]
+      },
+      "put": {
+        "operationId": "update_saved_place_api_v1_saved_places__place_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "place_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Place Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveSavedPlaceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedPlaceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Saved Place",
+        "tags": [
+          "saved-places"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "description": "Contrato de liveness histórico, conservado sin cambios.",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/health/live": {
+      "get": {
+        "description": "Solo certifica que el proceso puede responder; no consulta dependencias.",
+        "operationId": "liveness_health_live_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Liveness",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "description": "Comprueba PostgreSQL y los workers habilitados, sin filtrar errores.",
+        "operationId": "readiness_health_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Readiness",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/health/realtime": {
+      "get": {
+        "description": "Expone métricas acotadas de outbox sin topics, payloads ni errores.",
+        "operationId": "realtime_health_health_realtime_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RealtimeHealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RealtimeHealthResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Realtime Health",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/health/scheduled-actions": {
+      "get": {
+        "description": "Expone backlog y leases agregados, nunca payloads ni identificadores.",
+        "operationId": "scheduled_actions_health_health_scheduled_actions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduledActionsHealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduledActionsHealthResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Scheduled Actions Health",
+        "tags": [
+          "health"
+        ]
+      }
+    }
+  }
+}

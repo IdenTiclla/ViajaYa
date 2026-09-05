@@ -3,14 +3,20 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import uuid
+from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, Query, Response, status
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.deps import (
     CurrentUserDep,
-    RideRequestRepositoryDep,
+    PassengerPresenceLeaseStoreDep,
+    SessionFactoryDep,
+    SettingsDep,
+    build_expire_offer_and_complete_scheduled_action,
     get_accept_offer,
     get_cancel_ride,
     get_create_offer,
@@ -27,23 +33,22 @@ from app.api.deps import (
     get_pending_rating_ride,
     get_rate_ride,
     get_reject_offer,
-    get_session_factory,
     get_skip_ride_rating,
     get_update_ride_fare,
     get_update_ride_status,
     get_withdraw_offer,
 )
 from app.api.v1 import events, presence
-from app.api.v1.presence import present_rides
+from app.api.v1.pagination import decode_cursor
 from app.api.v1.schemas.offers import OfferCreate, OfferResponse
 from app.api.v1.schemas.ratings import RatingCreate, RatingResponse
 from app.api.v1.schemas.rides import (
     CreateRideRequestRequest,
-    OpenRideResponse,
+    OpenRidePageResponse,
     RecentDestinationResponse,
     RideEdit,
     RideFareUpdate,
-    RideHistoryItemResponse,
+    RideHistoryPageResponse,
     RideRequestResponse,
     RideResponse,
     RideStatusUpdate,
@@ -60,7 +65,6 @@ from app.application.use_cases.create_offer import CreateOffer
 from app.application.use_cases.create_ride_request import CreateRideRequest
 from app.application.use_cases.dismiss_open_ride import DismissOpenRide
 from app.application.use_cases.edit_ride import EditRide
-from app.application.use_cases.expire_offer import ExpireOffer
 from app.application.use_cases.get_passenger_active_ride import GetPassengerActiveRide
 from app.application.use_cases.get_pending_rating_ride import GetPendingRatingRide
 from app.application.use_cases.get_ride import GetRide
@@ -77,13 +81,10 @@ from app.application.use_cases.update_ride_status import UpdateRideStatus
 from app.application.use_cases.withdraw_offer import WithdrawOffer
 from app.domain.entities import RideStatus
 from app.domain.ride_policy import OFFER_TTL
-from app.infrastructure.db.repositories import SqlAlchemyOfferRepository
-from app.infrastructure.db.session import async_session_factory
+from app.infrastructure.config import Settings
 
 router = APIRouter(prefix="/rides", tags=["rides"])
-
-SessionFactoryDep = Annotated[object, Depends(get_session_factory)]
-
+logger = logging.getLogger(__name__)
 
 def _to_location_input(point) -> LocationInput:
     return LocationInput(
@@ -100,7 +101,21 @@ def _to_location_input(point) -> LocationInput:
 _EXPIRY_TASKS: set[asyncio.Task[None]] = set()
 
 
-async def _expire_offer_after(offer_id: uuid.UUID) -> None:
+async def shutdown_expiry_tasks() -> None:
+    """Cancela y espera las expiraciones pendientes al apagar la API."""
+    tasks = set(_EXPIRY_TASKS)
+    for task in tasks:
+        task.cancel()
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
+    _EXPIRY_TASKS.clear()
+
+
+async def _expire_offer_after(
+    offer_id: uuid.UUID,
+    session_factory: async_sessionmaker[AsyncSession],
+    settings: Settings,
+) -> None:
     """Vence la oferta a los 30 s y avisa en tiempo real por WS a conductor y pasajero.
 
     Tarea diferida lanzada al crear la oferta, con una sesión nueva (la del
@@ -110,14 +125,16 @@ async def _expire_offer_after(offer_id: uuid.UUID) -> None:
     """
     try:
         await asyncio.sleep(OFFER_TTL.total_seconds())
-        async with async_session_factory() as session:
-            offers = SqlAlchemyOfferRepository(session)
-            offer = await ExpireOffer(offers).execute(offer_id)
+        async with session_factory() as session:
+            offer = await build_expire_offer_and_complete_scheduled_action(
+                session,
+                settings,
+            ).execute(offer_id, datetime.now(UTC))
         if offer is not None:
             await events.publish_offer_expired(offer)
     except Exception:
-        # La expiración es de UX (notificación en vivo): no crítica.
-        pass
+        # La entrega directa es best-effort, pero el fallo debe ser observable.
+        logger.exception("No se pudo vencer la oferta %s", offer_id)
 
 
 @router.post("", response_model=RideRequestResponse, status_code=status.HTTP_201_CREATED)
@@ -150,18 +167,27 @@ async def recent_destinations(
     return [RecentDestinationResponse.from_location(loc) for loc in locations]
 
 
-@router.get("/open", response_model=list[OpenRideResponse])
+@router.get("/open", response_model=OpenRidePageResponse)
 async def open_rides(
     current_user: CurrentUserDep,
     use_case: Annotated[ListOpenRides, Depends(get_list_open_rides)],
-) -> list[OpenRideResponse]:
+    settings: SettingsDep,
+    passenger_presence: PassengerPresenceLeaseStoreDep,
+    cursor: Annotated[str | None, Query(max_length=512)] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+) -> OpenRidePageResponse:
     """Solicitudes abiertas del tipo de vehículo del conductor (en línea).
 
     Solo las que tienen al pasajero presente (conexión WS viva): las abandonadas
     no se muestran.
     """
-    details = await use_case.execute(current_user)
-    return [OpenRideResponse.from_open_ride(detail) for detail in present_rides(details)]
+    page = await use_case.execute(current_user, decode_cursor(cursor), limit)
+    if settings.realtime_shared_presence_enabled:
+        if passenger_presence is not None:
+            page = await presence.present_rides_shared(page, passenger_presence)
+    else:
+        page = presence.present_rides(page)
+    return OpenRidePageResponse.from_page(page)
 
 
 @router.post("/{ride_id}/dismiss", status_code=status.HTTP_204_NO_CONTENT)
@@ -217,15 +243,17 @@ async def withdraw_offer(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.get("/history", response_model=list[RideHistoryItemResponse])
+@router.get("/history", response_model=RideHistoryPageResponse)
 async def ride_history(
     current_user: CurrentUserDep,
     use_case: Annotated[ListRideHistory, Depends(get_list_ride_history)],
     status: RideStatus | None = None,
-) -> list[RideHistoryItemResponse]:
+    cursor: Annotated[str | None, Query(max_length=512)] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> RideHistoryPageResponse:
     """Historial de viajes terminales del usuario (pasajero o conductor)."""
-    items = await use_case.execute(current_user, status)
-    return [RideHistoryItemResponse.from_item(item) for item in items]
+    page = await use_case.execute(current_user, status, decode_cursor(cursor), limit)
+    return RideHistoryPageResponse.from_page(page)
 
 
 @router.get("/me/active", response_model=RideResponse | None)
@@ -233,6 +261,8 @@ async def passenger_active_ride(
     current_user: CurrentUserDep,
     use_case: Annotated[GetPassengerActiveRide, Depends(get_passenger_active_ride)],
     session_factory: SessionFactoryDep,
+    settings: SettingsDep,
+    passenger_presence: PassengerPresenceLeaseStoreDep,
 ) -> RideResponse | None:
     """Solicitud o viaje no terminal del pasajero, para recuperar el flujo."""
     detail = await use_case.execute(current_user)
@@ -241,7 +271,21 @@ async def passenger_active_ride(
         and detail.ride.status is RideStatus.SEARCHING
         and not detail.ride.paused
     ):
-        await presence.on_passenger_activity(detail.ride.id, session_factory)
+        if (
+            settings.realtime_shared_presence_enabled
+            and passenger_presence is not None
+        ):
+            await presence.on_shared_passenger_activity(
+                detail.ride.id,
+                session_factory,
+                passenger_presence,
+            )
+        else:
+            await presence.on_passenger_activity(
+                detail.ride.id,
+                session_factory,
+                settings,
+            )
     return RideResponse.from_detail(detail) if detail is not None else None
 
 
@@ -314,6 +358,8 @@ async def create_offer(
     body: OfferCreate,
     current_user: CurrentUserDep,
     use_case: Annotated[CreateOffer, Depends(get_create_offer)],
+    session_factory: SessionFactoryDep,
+    settings: SettingsDep,
 ) -> OfferResponse:
     """El conductor oferta sobre un viaje (aceptar al precio, contraofertar o mejorar)."""
     result = await use_case.execute(
@@ -330,10 +376,18 @@ async def create_offer(
         await events.publish_offer_superseded(result.superseded_offer_id, result.detail)
     else:
         await events.publish_offer_created(result.detail)
-    # Avisa a conductor y pasajero si la oferta vence a los 30 s sin respuesta.
-    task = asyncio.create_task(_expire_offer_after(result.detail.offer.id))
-    _EXPIRY_TASKS.add(task)
-    task.add_done_callback(_EXPIRY_TASKS.discard)
+    # En shadow se conserva el timer para comparar el dual-write. En live, la
+    # acción durable ya fue insertada en la misma transacción que la oferta.
+    if settings.scheduled_actions_mode != "live":
+        task = asyncio.create_task(
+            _expire_offer_after(
+                result.detail.offer.id,
+                session_factory,
+                settings,
+            )
+        )
+        _EXPIRY_TASKS.add(task)
+        task.add_done_callback(_EXPIRY_TASKS.discard)
     return OfferResponse.from_detail(result.detail)
 
 
@@ -343,11 +397,9 @@ async def update_status(
     body: RideStatusUpdate,
     current_user: CurrentUserDep,
     use_case: Annotated[UpdateRideStatus, Depends(get_update_ride_status)],
-    get_ride_use_case: Annotated[GetRide, Depends(get_get_ride)],
 ) -> RideResponse:
     """El conductor asignado avanza el estado del viaje."""
-    await use_case.execute(current_user, ride_id, body.status)
-    detail = await get_ride_use_case.execute(current_user, ride_id)
+    detail = await use_case.execute(current_user, ride_id, body.status)
     await events.publish_ride_status(detail)
     return RideResponse.from_detail(detail)
 
@@ -358,18 +410,11 @@ async def update_fare(
     body: RideFareUpdate,
     current_user: CurrentUserDep,
     use_case: Annotated[UpdateRideFare, Depends(get_update_ride_fare)],
-    get_ride_use_case: Annotated[GetRide, Depends(get_get_ride)],
-    rides_repo: RideRequestRepositoryDep,
 ) -> RideResponse:
     """El pasajero ajusta su oferta mientras se buscan conductores."""
-    await use_case.execute(current_user, ride_id, body.fare)
-    detail = await get_ride_use_case.execute(current_user, ride_id)
-    # Al pasajero (su detalle) y al pool de conductores (ven el nuevo monto).
-    await events.publish_ride_status(detail)
-    open_detail = await rides_repo.open_ride_with_rider(ride_id)
-    if open_detail is not None:
-        await events.publish_ride_created(open_detail)
-    return RideResponse.from_detail(detail)
+    result = await use_case.execute(current_user, ride_id, body.fare)
+    await events.publish_ride_republished(result)
+    return RideResponse.from_detail(result.detail)
 
 
 @router.post("/{ride_id}/cancel", response_model=RideResponse)
@@ -377,18 +422,11 @@ async def cancel_ride(
     ride_id: uuid.UUID,
     current_user: CurrentUserDep,
     use_case: Annotated[CancelRide, Depends(get_cancel_ride)],
-    get_ride_use_case: Annotated[GetRide, Depends(get_get_ride)],
 ) -> RideResponse:
     """Cancela el viaje (pasajero o conductor asignado), antes de iniciarlo."""
     result = await use_case.execute(current_user, ride_id)
-    detail = await get_ride_use_case.execute(current_user, ride_id)
-    await events.publish_ride_status(detail)
-    # Si estaba en el pool (buscando), que los conductores la quiten de su lista.
-    await events.publish_ride_closed(detail.ride.id, detail.ride.service_type)
-    # Avisa a los conductores con oferta viva: el viaje se canceló (no "tomada").
-    for offer in result.cancelled_offers:
-        await events.publish_offer_rejected(offer, reason="ride_cancelled")
-    return RideResponse.from_detail(detail)
+    await events.publish_ride_cancelled(result)
+    return RideResponse.from_detail(result.detail)
 
 
 @router.post("/{ride_id}/pause-edit", response_model=RideResponse)
@@ -396,14 +434,10 @@ async def pause_ride_for_edit(
     ride_id: uuid.UUID,
     current_user: CurrentUserDep,
     use_case: Annotated[PauseRideForEdit, Depends(get_pause_ride_for_edit)],
-    rides_repo: RideRequestRepositoryDep,
 ) -> RideResponse:
     """Pausa la solicitud para editarla (Modificar): la oculta del pool y retira ofertas."""
     result = await use_case.execute(current_user, ride_id)
-    # Necesitamos el detalle con el rider para que el conductor pueda re-insertar
-    # la tarjeta en su lista durante la edición (evento ``ride_paused`` con payload).
-    open_detail = await rides_repo.open_ride_with_rider(ride_id)
-    await events.publish_ride_paused(result, open_detail)
+    await events.publish_ride_paused(result)
     return RideResponse.from_detail(
         RideDetail(ride=result.ride, rider=current_user, driver=None, accepted_offer=None)
     )
@@ -415,10 +449,9 @@ async def edit_ride(
     body: RideEdit,
     current_user: CurrentUserDep,
     use_case: Annotated[EditRide, Depends(get_edit_ride)],
-    rides_repo: RideRequestRepositoryDep,
 ) -> RideResponse:
     """Guarda los cambios de una solicitud pausada y la vuelve a publicar en el pool."""
-    ride = await use_case.execute(
+    result = await use_case.execute(
         current_user,
         ride_id,
         CreateRideRequestInput(
@@ -429,9 +462,5 @@ async def edit_ride(
             payment_method=body.payment_method,
         ),
     )
-    detail = RideDetail(ride=ride, rider=current_user, driver=None, accepted_offer=None)
-    open_detail = await rides_repo.open_ride_with_rider(ride_id)
-    if open_detail is not None:
-        await events.publish_ride_created(open_detail)
-    await events.publish_ride_status(detail)
-    return RideResponse.from_detail(detail)
+    await events.publish_ride_republished(result)
+    return RideResponse.from_detail(result.detail)

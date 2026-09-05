@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
@@ -36,6 +37,7 @@ from tests.fakes import (
     InMemoryPendingRatingRepository,
     InMemoryRatingRepository,
     InMemoryRatingSkipRepository,
+    InMemoryRideReadRepository,
     InMemoryRideRequestRepository,
     InMemoryUserRepository,
 )
@@ -276,20 +278,88 @@ async def test_driver_earnings_aggregates_completed():
     # Un viaje cancelado no cuenta.
     await rides.add(_ride(rider.id, driver.id, status=RideStatus.CANCELLED))
 
-    earnings = await GetDriverEarnings(rides, offers).execute(driver)
+    ride_reads = InMemoryRideReadRepository(rides, offers, users, InMemoryRatingRepository())
+    earnings = await GetDriverEarnings(ride_reads).execute(driver)
 
     assert earnings.trips_all_time == 2
     assert earnings.total_all_time == Decimal("50")  # 20 (fare) + 30 (oferta)
 
 
+async def test_driver_earnings_uses_la_paz_midnight_as_daily_cutoff(monkeypatch):
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            instant = cls(2026, 7, 18, 4, 15, tzinfo=UTC)
+            return instant.astimezone(tz) if tz is not None else instant.replace(tzinfo=None)
+
+    monkeypatch.setattr(
+        "app.application.use_cases.get_driver_earnings.datetime",
+        FixedDateTime,
+    )
+    rides = InMemoryRideRequestRepository()
+    offers = InMemoryOfferRepository()
+    users = InMemoryUserRepository()
+    rider, driver = _passenger(), _driver()
+    await users.add(rider)
+    await users.add(driver)
+
+    after_midnight = _ride(rider.id, driver.id)
+    after_midnight.created_at = datetime(2026, 7, 18, 4, tzinfo=UTC)
+    after_midnight.completed_at = datetime(2026, 7, 18, 4, 5, tzinfo=UTC)
+    before_midnight = _ride(rider.id, driver.id)
+    before_midnight.created_at = datetime(2026, 7, 18, 3, 50, tzinfo=UTC)
+    before_midnight.completed_at = datetime(2026, 7, 18, 3, 55, tzinfo=UTC)
+    await rides.add(after_midnight)
+    await rides.add(before_midnight)
+
+    ride_reads = InMemoryRideReadRepository(
+        rides,
+        offers,
+        users,
+        InMemoryRatingRepository(),
+    )
+    earnings = await GetDriverEarnings(ride_reads).execute(driver)
+
+    assert earnings.trips_today == 1
+    assert earnings.total_today == Decimal("20")
+    assert earnings.trips_all_time == 2
+    assert earnings.total_all_time == Decimal("40")
+
+
+async def test_driver_earnings_limits_recent_breakdown_to_ten():
+    rides = InMemoryRideRequestRepository()
+    offers = InMemoryOfferRepository()
+    users = InMemoryUserRepository()
+    rider, driver = _passenger(), _driver()
+    await users.add(rider)
+    await users.add(driver)
+    for hour in range(12):
+        ride = _ride(rider.id, driver.id)
+        ride.created_at = datetime(2026, 7, 18, hour, tzinfo=UTC)
+        ride.completed_at = ride.created_at
+        await rides.add(ride)
+
+    ride_reads = InMemoryRideReadRepository(
+        rides,
+        offers,
+        users,
+        InMemoryRatingRepository(),
+    )
+    earnings = await GetDriverEarnings(ride_reads).execute(driver)
+
+    assert earnings.trips_all_time == 12
+    assert len(earnings.recent) == 10
+    assert earnings.recent[0].completed_at == datetime(2026, 7, 18, 11, tzinfo=UTC)
+
+
 async def test_history_lists_terminal_rides_for_passenger():
     rides, offers, users, ratings, rider, driver, ride = await _setup_completed()
     await rides.add(_ride(rider.id, driver.id, status=RideStatus.CANCELLED))
-    use_case = ListRideHistory(rides, offers, users, ratings)
+    use_case = ListRideHistory(InMemoryRideReadRepository(rides, offers, users, ratings))
 
     completed = await use_case.execute(rider, RideStatus.COMPLETED)
-    assert len(completed) == 1
-    assert completed[0].counterpart.id == driver.id
+    assert len(completed.items) == 1
+    assert completed.items[0].counterpart.id == driver.id
 
     all_terminal = await use_case.execute(rider, None)
-    assert len(all_terminal) == 2
+    assert len(all_terminal.items) == 2

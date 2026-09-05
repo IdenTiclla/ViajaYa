@@ -1,4 +1,4 @@
-# ViajaYa (TaxiGo) — Monorepo
+# ViajaYa — Monorepo
 
 Aplicación de **taxis y envío de encomiendas** con negociación de tarifa en tiempo real entre
 pasajero y conductor. Monorepo con dos proyectos independientes que siguen **Clean Architecture**:
@@ -11,7 +11,7 @@ ViajaYa/
 ├── backend/                 # API FastAPI (Python 3.11+, async, PostgreSQL). Ver backend/CLAUDE.md
 ├── mobile/                  # App Expo + React Native + TypeScript. Ver mobile/CLAUDE.md
 ├── docs/implementation-plans/   # Planes de implementación por fases (0001-…)
-├── docker-compose.yml       # PostgreSQL para desarrollo
+├── docker-compose.yml       # PostgreSQL + Redis para desarrollo
 └── README.md                # Estado del producto y contexto de negocio
 ```
 
@@ -30,8 +30,8 @@ ViajaYa/
 ## Arranque rápido
 
 ```bash
-# 1) Base de datos (PostgreSQL en Docker)
-docker compose up -d db
+# 1) Infraestructura local (PostgreSQL + Redis en Docker)
+docker compose up -d db redis
 
 # 2) Backend
 cd backend
@@ -70,7 +70,7 @@ npx expo start                    # dev build en emulador/dispositivo (NO Expo G
 - La API vive bajo `/api/v1`. El mobile la consume vía `env.apiUrl` (config en `mobile/app.config.ts`).
 - **Auth:** JWT Bearer. El cliente guarda access/refresh token y refresca ante 401 (interceptor en
   `mobile/src/core/http/client.ts`); el backend valida en `backend/app/api/deps.py`.
-- **WebSocket:** token por query param `?token=…` (RN no permite headers en `WebSocket`).
+- **WebSocket:** token por subprotocolos `viajaya.auth` + access token, nunca en la URL.
   Endpoints: `/ws/driver` (pool + viaje activo del conductor), `/ws/rides/{ride_id}` (ofertas y
   estado al pasajero). Eventos en `backend/app/api/v1/events.py`.
 - **Al cambiar un endpoint o un schema en el backend, actualiza el tipo/repositorio correspondiente

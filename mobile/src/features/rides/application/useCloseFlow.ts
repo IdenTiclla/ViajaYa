@@ -5,6 +5,7 @@
  */
 import {
   type QueryClient,
+  useInfiniteQuery,
   useMutation,
   useQuery,
   useQueryClient,
@@ -33,17 +34,25 @@ async function refreshAfterRating(queryClient: QueryClient, rideId: string): Pro
 
 /** Historial de viajes del usuario (pasajero o conductor), filtrable por estado. */
 export function useRideHistory(status?: RideStatus) {
-  return useQuery({
+  const query = useInfiniteQuery({
     queryKey: ['ride-history', status ?? 'all'],
-    queryFn: () => ridesRepository.getHistory(status),
+    queryFn: ({ pageParam, signal }) =>
+      ridesRepository.getHistory(status, pageParam, undefined, signal),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
   });
+
+  return {
+    ...query,
+    data: query.data?.pages.flatMap((page) => page.items) ?? [],
+  };
 }
 
 /** Resumen de ganancias del conductor (hoy, histórico y viajes recientes). */
 export function useDriverEarnings(enabled = true) {
   return useQuery({
     queryKey: ['driver-earnings'],
-    queryFn: () => ridesRepository.getEarnings(),
+    queryFn: ({ signal }) => ridesRepository.getEarnings(signal),
     enabled,
   });
 }

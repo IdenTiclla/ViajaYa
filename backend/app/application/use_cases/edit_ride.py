@@ -10,27 +10,54 @@ from __future__ import annotations
 import uuid
 from dataclasses import replace
 
-from app.application.dto import CreateRideRequestInput
-from app.domain.entities import Location, RideRequest, RideStatus, User
+from app.application.dto import (
+    CreateRideRequestInput,
+    RideDetail,
+    RideRepublishedResult,
+)
+from app.application.interfaces import RepublishRideEventRecorder, UnitOfWork
+from app.domain.entities import Location, RideStatus, User
 from app.domain.exceptions import (
     InvalidRideTransitionError,
     NotAuthorizedActionError,
     RideNotFoundError,
 )
-from app.domain.repositories import RideRequestRepository
+from app.domain.repositories import OpenRideDetail, RideRequestRepository
 from app.domain.value_objects import FareOffer, ServiceAreaPoint
 
 
 class EditRide:
-    def __init__(self, rides: RideRequestRepository) -> None:
+    def __init__(
+        self,
+        rides: RideRequestRepository,
+        unit_of_work: UnitOfWork,
+        event_recorder: RepublishRideEventRecorder,
+    ) -> None:
         self._rides = rides
+        self._unit_of_work = unit_of_work
+        self._event_recorder = event_recorder
 
     async def execute(
         self,
         rider: User,
         ride_id: uuid.UUID,
         data: CreateRideRequestInput,
-    ) -> RideRequest:
+    ) -> RideRepublishedResult:
+        try:
+            result = await self._mutate(rider, ride_id, data)
+            await self._event_recorder.record(result)
+            await self._unit_of_work.commit()
+            return result
+        except BaseException:
+            await self._unit_of_work.rollback()
+            raise
+
+    async def _mutate(
+        self,
+        rider: User,
+        ride_id: uuid.UUID,
+        data: CreateRideRequestInput,
+    ) -> RideRepublishedResult:
         ride = await self._rides.get_by_id(ride_id)
         if ride is None:
             raise RideNotFoundError("La solicitud de viaje no existe.")
@@ -68,13 +95,6 @@ class EditRide:
             name=data.destination.name.strip(),
             address=data.destination.address.strip(),
         )
-        changed = (
-            origin != ride.origin
-            or destination != ride.destination
-            or data.service_type is not ride.service_type
-            or fare.amount != ride.fare
-            or data.payment_method is not ride.payment_method
-        )
         updated = await self._rides.update_if_state(
             replace(
                 ride,
@@ -84,7 +104,10 @@ class EditRide:
                 fare=fare.amount,
                 payment_method=data.payment_method,
                 paused=False,
-                pool_version=ride.pool_version + 1 if changed else ride.pool_version,
+                # Cada reapertura es una publicación nueva, aunque el pasajero
+                # guarde sin cambiar campos visibles. El cierre anterior y el
+                # nuevo anuncio deben ser comparables incluso si cruzan pools.
+                pool_version=ride.pool_version + 1,
             ),
             RideStatus.SEARCHING,
             expected_paused=True,
@@ -93,4 +116,13 @@ class EditRide:
             raise InvalidRideTransitionError(
                 "La solicitud cambió de estado y ya no se puede guardar."
             )
-        return updated
+        open_detail = await self._rides.open_ride_with_rider(ride_id)
+        if open_detail is None:
+            raise RideNotFoundError("No se pudo enriquecer la solicitud actualizada.")
+        return RideRepublishedResult(
+            detail=RideDetail(ride=updated, rider=rider),
+            open_detail=OpenRideDetail(
+                ride=updated,
+                rider=open_detail.rider,
+            ),
+        )

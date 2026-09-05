@@ -19,7 +19,20 @@ from starlette.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 from app.api.deps import get_session_factory
+from app.api.v1.schemas.realtime import (
+    DriverOffersSnapshotMessage,
+    DriverSnapshotMessageV2,
+    OfferCreatedMessage,
+    OffersSnapshotMessage,
+    OpenRidesSnapshotMessage,
+    PausedRidesSnapshotMessage,
+    RealtimeEventEnvelopeV2,
+    RideSnapshotMessageV2,
+    RideStatusMessage,
+    parse_negotiation_message,
+)
 from app.domain.entities import OfferStatus, UserRole, VehicleType
+from app.infrastructure.config import Settings
 from app.infrastructure.db.base import Base
 from app.infrastructure.db.models import OfferModel
 from app.infrastructure.db.repositories import (
@@ -72,11 +85,13 @@ def _websocket_connect(client: TestClient, url: str):
 def _receive_driver_handshake(ws) -> tuple[dict, dict]:
     """Consume el handshake autoritativo del conductor en su orden contractual."""
     open_rides = ws.receive_json()
-    assert open_rides["type"] == "open_rides_snapshot"
+    assert isinstance(parse_negotiation_message(open_rides), OpenRidesSnapshotMessage)
     paused_rides = ws.receive_json()
-    assert paused_rides["type"] == "paused_rides_snapshot"
+    assert isinstance(
+        parse_negotiation_message(paused_rides), PausedRidesSnapshotMessage
+    )
     offers = ws.receive_json()
-    assert offers["type"] == "driver_offers_snapshot"
+    assert isinstance(parse_negotiation_message(offers), DriverOffersSnapshotMessage)
     return open_rides, offers
 
 
@@ -93,16 +108,46 @@ def ws_client(tmp_path):
         async with factory() as session:
             yield session
 
-    app = create_app()
+    async def create_tables() -> None:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+    asyncio.run(create_tables())
+    app = create_app(session_factory=factory)
     app.dependency_overrides[get_session] = override_get_session
     app.dependency_overrides[get_session_factory] = lambda: factory
+
+    with TestClient(app) as client:
+        client.factory = factory  # type: ignore[attr-defined]
+        try:
+            yield client
+        finally:
+            client.portal.call(engine.dispose)
+
+
+@pytest.fixture
+def ws_client_v2(tmp_path):
+    """Servidor canary con outbox→hub local y handshake v2 habilitados."""
+    engine = create_async_engine(
+        f"sqlite+aiosqlite:///{tmp_path / 'negotiation-v2.db'}",
+        future=True,
+    )
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    settings = Settings(
+        _env_file=None,
+        realtime_outbox_dispatch_mode="live_local",
+        realtime_outbox_recording_enabled=True,
+        realtime_outbox_poll_interval_seconds=0.01,
+    )
 
     async def create_tables() -> None:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
 
+    asyncio.run(create_tables())
+    app = create_app(settings=settings, session_factory=factory)
+
     with TestClient(app) as client:
-        client.portal.call(create_tables)
         client.factory = factory  # type: ignore[attr-defined]
         try:
             yield client
@@ -193,7 +238,7 @@ def test_passenger_receives_snapshot_and_live_offer(ws_client: TestClient):
     url = f"/api/v1/ws/rides/{ride_id}?token={rider_token}"
     with _websocket_connect(ws_client, url) as ws:
         snapshot = ws.receive_json()
-        assert snapshot["type"] == "offers_snapshot"
+        assert isinstance(parse_negotiation_message(snapshot), OffersSnapshotMessage)
         assert snapshot["data"] == []
 
         # El conductor oferta por HTTP → el pasajero lo recibe en vivo.
@@ -204,7 +249,7 @@ def test_passenger_receives_snapshot_and_live_offer(ws_client: TestClient):
         )
         assert offer.status_code == 201, offer.text
         event = ws.receive_json()
-        assert event["type"] == "offer_created"
+        assert isinstance(parse_negotiation_message(event), OfferCreatedMessage)
         assert event["data"]["ride_id"] == ride_id
 
         # Al aceptar, el pasajero recibe el viaje asignado (decisión final):
@@ -216,8 +261,120 @@ def test_passenger_receives_snapshot_and_live_offer(ws_client: TestClient):
         assert accepted.status_code == 200, accepted.text
         assert accepted.json()["status"] == "accepted"
         status_event = ws.receive_json()
-        assert status_event["type"] == "ride_status"
+        assert isinstance(parse_negotiation_message(status_event), RideStatusMessage)
         assert status_event["data"]["status"] == "accepted"
+
+
+def test_live_local_sends_single_v2_snapshot_and_durable_delta(
+    ws_client_v2: TestClient,
+) -> None:
+    rider_token = _register(ws_client_v2, "rider-v2@x.com")
+    driver_token = _register(ws_client_v2, "driver-v2@x.com")
+    _promote_driver(ws_client_v2, "driver-v2@x.com")
+    ride = ws_client_v2.post(
+        RIDES,
+        json=_ride_payload(),
+        headers=_headers(rider_token),
+    ).json()
+
+    with _websocket_connect(
+        ws_client_v2,
+        f"/api/v1/ws/rides/{ride['id']}?token={rider_token}",
+    ) as rider_ws:
+        rider_snapshot = RideSnapshotMessageV2.model_validate(
+            rider_ws.receive_json()
+        )
+        assert rider_snapshot.kind == "snapshot"
+        assert rider_snapshot.data.ride.id == uuid.UUID(ride["id"])
+        assert [item.stream for item in rider_snapshot.watermarks] == [
+            f"ride:{ride['id']}"
+        ]
+
+        # Permite que el anuncio de presencia confirme su outbox antes del
+        # snapshot del conductor. La barrera sigue garantizando snapshot primero.
+        ws_client_v2.portal.call(asyncio.sleep, 0.05)
+        with _websocket_connect(
+            ws_client_v2,
+            f"/api/v1/ws/driver?token={driver_token}",
+        ) as driver_ws:
+            driver_snapshot = DriverSnapshotMessageV2.model_validate(
+                driver_ws.receive_json()
+            )
+            assert driver_snapshot.kind == "snapshot"
+            assert [item.id for item in driver_snapshot.data.open_rides.items] == [
+                uuid.UUID(ride["id"])
+            ]
+
+            offer = ws_client_v2.post(
+                f"{RIDES}/{ride['id']}/offers",
+                json={"accept_at_fare": True, "eta_min": 4},
+                headers=_headers(driver_token),
+            )
+            assert offer.status_code == 201, offer.text
+
+            event = RealtimeEventEnvelopeV2.model_validate(rider_ws.receive_json())
+            assert event.kind == "event"
+            assert event.type == "offer_created"
+            assert event.stream == f"ride:{ride['id']}"
+            assert event.data["id"] == offer.json()["id"]
+            assert event.stream_version == rider_snapshot.watermarks[0].stream_version + 1
+
+
+def test_status_progression_reaches_both_participants_with_exact_http_payload(
+    ws_client: TestClient,
+) -> None:
+    rider_token = _register(ws_client, "rider-status-ws@x.com")
+    driver_token = _register(ws_client, "driver-status-ws@x.com")
+    _promote_driver(ws_client, "driver-status-ws@x.com")
+
+    with _websocket_connect(ws_client, "/api/v1/ws/driver?token=" + driver_token) as driver_ws:
+        _receive_driver_handshake(driver_ws)
+        ride = ws_client.post(
+            RIDES,
+            json=_ride_payload(),
+            headers=_headers(rider_token),
+        ).json()
+
+        with _websocket_connect(
+            ws_client,
+            f"/api/v1/ws/rides/{ride['id']}?token={rider_token}",
+        ) as rider_ws:
+            assert rider_ws.receive_json()["type"] == "offers_snapshot"
+            assert driver_ws.receive_json()["type"] == "ride_created"
+            offer = ws_client.post(
+                f"{RIDES}/{ride['id']}/offers",
+                json={"accept_at_fare": True, "eta_min": 4},
+                headers=_headers(driver_token),
+            ).json()
+            assert rider_ws.receive_json()["type"] == "offer_created"
+
+            accepted = ws_client.post(
+                f"{RIDES}/offers/{offer['id']}/accept",
+                headers=_headers(rider_token),
+            )
+            assert accepted.status_code == 200, accepted.text
+            assert rider_ws.receive_json()["data"]["status"] == "accepted"
+            assert [driver_ws.receive_json()["type"] for _ in range(3)] == [
+                "ride_closed",
+                "offer_accepted",
+                "offers_withdrawn",
+            ]
+
+            for next_status in ("arriving", "in_progress", "completed"):
+                response = ws_client.patch(
+                    f"{RIDES}/{ride['id']}/status",
+                    json={"status": next_status},
+                    headers=_headers(driver_token),
+                )
+                assert response.status_code == 200, response.text
+                payload = response.json()
+
+                rider_event = rider_ws.receive_json()
+                driver_event = driver_ws.receive_json()
+                assert rider_event == {"type": "ride_status", "data": payload}
+                assert driver_event == {"type": "ride_status", "data": payload}
+
+            assert payload["completed_at"] is not None
 
 
 def test_invalid_token_closes_socket(ws_client: TestClient):
@@ -341,10 +498,24 @@ def test_driver_receives_offer_accepted_on_passenger_accept(ws_client: TestClien
         )
         assert accepted.status_code == 200, accepted.text
 
-        # ride_closed (pool), offer_accepted y offers_withdrawn (canal personal)
-        # llegan al conductor; el que importa es offer_accepted.
-        types = {ws.receive_json()["type"] for _ in range(3)}
-        assert "offer_accepted" in types
+        # El orden del batch es parte del contrato: cerrar el pool, asignar el
+        # viaje y recién después limpiar las demás ofertas del ganador.
+        closed = ws.receive_json()
+        offer_accepted = ws.receive_json()
+        offers_withdrawn = ws.receive_json()
+        assert [
+            closed["type"],
+            offer_accepted["type"],
+            offers_withdrawn["type"],
+        ] == ["ride_closed", "offer_accepted", "offers_withdrawn"]
+        assert closed["data"] == {
+            "ride_id": ride["id"],
+            "pool_version": 1,
+            "reason": "terminal",
+        }
+        assert offer_accepted["data"]["id"] == ride["id"]
+        assert offer_accepted["data"]["status"] == "accepted"
+        assert offers_withdrawn["data"] == {"ride_ids": [], "offers": []}
 
 
 def test_passenger_sees_improved_offer_replace_old_one(ws_client: TestClient):
@@ -467,6 +638,9 @@ def test_driver_going_offline_withdraws_offer_and_prevents_accept(
             driver_event = driver_ws.receive_json()
             assert driver_event["type"] == "offers_withdrawn"
             assert driver_event["data"]["ride_ids"] == [ride_id]
+            assert driver_event["data"]["offers"] == [
+                {"ride_id": ride_id, "offer_id": offer.json()["id"]}
+            ]
             assert driver_event["data"]["reason"] == "driver_offline"
 
         offers = ws_client.get(f"{RIDES}/{ride_id}/offers", headers=_headers(rider_token))
@@ -590,6 +764,99 @@ def test_driver_receives_open_ride_event_when_passenger_connects(ws_client: Test
             assert event["data"]["rider"]["trips_completed"] == 0
 
 
+def test_fare_update_republishes_canonical_payload_to_both_roles(
+    ws_client: TestClient,
+):
+    rider_token = _register(ws_client, "rider@x.com")
+    driver_token = _register(ws_client, "driver@x.com")
+    _promote_driver(ws_client, "driver@x.com")
+
+    with _websocket_connect(
+        ws_client,
+        f"/api/v1/ws/driver?token={driver_token}",
+    ) as driver_ws:
+        _receive_driver_handshake(driver_ws)
+        ride = ws_client.post(
+            RIDES,
+            json=_ride_payload(),
+            headers=_headers(rider_token),
+        ).json()
+        with _websocket_connect(
+            ws_client,
+            f"/api/v1/ws/rides/{ride['id']}?token={rider_token}",
+        ) as rider_ws:
+            assert rider_ws.receive_json()["type"] == "offers_snapshot"
+            assert driver_ws.receive_json()["type"] == "ride_created"
+
+            updated = ws_client.patch(
+                f"{RIDES}/{ride['id']}/fare",
+                json={"fare": "30.00"},
+                headers=_headers(rider_token),
+            )
+            assert updated.status_code == 200, updated.text
+
+            rider_event = rider_ws.receive_json()
+            driver_event = driver_ws.receive_json()
+            assert rider_event["type"] == "ride_status"
+            assert rider_event["data"]["fare"] == "30.00"
+            assert driver_event["type"] == "ride_created"
+            assert driver_event["data"]["fare"] == "30.00"
+            assert driver_event["data"]["pool_version"] == 2
+
+
+def test_edit_reopens_ride_in_new_service_pool(ws_client: TestClient):
+    rider_token = _register(ws_client, "rider@x.com")
+    driver_token = _register(ws_client, "driver@x.com")
+    _promote_driver(ws_client, "driver@x.com")
+
+    with _websocket_connect(
+        ws_client,
+        f"/api/v1/ws/driver?token={driver_token}",
+    ) as driver_ws:
+        _receive_driver_handshake(driver_ws)
+        ride = ws_client.post(
+            RIDES,
+            json=_ride_payload(),
+            headers=_headers(rider_token),
+        ).json()
+        with _websocket_connect(
+            ws_client,
+            f"/api/v1/ws/rides/{ride['id']}?token={rider_token}",
+        ) as rider_ws:
+            assert rider_ws.receive_json()["type"] == "offers_snapshot"
+            assert driver_ws.receive_json()["type"] == "ride_created"
+
+            paused = ws_client.post(
+                f"{RIDES}/{ride['id']}/pause-edit",
+                headers=_headers(rider_token),
+            )
+            assert paused.status_code == 200, paused.text
+            assert driver_ws.receive_json() == {
+                "type": "ride_closed",
+                "data": {
+                    "ride_id": ride["id"],
+                    "pool_version": 1,
+                    "reason": "paused",
+                },
+            }
+
+            edited = ws_client.patch(
+                f"{RIDES}/{ride['id']}",
+                json=_ride_payload("delivery"),
+                headers=_headers(rider_token),
+            )
+            assert edited.status_code == 200, edited.text
+
+            rider_event = rider_ws.receive_json()
+            driver_event = driver_ws.receive_json()
+            assert rider_event["type"] == "ride_status"
+            assert rider_event["data"]["paused"] is False
+            assert rider_event["data"]["service_type"] == "delivery"
+            assert driver_event["type"] == "ride_created"
+            assert driver_event["data"]["service_type"] == "delivery"
+            assert driver_event["data"]["pool_version"] == 2
+
+
 @pytest.mark.parametrize("vehicle", [VehicleType.TAXI, VehicleType.MOTO])
 def test_taxi_and_moto_driver_sockets_receive_delivery_pool(
     ws_client: TestClient,
@@ -604,7 +871,7 @@ def test_taxi_and_moto_driver_sockets_receive_delivery_pool(
         ws_client, f"/api/v1/ws/driver?token={driver_token}"
     ) as driver_ws:
         snapshot, _ = _receive_driver_handshake(driver_ws)
-        assert snapshot["data"] == []
+        assert snapshot["data"] == {"items": [], "next_cursor": None}
 
         ride = ws_client.post(
             RIDES,
@@ -637,10 +904,11 @@ def test_open_rides_endpoint_includes_rider(ws_client: TestClient):
         resp = ws_client.get(RIDES + "/open", headers=_headers(driver_token))
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert len(data) == 1
-        assert data[0]["id"] == ride["id"]
-        assert data[0]["rider"]["full_name"] == "rider"
-        assert data[0]["rider"]["trips_completed"] == 0
+        assert data["next_cursor"] is None
+        assert len(data["items"]) == 1
+        assert data["items"][0]["id"] == ride["id"]
+        assert data["items"][0]["rider"]["full_name"] == "rider"
+        assert data["items"][0]["rider"]["trips_completed"] == 0
 
 
 def test_open_ride_visible_during_grace_after_disconnect(ws_client: TestClient):
@@ -660,7 +928,7 @@ def test_open_ride_visible_during_grace_after_disconnect(ws_client: TestClient):
 
     with _websocket_connect(ws_client, f"/api/v1/ws/driver?token={driver_token}") as ws:
         snapshot, _ = _receive_driver_handshake(ws)
-        assert any(r["id"] == ride["id"] for r in snapshot["data"])
+        assert any(r["id"] == ride["id"] for r in snapshot["data"]["items"])
 
 
 def test_open_ride_hidden_after_grace_when_passenger_gone(ws_client: TestClient, monkeypatch):
@@ -684,7 +952,7 @@ def test_open_ride_hidden_after_grace_when_passenger_gone(ws_client: TestClient,
 
     with _websocket_connect(ws_client, f"/api/v1/ws/driver?token={driver_token}") as ws:
         snapshot, _ = _receive_driver_handshake(ws)
-        assert all(r["id"] != ride["id"] for r in snapshot["data"])
+        assert all(r["id"] != ride["id"] for r in snapshot["data"]["items"])
 
 
 def test_ride_cancelled_after_grace_when_passenger_gone(ws_client: TestClient, monkeypatch):
@@ -896,7 +1164,7 @@ def test_open_rides_snapshot_excludes_absent_passenger(ws_client: TestClient):
 
     with _websocket_connect(ws_client, f"/api/v1/ws/driver?token={driver_token}") as ws:
         snapshot, offers = _receive_driver_handshake(ws)
-        assert snapshot["data"] == []
+        assert snapshot["data"] == {"items": [], "next_cursor": None}
         assert offers["data"] == []
 
 
@@ -926,10 +1194,26 @@ def test_driver_notified_when_passenger_cancels(ws_client: TestClient):
         # El pasajero cancela → al conductor le llegan ride_closed (pool) y
         # offer_rejected (personal, reason ride_cancelled). (También hay un
         # ride_created previo encolado al abrir el pasajero su conexión.)
-        ws_client.post(f"{RIDES}/{ride['id']}/cancel", headers=_headers(rider_token))
-        events = [ws.receive_json() for _ in range(3)]
-        rejected = next(e for e in events if e["type"] == "offer_rejected")
+        cancelled = ws_client.post(
+            f"{RIDES}/{ride['id']}/cancel",
+            headers=_headers(rider_token),
+        )
+        assert cancelled.status_code == 200, cancelled.text
+        assert cancelled.json()["status"] == "cancelled"
+        received = [ws.receive_json() for _ in range(3)]
+        assert [event["type"] for event in received] == [
+            "ride_created",
+            "ride_closed",
+            "offer_rejected",
+        ]
+        assert received[1]["data"] == {
+            "ride_id": ride["id"],
+            "pool_version": 1,
+            "reason": "terminal",
+        }
+        rejected = received[2]
         assert rejected["data"]["ride_id"] == ride["id"]
+        assert rejected["data"]["offer_id"] is not None
         assert rejected["data"]["reason"] == "ride_cancelled"
 
 
@@ -958,19 +1242,37 @@ def test_driver_receives_ride_paused_on_pause_edit(ws_client: TestClient):
                 json={"accept_at_fare": True},
                 headers=_headers(driver_token),
             ).json()
+            assert rider_ws.receive_json()["type"] == "offer_created"
 
-        # El pasajero pausa para editar → al conductor le llegan ride_closed (pool)
-        # y ride_paused (personal, con el ride + offer_id). (También hay un
-        # ride_created previo encolado al abrir el pasajero su conexión.)
-        ws_client.post(f"{RIDES}/{ride['id']}/pause-edit", headers=_headers(rider_token))
-        events = [ws.receive_json() for _ in range(3)]
-        paused = next(e for e in events if e["type"] == "ride_paused")
+            paused_response = ws_client.post(
+                f"{RIDES}/{ride['id']}/pause-edit",
+                headers=_headers(rider_token),
+            )
+            assert paused_response.status_code == 200, paused_response.text
+            withdrawn = rider_ws.receive_json()
+            assert withdrawn["type"] == "offer_withdrawn"
+            assert withdrawn["data"]["offer_id"] == offer["id"]
+
+        # Había un ride_created previo en el pool. Después, el orden funcional
+        # exige cerrar la tarjeta y reinsertarla inmediatamente como pausada.
+        driver_events = [ws.receive_json() for _ in range(3)]
+        assert [event["type"] for event in driver_events] == [
+            "ride_created",
+            "ride_closed",
+            "ride_paused",
+        ]
+        assert driver_events[1]["data"] == {
+            "ride_id": ride["id"],
+            "pool_version": 1,
+            "reason": "paused",
+        }
+        paused = driver_events[2]
         assert paused["data"]["id"] == ride["id"]
         assert paused["data"]["offer_id"] == offer["id"]
         # Ya no debe llegar offer_rejected con razón ride_paused (evento reemplazado).
         assert not any(
             e.get("type") == "offer_rejected" and e.get("data", {}).get("reason") == "ride_paused"
-            for e in events
+            for e in driver_events
         )
 
 
@@ -1011,10 +1313,10 @@ def test_passenger_receives_offer_expired(ws_client: TestClient, monkeypatch):
     import uuid as _uuid
     from datetime import timedelta
 
+    from app.api.deps import build_expire_offer
     from app.api.v1 import events
-    from app.application.use_cases.expire_offer import ExpireOffer
     from app.domain import ride_policy
-    from app.infrastructure.db.repositories import SqlAlchemyOfferRepository
+    from app.infrastructure.config import get_settings
 
     # Forzamos la expiración sin esperar los 30 s reales.
     monkeypatch.setattr(ride_policy, "OFFER_TTL", timedelta(seconds=0))
@@ -1037,8 +1339,10 @@ def test_passenger_receives_offer_expired(ws_client: TestClient, monkeypatch):
 
         async def expire() -> None:
             async with ws_client.factory() as session:  # type: ignore[attr-defined]
-                offers_repo = SqlAlchemyOfferRepository(session)
-                offer_entity = await ExpireOffer(offers_repo).execute(_uuid.UUID(offer["id"]))
+                offer_entity = await build_expire_offer(
+                    session,
+                    get_settings(),
+                ).execute(_uuid.UUID(offer["id"]))
             assert offer_entity is not None
             await events.publish_offer_expired(offer_entity)
 

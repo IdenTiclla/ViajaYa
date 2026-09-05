@@ -7,14 +7,14 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from app.api.v1.schemas.rides import PointSchema
+from app.api.v1.schemas.rides import PointInputSchema, PointSchema
 from app.domain.entities import SavedPlace, SavedPlaceCategory
 
 
 class SaveSavedPlaceRequest(BaseModel):
     label: str = Field(min_length=1, max_length=255)
     category: SavedPlaceCategory
-    location: PointSchema
+    location: PointInputSchema
 
 
 class SavedPlaceResponse(BaseModel):

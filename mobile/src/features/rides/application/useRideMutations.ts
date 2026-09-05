@@ -5,6 +5,12 @@
  */
 import { type QueryClient, useMutation, useQueryClient } from '@tanstack/react-query';
 
+import { useDriverRequests } from '@/features/driver/application/useDriverRequests';
+import {
+  emptyOpenRides,
+  type OpenRidesInfiniteData,
+} from '@/features/rides/application/openRidesCache';
+import { applyRideMutationResult } from '@/features/rides/application/rideStatusReducer';
 import {
   DRIVER_ACTIVE_RIDE_KEY,
   PASSENGER_ACTIVE_RIDE_KEY,
@@ -49,7 +55,7 @@ export function useAcceptOffer() {
   return useMutation({
     mutationFn: (offerId: string) => ridesRepository.acceptOffer(offerId),
     onSuccess: (ride) => {
-      queryClient.setQueryData(['ride', ride.id], ride);
+      if (!applyRideMutationResult(queryClient, ride, PASSENGER_ACTIVE_RIDE_KEY)) return;
       queryClient.setQueryData(PASSENGER_ACTIVE_RIDE_KEY, ride);
     },
   });
@@ -89,7 +95,7 @@ export function useUpdateRideStatus() {
       ridesRepository.updateStatus(vars.rideId, vars.status),
     onMutate: () => queryClient.cancelQueries({ queryKey: DRIVER_ACTIVE_RIDE_KEY }),
     onSuccess: (ride) => {
-      queryClient.setQueryData(['ride', ride.id], ride);
+      if (!applyRideMutationResult(queryClient, ride, DRIVER_ACTIVE_RIDE_KEY)) return;
       queryClient.setQueryData(DRIVER_ACTIVE_RIDE_KEY, ride);
     },
   });
@@ -108,7 +114,9 @@ export function useCancelRide() {
         queryClient.cancelQueries({ queryKey: DRIVER_ACTIVE_RIDE_KEY }),
       ]),
     onSuccess: (ride) => {
-      queryClient.setQueryData(['ride', ride.id], ride);
+      const activeQueryKey =
+        role === 'passenger' ? PASSENGER_ACTIVE_RIDE_KEY : DRIVER_ACTIVE_RIDE_KEY;
+      if (!applyRideMutationResult(queryClient, ride, activeQueryKey)) return;
       if (role === 'passenger') {
         // "Activo" es un contrato no terminal. Limpiarlo antes del refetch evita
         // que Home reutilice un SEARCHING anterior mientras confirma con servidor.
@@ -136,7 +144,7 @@ export function useUpdateRideFare() {
     mutationFn: (vars: { rideId: string; fare: number }) =>
       ridesRepository.updateFare(vars.rideId, vars.fare),
     onSuccess: (ride) => {
-      queryClient.setQueryData(['ride', ride.id], ride);
+      if (!applyRideMutationResult(queryClient, ride, PASSENGER_ACTIVE_RIDE_KEY)) return;
       queryClient.setQueryData(PASSENGER_ACTIVE_RIDE_KEY, ride);
     },
   });
@@ -154,7 +162,14 @@ export function useSetOnline() {
       if (isOnline) {
         void queryClient.invalidateQueries({ queryKey: ['open-rides'] });
       } else {
-        queryClient.setQueryData(['open-rides'], []);
+        queryClient.setQueryData<OpenRidesInfiniteData>(
+          ['open-rides'],
+          emptyOpenRides(),
+        );
+        // El commit HTTP ya retiró las ofertas aunque el aviso WS se pierda.
+        const driverRequests = useDriverRequests.getState();
+        driverRequests.invalidateAllOfferAttempts();
+        driverRequests.reconcileOffered([]);
       }
     },
   });
@@ -166,7 +181,7 @@ export function usePauseForEdit() {
   return useMutation({
     mutationFn: (rideId: string) => ridesRepository.pauseForEdit(rideId),
     onSuccess: (ride) => {
-      queryClient.setQueryData(['ride', ride.id], ride);
+      if (!applyRideMutationResult(queryClient, ride, PASSENGER_ACTIVE_RIDE_KEY)) return;
       queryClient.setQueryData(PASSENGER_ACTIVE_RIDE_KEY, ride);
       void queryClient.invalidateQueries({ queryKey: ['ride-offers', ride.id] });
     },
@@ -180,7 +195,7 @@ export function useEditRide() {
     mutationFn: (vars: { rideId: string; input: EditRideInput }) =>
       ridesRepository.editRide(vars.rideId, vars.input),
     onSuccess: (ride) => {
-      queryClient.setQueryData(['ride', ride.id], ride);
+      if (!applyRideMutationResult(queryClient, ride, PASSENGER_ACTIVE_RIDE_KEY)) return;
       queryClient.setQueryData(PASSENGER_ACTIVE_RIDE_KEY, ride);
       void queryClient.invalidateQueries({ queryKey: ['ride-offers', ride.id] });
       void queryClient.invalidateQueries({ queryKey: ['open-rides'] });

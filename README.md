@@ -1,4 +1,4 @@
-# ViajaYa (TaxiGo)
+# ViajaYa
 
 Aplicación de taxis y envío de encomiendas. Monorepo con backend FastAPI y app
 móvil React Native (Expo + TypeScript), siguiendo arquitectura limpia.
@@ -8,21 +8,21 @@ móvil React Native (Expo + TypeScript), siguiendo arquitectura limpia.
 ```
 ViajaYa/
 ├── backend/                 # API FastAPI (Clean Architecture)
-├── mobile/                  # App Expo + React Native + TypeScript (próximamente)
+├── mobile/                  # App Expo + React Native + TypeScript
 ├── docs/implementation-plans/
-└── docker-compose.yml       # PostgreSQL para desarrollo
+└── docker-compose.yml       # PostgreSQL + Redis para desarrollo
 ```
 
 ## Requisitos
 
 - Python 3.11+ y Docker (backend)
-- Node 18+ y Expo CLI (mobile)
+- Node 22.13+ (mobile; Expo CLI se ejecuta desde las dependencias locales)
 
 ## Puesta en marcha del backend
 
 ```bash
-# 1. Levantar PostgreSQL
-docker compose up -d db
+# 1. Levantar PostgreSQL y Redis
+docker compose up -d db redis
 
 # 2. Crear entorno e instalar dependencias
 cd backend
@@ -46,18 +46,26 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 cd backend && pytest
 ```
 
+La integración continua ejecuta en paralelo la suite rápida del backend, las
+pruebas transaccionales contra PostgreSQL 16 y las comprobaciones TypeScript y
+ESLint de mobile. La certificación PostgreSQL local requiere una base desechable
+marcada explícitamente como test mediante `VIAJAYA_TEST_DATABASE_URL`.
+
 ## Estado
 
-- [x] Fase 0 — Andamiaje del monorepo
-- [x] Fase 1 — Backend dominio + infraestructura base
-- [x] Fase 2 — Backend auth local (email/contraseña + JWT)
-- [x] Fase 3 — Backend SSO Google + Facebook
-- [x] Fase 4 — App móvil: andamiaje Expo + design system
-- [x] Fase 5 — App móvil: auth email/contraseña (login/registro + gate)
-- [x] Fase 6 — App móvil: SSO Google + Facebook
-- [ ] Fase 7-8 — Home (mapa con ubicación) y verificación E2E
+- [x] Autenticación local y SSO Google/Facebook.
+- [x] Solicitudes de taxi, moto y encomienda con rutas en mapa.
+- [x] Pool de conductores y negociación de ofertas con vencimiento a 30 s.
+- [x] Ciclo de vida del viaje, historial, ganancias y calificaciones.
+- [x] Actualización en vivo por WebSocket y cancelación por ausencia.
+- [x] CI con PostgreSQL real, contratos OpenAPI/WS y tipos mobile generados.
+- [x] Tiempo real durable y soporte multiworker mediante outbox, Redis y
+  presencia compartida (activación operativa todavía detrás de flags).
 
-Ver `docs/implementation-plans/0001-auth-y-home-map.md`.
+Las reglas vigentes y el endurecimiento pendiente viven en
+`docs/implementation-plans/0007-cancela-busqueda-pasajero-ausente.md` y
+`docs/implementation-plans/0008-endurecimiento-arquitectura.md`. Los planes
+terminados se conservan en `docs/implementation-plans/archived/`.
 
 ## Puesta en marcha del mobile
 
@@ -65,7 +73,7 @@ Ver `docs/implementation-plans/0001-auth-y-home-map.md`.
 cd mobile
 npm install
 cp .env.example .env    # API_URL (IP LAN del backend), claves Maps/OAuth
-npx expo start          # luego abrir en emulador/Expo Go/dev build
+npx expo start          # luego abrir el dev build en emulador o dispositivo
 # Calidad:
-npx tsc --noEmit && npx eslint .
+npx tsc --noEmit && npm run lint
 ```

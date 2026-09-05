@@ -13,8 +13,9 @@ Topics:
 from __future__ import annotations
 
 import asyncio
+import time
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 
 from starlette.websockets import WebSocket
@@ -38,6 +39,40 @@ class RealtimeHub:
         # Serializa todos los envíos a un socket. El handshake puede tomar esta
         # barrera, suscribirse y enviar snapshots sin que un evento vivo se cuele.
         self._send_locks: dict[WebSocket, asyncio.Lock] = {}
+        self._legacy_delivery_enabled = True
+        # Solo ``live_redis`` conmuta esta señal. Los demás modos no dependen
+        # de un transporte compartido y permanecen fail-safe por defecto.
+        self._shared_transport_healthy = True
+        self._shared_transport_recovered_at: float | None = None
+
+    @property
+    def legacy_delivery_enabled(self) -> bool:
+        """Indica si la ruta directa legacy puede entregar frames visibles."""
+        return self._legacy_delivery_enabled
+
+    def set_legacy_delivery_enabled(self, enabled: bool) -> None:
+        """Conmuta la ruta legacy; no afecta snapshots ni envelopes durables v2."""
+        self._legacy_delivery_enabled = enabled
+
+    @property
+    def shared_transport_healthy(self) -> bool:
+        """Indica si es seguro decidir ausencia bajo el fanout compartido."""
+        return self._shared_transport_healthy
+
+    def set_shared_transport_healthy(self, healthy: bool) -> None:
+        """Actualiza la salud usada por presencia sin exponer detalles Redis."""
+        if healthy and not self._shared_transport_healthy:
+            self._shared_transport_recovered_at = time.monotonic()
+        self._shared_transport_healthy = healthy
+
+    def shared_transport_recovery_grace_remaining(self, grace_seconds: float) -> float:
+        """Devuelve la barrera restante tras recuperar el transporte compartido."""
+        if not self._shared_transport_healthy:
+            return grace_seconds
+        recovered_at = self._shared_transport_recovered_at
+        if recovered_at is None:
+            return 0.0
+        return max(0.0, grace_seconds - (time.monotonic() - recovered_at))
 
     def _is_subscribed(self, ws: WebSocket) -> bool:
         return any(ws in subscribers for subscribers in self._topics.values())
@@ -75,8 +110,68 @@ class RealtimeHub:
         """``True`` si algún WebSocket sigue suscrito al topic (presencia viva)."""
         return bool(self._topics.get(topic))
 
-    async def broadcast(self, topic: str, message: dict) -> None:
-        """Envía ``message`` (JSON-serializable) a todos los suscriptores del topic.
+    @property
+    def subscribed_socket_count(self) -> int:
+        """Cantidad de sockets locales únicos, sin exponer sus topics."""
+        return len(
+            {
+                websocket
+                for subscribers in self._topics.values()
+                for websocket in subscribers
+            }
+        )
+
+    async def broadcast(self, topic: str, message: dict[str, object]) -> None:
+        """Entrega directa legacy si la política del proceso la mantiene activa."""
+        if not self._legacy_delivery_enabled:
+            return
+        await self._broadcast(topic, message)
+
+    async def broadcast_versioned(
+        self,
+        topic: str,
+        message: dict[str, object],
+    ) -> None:
+        """Entrega un envelope durable v2, independiente de la ruta legacy."""
+        await self._broadcast(topic, message)
+
+    async def force_resync(self, topics: Sequence[str]) -> None:
+        """Cierra sockets de streams con un hueco terminal para que reconecten."""
+        sockets = {
+            websocket
+            for topic in topics
+            for websocket in self._topics.get(topic, ())
+        }
+        await asyncio.gather(
+            *(self._close_for_resync(websocket) for websocket in sockets),
+        )
+
+    async def force_resync_all(self) -> None:
+        """Cierra todos los sockets locales tras perder el fanout compartido."""
+        sockets = {
+            websocket
+            for subscribers in self._topics.values()
+            for websocket in subscribers
+        }
+        await asyncio.gather(
+            *(self._close_for_resync(websocket) for websocket in sockets),
+        )
+
+    async def _close_for_resync(self, websocket: WebSocket) -> None:
+        """Descarta por completo un socket que ya no puede seguir el stream."""
+        try:
+            lock = self._send_locks.setdefault(websocket, asyncio.Lock())
+            async with lock:
+                await websocket.close(code=1012)
+        except Exception:  # noqa: BLE001 - el transporte ya puede estar caído
+            pass
+        finally:
+            # Un conductor comparte varios topics. Mantener los demás después
+            # de perder un frame dejaría un socket vivo con un estado parcial.
+            self.unsubscribe_all(websocket)
+
+    async def _broadcast(self, topic: str, message: dict[str, object]) -> None:
+        """Envía ``message`` (JSON-serializable) a los suscriptores del topic.
 
         Los sockets que fallan al enviar se descartan (desconexión silenciosa).
         """
@@ -91,8 +186,8 @@ class RealtimeHub:
                     await ws.send_json(message)
             except Exception:  # noqa: BLE001 - socket caído; lo limpiamos
                 dead.append(ws)
-        for ws in dead:
-            self.unsubscribe(topic, ws)
+        if dead:
+            await asyncio.gather(*(self._close_for_resync(ws) for ws in dead))
 
 
 # Singleton del proceso.

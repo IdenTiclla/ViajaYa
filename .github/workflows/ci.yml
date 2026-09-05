@@ -1,0 +1,202 @@
+name: Integración continua
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend_rapido:
+    name: Backend · lint y pruebas rápidas
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      VIAJAYA_TEST_DATABASE_URL: ""
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Configurar Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Instalar dependencias
+        run: python -m pip install -e ".[dev]"
+
+      - name: Verificar estilo
+        run: python -m ruff check .
+
+      - name: Verificar contrato OpenAPI
+        run: python -m scripts.export_openapi --check
+
+      - name: Extraer contrato OpenAPI de la rama base
+        id: contrato_base
+        if: github.event_name == 'pull_request'
+        env:
+          OPENAPI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if git cat-file -e "${OPENAPI_BASE_SHA}:backend/openapi.json" 2>/dev/null; then
+            git show "${OPENAPI_BASE_SHA}:backend/openapi.json" > /tmp/viajaya-openapi-base.json
+            echo "disponible=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "disponible=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::La rama base todavía no versiona OpenAPI; este PR establece el contrato inicial."
+          fi
+
+      - name: Rechazar cambios OpenAPI incompatibles
+        if: github.event_name == 'pull_request' && steps.contrato_base.outputs.disponible == 'true'
+        run: >-
+          docker run --rm
+          -v "/tmp/viajaya-openapi-base.json:/specs/base.json:ro"
+          -v "${{ github.workspace }}/backend/openapi.json:/specs/revision.json:ro"
+          tufin/oasdiff:v1.17.0
+          breaking --fail-on WARN --format githubactions
+          /specs/base.json /specs/revision.json
+
+      - name: Verificar contrato realtime mobile
+        run: python -m scripts.export_realtime_contract --check
+
+      - name: Validar configuración Prometheus
+        run: >-
+          docker run --rm --entrypoint /bin/promtool
+          -v "${{ github.workspace }}/ops/monitoring/prometheus:/etc/prometheus:ro"
+          prom/prometheus:v3.11.3
+          check config /etc/prometheus/prometheus.yml
+
+      - name: Validar configuración Alertmanager
+        run: >-
+          docker run --rm --entrypoint /bin/amtool
+          -v "${{ github.workspace }}/ops/monitoring/alertmanager:/etc/alertmanager:ro"
+          prom/alertmanager:v0.32.1
+          check-config /etc/alertmanager/alertmanager.yml
+
+      - name: Ejecutar pruebas rápidas
+        run: python -m pytest -q
+
+  backend_postgresql:
+    name: Backend · PostgreSQL real
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VIAJAYA_TEST_DATABASE_URL: postgresql+asyncpg://viajaya:viajaya@127.0.0.1:5432/test_viajaya_ci
+      VIAJAYA_TEST_REDIS_URL: redis://127.0.0.1:6379/15
+      VIAJAYA_TEST_REDIS_RESTART_URL: redis://127.0.0.1:6380/15
+      VIAJAYA_TEST_REDIS_RESTART_CONTAINER: viajaya-ci-redis-restart
+    defaults:
+      run:
+        working-directory: backend
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: viajaya
+          POSTGRES_PASSWORD: viajaya
+          POSTGRES_DB: test_viajaya_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U viajaya -d test_viajaya_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Configurar Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Instalar dependencias
+        run: python -m pip install -e ".[dev]"
+
+      - name: Levantar Redis dedicado para restart smoke
+        run: >-
+          docker run --detach
+          --name viajaya-ci-redis-restart
+          --publish 127.0.0.1:6380:6379
+          --health-cmd "redis-cli ping"
+          --health-interval 1s
+          --health-timeout 1s
+          --health-retries 20
+          redis:7.4-alpine
+
+      - name: Certificar migraciones e integridad
+        run: python -m pytest -q tests/postgresql
+
+      - name: Retirar Redis dedicado
+        if: always()
+        run: docker rm --force viajaya-ci-redis-restart
+
+  mobile:
+    name: Mobile · tipos y lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: mobile
+
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            mobile/package-lock.json
+
+      - name: Instalar herramientas del contrato HTTP
+        run: npm --prefix .. ci
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Verificar DTO HTTP generado
+        run: npm --prefix .. run openapi:check
+
+      - name: Probar reducers de tiempo real
+        run: node --experimental-strip-types --test tests/*.test.mjs
+
+      - name: Verificar tipos
+        run: npx tsc --noEmit
+
+      - name: Verificar estilo
+        run: npm run lint

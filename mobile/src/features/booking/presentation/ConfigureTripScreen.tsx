@@ -8,33 +8,42 @@
  */
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
 import { usePreventRemove } from 'expo-router/react-navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Keyboard,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
-import MapView, { Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
+import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
 import { useRoute } from '@/features/booking/application/useRoute';
+import { useTripPlaceLabels } from '@/features/booking/application/useTripPlaceLabels';
 import { ridesRepository } from '@/features/booking/data/ridesRepository';
 import {
   BOLIVIA_SERVICE_AREA_MESSAGE,
   getBoliviaPlaceError,
 } from '@/features/booking/domain/bolivia';
-import { getPlaceStreetName } from '@/features/booking/domain/placeLabels';
-import { SERVICE_OPTIONS } from '@/features/booking/domain/serviceCatalog';
+import {
+  getPlaceStreetName,
+  isPlaceLabelResolved,
+} from '@/features/booking/domain/placeLabels';
 import type { Coordinates, PaymentMethod } from '@/features/booking/domain/types';
+import {
+  SelectableOptionCards,
+  type SelectableOption,
+} from '@/features/booking/presentation/SelectableOptionCards';
+import { ServiceTypeSelector } from '@/features/booking/presentation/ServiceTypeSelector';
 import { useCancelRide, useEditRide } from '@/features/rides/application/useRideMutations';
 import { formatBolivianosInput } from '@/features/rides/domain/money';
 import {
@@ -43,18 +52,18 @@ import {
 } from '@/features/rides/application/useRides';
 import { declutteredMapStyle } from '@/features/booking/presentation/mapStyle';
 import { RoutePinMarker } from '@/features/rides/presentation/RoutePinMarker';
+import { RoutePolyline } from '@/features/rides/presentation/RoutePolyline';
 import { Button, ConfirmDialog, FeedbackState } from '@/shared/components';
 
-const PAYMENTS: { id: PaymentMethod; label: string; icon: 'qr-code' | 'cash' }[] = [
-  { id: 'qr', label: 'QR', icon: 'qr-code' },
-  { id: 'cash', label: 'Efectivo', icon: 'cash' },
+const PAYMENTS: readonly SelectableOption<PaymentMethod>[] = [
+  { id: 'cash', label: 'Efectivo', icon: 'cash', accessibilityLabel: 'Pagar con efectivo' },
+  { id: 'qr', label: 'QR', icon: 'qr-code', accessibilityLabel: 'Pagar con QR' },
 ];
 
-// Márgenes del encuadre: arriba deja sitio a la barra superior + resumen de ruta;
-// abajo es dinámico (alto real del bottom sheet) para que ambos puntos queden en
-// el área visible.
+// Mismo encuadre lateral del mapa de solicitudes del conductor. Abajo se usa el
+// alto real del panel para mantener todo el trayecto en el área visible.
 const FIT_TOP = 170;
-const FIT_SIDES = 60;
+const FIT_SIDES = 88;
 const MIN_KEYBOARD_TRANSLATION = 280;
 
 function formatDistance(meters: number): string {
@@ -67,6 +76,7 @@ function formatDuration(seconds: number): string {
 
 export function ConfigureTripScreen() {
   const router = useRouter();
+  const isFocused = useIsFocused();
   const { rideId } = useLocalSearchParams<{ rideId?: string }>();
   const isEditing = !!rideId;
   const origin = useBookingStore((s) => s.origin);
@@ -79,6 +89,12 @@ export function ConfigureTripScreen() {
   const setPayment = useBookingStore((s) => s.setPayment);
   const fare = useBookingStore((s) => s.fare);
   const setFare = useBookingStore((s) => s.setFare);
+  const {
+    labelsReady,
+    isResolving: labelsResolving,
+    error: labelsError,
+    retry: retryLabels,
+  } = useTripPlaceLabels();
   const mapRef = useRef<MapView>(null);
   const queryClient = useQueryClient();
   const editRide = useEditRide();
@@ -163,11 +179,15 @@ export function ConfigureTripScreen() {
   });
 
   useEffect(() => {
-    if (allowExit && exitHome) {
-      router.replace('/(app)/(tabs)');
-    } else if (allowExit && exitAfterSave && rideId) {
-      router.replace({ pathname: '/booking/offers', params: { rideId } });
-    }
+    if (!allowExit) return;
+    const frame = requestAnimationFrame(() => {
+      if (exitHome) {
+        router.dismissTo('/(app)/(tabs)');
+      } else if (exitAfterSave && rideId) {
+        router.replace({ pathname: '/booking/offers', params: { rideId } });
+      }
+    });
+    return () => cancelAnimationFrame(frame);
   }, [allowExit, exitAfterSave, exitHome, rideId, router]);
 
   const cancelRecoveryAndExit = () => {
@@ -238,7 +258,12 @@ export function ConfigureTripScreen() {
     (animated: boolean) => {
       if (fitCoordinates.length < 2) return;
       mapRef.current?.fitToCoordinates(fitCoordinates, {
-        edgePadding: { top: FIT_TOP, right: FIT_SIDES, bottom: sheetHeight + 24, left: FIT_SIDES },
+        edgePadding: {
+          top: FIT_TOP,
+          right: FIT_SIDES,
+          bottom: sheetHeight + spacing.lg,
+          left: FIT_SIDES,
+        },
         animated,
       });
     },
@@ -316,14 +341,25 @@ export function ConfigureTripScreen() {
 
   const fareValue = Number(fare.replace(',', '.'));
   const fareIsValid = Number.isFinite(fareValue) && fareValue > 0;
+  const unresolvedMapLabel = labelsError ? 'Dirección pendiente' : 'Obteniendo dirección…';
+  const originMapLabel = isPlaceLabelResolved(origin)
+    ? getPlaceStreetName(origin)
+    : unresolvedMapLabel;
+  const destinationMapLabel = isPlaceLabelResolved(destination)
+    ? getPlaceStreetName(destination)
+    : unresolvedMapLabel;
+  const originMapLoading = labelsResolving && !isPlaceLabelResolved(origin);
+  const destinationMapLoading = labelsResolving && !isPlaceLabelResolved(destination);
 
   const searchOffers = () => {
-    if (!tripInServiceArea || !fareIsValid || createRide.isPending) return;
+    if (!tripInServiceArea || !labelsReady || !fareIsValid || createRide.isPending) return;
     createRide.mutate({ origin, destination, service, payment, fare: fareValue });
   };
 
   const saveEdit = () => {
-    if (!rideId || !tripInServiceArea || !fareIsValid || editRide.isPending) return;
+    if (!rideId || !tripInServiceArea || !labelsReady || !fareIsValid || editRide.isPending) {
+      return;
+    }
     editRide.mutate(
       { rideId, input: { origin, destination, service, payment, fare: fareValue } },
       {
@@ -353,48 +389,40 @@ export function ConfigureTripScreen() {
 
   return (
     <View style={styles.root}>
-      <MapView
-        key={tripMapKey}
-        ref={mapRef}
-        provider={PROVIDER_GOOGLE}
-        style={StyleSheet.absoluteFill}
-        initialRegion={region}
-        customMapStyle={showPlaces ? [] : declutteredMapStyle}
-        onMapReady={() => fitToTrip(false)}>
-        <RoutePinMarker
-          key={`origin-${tripMapKey}`}
-          kind="A"
-          coordinate={origin.coordinates}
-          label={`Origen: ${getPlaceStreetName(origin)}`}
-          showEditControl
-          onPress={editOrigin}
-        />
-        <RoutePinMarker
-          key={`destination-${tripMapKey}`}
-          kind="B"
-          coordinate={destination.coordinates}
-          label={`Destino: ${getPlaceStreetName(destination)}`}
-          showEditControl
-          onPress={editDestination}
-        />
-        {polylineCoordinates.length >= 2 && (
-          <>
-            {/* Contorno blanco para que la ruta resalte sobre calles y etiquetas. */}
-            <Polyline
-              key={`route-outline-${tripMapKey}`}
-              coordinates={polylineCoordinates}
-              strokeColor={colors.surface}
-              strokeWidth={9}
-            />
-            <Polyline
-              key={`route-${tripMapKey}`}
-              coordinates={polylineCoordinates}
-              strokeColor={colors.primary}
-              strokeWidth={5}
-            />
-          </>
-        )}
-      </MapView>
+      {isFocused && !allowExit && (
+        <MapView
+          key={tripMapKey}
+          ref={mapRef}
+          provider={PROVIDER_GOOGLE}
+          style={StyleSheet.absoluteFill}
+          initialRegion={region}
+          customMapStyle={showPlaces ? [] : declutteredMapStyle}
+          onMapReady={() => fitToTrip(false)}>
+          <RoutePinMarker
+            key={`origin-${tripMapKey}`}
+            kind="A"
+            coordinate={origin.coordinates}
+            label={`Origen: ${originMapLabel}`}
+            compactTooltip
+            showEditControl
+            loading={originMapLoading}
+            zIndex={20}
+            onPress={editOrigin}
+          />
+          <RoutePinMarker
+            key={`destination-${tripMapKey}`}
+            kind="B"
+            coordinate={destination.coordinates}
+            label={`Destino: ${destinationMapLabel}`}
+            compactTooltip
+            showEditControl
+            loading={destinationMapLoading}
+            zIndex={21}
+            onPress={editDestination}
+          />
+          <RoutePolyline coordinates={polylineCoordinates} />
+        </MapView>
+      )}
 
       <SafeAreaView style={styles.topBar} edges={['top']} pointerEvents="box-none">
         <View style={styles.topLeft}>
@@ -406,7 +434,8 @@ export function ConfigureTripScreen() {
                 return;
               }
               useBookingStore.getState().resetTrip();
-              router.replace('/(app)/(tabs)');
+              setExitHome(true);
+              setAllowExit(true);
             }}
             disabled={editRide.isPending}
             accessibilityRole="button"
@@ -435,12 +464,18 @@ export function ConfigureTripScreen() {
         ]}
         pointerEvents="box-none">
         <SafeAreaView
-          style={[styles.sheet, keyboardHeight === 0 && styles.sheetResting]}
+          style={styles.sheet}
           edges={['bottom']}
           onLayout={(e) => {
             if (keyboardHeight === 0) setSheetHeight(e.nativeEvent.layout.height);
           }}>
-          <View style={styles.sheetContent}>
+          <ScrollView
+            style={styles.sheetScroll}
+            contentContainerStyle={styles.sheetContent}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            showsVerticalScrollIndicator={false}
+            bounces={false}>
             {route && (
               <View style={styles.estimate}>
                 <Ionicons name="navigate" size={16} color={colors.primary} />
@@ -451,59 +486,10 @@ export function ConfigureTripScreen() {
             )}
 
         <Text style={styles.fieldLabel}>Tipo de servicio</Text>
-        <View style={styles.serviceOptions}>
-          {SERVICE_OPTIONS.map((s) => {
-            const active = service === s.id;
-            return (
-              <TouchableOpacity
-                key={s.id}
-                style={[styles.serviceOption, active && styles.serviceChipActive]}
-                onPress={() => setService(s.id)}
-                accessibilityRole="radio"
-                accessibilityState={{ checked: active }}
-                accessibilityLabel={s.label}>
-                <Ionicons
-                  name={s.icon}
-                  size={20}
-                  color={active ? colors.textOnPrimary : colors.text}
-                />
-                <Text
-                  numberOfLines={2}
-                  style={[
-                    styles.serviceOptionText,
-                    active && styles.serviceChipTextActive,
-                  ]}>
-                  {s.shortLabel}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        <ServiceTypeSelector value={service} onChange={setService} />
 
         <Text style={styles.fieldLabel}>Método de pago</Text>
-        <View style={styles.services}>
-          {PAYMENTS.map((p) => {
-            const active = payment === p.id;
-            return (
-              <TouchableOpacity
-                key={p.id}
-                style={[styles.serviceChip, active && styles.serviceChipActive]}
-                onPress={() => setPayment(p.id)}
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-                accessibilityLabel={`Pagar con ${p.label}`}>
-                <Ionicons
-                  name={p.icon}
-                  size={20}
-                  color={active ? colors.textOnPrimary : colors.text}
-                />
-                <Text style={[styles.serviceChipText, active && styles.serviceChipTextActive]}>
-                  {p.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        <SelectableOptionCards options={PAYMENTS} value={payment} onChange={setPayment} />
 
         <Text style={styles.fieldLabel}>Tu oferta</Text>
         <View style={styles.fareRow}>
@@ -528,6 +514,19 @@ export function ConfigureTripScreen() {
         {editRide.isError && (
           <Text style={styles.error}>{getApiErrorMessage(editRide.error)}</Text>
         )}
+        {labelsResolving && (
+          <Text style={styles.locationStatus} accessibilityLiveRegion="polite">
+            Obteniendo los nombres del origen y destino…
+          </Text>
+        )}
+        {labelsError && !labelsResolving && (
+          <View style={styles.locationError}>
+            <Text style={styles.error} accessibilityRole="alert">
+              {labelsError}
+            </Text>
+            <Button title="Reintentar direcciones" variant="secondary" onPress={retryLabels} />
+          </View>
+        )}
         {!tripInServiceArea && (
           <Text style={styles.error} accessibilityRole="alert">
             {serviceAreaError ?? destinationAreaError} Corrige el origen o el destino para continuar.
@@ -544,28 +543,37 @@ export function ConfigureTripScreen() {
         {cancelRecoveryRide.isError && (
           <Text style={styles.error}>{getApiErrorMessage(cancelRecoveryRide.error)}</Text>
         )}
+          </ScrollView>
 
-        <TouchableOpacity
-          style={[
-            styles.cta,
-            (!tripInServiceArea ||
-              !fareIsValid ||
-              createRide.isPending ||
-              editRide.isPending) &&
-              styles.ctaDisabled,
-          ]}
-          disabled={
-            !tripInServiceArea || !fareIsValid || createRide.isPending || editRide.isPending
-          }
-          onPress={isEditing ? saveEdit : searchOffers}
-          accessibilityRole="button"
-          accessibilityLabel={isEditing ? 'Guardar cambios' : 'Buscar ofertas'}>
-          {createRide.isPending || editRide.isPending ? (
-            <ActivityIndicator color={colors.textOnPrimary} />
-          ) : (
-            <Text style={styles.ctaText}>{isEditing ? 'Guardar cambios' : 'Buscar Ofertas'}</Text>
-          )}
-        </TouchableOpacity>
+          <View style={styles.sheetFooter}>
+            <TouchableOpacity
+              style={[
+                styles.cta,
+                (!tripInServiceArea ||
+                  !labelsReady ||
+                  !fareIsValid ||
+                  createRide.isPending ||
+                  editRide.isPending) &&
+                  styles.ctaDisabled,
+              ]}
+              disabled={
+                !tripInServiceArea ||
+                !labelsReady ||
+                !fareIsValid ||
+                createRide.isPending ||
+                editRide.isPending
+              }
+              onPress={isEditing ? saveEdit : searchOffers}
+              accessibilityRole="button"
+              accessibilityLabel={isEditing ? 'Guardar cambios' : 'Buscar ofertas'}>
+              {createRide.isPending || editRide.isPending || labelsResolving ? (
+                <ActivityIndicator color={colors.textOnPrimary} />
+              ) : (
+                <Text style={styles.ctaText}>
+                  {isEditing ? 'Guardar cambios' : 'Buscar Ofertas'}
+                </Text>
+              )}
+            </TouchableOpacity>
           </View>
         </SafeAreaView>
       </View>
@@ -651,12 +659,19 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     shadowOffset: { width: 0, height: -3 },
     elevation: 12,
+    maxHeight: '72%',
   },
-  sheetResting: { maxHeight: '48%' },
+  sheetScroll: { flexShrink: 1 },
   sheetContent: {
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
     gap: spacing.sm,
+  },
+  sheetFooter: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.sm,
   },
 
   estimate: {
@@ -672,44 +687,6 @@ const styles = StyleSheet.create({
   estimateText: { fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: colors.text },
 
   fieldLabel: { fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.text },
-  services: { flexDirection: 'row', gap: spacing.md },
-  serviceOptions: { flexDirection: 'row', gap: spacing.sm },
-  serviceOption: {
-    flex: 1,
-    minWidth: 0,
-    height: 50,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    paddingHorizontal: 2,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  serviceOptionText: {
-    fontSize: fontSize.xs,
-    lineHeight: 15,
-    fontWeight: fontWeight.medium,
-    color: colors.text,
-    textAlign: 'center',
-  },
-  serviceChip: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    height: 40,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  serviceChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  serviceChipText: { fontSize: fontSize.md, fontWeight: fontWeight.medium, color: colors.text },
-  serviceChipTextActive: { color: colors.textOnPrimary },
-
   fareRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -733,6 +710,8 @@ const styles = StyleSheet.create({
   },
   ctaDisabled: { opacity: 0.5 },
   ctaText: { color: colors.textOnPrimary, fontSize: fontSize.md, fontWeight: fontWeight.bold },
+  locationStatus: { color: colors.textSecondary, fontSize: fontSize.sm, textAlign: 'center' },
+  locationError: { gap: spacing.xs },
   error: { color: colors.danger, fontSize: fontSize.sm, textAlign: 'center' },
   recoveryAction: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg },
 });

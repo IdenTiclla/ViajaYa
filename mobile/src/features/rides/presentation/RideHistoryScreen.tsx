@@ -7,7 +7,15 @@
  */
 import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
-import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
@@ -37,8 +45,23 @@ function formatDate(iso: string | null): string {
 
 export function RideHistoryScreen() {
   const [tab, setTab] = useState<'completed' | 'cancelled'>('completed');
-  const { data, isPending, isError, error, isRefetching, refetch } = useRideHistory(tab);
+  const {
+    data,
+    isPending,
+    isError,
+    error,
+    isRefetching,
+    refetch,
+    hasNextPage,
+    fetchNextPage,
+    isFetchingNextPage,
+  } = useRideHistory(tab);
   const retry = () => void refetch();
+  const loadMore = () => {
+    if (hasNextPage && !isFetchingNextPage) {
+      void fetchNextPage();
+    }
+  };
 
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
@@ -66,6 +89,13 @@ export function RideHistoryScreen() {
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
         renderItem={({ item }) => <HistoryCard item={item} />}
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.35}
+        ListFooterComponent={
+          isFetchingNextPage ? (
+            <ActivityIndicator style={styles.pageLoader} color={colors.primary} />
+          ) : null
+        }
         refreshControl={
           <RefreshControl
             refreshing={!isPending && isRefetching}
@@ -181,5 +211,6 @@ const styles = StyleSheet.create({
   cardPrice: { fontSize: fontSize.md, fontWeight: fontWeight.bold, color: colors.text },
   rating: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   ratingText: { fontSize: fontSize.xs, color: colors.textSecondary },
+  pageLoader: { marginVertical: spacing.md },
 
 });

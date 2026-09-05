@@ -7,7 +7,10 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import (
+    JSON,
+    BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime,
     Enum,
     Float,
@@ -22,6 +25,7 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.domain.entities import (
@@ -47,10 +51,35 @@ def _enum_values(enum_cls: type) -> list[str]:
 _ACTIVE_RIDE_STATUS_PREDICATE = text(
     "status IN ('searching', 'accepted', 'arriving', 'in_progress')"
 )
+_ACTIVE_DRIVER_RIDE_STATUS_PREDICATE = text(
+    "driver_id IS NOT NULL AND status IN ('accepted', 'arriving', 'in_progress')"
+)
+_OPEN_POOL_PREDICATE = text("status = 'searching' AND paused = false")
+_OUTBOX_PENDING_PREDICATE = text(
+    "published_at IS NULL AND quarantined_at IS NULL AND sequence = 0"
+)
+_OUTBOX_UNPUBLISHED_PREDICATE = text(
+    "published_at IS NULL AND quarantined_at IS NULL"
+)
+_OUTBOX_PUBLISHED_RETENTION_PREDICATE = text(
+    "published_at IS NOT NULL AND sequence = 0"
+)
+_OUTBOX_PAYLOAD_TYPE = JSON().with_variant(JSONB(), "postgresql")
+_SCHEDULED_ACTION_DUE_PREDICATE = text("status = 'pending'")
+_SCHEDULED_ACTION_STALE_PREDICATE = text("status = 'running'")
+_SCHEDULED_ACTION_TERMINAL_PREDICATE = text(
+    "status IN ('succeeded', 'cancelled')"
+)
 
 
 class UserModel(Base):
     __tablename__ = "users"
+    __table_args__ = (
+        CheckConstraint(
+            "rating IS NULL OR (rating >= 1 AND rating <= 5)",
+            name="ck_users_rating_range",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -116,13 +145,51 @@ class RideRequestModel(Base):
             postgresql_where=_ACTIVE_RIDE_STATUS_PREDICATE,
             sqlite_where=_ACTIVE_RIDE_STATUS_PREDICATE,
         ),
+        Index(
+            "uq_ride_requests_active_driver",
+            "driver_id",
+            unique=True,
+            postgresql_where=_ACTIVE_DRIVER_RIDE_STATUS_PREDICATE,
+            sqlite_where=_ACTIVE_DRIVER_RIDE_STATUS_PREDICATE,
+        ),
+        Index(
+            "ix_ride_requests_open_pool_cursor",
+            "service_type",
+            text("created_at DESC"),
+            text("id DESC"),
+            postgresql_where=_OPEN_POOL_PREDICATE,
+            sqlite_where=_OPEN_POOL_PREDICATE,
+        ),
+        Index(
+            "ix_ride_requests_rider_status_cursor",
+            "rider_id",
+            "status",
+            text("created_at DESC"),
+            text("id DESC"),
+        ),
+        Index(
+            "ix_ride_requests_driver_status_cursor",
+            "driver_id",
+            "status",
+            text("created_at DESC"),
+            text("id DESC"),
+        ),
+        CheckConstraint(
+            "fare > 0 AND lower(CAST(fare AS TEXT)) "
+            "NOT IN ('nan', 'infinity', '-infinity')",
+            name="ck_ride_requests_fare_positive",
+        ),
+        CheckConstraint(
+            "pool_version >= 1",
+            name="ck_ride_requests_pool_version_positive",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     rider_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
 
     origin_latitude: Mapped[float] = mapped_column(Float, nullable=False)
@@ -171,11 +238,16 @@ class RideRequestModel(Base):
     driver_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
-        index=True,
         nullable=True,
     )
     accepted_offer_id: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid(as_uuid=True), nullable=True
+        Uuid(as_uuid=True),
+        ForeignKey(
+            "offers.id",
+            name="fk_ride_requests_accepted_offer_id_offers",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
     )
     paused: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="0", nullable=False
@@ -196,6 +268,10 @@ class DriverRideDismissalModel(Base):
     __tablename__ = "driver_ride_dismissals"
     __table_args__ = (
         UniqueConstraint("driver_id", "ride_id", name="uq_driver_ride_dismissals_driver_ride"),
+        CheckConstraint(
+            "pool_version >= 1",
+            name="ck_driver_ride_dismissals_pool_version_positive",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -218,6 +294,31 @@ class DriverRideDismissalModel(Base):
 
 class OfferModel(Base):
     __tablename__ = "offers"
+    __table_args__ = (
+        Index(
+            "ix_offers_ride_status_cursor",
+            "ride_id",
+            "status",
+            text("created_at DESC"),
+            text("id DESC"),
+        ),
+        Index(
+            "ix_offers_driver_status_cursor",
+            "driver_id",
+            "status",
+            text("created_at DESC"),
+            text("id DESC"),
+        ),
+        CheckConstraint(
+            "price > 0 AND lower(CAST(price AS TEXT)) "
+            "NOT IN ('nan', 'infinity', '-infinity')",
+            name="ck_offers_price_positive",
+        ),
+        CheckConstraint(
+            "eta_min IS NULL OR (eta_min >= 0 AND eta_min <= 240)",
+            name="ck_offers_eta_min_range",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -225,13 +326,11 @@ class OfferModel(Base):
     ride_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey("ride_requests.id", ondelete="CASCADE"),
-        index=True,
         nullable=False,
     )
     driver_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
-        index=True,
         nullable=False,
     )
     price: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
@@ -261,6 +360,10 @@ class RideRatingModel(Base):
     __tablename__ = "ride_ratings"
     __table_args__ = (
         UniqueConstraint("ride_id", "rater_id", name="uq_ride_ratings_ride_rater"),
+        CheckConstraint(
+            "score >= 1 AND score <= 5",
+            name="ck_ride_ratings_score_range",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -344,4 +447,287 @@ class SavedPlaceModel(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class RealtimeAggregateVersionModel(Base):
+    """Contador transaccional de versión para cada agregado del tiempo real."""
+
+    __tablename__ = "realtime_aggregate_versions"
+    __table_args__ = (
+        CheckConstraint(
+            "version >= 0",
+            name="ck_realtime_aggregate_versions_version_nonnegative",
+        ),
+    )
+
+    aggregate_type: Mapped[str] = mapped_column(String(32), primary_key=True)
+    aggregate_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True
+    )
+    version: Mapped[int] = mapped_column(
+        BigInteger, default=0, server_default="0", nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+
+class RealtimeStreamVersionModel(Base):
+    """Contador transaccional de secuencia para cada topic del tiempo real."""
+
+    __tablename__ = "realtime_stream_versions"
+    __table_args__ = (
+        CheckConstraint(
+            "version >= 0",
+            name="ck_realtime_stream_versions_version_nonnegative",
+        ),
+    )
+
+    topic: Mapped[str] = mapped_column(String(255), primary_key=True)
+    version: Mapped[int] = mapped_column(
+        BigInteger, default=0, server_default="0", nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+
+class RealtimeOutboxModel(Base):
+    """Evento durable pendiente de publicación por el dispatcher."""
+
+    __tablename__ = "realtime_outbox"
+    __table_args__ = (
+        UniqueConstraint(
+            "batch_id",
+            "sequence",
+            name="uq_realtime_outbox_batch_sequence",
+        ),
+        UniqueConstraint(
+            "aggregate_type",
+            "aggregate_id",
+            "aggregate_version",
+            name="uq_realtime_outbox_aggregate_version",
+        ),
+        UniqueConstraint(
+            "topic",
+            "stream_version",
+            name="uq_realtime_outbox_topic_stream_version",
+        ),
+        CheckConstraint(
+            "sequence >= 0",
+            name="ck_realtime_outbox_sequence_nonnegative",
+        ),
+        CheckConstraint(
+            "batch_size >= 1",
+            name="ck_realtime_outbox_batch_size_positive",
+        ),
+        CheckConstraint(
+            "sequence < batch_size",
+            name="ck_realtime_outbox_sequence_within_batch",
+        ),
+        CheckConstraint(
+            "aggregate_version >= 1",
+            name="ck_realtime_outbox_aggregate_version_positive",
+        ),
+        CheckConstraint(
+            "stream_version >= 1",
+            name="ck_realtime_outbox_stream_version_positive",
+        ),
+        CheckConstraint(
+            "attempts >= 0",
+            name="ck_realtime_outbox_attempts_nonnegative",
+        ),
+        CheckConstraint(
+            "published_at IS NULL OR quarantined_at IS NULL",
+            name="ck_realtime_outbox_terminal_state_exclusive",
+        ),
+        CheckConstraint(
+            "(quarantined_at IS NULL) = (quarantine_code IS NULL)",
+            name="ck_realtime_outbox_quarantine_complete",
+        ),
+        CheckConstraint(
+            "quarantine_code IS NULL OR "
+            "length(trim(quarantine_code)) BETWEEN 1 AND 64",
+            name="ck_realtime_outbox_quarantine_code_length",
+        ),
+        Index(
+            "ix_realtime_outbox_pending",
+            "next_attempt_at",
+            "created_at",
+            "id",
+            postgresql_where=_OUTBOX_PENDING_PREDICATE,
+            sqlite_where=_OUTBOX_PENDING_PREDICATE,
+        ),
+        Index(
+            "ix_realtime_outbox_pending_stream",
+            "topic",
+            "stream_version",
+            postgresql_where=_OUTBOX_UNPUBLISHED_PREDICATE,
+            sqlite_where=_OUTBOX_UNPUBLISHED_PREDICATE,
+        ),
+        Index(
+            "ix_realtime_outbox_quarantined",
+            "quarantined_at",
+            "batch_id",
+            postgresql_where=text("quarantined_at IS NOT NULL AND sequence = 0"),
+            sqlite_where=text("quarantined_at IS NOT NULL AND sequence = 0"),
+        ),
+        Index(
+            "ix_realtime_outbox_published_retention",
+            "published_at",
+            "batch_id",
+            postgresql_where=_OUTBOX_PUBLISHED_RETENTION_PREDICATE,
+            sqlite_where=_OUTBOX_PUBLISHED_RETENTION_PREDICATE,
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    batch_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    correlation_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        nullable=False,
+    )
+    sequence: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
+    batch_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    topic: Mapped[str] = mapped_column(String(255), nullable=False)
+    stream_version: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    aggregate_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    aggregate_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    aggregate_version: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    payload: Mapped[dict[str, object]] = mapped_column(
+        _OUTBOX_PAYLOAD_TYPE, nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    next_attempt_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    published_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    quarantined_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    quarantine_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    attempts: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class ScheduledActionModel(Base):
+    """Acción diferida durable, reclamada mediante un lease con fencing."""
+
+    __tablename__ = "scheduled_actions"
+    __table_args__ = (
+        CheckConstraint(
+            "generation >= 1",
+            name="ck_scheduled_actions_generation_positive",
+        ),
+        CheckConstraint(
+            "attempts >= 0",
+            name="ck_scheduled_actions_attempts_nonnegative",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'running', 'succeeded', 'cancelled', 'dead')",
+            name="ck_scheduled_actions_status",
+        ),
+        CheckConstraint(
+            "(status = 'running') = (locked_at IS NOT NULL AND lock_token IS NOT NULL)",
+            name="ck_scheduled_actions_lease_complete",
+        ),
+        CheckConstraint(
+            "(status IN ('succeeded', 'cancelled', 'dead')) = "
+            "(terminal_at IS NOT NULL)",
+            name="ck_scheduled_actions_terminal_complete",
+        ),
+        CheckConstraint(
+            "length(trim(dedupe_key)) BETWEEN 1 AND 255",
+            name="ck_scheduled_actions_dedupe_key_length",
+        ),
+        CheckConstraint(
+            "length(trim(action_type)) BETWEEN 1 AND 64",
+            name="ck_scheduled_actions_action_type_length",
+        ),
+        CheckConstraint(
+            "last_error IS NULL OR length(trim(last_error)) BETWEEN 1 AND 64",
+            name="ck_scheduled_actions_last_error_length",
+        ),
+        Index(
+            "ix_scheduled_actions_due",
+            "next_attempt_at",
+            "execute_at",
+            "id",
+            postgresql_where=_SCHEDULED_ACTION_DUE_PREDICATE,
+            sqlite_where=_SCHEDULED_ACTION_DUE_PREDICATE,
+        ),
+        Index(
+            "ix_scheduled_actions_stale",
+            "locked_at",
+            "id",
+            postgresql_where=_SCHEDULED_ACTION_STALE_PREDICATE,
+            sqlite_where=_SCHEDULED_ACTION_STALE_PREDICATE,
+        ),
+        Index(
+            "ix_scheduled_actions_terminal_retention",
+            "terminal_at",
+            "id",
+            postgresql_where=_SCHEDULED_ACTION_TERMINAL_PREDICATE,
+            sqlite_where=_SCHEDULED_ACTION_TERMINAL_PREDICATE,
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    dedupe_key: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    action_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    aggregate_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    generation: Mapped[int] = mapped_column(
+        BigInteger, default=1, server_default="1", nullable=False
+    )
+    execute_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    payload: Mapped[dict[str, object]] = mapped_column(
+        _OUTBOX_PAYLOAD_TYPE, nullable=False
+    )
+    status: Mapped[str] = mapped_column(
+        String(20), default="pending", server_default="pending", nullable=False
+    )
+    attempts: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
+    next_attempt_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    locked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    lock_token: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), nullable=True
+    )
+    last_error: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    terminal_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
     )

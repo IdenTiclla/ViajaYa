@@ -9,6 +9,7 @@ from __future__ import annotations
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal
 
 from app.domain.entities import (
@@ -27,21 +28,34 @@ from app.domain.entities import (
 
 
 @dataclass(frozen=True)
+class WithdrawnOfferReference:
+    """Identidad exacta de una oferta retirada durante una mutación atómica."""
+
+    ride_id: uuid.UUID
+    offer_id: uuid.UUID
+
+
+@dataclass(frozen=True)
 class OfferAcceptance:
     """Resultado de un despacho atómico exitoso.
 
     Agrega lo que el caso de uso y la capa de eventos necesitan tras asignar el
     conductor: el viaje actualizado, la oferta aceptada, el conductor, los
-    ``ride_id`` de **otros** pasajeros cuyas ofertas vivas de ese conductor se
-    retiraron, y los ``driver_id`` de los **otros** conductores de este viaje
-    cuyas ofertas quedaron rechazadas (para avisarles que el viaje ya fue tomado).
+    pares exactos de las ofertas vivas de ese conductor que se retiraron en
+    **otros** rides, y los ``driver_id`` de los **otros** conductores de este
+    viaje cuyas ofertas quedaron rechazadas (para avisarles que fue tomado).
     """
 
     ride: RideRequest
     accepted_offer: Offer
     driver: User
-    withdrawn_ride_ids: list[uuid.UUID]
+    withdrawn_offers: list[WithdrawnOfferReference]
     losing_driver_ids: list[uuid.UUID]
+
+    @property
+    def withdrawn_ride_ids(self) -> list[uuid.UUID]:
+        """Compatibilidad para consumidores que todavía resumen solo por ride."""
+        return [offer.ride_id for offer in self.withdrawn_offers]
 
 
 @dataclass(frozen=True)
@@ -174,12 +188,19 @@ class RideRequestRepository(ABC):
 
     @abstractmethod
     async def list_open_with_rider_for_vehicle(
-        self, vehicle_type: VehicleType, *, driver_id: uuid.UUID | None = None
+        self,
+        vehicle_type: VehicleType,
+        *,
+        driver_id: uuid.UUID | None = None,
+        before_created_at: datetime | None = None,
+        before_id: uuid.UUID | None = None,
+        limit: int | None = None,
     ) -> list[OpenRideDetail]:
         """Solicitudes compatibles enriquecidas con el resumen del pasajero
         (nombre, rating y viajes completados), en **una sola query** (JOIN +
         conteo, sin N+1). Si se recibe ``driver_id``, excluye las versiones que
-        ese conductor ocultó. Orden: de la más nueva a la más vieja."""
+        ese conductor ocultó. ``before_created_at``/``before_id`` forman el
+        cursor descendente y ``limit`` acota las filas. Orden total: fecha e id."""
 
     @abstractmethod
     async def dismiss_open_ride_for_driver(
@@ -201,6 +222,17 @@ class RideRequestRepository(ABC):
     async def open_ride_with_rider(self, ride_id: uuid.UUID) -> OpenRideDetail | None:
         """Detalle enriquecido de una solicitud (para publicar ``ride_created`` con
         los datos del pasajero), o ``None`` si no existe."""
+
+    @abstractmethod
+    async def lock_open_ride_with_rider_for_announcement(
+        self, ride_id: uuid.UUID
+    ) -> OpenRideDetail | None:
+        """Bloquea y devuelve una solicitud publicable, o ``None``.
+
+        La implementación debe revalidar bajo el lock que siga ``SEARCHING`` y
+        no esté pausada. El caller conserva la transacción hasta registrar el
+        anuncio realtime y confirmar ambos efectos en un único commit.
+        """
 
     @abstractmethod
     async def list_by_driver(self, driver_id: uuid.UUID) -> list[RideRequest]:

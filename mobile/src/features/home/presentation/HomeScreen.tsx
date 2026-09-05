@@ -14,7 +14,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
+import MapView, { PROVIDER_GOOGLE, type Details, type Region } from 'react-native-maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
@@ -30,9 +30,13 @@ import {
   isCoordinatesInBolivia,
   isPlaceInBolivia,
 } from '@/features/booking/domain/bolivia';
-import { SERVICE_OPTIONS } from '@/features/booking/domain/serviceCatalog';
-import type { Place } from '@/features/booking/domain/types';
+import {
+  getPlaceStreetName,
+  isPlaceLabelResolved,
+} from '@/features/booking/domain/placeLabels';
+import type { Coordinates, Place } from '@/features/booking/domain/types';
 import { CenterPin } from '@/features/booking/presentation/CenterPin';
+import { ServiceTypeSelector } from '@/features/booking/presentation/ServiceTypeSelector';
 import { useCurrentLocation } from '@/features/home/application/useCurrentLocation';
 import {
   PASSENGER_ACTIVE_RIDE_KEY,
@@ -51,6 +55,13 @@ function greeting(): string {
 
 function firstName(fullName: string | undefined): string {
   return fullName?.trim().split(/\s+/)[0] ?? 'viajero';
+}
+
+function coordenadasCasiIguales(a: Coordinates, b: Coordinates): boolean {
+  return (
+    Math.abs(a.latitude - b.latitude) < 0.00001 &&
+    Math.abs(a.longitude - b.longitude) < 0.00001
+  );
 }
 
 export function HomeScreen() {
@@ -84,10 +95,16 @@ export function HomeScreen() {
     error: pendingRatingErrorValue,
     refetch: refetchPendingRating,
   } = usePendingRatingRide();
-  const { status, coordinates, canAskAgain, retry } = useCurrentLocation();
+  const { status, coordinates, canAskAgain, isEstimated, retry } = useCurrentLocation();
   const mapRef = useRef<MapView>(null);
+  const mapReady = useRef(false);
+  const pendingAutomaticRegion = useRef<Region | null>(null);
   const lastLocationRefresh = useRef(0);
+  const seeded = useRef(false);
+  const automaticOriginCoordinates = useRef<Coordinates | null>(null);
+  const originAdjustedByUser = useRef(false);
   const [recoveryReady, setRecoveryReady] = useState(false);
+  const [originManuallyAdjusted, setOriginManuallyAdjusted] = useState(false);
   const recoveryReadyRef = useRef(false);
 
   const origin = useBookingStore((s) => s.origin);
@@ -100,9 +117,21 @@ export function HomeScreen() {
     () => recentPlaces.filter(isPlaceInBolivia),
     [recentPlaces],
   );
-  // Al terminar de mover el mapa, el centro pasa a ser el punto de partida.
-  const { onRegionChangeComplete: handleRegionChange, isResolving: originResolving } =
-    useRegionPlace(setOrigin, 'Punto de partida');
+  // Al terminar de mover el mapa, el centro pasa a ser el origen.
+  const {
+    onRegionChangeComplete: handleRegionChange,
+    isResolving: originResolving,
+    resolutionFailed: originResolutionFailed,
+    cancelPendingResolution: cancelOriginResolution,
+  } = useRegionPlace(setOrigin);
+  const originPrefix = isEstimated && !originManuallyAdjusted ? 'Origen aproximado' : 'Origen';
+  const originPinLabel = originResolving
+    ? `${originPrefix}: Obteniendo lugar…`
+    : origin && isPlaceLabelResolved(origin)
+      ? `${originPrefix}: ${getPlaceStreetName(origin)}`
+      : originResolutionFailed
+        ? `${originPrefix}: Dirección pendiente`
+        : `${originPrefix}: ${origin ? 'Obteniendo dirección…' : 'Mueve el mapa'}`;
 
   // Empieza colapsado (mapa visible). translateY: 0 = expandido, MAX = colapsado.
   // `useState` con inicializador perezoso crea valores estables; el offset del
@@ -157,14 +186,43 @@ export function HomeScreen() {
     };
   }, [coordinates]);
 
-  // Siembra el origen con la ubicación actual la primera vez que llega.
-  const seeded = useRef(false);
+  // Siembra el origen con la ubicación disponible. Si empezó con una posición
+  // estimada, la reemplaza por la posición fresca salvo que el pasajero haya movido
+  // el mapa o elegido otro origen mientras tanto.
   useEffect(() => {
-    if (region && !seeded.current) {
+    if (!region) return;
+    const nextCoordinates = { latitude: region.latitude, longitude: region.longitude };
+
+    if (!seeded.current) {
       seeded.current = true;
+      automaticOriginCoordinates.current = nextCoordinates;
       handleRegionChange(region);
+      return;
     }
-  }, [region, handleRegionChange]);
+
+    if (originAdjustedByUser.current) return;
+    const previousCoordinates = automaticOriginCoordinates.current;
+    if (
+      previousCoordinates &&
+      origin &&
+      !coordenadasCasiIguales(origin.coordinates, previousCoordinates)
+    ) {
+      originAdjustedByUser.current = true;
+      setOriginManuallyAdjusted(true);
+      cancelOriginResolution();
+      return;
+    }
+    if (previousCoordinates && coordenadasCasiIguales(previousCoordinates, nextCoordinates)) return;
+
+    if (!mapReady.current) {
+      pendingAutomaticRegion.current = region;
+      return;
+    }
+    pendingAutomaticRegion.current = null;
+    automaticOriginCoordinates.current = nextCoordinates;
+    mapRef.current?.animateToRegion(region, 400);
+    handleRegionChange(region);
+  }, [cancelOriginResolution, handleRegionChange, origin, region]);
 
   // Cada entrada a Home confirma primero el estado autoritativo. React Query puede
   // conservar SEARCHING durante 30 s; navegar antes de este refetch revive viajes
@@ -271,17 +329,39 @@ export function HomeScreen() {
   );
 
   const recenter = () => {
-    if (region) mapRef.current?.animateToRegion(region, 500);
+    if (!region) return;
+    originAdjustedByUser.current = false;
+    setOriginManuallyAdjusted(false);
+    if (!mapReady.current) {
+      pendingAutomaticRegion.current = region;
+      return;
+    }
+    pendingAutomaticRegion.current = null;
+    automaticOriginCoordinates.current = { latitude: region.latitude, longitude: region.longitude };
+    mapRef.current?.animateToRegion(region, 500);
+    handleRegionChange(region);
+  };
+
+  const handleMapRegionChange = (nextRegion: Region, details: Details) => {
+    if (details.isGesture) {
+      originAdjustedByUser.current = true;
+      pendingAutomaticRegion.current = null;
+      setOriginManuallyAdjusted(true);
+      handleRegionChange(nextRegion);
+      return;
+    }
+    const automaticCoordinates = automaticOriginCoordinates.current;
+    if (!originAdjustedByUser.current) {
+      // El centrado automático ya se envía explícitamente a handleRegionChange.
+      // Android vuelve a notificarlo con unos decimales distintos; ignoramos ese
+      // eco para que no sustituya el origen por otro provisional.
+      return;
+    }
+    if (automaticCoordinates && coordenadasCasiIguales(nextRegion, automaticCoordinates)) return;
+    handleRegionChange(nextRegion);
   };
 
   const requestValidOrigin = (): boolean => {
-    if (originResolving) {
-      Alert.alert(
-        'Obteniendo tu punto de partida',
-        'Espera un momento mientras confirmamos la dirección.',
-      );
-      return false;
-    }
     if (origin && isPlaceInBolivia(origin)) return true;
 
     Alert.alert(
@@ -364,10 +444,25 @@ export function HomeScreen() {
           initialRegion={region}
           showsUserLocation
           showsMyLocationButton={false}
-          onMapReady={() =>
-            mapRef.current?.setMapBoundaries(BOLIVIA_NORTH_EAST, BOLIVIA_SOUTH_WEST)
-          }
-          onRegionChangeComplete={handleRegionChange}
+          onMapReady={() => {
+            mapReady.current = true;
+            mapRef.current?.setMapBoundaries(BOLIVIA_NORTH_EAST, BOLIVIA_SOUTH_WEST);
+            const pending = pendingAutomaticRegion.current;
+            if (!pending || originAdjustedByUser.current) return;
+            pendingAutomaticRegion.current = null;
+            automaticOriginCoordinates.current = {
+              latitude: pending.latitude,
+              longitude: pending.longitude,
+            };
+            mapRef.current?.animateToRegion(pending, 400);
+            handleRegionChange(pending);
+          }}
+          onPanDrag={() => {
+            originAdjustedByUser.current = true;
+            pendingAutomaticRegion.current = null;
+            setOriginManuallyAdjusted(true);
+          }}
+          onRegionChangeComplete={handleMapRegionChange}
         />
       ) : (
         <MapPlaceholder
@@ -378,7 +473,9 @@ export function HomeScreen() {
         />
       )}
 
-      {status === 'granted' && region && <CenterPin label="Punto de partida" />}
+      {status === 'granted' && region && (
+        <CenterPin label={originPinLabel} loading={originResolving} />
+      )}
 
       <SafeAreaView style={styles.topBar} edges={['top']} pointerEvents="box-none">
         <View style={styles.brandMark} accessibilityElementsHidden>
@@ -424,33 +521,8 @@ export function HomeScreen() {
             <Text style={styles.searchPlaceholder}>¿A dónde?</Text>
           </TouchableOpacity>
 
-          <View style={styles.services}>
-            {SERVICE_OPTIONS.map((option) => {
-              const selected = service === option.id;
-              return (
-                <TouchableOpacity
-                  key={option.id}
-                  style={[styles.serviceCard, selected && styles.serviceCardSelected]}
-                  onPress={() => setService(option.id)}
-                  accessibilityRole="radio"
-                  accessibilityState={{ checked: selected }}
-                  accessibilityLabel={option.label}>
-                  <View style={[styles.serviceIcon, selected && styles.serviceIconSelected]}>
-                    <Ionicons
-                      name={option.icon}
-                      size={20}
-                      color={selected ? colors.textOnPrimary : colors.primaryDark}
-                    />
-                  </View>
-                  <Text
-                    style={[styles.serviceLabel, selected && styles.serviceLabelSelected]}
-                    numberOfLines={2}>
-                    {option.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+          <Text style={styles.serviceSectionLabel}>Tipo de servicio</Text>
+          <ServiceTypeSelector value={service} onChange={setService} />
 
           {validRecentPlaces.length > 0 && (
             <>
@@ -662,40 +734,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceMuted,
   },
   searchPlaceholder: { color: colors.placeholder, fontSize: fontSize.md },
-
-  services: { flexDirection: 'row', gap: spacing.sm },
-  serviceCard: {
-    flex: 1,
-    minWidth: 0,
-    height: 76,
-    paddingHorizontal: spacing.xs,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.md,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-  },
-  serviceCardSelected: { borderColor: colors.primary, backgroundColor: colors.surfaceMuted },
-  serviceIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: radius.sm,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  serviceIconSelected: { backgroundColor: colors.primary },
-  serviceLabel: {
-    fontSize: fontSize.xs,
-    lineHeight: 15,
+  serviceSectionLabel: {
+    fontSize: fontSize.sm,
     fontWeight: fontWeight.semibold,
     color: colors.text,
-    textAlign: 'center',
   },
-  serviceLabelSelected: { color: colors.primaryDark },
 
   recentHeader: {
     flexDirection: 'row',

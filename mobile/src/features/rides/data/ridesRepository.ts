@@ -6,8 +6,12 @@
  * La *creación* de la solicitud sigue viviendo en `booking/data/ridesRepository`.
  */
 import { api } from '@/core/http/client';
-import type { VehicleType } from '@/features/auth/domain/types';
-import { getPlaceStreetName } from '@/features/booking/domain/placeLabels';
+import type { components } from '@/core/http/generated/openapi';
+import {
+  assertPlaceLabelResolved,
+  getPlaceReadableAddress,
+  getPlaceStreetName,
+} from '@/features/booking/domain/placeLabels';
 import type { Place } from '@/features/booking/domain/types';
 import type {
   CreateOfferInput,
@@ -21,13 +25,10 @@ import type {
   RideStatus,
 } from '@/features/rides/domain/types';
 
-type PointDto = {
-  latitude: number;
-  longitude: number;
-  name: string;
-  address: string;
-  country_code?: string | null;
-};
+type ApiSchemas = components['schemas'];
+
+type PointDto = ApiSchemas['PointSchema'];
+type PointInputDto = ApiSchemas['PointInputSchema'];
 
 function toPlace(dto: PointDto): Place {
   return {
@@ -38,35 +39,18 @@ function toPlace(dto: PointDto): Place {
   };
 }
 
-function toPointDto(place: Place): PointDto {
+function toPointDto(place: Place): PointInputDto {
+  assertPlaceLabelResolved(place);
   return {
     latitude: place.coordinates.latitude,
     longitude: place.coordinates.longitude,
-    name: place.name,
-    address: place.address,
+    name: getPlaceStreetName(place),
+    address: getPlaceReadableAddress(place),
     country_code: place.countryCode,
   };
 }
 
-type OfferDriverDto = {
-  id: string;
-  full_name: string;
-  rating: number | null;
-  vehicle_type: Offer['driver']['vehicleType'];
-  plate: string | null;
-  vehicle_model: string | null;
-};
-
-export type OfferDto = {
-  id: string;
-  ride_id: string;
-  price: string;
-  eta_min: number | null;
-  status: Offer['status'];
-  driver: OfferDriverDto;
-  created_at: string | null;
-  expires_at: string | null;
-};
+export type OfferDto = ApiSchemas['OfferResponse'];
 
 export function toOffer(dto: OfferDto): Offer {
   return {
@@ -88,24 +72,7 @@ export function toOffer(dto: OfferDto): Offer {
   };
 }
 
-type OpenRideRiderDto = {
-  id: string;
-  full_name: string;
-  rating: number | null;
-  trips_completed: number;
-};
-
-export type OpenRideDto = {
-  id: string;
-  service_type: OpenRide['service'];
-  fare: string;
-  payment_method: OpenRide['payment'];
-  origin: PointDto;
-  destination: PointDto;
-  rider: OpenRideRiderDto;
-  pool_version: number;
-  created_at: string | null;
-};
+export type OpenRideDto = ApiSchemas['OpenRideResponse'];
 
 export function toOpenRide(dto: OpenRideDto): OpenRide {
   return {
@@ -126,38 +93,21 @@ export function toOpenRide(dto: OpenRideDto): OpenRide {
   };
 }
 
-type RideDriverDto = {
-  id: string;
-  full_name: string;
-  phone: string | null;
-  rating: number | null;
-  vehicle_type: VehicleType | null;
-  plate: string | null;
-  vehicle_model: string | null;
+export type CursorPage<T> = {
+  items: T[];
+  nextCursor: string | null;
 };
 
-type RideRiderDto = {
-  id: string;
-  full_name: string;
-  phone: string | null;
-  rating: number | null;
-};
+export type OpenRidePageDto = ApiSchemas['OpenRidePageResponse'];
 
-export type RideDto = {
-  id: string;
-  rider_id: string;
-  rider: RideRiderDto;
-  status: RideStatus;
-  paused: boolean;
-  service_type: Ride['service'];
-  fare: string;
-  payment_method: Ride['payment'];
-  origin: PointDto;
-  destination: PointDto;
-  driver: RideDriverDto | null;
-  accepted_price: string | null;
-  accepted_eta_min: number | null;
-};
+export function toOpenRidePage(dto: OpenRidePageDto): CursorPage<OpenRide> {
+  return {
+    items: dto.items.map(toOpenRide),
+    nextCursor: dto.next_cursor,
+  };
+}
+
+export type RideDto = ApiSchemas['RideResponse'];
 
 export function toRide(dto: RideDto): Ride {
   return {
@@ -192,27 +142,8 @@ export function toRide(dto: RideDto): Ride {
   };
 }
 
-type HistoryCounterpartDto = {
-  id: string;
-  full_name: string;
-  rating: number | null;
-  vehicle_type: VehicleType | null;
-  vehicle_model: string | null;
-  plate: string | null;
-};
-
-type RideHistoryItemDto = {
-  id: string;
-  status: RideStatus;
-  service_type: RideHistoryItem['service'];
-  payment_method: RideHistoryItem['payment'];
-  origin: PointDto;
-  destination: PointDto;
-  price: string;
-  my_rating: number | null;
-  counterpart: HistoryCounterpartDto | null;
-  created_at: string | null;
-};
+type RideHistoryItemDto = ApiSchemas['RideHistoryItemResponse'];
+type RideHistoryPageDto = ApiSchemas['RideHistoryPageResponse'];
 
 function toHistoryItem(dto: RideHistoryItemDto): RideHistoryItem {
   return {
@@ -238,20 +169,7 @@ function toHistoryItem(dto: RideHistoryItemDto): RideHistoryItem {
   };
 }
 
-type EarningsItemDto = {
-  ride_id: string;
-  destination_name: string;
-  price: string;
-  completed_at: string | null;
-};
-
-type DriverEarningsDto = {
-  total_today: string;
-  trips_today: number;
-  total_all_time: string;
-  trips_all_time: number;
-  recent: EarningsItemDto[];
-};
+type DriverEarningsDto = ApiSchemas['DriverEarningsResponse'];
 
 function toEarnings(dto: DriverEarningsDto): DriverEarnings {
   return {
@@ -270,17 +188,29 @@ function toEarnings(dto: DriverEarningsDto): DriverEarnings {
 
 export const ridesRepository = {
   // --- Conductor ---
-  async getOpenRides(): Promise<OpenRide[]> {
-    const { data } = await api.get<OpenRideDto[]>('/rides/open');
-    return data.map(toOpenRide);
+  async getOpenRides(
+    cursor: string | null = null,
+    limit?: number,
+    signal?: AbortSignal,
+  ): Promise<CursorPage<OpenRide>> {
+    const { data } = await api.get<OpenRidePageDto>('/rides/open', {
+      signal,
+      params: {
+        ...(cursor != null ? { cursor } : {}),
+        ...(limit != null ? { limit } : {}),
+      },
+    });
+    return toOpenRidePage(data);
   },
 
   async dismissOpenRide(rideId: string): Promise<void> {
     await api.post(`/rides/${rideId}/dismiss`);
   },
 
-  async getEarnings(): Promise<DriverEarnings> {
-    const { data } = await api.get<DriverEarningsDto>('/drivers/me/earnings');
+  async getEarnings(signal?: AbortSignal): Promise<DriverEarnings> {
+    const { data } = await api.get<DriverEarningsDto>('/drivers/me/earnings', {
+      signal,
+    });
     return toEarnings(data);
   },
 
@@ -305,8 +235,10 @@ export const ridesRepository = {
     return data.is_online;
   },
 
-  async getActiveRide(): Promise<Ride | null> {
-    const { data } = await api.get<RideDto | null>('/drivers/me/active-ride');
+  async getActiveRide(signal?: AbortSignal): Promise<Ride | null> {
+    const { data } = await api.get<RideDto | null>('/drivers/me/active-ride', {
+      signal,
+    });
     return data ? toRide(data) : null;
   },
 
@@ -316,19 +248,25 @@ export const ridesRepository = {
   },
 
   // --- Pasajero ---
-  async getPassengerActiveRide(): Promise<Ride | null> {
-    const { data } = await api.get<RideDto | null>('/rides/me/active');
+  async getPassengerActiveRide(signal?: AbortSignal): Promise<Ride | null> {
+    const { data } = await api.get<RideDto | null>('/rides/me/active', {
+      signal,
+    });
     return data ? toRide(data) : null;
   },
 
   /** Ambos roles: ultimo viaje completado que el usuario aun no califico. */
-  async getPendingRatingRide(): Promise<Ride | null> {
-    const { data } = await api.get<RideDto | null>('/rides/me/pending-rating');
+  async getPendingRatingRide(signal?: AbortSignal): Promise<Ride | null> {
+    const { data } = await api.get<RideDto | null>('/rides/me/pending-rating', {
+      signal,
+    });
     return data ? toRide(data) : null;
   },
 
-  async listOffers(rideId: string): Promise<Offer[]> {
-    const { data } = await api.get<OfferDto[]>(`/rides/${rideId}/offers`);
+  async listOffers(rideId: string, signal?: AbortSignal): Promise<Offer[]> {
+    const { data } = await api.get<OfferDto[]>(`/rides/${rideId}/offers`, {
+      signal,
+    });
     return data.map(toOffer);
   },
 
@@ -348,16 +286,29 @@ export const ridesRepository = {
   },
 
   // --- Ambos ---
-  async getRide(rideId: string): Promise<Ride> {
-    const { data } = await api.get<RideDto>(`/rides/${rideId}`);
+  async getRide(rideId: string, signal?: AbortSignal): Promise<Ride> {
+    const { data } = await api.get<RideDto>(`/rides/${rideId}`, { signal });
     return toRide(data);
   },
 
-  async getHistory(status?: RideStatus): Promise<RideHistoryItem[]> {
-    const { data } = await api.get<RideHistoryItemDto[]>('/rides/history', {
-      params: status ? { status } : undefined,
+  async getHistory(
+    status?: RideStatus,
+    cursor: string | null = null,
+    limit?: number,
+    signal?: AbortSignal,
+  ): Promise<CursorPage<RideHistoryItem>> {
+    const { data } = await api.get<RideHistoryPageDto>('/rides/history', {
+      signal,
+      params: {
+        ...(status ? { status } : {}),
+        ...(cursor != null ? { cursor } : {}),
+        ...(limit != null ? { limit } : {}),
+      },
     });
-    return data.map(toHistoryItem);
+    return {
+      items: data.items.map(toHistoryItem),
+      nextCursor: data.next_cursor,
+    };
   },
 
   async rateRide(rideId: string, input: RatingInput): Promise<void> {

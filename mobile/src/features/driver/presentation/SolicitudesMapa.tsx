@@ -4,13 +4,21 @@
  * Mapa con los pines **A** (origen) por solicitud y **B** (destino) de la
  * seleccionada, unidos por el trayecto; el mapa encuadra la ruta seleccionada.
  * Abajo, una **tarjeta flotante** con la solicitud activa (avatar, precio,
- * contraoferta rápida +Bs, ruta y Rechazar/Enviar oferta) y **dots** de paginación para
- * navegar entre solicitudes. Tocar la tarjeta abre el detalle.
+ * contraoferta rápida +Bs, ruta y Rechazar/Enviar oferta) y un paginador visible
+ * para navegar entre solicitudes. Tocar la tarjeta abre el detalle.
  */
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Dimensions, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import MapView, { Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
+import {
+  ActivityIndicator,
+  FlatList,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  useWindowDimensions,
+  View,
+} from 'react-native';
+import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useCountdown } from '@/core/hooks/useCountdown';
@@ -25,12 +33,12 @@ import { formatKm, haversineKm, pricePerKm } from '@/features/rides/domain/geo';
 import { formatBolivianos } from '@/features/rides/domain/money';
 import { OfferLifeTimer } from '@/features/rides/presentation/OfferLifeTimer';
 import { RoutePinMarker } from '@/features/rides/presentation/RoutePinMarker';
+import { RoutePolyline } from '@/features/rides/presentation/RoutePolyline';
 import type { OpenRide } from '@/features/rides/domain/types';
 import Animated, { SlideInDown } from 'react-native-reanimated';
 
 const PAYMENT_LABELS = { qr: 'QR', cash: 'Efectivo' } as const;
 const QUICK_DELTAS = [1, 2, 5] as const;
-const CARD_WIDTH = Dimensions.get('window').width - spacing.md * 2;
 
 type Props = {
   rides: OpenRide[];
@@ -45,6 +53,9 @@ type Props = {
   taken: Set<string>;
   /** Ride a seleccionar al abrir el mapa (al tocar una tarjeta desde la lista). */
   initialSelectedId?: string | null;
+  hasNextPage: boolean;
+  isFetchingNextPage: boolean;
+  onEndReached: () => void;
   onOpenDetail: (ride: OpenRide) => void;
   onAccept: (ride: OpenRide) => void;
   onDismiss: (ride: OpenRide) => void;
@@ -64,6 +75,9 @@ export function SolicitudesMapa({
   paused,
   taken,
   initialSelectedId,
+  hasNextPage,
+  isFetchingNextPage,
+  onEndReached,
   onOpenDetail,
   onAccept,
   onDismiss,
@@ -73,15 +87,22 @@ export function SolicitudesMapa({
 }: Props) {
   const mapRef = useRef<MapView>(null);
   const listRef = useRef<FlatList<OpenRide>>(null);
+  const { width: windowWidth } = useWindowDimensions();
+  const cardWidth = windowWidth - spacing.sm * 2;
   const [selectedId, setSelectedId] = useState<string | null>(initialSelectedId ?? null);
+  const [bottomOverlayHeight, setBottomOverlayHeight] = useState(360);
 
   const selectedRide = rides.find((r) => r.id === selectedId) ?? rides[0] ?? null;
   const selectedIndex = rides.findIndex((r) => r.id === selectedRide?.id);
 
-  // Cambia la solicitud activa y sincroniza el carrusel (al tocar marker/dot).
+  // Cambia la solicitud activa y sincroniza el carrusel (al tocar marker o flecha).
   const select = (ride: OpenRide, index?: number) => {
     setSelectedId(ride.id);
     if (index != null) listRef.current?.scrollToIndex({ index, animated: true });
+  };
+  const selectIndex = (index: number) => {
+    const ride = rides[index];
+    if (ride) select(ride, index);
   };
   const { route } = useRoute(selectedRide?.origin ?? null, selectedRide?.destination ?? null);
 
@@ -100,7 +121,12 @@ export function SolicitudesMapa({
         ? polyline
         : [selectedRide.origin.coordinates, selectedRide.destination.coordinates];
     mapRef.current?.fitToCoordinates(coords, {
-      edgePadding: { top: 170, right: 60, bottom: 320, left: 60 },
+      edgePadding: {
+        top: 170,
+        right: 88,
+        bottom: bottomOverlayHeight + spacing.lg,
+        left: 88,
+      },
       animated,
     });
   };
@@ -108,7 +134,7 @@ export function SolicitudesMapa({
   useEffect(() => {
     fitSelected(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId, polyline.length]);
+  }, [bottomOverlayHeight, selectedId, polyline.length]);
 
   const initialRegion: Region | undefined = rides[0]
     ? {
@@ -136,53 +162,118 @@ export function SolicitudesMapa({
         style={StyleSheet.absoluteFill}
         initialRegion={initialRegion}
         customMapStyle={declutteredMapStyle}
-        onMapReady={() => fitSelected(false)}>
-        {polyline.length >= 2 && (
-          <>
-            <Polyline coordinates={polyline} strokeColor={colors.surface} strokeWidth={9} />
-            <Polyline coordinates={polyline} strokeColor={colors.primary} strokeWidth={5} />
-          </>
-        )}
-        {rides.map((ride) => {
-          const active = ride.id === selectedRide?.id;
-          return (
+        onMapReady={() => fitSelected(false)}
+        onLayout={() => fitSelected(false)}>
+        <RoutePolyline coordinates={polyline} />
+        {/* Los orígenes alternativos quedan como referencias discretas. El A y
+            B activos se renderizan después y con mayor z-index para que nunca
+            queden tapados por otro marcador o por la ruta en Google Maps. */}
+        {rides
+          .filter((ride) => ride.id !== selectedRide?.id)
+          .map((ride) => (
             <RoutePinMarker
-              key={`a-${ride.id}`}
+              key={`inactive-a-${ride.id}`}
               kind="A"
               coordinate={ride.origin.coordinates}
               label={`Origen: ${getPlaceStreetName(ride.origin)}`}
-              dim={!active}
-              onPress={() => select(ride, rides.indexOf(ride))}
+              showTooltip={false}
+              dim
+              zIndex={4}
+              onPress={() => select(ride, rides.findIndex((item) => item.id === ride.id))}
             />
-          );
-        })}
+          ))}
         {selectedRide && (
-          <RoutePinMarker
-            kind="B"
-            coordinate={selectedRide.destination.coordinates}
-            label={`Destino: ${getPlaceStreetName(selectedRide.destination)}`}
-          />
+          <>
+            <RoutePinMarker
+              key={`selected-a-${selectedRide.id}`}
+              kind="A"
+              coordinate={selectedRide.origin.coordinates}
+              label={`Origen: ${getPlaceStreetName(selectedRide.origin)}`}
+              zIndex={20}
+            />
+            <RoutePinMarker
+              key={`selected-b-${selectedRide.id}`}
+              kind="B"
+              coordinate={selectedRide.destination.coordinates}
+              label={`Destino: ${getPlaceStreetName(selectedRide.destination)}`}
+              zIndex={21}
+            />
+          </>
         )}
       </MapView>
 
-      <SafeAreaView edges={['bottom']} style={styles.bottomWrap} pointerEvents="box-none">
+      <SafeAreaView
+        edges={['bottom']}
+        style={styles.bottomWrap}
+        pointerEvents="box-none"
+        onLayout={(event) => setBottomOverlayHeight(event.nativeEvent.layout.height)}>
+        {rides.length > 1 && (
+          <View style={styles.pager}>
+            <TouchableOpacity
+              style={[styles.pagerButton, selectedIndex <= 0 && styles.pagerButtonDisabled]}
+              onPress={() => selectIndex(selectedIndex - 1)}
+              disabled={selectedIndex <= 0}
+              accessibilityRole="button"
+              accessibilityLabel="Ver solicitud anterior">
+              <Ionicons
+                name="chevron-back"
+                size={20}
+                color={selectedIndex <= 0 ? colors.placeholder : colors.primary}
+              />
+            </TouchableOpacity>
+
+            <View style={styles.pagerCopy} accessibilityLiveRegion="polite">
+              <View style={styles.pagerTitleRow}>
+                <Ionicons name="swap-horizontal" size={16} color={colors.primary} />
+                <Text style={styles.pagerTitle}>
+                  Solicitud {selectedIndex + 1} de {rides.length}
+                </Text>
+              </View>
+              <Text style={styles.pagerHint}>Desliza para ver las demás</Text>
+            </View>
+
+            <TouchableOpacity
+              style={[
+                styles.pagerButton,
+                selectedIndex >= rides.length - 1 && styles.pagerButtonDisabled,
+              ]}
+              onPress={() => selectIndex(selectedIndex + 1)}
+              disabled={selectedIndex >= rides.length - 1}
+              accessibilityRole="button"
+              accessibilityLabel="Ver solicitud siguiente">
+              <Ionicons
+                name="chevron-forward"
+                size={20}
+                color={
+                  selectedIndex >= rides.length - 1 ? colors.placeholder : colors.primary
+                }
+              />
+            </TouchableOpacity>
+          </View>
+        )}
+
         <FlatList
           ref={listRef}
           data={rides}
           horizontal
           showsHorizontalScrollIndicator={false}
-          snapToInterval={CARD_WIDTH}
+          snapToInterval={cardWidth}
           decelerationRate="fast"
+          disableIntervalMomentum
           keyExtractor={(r) => r.id}
-          getItemLayout={(_, index) => ({ length: CARD_WIDTH, offset: CARD_WIDTH * index, index })}
+          getItemLayout={(_, index) => ({
+            length: cardWidth,
+            offset: cardWidth * index,
+            index,
+          })}
           onMomentumScrollEnd={(e) => {
             // Al deslizar, la solicitud visible pasa a ser la activa (encuadre + B).
-            const index = Math.round(e.nativeEvent.contentOffset.x / CARD_WIDTH);
+            const index = Math.round(e.nativeEvent.contentOffset.x / cardWidth);
             const ride = rides[index];
             if (ride) setSelectedId(ride.id);
           }}
           renderItem={({ item }) => (
-            <View style={{ width: CARD_WIDTH }}>
+            <View style={{ width: cardWidth }}>
               <MapCard
                 ride={item}
                 offered={isOffered(item.id)}
@@ -207,22 +298,18 @@ export function SolicitudesMapa({
               />
             </View>
           )}
+          onEndReached={hasNextPage ? onEndReached : undefined}
+          onEndReachedThreshold={0.35}
+          ListFooterComponent={
+            isFetchingNextPage ? (
+              <View style={styles.pageLoader}>
+                <ActivityIndicator color={colors.primary} size="small" />
+              </View>
+            ) : null
+          }
+          accessibilityLabel={`Carrusel con ${rides.length} solicitudes`}
+          accessibilityHint="Desliza horizontalmente para cambiar de solicitud"
         />
-
-        {rides.length > 1 && (
-          <View style={styles.dots}>
-            {rides.map((ride, i) => (
-              <TouchableOpacity
-                key={ride.id}
-                onPress={() => select(ride, i)}
-                accessibilityRole="button"
-                accessibilityLabel={`Ver solicitud ${i + 1} de ${rides.length}`}
-                style={styles.dotBtn}>
-                <View style={[styles.dot, i === selectedIndex && styles.dotActive]} />
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
       </SafeAreaView>
     </View>
   );
@@ -292,14 +379,6 @@ function MapCard({
           {secondsLeft != null && secondsLeft > 0 && (
             <OfferLifeTimer secondsLeft={secondsLeft} label="" />
           )}
-          <TouchableOpacity
-            style={[styles.withdrawBtn, disabled && styles.disabled]}
-            onPress={onWithdraw}
-            disabled={disabled}
-            accessibilityRole="button"
-            accessibilityLabel="Retirar oferta">
-            <Text style={styles.withdrawBtnText}>Retirar</Text>
-          </TouchableOpacity>
         </Animated.View>
       )}
       {paused && (
@@ -367,8 +446,33 @@ function MapCard({
         </View>
       </View>
 
-      {!offered && !paused && !taken && (
-        <>
+      <View style={styles.routeRow}>
+        <View style={styles.routeStop}>
+          <View style={styles.routeHeading}>
+            <View style={[styles.routeBadge, styles.routeBadgeOrigin]}>
+              <Text style={styles.routeBadgeText}>A</Text>
+            </View>
+            <Text style={styles.routeLabel}>ORIGEN</Text>
+          </View>
+          <Text style={styles.routeText} numberOfLines={1}>
+            {ride.origin.name}
+          </Text>
+        </View>
+        <View style={styles.routeStop}>
+          <View style={styles.routeHeading}>
+            <View style={[styles.routeBadge, styles.routeBadgeDestination]}>
+              <Text style={styles.routeBadgeText}>B</Text>
+            </View>
+            <Text style={styles.routeLabel}>DESTINO</Text>
+          </View>
+          <Text style={[styles.routeText, styles.routeDestination]} numberOfLines={1}>
+            {ride.destination.name} · {formatKm(tripKm)}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.quickSlot}>
+        {!offered && !paused && !taken && (
           <View style={styles.quickRow}>
             {QUICK_DELTAS.map((delta) => (
               <TouchableOpacity
@@ -391,23 +495,32 @@ function MapCard({
               <Text style={styles.quickPillText}>Monto</Text>
             </TouchableOpacity>
           </View>
+        )}
+      </View>
 
-          <View style={styles.routeRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.routeLabel}>RECOGIDA</Text>
-              <Text style={styles.routeText} numberOfLines={1}>
-                {ride.origin.name}
-              </Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.routeLabel}>DESTINO</Text>
-              <Text style={styles.routeText} numberOfLines={1}>
-                {ride.destination.name} · {formatKm(tripKm)}
-              </Text>
-            </View>
+      <View style={styles.actionsSlot}>
+        {offered && (
+          <View style={styles.actions}>
+            <TouchableOpacity
+              style={[
+                styles.actionBtn,
+                styles.decline,
+                styles.withdrawAction,
+                disabled && styles.disabled,
+              ]}
+              onPress={onWithdraw}
+              disabled={disabled}
+              accessibilityRole="button"
+              accessibilityLabel="Retirar oferta">
+              <Ionicons name="close-circle-outline" size={19} color={colors.danger} />
+              <Text style={styles.declineText}>Retirar oferta</Text>
+            </TouchableOpacity>
           </View>
-
-          {expired || rejected ? (
+        )}
+        {!offered &&
+          !paused &&
+          !taken &&
+          (expired || rejected ? (
             <View style={styles.actions}>
               <TouchableOpacity
                 style={[styles.actionBtn, styles.accept, disabled && styles.disabled]}
@@ -448,9 +561,8 @@ function MapCard({
                 )}
               </TouchableOpacity>
             </View>
-          )}
-        </>
-      )}
+          ))}
+      </View>
     </TouchableOpacity>
   );
 }
@@ -465,10 +577,46 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.sm,
     paddingBottom: spacing.sm,
     gap: spacing.sm,
   },
+  pageLoader: {
+    width: spacing.xxl,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  pager: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'center',
+    gap: spacing.sm,
+    padding: spacing.xs,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderWidth: 1,
+    borderColor: 'rgba(226,228,232,0.9)',
+    shadowColor: '#000',
+    shadowOpacity: 0.14,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 7,
+  },
+  pagerButton: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(22,48,140,0.08)',
+  },
+  pagerButtonDisabled: { backgroundColor: colors.surfaceMuted },
+  pagerCopy: { minWidth: 146, alignItems: 'center' },
+  pagerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  pagerTitle: { color: colors.text, fontSize: fontSize.sm, fontWeight: fontWeight.bold },
+  pagerHint: { marginTop: 1, color: colors.textSecondary, fontSize: 10 },
 
   card: {
     padding: spacing.md,
@@ -515,6 +663,7 @@ const styles = StyleSheet.create({
 
   // Banners de estado (full-width arriba de la card, con curva superior).
   offeredBanner: {
+    minHeight: 42,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -529,6 +678,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: radius.lg,
   },
   pausedBanner: {
+    minHeight: 42,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -543,6 +693,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: radius.lg,
   },
   expiredBanner: {
+    minHeight: 42,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -557,6 +708,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: radius.lg,
   },
   rejectedBanner: {
+    minHeight: 42,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -583,6 +735,7 @@ const styles = StyleSheet.create({
   },
   dismissBannerBtnText: { color: colors.textSecondary, fontSize: fontSize.xs, fontWeight: fontWeight.bold },
   takenBanner: {
+    minHeight: 42,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -596,15 +749,8 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,
   },
-  withdrawBtn: {
-    marginLeft: 'auto',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    borderRadius: radius.pill,
-    backgroundColor: 'rgba(255,255,255,0.25)',
-  },
-  withdrawBtnText: { color: colors.textOnPrimary, fontSize: fontSize.xs, fontWeight: fontWeight.bold },
-
+  // Mantiene alineadas las cards aunque el estado oculte los controles.
+  quickSlot: { minHeight: 34 },
   quickRow: { flexDirection: 'row', gap: spacing.xs },
   quickPill: {
     paddingHorizontal: spacing.md,
@@ -629,11 +775,26 @@ const styles = StyleSheet.create({
   quickPillText: { color: '#7A6000', fontSize: fontSize.sm, fontWeight: fontWeight.bold },
 
   routeRow: { flexDirection: 'row', gap: spacing.md },
+  routeStop: { flex: 1, minWidth: 0 },
+  routeHeading: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: 3 },
+  routeBadge: {
+    width: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.pill,
+  },
+  routeBadgeOrigin: { backgroundColor: colors.primary },
+  routeBadgeDestination: { backgroundColor: colors.danger },
+  routeBadgeText: { color: colors.textOnPrimary, fontSize: 10, fontWeight: fontWeight.bold },
   routeLabel: { fontSize: 10, color: colors.textSecondary, fontWeight: fontWeight.bold, letterSpacing: 0.5, marginBottom: 1 },
   routeText: { fontSize: fontSize.sm, color: colors.text },
+  routeDestination: { fontWeight: fontWeight.semibold },
 
+  actionsSlot: { minHeight: 46 },
   actions: { flexDirection: 'row', gap: spacing.sm },
   actionBtn: { flex: 1, height: 46, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
+  withdrawAction: { flexDirection: 'row', gap: spacing.xs },
   decline: { flex: 1, backgroundColor: '#FDECEA', borderWidth: 1, borderColor: '#F5C6C2' },
   declineText: { color: colors.danger, fontSize: fontSize.md, fontWeight: fontWeight.bold },
   accept: { flex: 1.6, backgroundColor: colors.primary },
@@ -641,8 +802,4 @@ const styles = StyleSheet.create({
   acceptWaiting: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   disabled: { opacity: 0.5 },
 
-  dots: { flexDirection: 'row', justifyContent: 'center', gap: spacing.xs },
-  dotBtn: { padding: spacing.xs },
-  dot: { width: 6, height: 6, borderRadius: radius.pill, backgroundColor: colors.border },
-  dotActive: { width: 18, backgroundColor: colors.primary },
 });

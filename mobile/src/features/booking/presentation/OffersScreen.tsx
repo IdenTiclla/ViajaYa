@@ -14,7 +14,7 @@
  */
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -45,7 +45,6 @@ import { deriveOfferTags, primaryTag, type OfferTagKind } from '@/features/rides
 import type { Offer } from '@/features/rides/domain/types';
 import { OfferLifeTimer } from '@/features/rides/presentation/OfferLifeTimer';
 import { TripRouteMap } from '@/features/rides/presentation/TripRouteMap';
-import { RouteSummary } from '@/features/rides/presentation/RouteSummary';
 import { ConfirmDialog } from '@/shared/components';
 
 const SERVICE_LABELS = { taxi: 'Taxi', moto: 'Moto' } as const;
@@ -113,11 +112,62 @@ export function OffersScreen() {
   const [acceptIntent, setAcceptIntent] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [offerToReject, setOfferToReject] = useState<Offer | null>(null);
+  const [returningHome, setReturningHome] = useState(false);
+  const [editTarget, setEditTarget] = useState<{ rideId?: string } | null>(null);
+  const returningHomeRef = useRef(false);
+  const editingRef = useRef(false);
   const confirmationVisible = confirming || (assigned && acceptIntent);
   const activeOfferToReject =
     offerToReject && visibleOffers.some((offer) => offer.id === offerToReject.id)
       ? offerToReject
       : null;
+
+  const beginReturnHome = useCallback(() => {
+    if (returningHomeRef.current) return;
+    returningHomeRef.current = true;
+    useBookingStore.getState().resetTrip();
+    setReturningHome(true);
+  }, []);
+
+  const beginEdit = useCallback((targetRideId?: string) => {
+    if (editingRef.current) return;
+    editingRef.current = true;
+    setEditTarget({ rideId: targetRideId });
+  }, []);
+
+  // Primero desmonta mapa, marcadores y diálogos. En el siguiente frame vuelve
+  // al Tabs que ya existe debajo, evitando dos árboles nativos superpuestos.
+  useEffect(() => {
+    if (!returningHome) return;
+    const frame = requestAnimationFrame(() => router.dismissTo('/(app)/(tabs)'));
+    return () => cancelAnimationFrame(frame);
+  }, [returningHome, router]);
+
+  // Fabric procesa los cambios nativos por frame. Desmontar primero el mapa y
+  // navegar dos frames despues evita que react-native-maps reutilice una vista
+  // que Android todavia considera hija del arbol anterior.
+  useEffect(() => {
+    if (!editTarget) return;
+
+    let navigationFrame: number | null = null;
+    const teardownFrame = requestAnimationFrame(() => {
+      navigationFrame = requestAnimationFrame(() => {
+        if (editTarget.rideId) {
+          router.replace({
+            pathname: '/booking/configure',
+            params: { rideId: editTarget.rideId },
+          });
+        } else {
+          router.replace('/booking/configure');
+        }
+      });
+    });
+
+    return () => {
+      cancelAnimationFrame(teardownFrame);
+      if (navigationFrame != null) cancelAnimationFrame(navigationFrame);
+    };
+  }, [editTarget, router]);
 
   // Backup: si el viaje queda asignado por otra vía (p. ej. WS), ir al viaje.
   useEffect(() => {
@@ -126,14 +176,12 @@ export function OffersScreen() {
     }
   }, [assigned, id, confirmationVisible, router]);
 
-  // El viaje se canceló sin que esta pantalla lo iniciara (otro dispositivo,
-  // sesión previa): sin este efecto el pasajero quedaría "buscando" un viaje
-  // muerto. El cancel local también pasa por aquí sin daño (replace idempotente).
+  // Esta es la única autoridad de salida, tanto para cancelación local como para
+  // un evento recibido desde otro dispositivo. El ref impide navegar dos veces.
   useEffect(() => {
     if (!cancelled || cancelRide.isPending || confirmationVisible) return;
-    useBookingStore.getState().resetTrip();
-    router.replace('/(app)/(tabs)');
-  }, [cancelled, cancelRide.isPending, confirmationVisible, router]);
+    beginReturnHome();
+  }, [beginReturnHome, cancelled, cancelRide.isPending, confirmationVisible]);
 
   const onAccept = (offer: Offer) => {
     if (acceptOffer.isPending) return;
@@ -188,13 +236,11 @@ export function OffersScreen() {
     ) return;
     // Pausa la solicitud (la oculta del pool) y abre la edición sin cancelar.
     pauseForEdit.mutate(id, {
-      onSuccess: () =>
-        router.replace({ pathname: '/booking/configure', params: { rideId: id } }),
+      onSuccess: () => beginEdit(id),
     });
   };
 
-  const onCancel = () => {
-    setConfirmCancel(false);
+  const cancelRequest = () => {
     if (
       acceptOffer.isPending ||
       rejectOffer.isPending ||
@@ -202,18 +248,19 @@ export function OffersScreen() {
       cancelRide.isPending
     ) return;
     if (!id) {
-      useBookingStore.getState().resetTrip();
-      router.replace('/(app)/(tabs)');
+      beginReturnHome();
       return;
     }
     // Resetea el store recién cuando el backend confirma: si la red falla, el
     // usuario se queda en la pantalla con el error (sin ride huérfano).
     cancelRide.mutate(id, {
-      onSuccess: () => {
-        useBookingStore.getState().resetTrip();
-        router.replace('/(app)/(tabs)');
-      },
+      onSuccess: beginReturnHome,
     });
+  };
+
+  const onCancel = () => {
+    setConfirmCancel(false);
+    cancelRequest();
   };
 
   // Oferta cuyo Aceptar está en curso: solo esa tarjeta se bloquea (las demás
@@ -223,7 +270,10 @@ export function OffersScreen() {
     acceptOffer.isPending ||
     rejectOffer.isPending ||
     pauseForEdit.isPending ||
-    cancelRide.isPending;
+    cancelRide.isPending ||
+    editTarget != null;
+
+  if (returningHome || editTarget) return <View style={styles.root} />;
 
   if (assigned && !confirmationVisible) {
     // El viaje quedó asignado: el overlay ya navegó, o este es el respaldo.
@@ -241,6 +291,10 @@ export function OffersScreen() {
         destination={displayDestination}
         currentFare={ride?.fare ?? (fare ? Number(fare.replace(',', '.')) : null)}
         connectionError={rideQuery.error ?? offersQuery.error}
+        cancelPending={cancelRide.isPending}
+        cancelError={cancelRide.isError ? cancelRide.error : undefined}
+        onCancelRequest={cancelRequest}
+        onEditReady={beginEdit}
         onRetry={() => {
           void rideQuery.refetch();
           void offersQuery.refetch();
@@ -255,7 +309,7 @@ export function OffersScreen() {
         <TripRouteMap
           origin={displayOrigin}
           destination={displayDestination}
-          topPadding={170}
+          topPadding={100}
           bottomPadding={170}
         />
       ) : (
@@ -263,14 +317,6 @@ export function OffersScreen() {
       )}
 
       <SafeAreaView edges={['top']} style={styles.overlay} pointerEvents="box-none">
-        {/* Resumen de ruta (informativo) */}
-        <View style={styles.routeWrap} pointerEvents="none">
-          <RouteSummary
-            origin={displayOrigin ?? { name: '—' }}
-            destination={displayDestination ?? { name: '—' }}
-          />
-        </View>
-
         {/* Sección "Ofertas en vivo" — sobre tarjeta glass para que se lea sobre el mapa */}
         <View style={styles.liveHeader} pointerEvents="none">
           <View style={styles.liveTitleRow}>
@@ -536,12 +582,9 @@ const styles = StyleSheet.create({
 
   overlay: { flex: 1 },
 
-  // Contenedor del resumen de ruta.
-  routeWrap: { marginHorizontal: spacing.md, marginTop: spacing.sm, marginBottom: spacing.sm },
-
   // Sección "Ofertas en vivo" sobre tarjeta glass (legible sobre el mapa).
   liveHeader: {
-    marginHorizontal: spacing.md,
+    marginHorizontal: spacing.sm,
     marginBottom: spacing.sm,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
@@ -557,7 +600,7 @@ const styles = StyleSheet.create({
 
   // Lista de tarjetas.
   list: { flex: 1 },
-  listContent: { paddingHorizontal: spacing.md, gap: spacing.md, paddingBottom: spacing.lg },
+  listContent: { paddingHorizontal: spacing.sm, gap: spacing.sm, paddingBottom: spacing.lg },
   connectionWarning: {
     minHeight: 48,
     flexDirection: 'row',
@@ -579,7 +622,7 @@ const styles = StyleSheet.create({
 
   // Contenedor de acciones (sin hoja): bloques grandes directamente sobre el mapa.
   actionsSheet: {
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.sm,
     paddingTop: spacing.sm,
     paddingBottom: spacing.sm,
     gap: spacing.sm,

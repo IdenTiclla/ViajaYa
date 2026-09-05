@@ -46,13 +46,21 @@ jobs:
         run: python -m scripts.export_openapi --check
 
       - name: Extraer contrato OpenAPI de la rama base
+        id: contrato_base
         if: github.event_name == 'pull_request'
         env:
           OPENAPI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: git show "${OPENAPI_BASE_SHA}:backend/openapi.json" > /tmp/viajaya-openapi-base.json
+        run: |
+          if git cat-file -e "${OPENAPI_BASE_SHA}:backend/openapi.json" 2>/dev/null; then
+            git show "${OPENAPI_BASE_SHA}:backend/openapi.json" > /tmp/viajaya-openapi-base.json
+            echo "disponible=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "disponible=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::La rama base todavía no versiona OpenAPI; este PR establece el contrato inicial."
+          fi
 
       - name: Rechazar cambios OpenAPI incompatibles
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && steps.contrato_base.outputs.disponible == 'true'
         run: >-
           docker run --rm
           -v "/tmp/viajaya-openapi-base.json:/specs/base.json:ro"

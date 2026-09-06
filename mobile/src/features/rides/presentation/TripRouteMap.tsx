@@ -13,6 +13,8 @@ import { useRoute } from '@/features/booking/application/useRoute';
 import { declutteredMapStyle } from '@/features/booking/presentation/mapStyle';
 import { RoutePinMarker } from '@/features/rides/presentation/RoutePinMarker';
 import { RoutePolyline } from '@/features/rides/presentation/RoutePolyline';
+import { MARGEN_TOOLTIP_RUTA } from '@/features/rides/presentation/routeTooltipLayout';
+import { useRumboMapa } from '@/features/rides/application/useRumboMapa';
 
 export function TripRouteMap({
   origin,
@@ -29,6 +31,7 @@ export function TripRouteMap({
   showPlaceNamesInTooltip?: boolean;
 }) {
   const mapRef = useRef<MapView>(null);
+  const { rumboMapa, zoomMapa, actualizarRumbo } = useRumboMapa(mapRef);
   const { route } = useRoute(origin, destination);
 
   const region: Region = {
@@ -53,13 +56,13 @@ export function TripRouteMap({
     // `fitToCoordinates` solo considera las coordenadas de los pines, no las
     // vistas personalizadas de sus tooltips. Reservamos ese espacio para que
     // los nombres de origen y destino no se recorten contra los bordes.
-    const tooltipTopInset = showPlaceNamesInTooltip ? 44 : 0;
+    const tooltipInset = MARGEN_TOOLTIP_RUTA;
     const tooltipSideInset = showPlaceNamesInTooltip ? 88 : 50;
     mapRef.current?.fitToCoordinates(polyline, {
       edgePadding: {
-        top: topPadding + tooltipTopInset,
+        top: topPadding + tooltipInset,
         right: tooltipSideInset,
-        bottom: bottomPadding,
+        bottom: bottomPadding + tooltipInset,
         left: tooltipSideInset,
       },
       animated,
@@ -78,18 +81,27 @@ export function TripRouteMap({
       style={StyleSheet.absoluteFill}
       initialRegion={region}
       customMapStyle={declutteredMapStyle}
+      // La proyección de colisiones comparte la vista cenital del trayecto.
+      pitchEnabled={false}
       onMapReady={() => fit(false)}
+      onRegionChangeComplete={actualizarRumbo}
       // En algunos Android el mapa queda listo antes de recibir su tamaño final.
       // Reencuadrar tras el layout mantiene el trayecto centrado al navegar.
       onLayout={() => fit(false)}>
       <RoutePinMarker
         kind="A"
         coordinate={origin.coordinates}
+        ruta={polyline}
+        rumboMapa={rumboMapa}
+        zoomMapa={zoomMapa}
         label={showPlaceNamesInTooltip ? `Origen: ${getPlaceStreetName(origin)}` : 'Origen'}
       />
       <RoutePinMarker
         kind="B"
         coordinate={destination.coordinates}
+        ruta={polyline}
+        rumboMapa={rumboMapa}
+        zoomMapa={zoomMapa}
         label={showPlaceNamesInTooltip ? `Destino: ${getPlaceStreetName(destination)}` : 'Destino'}
       />
       <RoutePolyline coordinates={polyline} />

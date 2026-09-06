@@ -53,6 +53,8 @@ import {
 import { declutteredMapStyle } from '@/features/booking/presentation/mapStyle';
 import { RoutePinMarker } from '@/features/rides/presentation/RoutePinMarker';
 import { RoutePolyline } from '@/features/rides/presentation/RoutePolyline';
+import { MARGEN_TOOLTIP_EDITABLE } from '@/features/rides/presentation/routeTooltipLayout';
+import { useRumboMapa } from '@/features/rides/application/useRumboMapa';
 import { Button, ConfirmDialog, FeedbackState } from '@/shared/components';
 
 const PAYMENTS: readonly SelectableOption<PaymentMethod>[] = [
@@ -96,6 +98,7 @@ export function ConfigureTripScreen() {
     retry: retryLabels,
   } = useTripPlaceLabels();
   const mapRef = useRef<MapView>(null);
+  const { rumboMapa, zoomMapa, actualizarRumbo } = useRumboMapa(mapRef);
   const queryClient = useQueryClient();
   const editRide = useEditRide();
   const cancelRecoveryRide = useCancelRide();
@@ -104,7 +107,7 @@ export function ConfigureTripScreen() {
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [keyboardOffset, setKeyboardOffset] = useState(0);
   // Mostrar/ocultar etiquetas de lugares (el usuario lo controla con el toggle).
-  const [showPlaces, setShowPlaces] = useState(true);
+  const [showPlaces, setShowPlaces] = useState(false);
   const [confirmExit, setConfirmExit] = useState(false);
   const [allowExit, setAllowExit] = useState(false);
   const [exitAfterSave, setExitAfterSave] = useState(false);
@@ -261,7 +264,7 @@ export function ConfigureTripScreen() {
         edgePadding: {
           top: FIT_TOP,
           right: FIT_SIDES,
-          bottom: sheetHeight + spacing.lg,
+          bottom: sheetHeight + MARGEN_TOOLTIP_EDITABLE,
           left: FIT_SIDES,
         },
         animated,
@@ -405,13 +408,17 @@ export function ConfigureTripScreen() {
           style={StyleSheet.absoluteFill}
           initialRegion={region}
           customMapStyle={showPlaces ? [] : declutteredMapStyle}
+          pitchEnabled={false}
+          onRegionChangeComplete={actualizarRumbo}
           onMapReady={() => fitToTrip(false)}>
           <RoutePinMarker
             key={`origin-${tripMapKey}`}
             kind="A"
             coordinate={origin.coordinates}
+            ruta={fitCoordinates}
+            rumboMapa={rumboMapa}
+            zoomMapa={zoomMapa}
             label={`Origen: ${originMapLabel}`}
-            compactTooltip
             showEditControl
             loading={originMapLoading}
             zIndex={20}
@@ -421,8 +428,10 @@ export function ConfigureTripScreen() {
             key={`destination-${tripMapKey}`}
             kind="B"
             coordinate={destination.coordinates}
+            ruta={fitCoordinates}
+            rumboMapa={rumboMapa}
+            zoomMapa={zoomMapa}
             label={`Destino: ${destinationMapLabel}`}
-            compactTooltip
             showEditControl
             loading={destinationMapLoading}
             zIndex={21}

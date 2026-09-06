@@ -33,6 +33,8 @@ import { formatKm, haversineKm, pricePerKm } from '@/features/rides/domain/geo';
 import { formatBolivianos } from '@/features/rides/domain/money';
 import { OfferLifeTimer } from '@/features/rides/presentation/OfferLifeTimer';
 import { RoutePinMarker } from '@/features/rides/presentation/RoutePinMarker';
+import { MARGEN_TOOLTIP_RUTA } from '@/features/rides/presentation/routeTooltipLayout';
+import { useRumboMapa } from '@/features/rides/application/useRumboMapa';
 import { RoutePolyline } from '@/features/rides/presentation/RoutePolyline';
 import type { OpenRide } from '@/features/rides/domain/types';
 import Animated, { SlideInDown } from 'react-native-reanimated';
@@ -86,6 +88,7 @@ export function SolicitudesMapa({
   onWithdraw,
 }: Props) {
   const mapRef = useRef<MapView>(null);
+  const { rumboMapa, zoomMapa, actualizarRumbo } = useRumboMapa(mapRef);
   const listRef = useRef<FlatList<OpenRide>>(null);
   const { width: windowWidth } = useWindowDimensions();
   const cardWidth = windowWidth - spacing.sm * 2;
@@ -124,7 +127,7 @@ export function SolicitudesMapa({
       edgePadding: {
         top: 170,
         right: 88,
-        bottom: bottomOverlayHeight + spacing.lg,
+        bottom: bottomOverlayHeight + MARGEN_TOOLTIP_RUTA,
         left: 88,
       },
       animated,
@@ -162,6 +165,8 @@ export function SolicitudesMapa({
         style={StyleSheet.absoluteFill}
         initialRegion={initialRegion}
         customMapStyle={declutteredMapStyle}
+        pitchEnabled={false}
+        onRegionChangeComplete={actualizarRumbo}
         onMapReady={() => fitSelected(false)}
         onLayout={() => fitSelected(false)}>
         <RoutePolyline coordinates={polyline} />
@@ -188,6 +193,9 @@ export function SolicitudesMapa({
               key={`selected-a-${selectedRide.id}`}
               kind="A"
               coordinate={selectedRide.origin.coordinates}
+              ruta={polyline}
+              rumboMapa={rumboMapa}
+              zoomMapa={zoomMapa}
               label={`Origen: ${getPlaceStreetName(selectedRide.origin)}`}
               zIndex={20}
             />
@@ -195,6 +203,9 @@ export function SolicitudesMapa({
               key={`selected-b-${selectedRide.id}`}
               kind="B"
               coordinate={selectedRide.destination.coordinates}
+              ruta={polyline}
+              rumboMapa={rumboMapa}
+              zoomMapa={zoomMapa}
               label={`Destino: ${getPlaceStreetName(selectedRide.destination)}`}
               zIndex={21}
             />

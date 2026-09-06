@@ -7,6 +7,10 @@ import { Polyline } from 'react-native-maps';
 
 import { colors } from '@/core/theme';
 import type { Coordinates } from '@/features/booking/domain/types';
+import {
+  ANCHO_CONTORNO_RUTA,
+  ANCHO_RUTA,
+} from '@/features/rides/presentation/routeTooltipLayout';
 
 export function RoutePolyline({ coordinates }: { coordinates: Coordinates[] }) {
   if (coordinates.length < 2) return null;
@@ -16,13 +20,13 @@ export function RoutePolyline({ coordinates }: { coordinates: Coordinates[] }) {
       <Polyline
         coordinates={coordinates}
         strokeColor={colors.surface}
-        strokeWidth={9}
+        strokeWidth={ANCHO_CONTORNO_RUTA}
         zIndex={1}
       />
       <Polyline
         coordinates={coordinates}
         strokeColor={colors.primary}
-        strokeWidth={5}
+        strokeWidth={ANCHO_RUTA}
         zIndex={2}
       />
     </Fragment>

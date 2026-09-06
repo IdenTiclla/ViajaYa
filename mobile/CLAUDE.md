@@ -266,6 +266,23 @@ npm run lint               # expo lint (eslint-config-expo)
 - **Formularios:** react-hook-form + zod (`@hookform/resolvers`), esquemas junto al feature.
 - **Mapas:** `react-native-maps`; ubicación con `expo-location` (permisos en `app.config.ts`).
   Estilo de mapa compartido: `features/booking/presentation/mapStyle.ts` (`declutteredMapStyle`).
+- **Apariencia de trayectos:** todas las vistas reutilizan `RoutePolyline` y
+  `RoutePinMarker`; seguimiento y negociación usan además `TripRouteMap`.
+  `routeTooltipLayout.ts` concentra las medidas lógicas comunes: trazo 3,
+  contorno 5 y pin A/B de 16, sin variantes de tamaño por rol. Configuración
+  conserva su control Editar y permite activar las etiquetas de lugares, pero
+  inicia con el mismo mapa despejado del conductor. No dupliques la polilínea ni
+  los estilos del pin en una pantalla. Conserva el contenedor nativo no aplanable,
+  el anclaje al centro del círculo y el redibujado cancelable tras cambios de layout.
+  La colocación de tooltips comprueba todos los segmentos en la proyección de
+  pantalla y mide el bloque completo (texto y Editar). Los mapas con ruta son
+  cenitales, con zoom y giro habilitados; ambos actualizan el cálculo. Se busca
+  espacio arriba/abajo con separación acotada. Si no cabe, conserva A/B y su
+  título al tocarlo, sin dibujar la etiqueta sobre la ruta ni agrandar el bitmap
+  sin límite. El onPress de edición/selección permanece disponible.
+  Después de modificar los mapas, verifica también el paquete Android con Metro:
+  TypeScript y las pruebas unitarias no detectan todos los fallos de resolución
+  del servidor de desarrollo que recibe el teléfono.
 - **Hooks AppState-aware** (no se congelan en background): `useCountdown`, `socket.ts` recalculan
   al volver a foreground. Sigue ese patrón al hacer hooks con tiempo/conexión.
 - Comentarios/JSDoc en **español**, alineados con el estilo del repo.

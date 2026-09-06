@@ -25,5 +25,7 @@ web-build/
 .env.*
 !.env.example
 
-
+# claude local settings
 .claude/
+# Local files
+local-files/

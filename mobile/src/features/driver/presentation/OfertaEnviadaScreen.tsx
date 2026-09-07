@@ -33,6 +33,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Button } from '@/shared/components';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
 import { useCountdown } from '@/core/hooks/useCountdown';
@@ -457,36 +458,24 @@ export function OfertaEnviadaScreen() {
         )}
 
         <View style={styles.actions}>
-          <TouchableOpacity
-            style={[styles.mejorar, offerActionBusy && styles.disabled]}
+          <Button
+            title="Mejorar oferta"
+            variant="secondary"
+            leadingIcon="trending-up"
+            loading={createOffer.isPending}
+            loadingLabel="Enviando…"
             onPress={openCounter}
             disabled={offerActionBusy}
-            accessibilityRole="button"
-            accessibilityLabel="Mejorar oferta">
-            {createOffer.isPending ? (
-              <ActivityIndicator size="small" color={colors.primary} />
-            ) : (
-              <Ionicons name="trending-up" size={20} color={colors.primary} />
-            )}
-            <Text style={styles.mejorarText}>
-              {createOffer.isPending ? 'Enviando…' : 'Mejorar oferta'}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.retirar, offerActionBusy && styles.disabled]}
+          />
+          <Button
+            title="Retirar propuesta"
+            variant="dangerSoft"
+            leadingIcon="close"
+            loading={withdrawOffer.isPending}
+            loadingLabel="Retirando…"
             onPress={retirar}
             disabled={offerActionBusy}
-            accessibilityRole="button"
-            accessibilityLabel="Retirar propuesta">
-            {withdrawOffer.isPending ? (
-              <ActivityIndicator size="small" color={colors.danger} />
-            ) : (
-              <Ionicons name="close" size={20} color={colors.danger} />
-            )}
-            <Text style={styles.retirarText}>
-              {withdrawOffer.isPending ? 'Retirando…' : 'Retirar propuesta'}
-            </Text>
-          </TouchableOpacity>
+          />
           <Text style={styles.actionsHint}>
             Mejorar tu oferta reemplaza la anterior. Al retirarla, otros conductores podrían
             tomar el viaje.
@@ -790,28 +779,6 @@ const styles = StyleSheet.create({
   metaText: { fontSize: fontSize.md, color: colors.text },
 
   actions: { gap: spacing.sm },
-  mejorar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    height: 56,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.primary,
-    backgroundColor: colors.surface,
-  },
-  mejorarText: { fontSize: fontSize.md, fontWeight: fontWeight.bold, color: colors.primary },
-  retirar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    height: 56,
-    borderRadius: radius.md,
-    backgroundColor: '#FDECEA',
-  },
-  retirarText: { fontSize: fontSize.md, fontWeight: fontWeight.bold, color: colors.danger },
   actionsHint: { fontSize: fontSize.sm, color: colors.textSecondary, textAlign: 'center', paddingHorizontal: spacing.md },
   disabled: { opacity: 0.5 },
   inlineError: { color: colors.danger, fontSize: fontSize.sm, textAlign: 'center' },

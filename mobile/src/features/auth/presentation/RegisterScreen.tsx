@@ -136,7 +136,7 @@ export function RegisterScreen() {
             />
 
             <Button
-              title="Crear Cuenta"
+              title="Crear cuenta"
               trailingIcon="arrow-forward"
               loading={register.isPending}
               onPress={handleSubmit(onSubmit)}
@@ -146,12 +146,14 @@ export function RegisterScreen() {
 
             <View style={styles.social}>
               <SocialButton
+                style={styles.socialButton}
                 provider="google"
                 loading={social.googleLoading}
                 disabled={social.googleDisabled}
                 onPress={social.signInWithGoogle}
               />
               <SocialButton
+                style={styles.socialButton}
                 provider="facebook"
                 loading={social.facebookLoading}
                 disabled={social.facebookDisabled}
@@ -180,8 +182,9 @@ const styles = StyleSheet.create({
   title: { fontSize: fontSize.xl, fontWeight: fontWeight.bold, color: colors.text },
   subtitle: { fontSize: fontSize.sm, color: colors.textSecondary, textAlign: 'center' },
   form: { gap: spacing.md },
-  social: { flexDirection: 'row', gap: spacing.md },
-  footer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
+  social: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  socialButton: { flexGrow: 1, flexBasis: 140 },
+  footer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center' },
   footerText: { color: colors.textSecondary, fontSize: fontSize.sm },
-  link: { color: colors.primary, fontSize: fontSize.sm, fontWeight: fontWeight.semibold },
+  link: { paddingVertical: spacing.md, color: colors.primary, fontSize: fontSize.sm, fontWeight: fontWeight.semibold, textDecorationLine: 'underline' },
 });

@@ -9,7 +9,7 @@ import {
   View,
 } from 'react-native';
 
-import { colors, fontSize, radius, spacing } from '@/core/theme';
+import { colors, controles, fontSize, radius, spacing } from '@/core/theme';
 
 type Props = TextInputProps & {
   label?: string;
@@ -31,6 +31,8 @@ export const TextField = forwardRef<TextInput, Props>(function TextField(
     onBlur,
     editable = true,
     accessibilityLabel,
+    accessibilityHint,
+    accessibilityState,
     placeholder,
     ...rest
   },
@@ -51,11 +53,14 @@ export const TextField = forwardRef<TextInput, Props>(function TextField(
           !editable && styles.fieldDisabled,
         ]}>
         {leadingIcon && (
-          <Ionicons name={leadingIcon} size={20} color={iconColor} style={styles.lead} />
+          <Ionicons accessible={false} name={leadingIcon} size={20} color={iconColor} style={styles.lead} />
         )}
         <TextInput
           ref={ref}
           accessibilityLabel={accessibilityLabel ?? label ?? placeholder}
+          accessibilityHint={[error, accessibilityHint].filter(Boolean).join('. ') || undefined}
+          accessibilityState={{ ...accessibilityState, disabled: !editable }}
+          aria-disabled={!editable}
           placeholderTextColor={colors.placeholder}
           placeholder={placeholder}
           secureTextEntry={hidden}
@@ -75,6 +80,8 @@ export const TextField = forwardRef<TextInput, Props>(function TextField(
           <TouchableOpacity
             accessibilityRole="button"
             accessibilityLabel={hidden ? 'Mostrar contraseña' : 'Ocultar contraseña'}
+            accessibilityState={{ disabled: !editable }}
+            disabled={!editable}
             onPress={() => setHidden((v) => !v)}
             style={styles.passwordButton}>
             <Ionicons
@@ -104,21 +111,21 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceMuted,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: 'transparent',
-    paddingHorizontal: spacing.md,
-    height: 54,
+    borderColor: colors.bordeControl,
+    paddingHorizontal: spacing.sm + spacing.xs,
+    minHeight: controles.altoMinimo,
   },
   fieldFocused: { borderColor: colors.primary, backgroundColor: colors.surface },
   fieldError: { borderColor: colors.danger },
-  fieldDisabled: { opacity: 0.55 },
+  fieldDisabled: { backgroundColor: colors.fondoDeshabilitado },
   lead: { marginRight: spacing.sm },
-  input: { flex: 1, fontSize: fontSize.md, color: colors.text },
+  input: { flex: 1, minWidth: 0, minHeight: controles.altoMinimo - 2, paddingVertical: spacing.sm, fontSize: fontSize.md, color: colors.text },
   passwordButton: {
-    width: 40,
-    height: 44,
-    alignItems: 'flex-end',
+    width: controles.altoMinimo,
+    minHeight: controles.altoMinimo,
+    alignItems: 'center',
     justifyContent: 'center',
   },
-  errorRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  error: { fontSize: fontSize.xs, color: colors.danger },
+  errorRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.xs },
+  error: { flexShrink: 1, fontSize: fontSize.sm, color: colors.danger },
 });

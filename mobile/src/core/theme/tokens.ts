@@ -12,18 +12,23 @@ export const colors = {
   // Superficies
   background: '#FFFFFF',
   surface: '#FFFFFF',
-  surfaceMuted: '#F2F3F5', // fondo de inputs / tarjetas
-  border: '#E2E4E8',
+  surfaceMuted: '#F3F5F8', // fondo de inputs / tarjetas
+  border: '#DCE2EB', // separadores decorativos
+  bordeControl: '#7D8796', // contorno visible de campos y controles sin seleccionar
+  primarioSuave: '#EDF2FF',
 
   // Texto
-  text: '#1A1D23',
-  textSecondary: '#60646C',
+  text: '#182230',
+  textSecondary: '#536174',
   textOnPrimary: '#FFFFFF',
-  placeholder: '#9AA0A6',
+  placeholder: '#667085',
+  fondoDeshabilitado: '#E5E9F0',
+  textoDeshabilitado: '#536174',
 
   // Estado
-  danger: '#D92D20',
-  success: '#0F9D58',
+  danger: '#C52C22',
+  success: '#167347',
+  peligroSuave: '#FFF0EE',
 
   // Social
   google: '#FFFFFF',
@@ -61,6 +66,16 @@ export const fontWeight = {
   medium: '500',
   semibold: '600',
   bold: '700',
+} as const;
+
+/** Tamaño táctil mínimo; la altura puede crecer con el texto del sistema. */
+export const controles = { altoMinimo: 48 } as const;
+
+/** Foco de teclado visible sin desplazar el contenido al entrar o salir. */
+export const estiloFoco = {
+  outlineColor: colors.primary,
+  outlineWidth: 2,
+  outlineOffset: 2,
 } as const;
 
 export type Colors = typeof colors;

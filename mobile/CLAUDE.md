@@ -84,7 +84,9 @@ src/
 - conductor → `/(driver)/(tabs)/solicitudes` (cae directo en Solicitudes, no en Inicio)
 
 **Bottom bar Stitch** (`core/components/PillTabBar.tsx`, compartida por pasajero y conductor):
-el tab activo lleva un pill de fondo amarillo (`colors.accent` = `#F5C518`) con icono+etiqueta oscuros.
+el icono activo lleva un pill de fondo amarillo (`colors.accent` = `#F5C518`).
+Todas las etiquetas permanecen debajo de su icono; con letra grande se distribuyen
+en dos filas para conservar el texto completo.
 Las rutas ocultas declaran `tabBarButton: () => null` (ej. el `index` redirect del conductor).
 
 ## State management
@@ -178,13 +180,41 @@ fuerza otro handshake que decide autoritativamente si sigue `PENDING`.
 `core/theme/tokens.ts` (única fuente de verdad; reexportado por `index.ts`):
 
 - `colors.primary #16308C` (azul TaxiGo) · `colors.primaryDark #0F2266` · `colors.accent #F5C518`
-  (amarillo Stitch: tab activo, estrellas, acentos) · `success #0F9D58` · `danger #D92D20` ·
-  `text #1A1D23` · `textSecondary #60646C` · `surfaceMuted #F2F3F5` · `border #E2E4E8`.
+  (amarillo Stitch: tab activo, estrellas, acentos) · `success #167347` · `danger #C52C22` ·
+  `text #182230` · `textSecondary #536174` · `surfaceMuted #F3F5F8` · `border #DCE2EB`.
+- `bordeControl #7D8796` identifica campos y opciones; `border` se reserva para
+  separadores decorativos. `primarioSuave` y `peligroSuave` acompañan las acciones
+  secundarias con texto oscuro; los estados deshabilitados usan colores explícitos.
 - `spacing` xs/sm/md/lg/xl/xxl = 4/8/16/24/32/48 · `radius` sm/md/lg/pill = 8/12/16/999 ·
   `fontSize` xs…xxl = 12/14/16/20/24/32 · `fontWeight` regular/medium/semibold/bold.
 
 Importa `{ colors, spacing, radius, fontSize, fontWeight }` desde `@/core/theme`. `app.config.ts`
 usa `#16308C` para splash/adaptiveIcon.
+
+### Controles y accesibilidad
+
+- Reutiliza `Button` para acciones de formulario y pie de pantalla: altura mínima
+  de 48, texto de 14 y crecimiento natural al ampliar la letra. Evita alturas
+  fijas y `adjustsFontSizeToFit` para hacer caber etiquetas de acciones.
+- Reserva `primary` para la acción principal, `secondary` para alternativas,
+  `dangerSoft` para iniciar una acción destructiva y `danger` para confirmarla.
+  `loading` bloquea la acción e informa su estado; `accessibilityState.busy` puede
+  comunicar una consulta en segundo plano que permite seguir interactuando.
+- Conserva el foco de teclado visible (`estiloFoco`) y los estados de selección,
+  carga y deshabilitado también mediante `aria-*`, compatibles con React Native
+  y React Native Web. La selección se distingue además por una marca visible.
+- Los campos mantienen etiquetas al escribir y asocian los errores mediante su
+  pista de accesibilidad. Los diálogos son desplazables y apilan sus acciones
+  cuando falta espacio; al abrirse enfocan el título para el lector nativo.
+- Verifica los controles con texto al 200% y pantallas estrechas. Una
+  previsualización web ayuda a comprobar geometría y teclado; TalkBack y
+  VoiceOver requieren validación en dispositivo.
+- La búsqueda conserva el acceso al mapa en carga, error y sin resultados.
+  `useSeleccionDestino` invalida resoluciones anteriores al cambiar de búsqueda,
+  elegir otro destino o salir de la pantalla; un fallo de recientes no es una lista vacía.
+- Las ofertas separan precio, llegada estimada y vencimiento, conservando nombres
+  y vehículos completos. Calificar permite omitir incluso tras elegir estrellas;
+  mientras se envía o se omite, sus controles quedan bloqueados.
 
 ## HTTP client
 

@@ -11,7 +11,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Linking,
   StyleSheet,
   Text,
@@ -41,7 +40,7 @@ import type { Place } from '@/features/booking/domain/types';
 import { CenterPin } from '@/features/booking/presentation/CenterPin';
 import { useCurrentLocation } from '@/features/home/application/useCurrentLocation';
 import { RoutePinMarker } from '@/features/rides/presentation/RoutePinMarker';
-import { PinLoadingIndicator } from '@/shared/components';
+import { Button, PinLoadingIndicator } from '@/shared/components';
 
 const MIN_DESTINATION_DISTANCE_METERS = 50;
 
@@ -454,26 +453,15 @@ export function PickOnMapScreen() {
             ) : null}
           </View>
         )}
-        <TouchableOpacity
-          style={[styles.confirm, confirmDisabled && styles.confirmDisabled]}
+        <Button
+          title={validationMessage ? hasSelectedCenter ? 'Elige otro punto' : 'Mueve el mapa' : confirmLabel}
+          trailingIcon="arrow-forward"
+          loading={isResolving && confirmDisabled}
+          accessibilityState={{ busy: isResolving }}
+          loadingLabel="Obteniendo dirección…"
           disabled={confirmDisabled}
           onPress={confirm}
-          accessibilityRole="button"
-          accessibilityState={{ disabled: confirmDisabled }}
-          accessibilityLabel={confirmLabel}>
-          <Text style={styles.confirmText}>
-            {validationMessage
-              ? hasSelectedCenter
-                ? 'Elige otro punto'
-                : 'Mueve el mapa'
-              : confirmLabel}
-          </Text>
-          {isResolving ? (
-            <ActivityIndicator size="small" color={colors.textOnPrimary} />
-          ) : (
-            <Ionicons name="arrow-forward" size={20} color={colors.textOnPrimary} />
-          )}
-        </TouchableOpacity>
+        />
       </SafeAreaView>
     </View>
   );
@@ -750,15 +738,4 @@ const styles = StyleSheet.create({
     fontWeight: fontWeight.semibold,
   },
 
-  confirm: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    height: 54,
-    borderRadius: radius.md,
-    backgroundColor: colors.primary,
-  },
-  confirmDisabled: { opacity: 0.5 },
-  confirmText: { color: colors.textOnPrimary, fontSize: fontSize.md, fontWeight: fontWeight.semibold },
 });

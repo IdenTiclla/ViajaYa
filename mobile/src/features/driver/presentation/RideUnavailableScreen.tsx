@@ -10,6 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
 import { Animated, Easing, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Button } from '@/shared/components';
 
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 import { formatBolivianos } from '@/features/rides/domain/money';
@@ -98,14 +99,11 @@ export function RideUnavailableScreen({
       </View>
 
       <SafeAreaView edges={['bottom']} style={styles.footer}>
-        <TouchableOpacity
-          style={styles.cta}
+        <Button
+          title="Volver a solicitudes"
+          leadingIcon="compass-outline"
           onPress={onBack}
-          accessibilityRole="button"
-          accessibilityLabel="Volver a solicitudes">
-          <Ionicons name="compass" size={20} color={colors.textOnPrimary} />
-          <Text style={styles.ctaText}>Volver a solicitudes</Text>
-        </TouchableOpacity>
+        />
       </SafeAreaView>
     </View>
   );
@@ -254,14 +252,4 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
     backgroundColor: colors.surface,
   },
-  cta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    height: 56,
-    borderRadius: radius.md,
-    backgroundColor: colors.primary,
-  },
-  ctaText: { color: colors.textOnPrimary, fontSize: fontSize.md, fontWeight: fontWeight.bold },
 });

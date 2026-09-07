@@ -7,26 +7,30 @@
  * para fijar la ubicación en el mapa y los destinos recientes.
  */
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
-import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { colors, estiloFoco, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
 import { usePlaceSearch } from '@/features/booking/application/usePlaceSearch';
 import { useRecentDestinations } from '@/features/booking/application/useRecentDestinations';
 import { findByCategory, useSavedPlaces } from '@/features/booking/application/useSavedPlaces';
-import { getBoliviaPlaceError } from '@/features/booking/domain/bolivia';
+import { useSeleccionDestino } from '@/features/booking/application/useSeleccionDestino';
 import type {
   Place,
   PlaceSuggestion,
@@ -34,7 +38,7 @@ import type {
   SavedPlaceCategory,
 } from '@/features/booking/domain/types';
 import { CATEGORY_META } from '@/features/booking/presentation/savedPlaceCategory';
-import { FeedbackState } from '@/shared/components';
+import { Button, FeedbackState } from '@/shared/components';
 
 function placeErrorMessage(error: unknown): string {
   return error instanceof Error
@@ -44,20 +48,22 @@ function placeErrorMessage(error: unknown): string {
 
 export function DestinationSearchScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { fontScale } = useWindowDimensions();
+  const buscador = useRef<TextInput>(null);
   const { rideId } = useLocalSearchParams<{ rideId?: string }>();
   const origin = useBookingStore((s) => s.origin);
   const setDestination = useBookingStore((s) => s.setDestination);
-  const { places, isLoading } = useRecentDestinations();
+  const { places, isLoading, isError: recientesError, error: errorRecientes, refetch: reintentarRecientes } = useRecentDestinations();
   const {
     places: saved,
+    isLoading: savedPlacesLoading,
     isError: savedPlacesError,
     error: savedPlacesErrorValue,
     refetch: refetchSavedPlaces,
   } = useSavedPlaces();
   const [query, setQuery] = useState('');
-  // placeId que se está resolviendo (coordenadas) tras tocar una sugerencia.
-  const [resolvingId, setResolvingId] = useState<string | null>(null);
-  const [selectionError, setSelectionError] = useState<string | null>(null);
+  const [buscadorEnfocado, setBuscadorEnfocado] = useState(false);
 
   const {
     suggestions,
@@ -70,12 +76,7 @@ export function DestinationSearchScreen() {
   } = usePlaceSearch(query, origin?.coordinates);
 
   const goToConfigure = (place: Place) => {
-    const areaError = getBoliviaPlaceError(place);
-    if (areaError) {
-      setSelectionError(areaError);
-      return;
-    }
-    setSelectionError(null);
+    Keyboard.dismiss();
     setDestination(place);
     // En edición cierra las pantallas auxiliares hacia el Configure original;
     // en creación, dismissTo reemplaza la pantalla actual si aún no existe.
@@ -85,27 +86,36 @@ export function DestinationSearchScreen() {
     });
   };
 
-  const selectSuggestion = async (suggestion: PlaceSuggestion) => {
-    if (resolvingId) return;
-    setSelectionError(null);
-    setResolvingId(suggestion.placeId);
-    try {
-      const place = await resolve(suggestion);
-      if (place) goToConfigure(place);
-    } catch (resolveError) {
-      setSelectionError(placeErrorMessage(resolveError));
-    } finally {
-      setResolvingId(null);
-    }
+  const {
+    resolviendoId: resolvingId,
+    errorSeleccion: selectionError,
+    seleccionarSugerencia: selectSuggestion,
+    seleccionarLugar,
+    cancelarSeleccion,
+  } = useSeleccionDestino(resolve, goToConfigure);
+
+  // También invalida la selección al salir con el gesto o botón del sistema.
+  useFocusEffect(useCallback(() => () => cancelarSeleccion(), [cancelarSeleccion]));
+
+  const abrirMapa = () => {
+    cancelarSeleccion();
+    Keyboard.dismiss();
+    router.push({ pathname: '/booking/pick-on-map', params: rideId ? { rideId } : {} });
+  };
+
+  const cambiarBusqueda = (texto: string) => {
+    cancelarSeleccion();
+    setQuery(texto);
   };
 
   // Atajo Casa/Trabajo: si ya está guardado, lo usa como destino; si no, abre
   // el flujo para fijarlo (mapa → nombrar/guardar) con la categoría puesta.
   const onShortcut = (category: SavedPlaceCategory) => {
-    if (savedPlacesError) return;
+    if (savedPlacesError || savedPlacesLoading) return;
+    cancelarSeleccion();
     const existing = findByCategory(saved, category);
     if (existing) {
-      goToConfigure(existing.place);
+      seleccionarLugar(existing.place);
     } else {
       router.push({
         pathname: '/booking/pick-on-map',
@@ -116,136 +126,155 @@ export function DestinationSearchScreen() {
 
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.back}
-          onPress={() => router.back()}
-          accessibilityRole="button"
-          accessibilityLabel="Volver">
-          <Ionicons name="arrow-back" size={24} color={colors.text} />
-        </TouchableOpacity>
-        <View style={styles.searchBar}>
-          <Ionicons name="search" size={20} color={colors.placeholder} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Buscar destino"
-            placeholderTextColor={colors.placeholder}
-            value={query}
-            onChangeText={(value) => {
-              setQuery(value);
-              setSelectionError(null);
-            }}
-            autoFocus
-            returnKeyType="search"
-          />
-          {query.length > 0 && (
-            <TouchableOpacity
-              onPress={() => setQuery('')}
-              accessibilityRole="button"
-              accessibilityLabel="Borrar búsqueda">
-              <Ionicons name="close-circle" size={20} color={colors.placeholder} />
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
-
-      {isActive ? (
-        <SearchResults
-          suggestions={suggestions}
-          isLoading={isSearching}
-          error={searchError ? placeErrorMessage(error) : null}
-          selectionError={selectionError}
-          onRetry={retry}
-          resolvingId={resolvingId}
-          onSelect={selectSuggestion}
-        />
-      ) : (
-        <ScrollView
-          contentContainerStyle={styles.scroll}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}>
-          {selectionError ? (
-            <View style={styles.selectionError} accessibilityLiveRegion="polite">
-              <Ionicons name="location-outline" size={18} color={colors.danger} />
-              <Text style={styles.selectionErrorText}>{selectionError}</Text>
-            </View>
-          ) : null}
+      <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <View style={styles.header}>
           <TouchableOpacity
-            style={styles.wideCard}
-            onPress={() =>
-              router.push({
-                pathname: '/booking/pick-on-map',
-                params: rideId ? { rideId } : {},
-              })
-            }
+            style={styles.back}
+            onPress={() => { cancelarSeleccion(); router.back(); }}
             accessibilityRole="button"
-            accessibilityLabel="Seleccionar en el mapa, fija la ubicación manualmente">
-            <View style={[styles.cardIcon, styles.mapIcon]}>
-              <Ionicons name="map" size={20} color={colors.textOnPrimary} />
-            </View>
-            <View style={styles.itemText}>
-              <Text style={styles.cardTitle}>Seleccionar en el mapa</Text>
-              <Text style={styles.cardSubtitle}>Fija la ubicación manualmente</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={colors.placeholder} />
+            accessibilityLabel="Volver">
+            <Ionicons name="arrow-back" size={24} color={colors.text} />
           </TouchableOpacity>
-
-          {savedPlacesError && (
-            <TouchableOpacity
-              style={styles.savedWarning}
-              onPress={refetchSavedPlaces}
-              accessibilityRole="button"
-              accessibilityLabel="Reintentar lugares guardados">
-              <Ionicons name="cloud-offline-outline" size={18} color={colors.danger} />
-              <Text style={styles.savedWarningText} numberOfLines={2}>
-                {getApiErrorMessage(savedPlacesErrorValue)}
-              </Text>
-              <Ionicons name="refresh" size={18} color={colors.primary} />
-            </TouchableOpacity>
-          )}
-
-          <View style={styles.bento}>
-            <ShortcutCard
-              category="home"
-              place={findByCategory(saved, 'home')}
-              disabled={savedPlacesError}
-              onPress={() => onShortcut('home')}
+          <View style={[styles.searchBar, buscadorEnfocado && styles.searchBarFocused]}>
+            <Ionicons name="search" size={20} color={colors.placeholder} />
+            <TextInput
+              ref={buscador}
+              style={styles.searchInput}
+              placeholder="Buscar destino"
+              placeholderTextColor={colors.placeholder}
+              value={query}
+              onChangeText={cambiarBusqueda}
+              onFocus={() => setBuscadorEnfocado(true)}
+              onBlur={() => setBuscadorEnfocado(false)}
+              accessibilityLabel="Buscar destino"
+              accessibilityHint="Escribe al menos 3 caracteres para buscar lugares."
+              autoCorrect={false}
+              autoFocus
+              returnKeyType="search"
             />
-            <ShortcutCard
-              category="work"
-              place={findByCategory(saved, 'work')}
-              disabled={savedPlacesError}
-              onPress={() => onShortcut('work')}
-            />
+            {query.length > 0 && (
+              <TouchableOpacity
+                style={styles.clearSearch}
+                onPress={() => { cambiarBusqueda(''); buscador.current?.focus(); }}
+                accessibilityRole="button"
+                accessibilityLabel="Borrar búsqueda">
+                <Ionicons name="close-circle" size={20} color={colors.placeholder} />
+              </TouchableOpacity>
+            )}
           </View>
+        </View>
 
-          <TouchableOpacity
-            style={styles.wideCard}
-            onPress={() =>
-              router.push({
-                pathname: '/booking/saved-places',
-                params: rideId ? { rideId } : {},
-              })
-            }
-            accessibilityRole="button"
-            accessibilityLabel="Ver lugares guardados">
-            <View style={[styles.cardIcon, styles.savedIcon]}>
-              <Ionicons name="bookmark" size={20} color={colors.primary} />
-            </View>
-            <View style={styles.itemText}>
-              <Text style={styles.cardTitle}>Lugares guardados</Text>
-              <Text style={styles.cardSubtitle}>
-                {saved.length > 0
-                  ? `${saved.length} ${saved.length === 1 ? 'lugar guardado' : 'lugares guardados'}`
-                  : 'Guarda tus destinos frecuentes'}
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={colors.placeholder} />
-          </TouchableOpacity>
+        <Text style={styles.searchHint} accessibilityLiveRegion="polite">
+          {resolvingId ? 'Obteniendo la ubicación elegida…' : query.trim().length > 0 && !isActive
+            ? 'Escribe al menos 3 caracteres para buscar.' : 'Busca una calle, un lugar o elige un punto en el mapa.'}
+        </Text>
 
-          <RecentDestinations places={places} isLoading={isLoading} onSelect={goToConfigure} />
-        </ScrollView>
-      )}
+        {isActive && (
+          <View style={styles.mapAction}>
+            <Button title="Elegir en el mapa" variant="secondary" leadingIcon="map-outline" onPress={abrirMapa} />
+          </View>
+        )}
+
+        {isActive ? (
+          <SearchResults
+            suggestions={suggestions}
+            isLoading={isSearching}
+            error={searchError ? placeErrorMessage(error) : null}
+            selectionError={selectionError}
+            onRetry={retry}
+            resolvingId={resolvingId}
+            onSelect={selectSuggestion}
+            bottomInset={insets.bottom}
+          />
+        ) : (
+          <ScrollView
+            contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + spacing.lg }]}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            showsVerticalScrollIndicator={false}>
+            {selectionError ? (
+              <View style={styles.selectionError} accessibilityLiveRegion="polite">
+                <Ionicons name="location-outline" size={18} color={colors.danger} />
+                <Text style={styles.selectionErrorText}>{selectionError}</Text>
+              </View>
+            ) : null}
+            <TouchableOpacity
+              style={[styles.wideCard, fontScale > 1.3 && styles.wideCardColumn]}
+              onPress={abrirMapa}
+              accessibilityRole="button"
+              accessibilityLabel="Seleccionar en el mapa, fija la ubicación manualmente">
+              <View style={[styles.cardIcon, styles.mapIcon]}>
+                <Ionicons name="map" size={20} color={colors.textOnPrimary} />
+              </View>
+              <View style={[styles.itemText, fontScale > 1.3 && styles.wideCardTextColumn]}>
+                <Text style={styles.cardTitle}>Seleccionar en el mapa</Text>
+                <Text style={styles.cardSubtitle}>Fija la ubicación manualmente</Text>
+              </View>
+              {fontScale <= 1.3 && <Ionicons name="chevron-forward" size={20} color={colors.placeholder} />}
+            </TouchableOpacity>
+
+            {savedPlacesError && (
+              <TouchableOpacity
+                style={styles.savedWarning}
+                onPress={refetchSavedPlaces}
+                accessibilityRole="button"
+                accessibilityLabel="Reintentar lugares guardados">
+                <Ionicons name="cloud-offline-outline" size={18} color={colors.danger} />
+                <Text style={styles.savedWarningText}>
+                  {getApiErrorMessage(savedPlacesErrorValue)}
+                </Text>
+                <Ionicons name="refresh" size={18} color={colors.primary} />
+              </TouchableOpacity>
+            )}
+
+            <View style={[styles.bento, fontScale > 1.3 && styles.bentoColumn]}>
+              <ShortcutCard
+                category="home"
+                place={findByCategory(saved, 'home')}
+                disabled={savedPlacesError || savedPlacesLoading}
+                loading={savedPlacesLoading}
+                enColumna={fontScale > 1.3}
+                onPress={() => onShortcut('home')}
+              />
+              <ShortcutCard
+                category="work"
+                place={findByCategory(saved, 'work')}
+                disabled={savedPlacesError || savedPlacesLoading}
+                loading={savedPlacesLoading}
+                enColumna={fontScale > 1.3}
+                onPress={() => onShortcut('work')}
+              />
+            </View>
+
+            <TouchableOpacity
+              style={[styles.wideCard, fontScale > 1.3 && styles.wideCardColumn]}
+              onPress={() => {
+                cancelarSeleccion();
+                router.push({
+                  pathname: '/booking/saved-places',
+                  params: rideId ? { rideId } : {},
+                });
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Ver lugares guardados">
+              <View style={[styles.cardIcon, styles.savedIcon]}>
+                <Ionicons name="bookmark" size={20} color={colors.primary} />
+              </View>
+              <View style={[styles.itemText, fontScale > 1.3 && styles.wideCardTextColumn]}>
+                <Text style={styles.cardTitle}>Lugares guardados</Text>
+                <Text style={styles.cardSubtitle}>
+                  {saved.length > 0
+                    ? `${saved.length} ${saved.length === 1 ? 'lugar guardado' : 'lugares guardados'}`
+                    : 'Guarda tus destinos frecuentes'}
+                </Text>
+              </View>
+              {fontScale <= 1.3 && <Ionicons name="chevron-forward" size={20} color={colors.placeholder} />}
+            </TouchableOpacity>
+
+            <RecentDestinations places={places} isLoading={isLoading} error={recientesError ? getApiErrorMessage(errorRecientes) : null} onRetry={reintentarRecientes} onSelect={seleccionarLugar} />
+          </ScrollView>
+        )}
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -254,29 +283,34 @@ function ShortcutCard({
   category,
   place,
   disabled,
+  loading,
+  enColumna,
   onPress,
 }: {
   category: Extract<SavedPlaceCategory, 'home' | 'work'>;
   place: SavedPlace | undefined;
   disabled: boolean;
+  loading: boolean;
+  enColumna: boolean;
   onPress: () => void;
 }) {
   const meta = CATEGORY_META[category];
-  const tint = category === 'work' ? colors.accent : colors.primary;
+  const tint = colors.primary;
   return (
     <TouchableOpacity
-      style={[styles.bentoCard, disabled && styles.disabled]}
+      style={[styles.bentoCard, !enColumna && styles.shortcutRow, disabled && styles.disabled]}
       onPress={onPress}
       disabled={disabled}
       accessibilityRole="button"
-      accessibilityState={{ disabled }}
+      accessibilityState={{ disabled, busy: loading }}
+      aria-busy={loading}
       accessibilityLabel={place ? `Ir a ${place.label}` : `Fijar ${meta.label.toLowerCase()}`}>
       <View style={[styles.cardIcon, { backgroundColor: `${tint}22` }]}>
         <Ionicons name={meta.icon} size={20} color={tint} />
       </View>
       <Text style={styles.cardTitle}>{place?.label ?? meta.label}</Text>
-      <Text style={styles.cardSubtitle} numberOfLines={1}>
-        {place?.place.address ?? `Fijar ${meta.label.toLowerCase()}`}
+      <Text style={styles.cardSubtitle}>
+        {loading ? 'Cargando…' : place?.place.address ?? `Fijar ${meta.label.toLowerCase()}`}
       </Text>
     </TouchableOpacity>
   );
@@ -290,6 +324,7 @@ function SearchResults({
   onRetry,
   resolvingId,
   onSelect,
+  bottomInset,
 }: {
   suggestions: PlaceSuggestion[];
   isLoading: boolean;
@@ -298,38 +333,38 @@ function SearchResults({
   onRetry: () => void;
   resolvingId: string | null;
   onSelect: (suggestion: PlaceSuggestion) => void;
+  bottomInset: number;
 }) {
   if (suggestions.length === 0) {
-    if (error) {
-      return (
-        <FeedbackState
-          icon="cloud-offline-outline"
-          title="No pudimos buscar lugares"
-          message={error}
-          actionLabel="Reintentar"
-          onAction={onRetry}
-        />
-      );
-    }
     return (
-      <View style={styles.empty}>
-        {isLoading ? (
-          <ActivityIndicator size="large" color={colors.primary} />
+      <ScrollView contentContainerStyle={[styles.feedbackScroll, { paddingBottom: bottomInset + spacing.lg }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+        {error ? (
+          <FeedbackState
+            compact
+            icon="cloud-offline-outline"
+            title="No pudimos buscar lugares"
+            message={error}
+            actionLabel="Reintentar"
+            onAction={onRetry}
+          />
         ) : (
-          <>
-            <Ionicons name="search-outline" size={64} color={colors.border} />
-            <Text style={styles.emptyTitle}>Sin resultados</Text>
-            <Text style={styles.emptySubtitle}>
-              Prueba con otro nombre o selecciona el destino en el mapa.
-            </Text>
-          </>
+          <FeedbackState
+            compact
+            loading={isLoading}
+            icon="search-outline"
+            title={isLoading ? 'Buscando lugares…' : 'No encontramos ese lugar'}
+            message={isLoading ? undefined : 'Prueba con el nombre de la calle y la ciudad, o usa «Elegir en el mapa».'}
+          />
         )}
-      </View>
+      </ScrollView>
     );
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled">
+    <ScrollView contentContainerStyle={[styles.list, { paddingBottom: bottomInset + spacing.lg }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+      <Text style={styles.sectionTitle} accessibilityLiveRegion="polite">
+        {suggestions.length} {suggestions.length === 1 ? 'lugar encontrado' : 'lugares encontrados'}
+      </Text>
       {selectionError ? (
         <View style={styles.selectionError} accessibilityLiveRegion="polite">
           <Ionicons name="alert-circle-outline" size={18} color={colors.danger} />
@@ -345,7 +380,9 @@ function SearchResults({
             onPress={() => onSelect(suggestion)}
             disabled={Boolean(resolvingId)}
             accessibilityRole="button"
-            accessibilityLabel={`Ir a ${suggestion.name}`}>
+            accessibilityState={{ disabled: Boolean(resolvingId), busy: isResolving }}
+            aria-busy={isResolving}
+            accessibilityLabel={`Ir a ${suggestion.name}${suggestion.address ? `, ${suggestion.address}` : ''}`}>
             <View style={styles.itemIcon}>
               {isResolving ? (
                 <ActivityIndicator size="small" color={colors.textSecondary} />
@@ -370,20 +407,31 @@ function RecentDestinations({
   places,
   isLoading,
   onSelect,
+  error,
+  onRetry,
 }: {
   places: Place[];
   isLoading: boolean;
   onSelect: (place: Place) => void;
+  error: string | null;
+  onRetry: () => void;
 }) {
   return (
     <>
       <Text style={styles.sectionTitle}>Destinos recientes</Text>
 
+      {error && (
+        <View style={styles.recentError}>
+          <Text style={styles.recentErrorText} accessibilityRole="alert">No pudimos actualizar tus destinos recientes. {error}</Text>
+          <Button title="Reintentar recientes" variant="secondary" onPress={onRetry} />
+        </View>
+      )}
+
       {isLoading ? (
         <View style={styles.emptyInline}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
-      ) : places.length === 0 ? (
+      ) : places.length === 0 && !error ? (
         <View style={styles.emptyInline}>
           <Ionicons name="location-outline" size={48} color={colors.border} />
           <Text style={styles.emptyTitle}>Aún no tienes destinos recientes</Text>
@@ -397,7 +445,7 @@ function RecentDestinations({
               style={styles.item}
               onPress={() => onSelect(place)}
               accessibilityRole="button"
-              accessibilityLabel={`Ir a ${place.name}`}>
+              accessibilityLabel={`Ir a ${place.name}, ${place.address}`}>
               <View style={styles.itemIcon}>
                 <Ionicons name="time-outline" size={20} color={colors.textSecondary} />
               </View>
@@ -423,8 +471,8 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   back: {
-    width: 44,
-    height: 44,
+    width: 48,
+    height: 48,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -433,18 +481,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    height: 48,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.pill,
+    minHeight: 48,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.bordeControl,
     backgroundColor: colors.surfaceMuted,
   },
-  searchInput: { flex: 1, fontSize: fontSize.md, color: colors.text, padding: 0 },
+  searchInput: { flex: 1, minWidth: 0, fontSize: fontSize.md, color: colors.text, paddingVertical: spacing.sm, outlineWidth: 0 },
+  searchBarFocused: { borderColor: colors.primary, backgroundColor: colors.surface, ...estiloFoco },
+  clearSearch: { width: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
+  searchHint: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm, fontSize: fontSize.sm, color: colors.textSecondary },
+  mapAction: { paddingHorizontal: spacing.lg, paddingBottom: spacing.md },
 
   scroll: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.xl },
 
   bento: { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.md },
+  bentoColumn: { flexDirection: 'column' },
+  shortcutRow: { flex: 1 },
   bentoCard: {
-    flex: 1,
     padding: spacing.md,
     borderRadius: radius.lg,
     backgroundColor: colors.surface,
@@ -464,6 +519,8 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     marginBottom: spacing.md,
   },
+  wideCardColumn: { flexDirection: 'column', alignItems: 'flex-start', gap: spacing.sm },
+  wideCardTextColumn: { flex: 0, width: '100%' },
   cardIcon: {
     width: 40,
     height: 40,
@@ -476,14 +533,15 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.text },
   cardSubtitle: { fontSize: fontSize.sm, color: colors.textSecondary },
   savedWarning: {
-    minHeight: 46,
+    minHeight: 48,
+    paddingVertical: spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
     paddingHorizontal: spacing.md,
     marginBottom: spacing.md,
     borderRadius: radius.md,
-    backgroundColor: '#FDECEA',
+    backgroundColor: colors.peligroSuave,
   },
   savedWarningText: { flex: 1, color: colors.danger, fontSize: fontSize.sm },
   disabled: { opacity: 0.5 },
@@ -500,7 +558,8 @@ const styles = StyleSheet.create({
 
   recentList: { gap: spacing.md },
   list: { paddingHorizontal: spacing.lg, gap: spacing.md, paddingBottom: spacing.xl },
-  item: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  feedbackScroll: { flexGrow: 1, justifyContent: 'center' },
+  item: { minHeight: 56, paddingVertical: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
   itemIcon: {
     width: 40,
     height: 40,
@@ -509,7 +568,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  itemText: { flex: 1 },
+  itemText: { flex: 1, minWidth: 0 },
   itemName: { fontSize: fontSize.md, fontWeight: fontWeight.medium, color: colors.text },
   itemAddress: { fontSize: fontSize.sm, color: colors.textSecondary },
   selectionError: {
@@ -518,17 +577,11 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     padding: spacing.md,
     borderRadius: radius.md,
-    backgroundColor: '#FDECEA',
+    backgroundColor: colors.peligroSuave,
   },
   selectionErrorText: { flex: 1, color: colors.danger, fontSize: fontSize.sm },
-
-  empty: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.xl,
-    gap: spacing.sm,
-  },
+  recentError: { gap: spacing.sm, marginBottom: spacing.md },
+  recentErrorText: { color: colors.danger, fontSize: fontSize.sm },
   emptyInline: {
     alignItems: 'center',
     justifyContent: 'center',

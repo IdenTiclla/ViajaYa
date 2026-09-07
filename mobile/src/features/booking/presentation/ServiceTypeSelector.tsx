@@ -12,7 +12,7 @@ type Props = {
 
 const OPTIONS: readonly SelectableOption<ServiceType>[] = SERVICE_OPTIONS.map((option) => ({
   id: option.id,
-  label: option.label,
+  label: option.shortLabel,
   icon: option.icon,
   accessibilityLabel: option.label,
 }));

@@ -1,4 +1,5 @@
 import { FontAwesome } from '@expo/vector-icons';
+import { useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -8,7 +9,7 @@ import {
   View,
 } from 'react-native';
 
-import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { colors, controles, estiloFoco, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 
 type Provider = 'google' | 'facebook';
 
@@ -25,28 +26,35 @@ const CONFIG: Record<
   facebook: { label: 'Facebook', icon: 'facebook', tint: colors.facebook },
 };
 
-/** Botón de proveedor social. Conectar a los hooks de OAuth en la Fase 6. */
-export function SocialButton({ provider, loading = false, disabled, style, ...rest }: Props) {
+/** Acceso social con la misma escala táctil que el resto de acciones. */
+export function SocialButton({ provider, loading = false, disabled, style, onFocus, onBlur, accessibilityLabel, accessibilityState, ...rest }: Props) {
+  const [enfocado, setEnfocado] = useState(false);
   const cfg = CONFIG[provider];
   const isDisabled = disabled || loading;
 
   return (
     <Pressable
+      {...rest}
       accessibilityRole="button"
-      accessibilityLabel={`Continuar con ${cfg.label}`}
-      accessibilityState={{ disabled: !!isDisabled, busy: loading }}
+      accessibilityLabel={loading ? `Conectando con ${cfg.label}` : accessibilityLabel ?? `Continuar con ${cfg.label}`}
+      accessibilityState={{ ...accessibilityState, disabled: !!isDisabled, busy: loading }}
+      aria-disabled={!!isDisabled}
+      aria-busy={loading}
       disabled={isDisabled}
+      onFocus={(event) => { setEnfocado(true); onFocus?.(event); }}
+      onBlur={(event) => { setEnfocado(false); onBlur?.(event); }}
       style={(state) => [
         styles.base,
-        (state.pressed || isDisabled) && styles.dimmed,
+        state.pressed && !isDisabled && styles.dimmed,
         typeof style === 'function' ? style(state) : style,
-      ]}
-      {...rest}>
+        isDisabled && !loading && styles.disabled,
+        enfocado && estiloFoco,
+      ]}>
       <View style={styles.content}>
         {loading ? (
           <ActivityIndicator size="small" color={colors.text} />
         ) : (
-          <FontAwesome name={cfg.icon} size={18} color={cfg.tint} />
+          <FontAwesome accessible={false} name={cfg.icon} size={18} color={isDisabled ? colors.textoDeshabilitado : cfg.tint} />
         )}
         <Text style={styles.label}>{loading ? 'Conectando…' : cfg.label}</Text>
       </View>
@@ -56,16 +64,18 @@ export function SocialButton({ provider, loading = false, disabled, style, ...re
 
 const styles = StyleSheet.create({
   base: {
-    flex: 1,
-    height: 52,
+    minHeight: controles.altoMinimo,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.bordeControl,
     backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  dimmed: { opacity: 0.5 },
-  content: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  label: { fontSize: fontSize.md, fontWeight: fontWeight.medium, color: colors.text },
+  dimmed: { opacity: 0.92 },
+  disabled: { backgroundColor: colors.fondoDeshabilitado, borderColor: 'transparent' },
+  content: { maxWidth: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
+  label: { flexShrink: 1, textAlign: 'center', fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.text },
 });

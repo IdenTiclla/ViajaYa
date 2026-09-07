@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
-import type { ComponentProps } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useState, type ComponentProps } from 'react';
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
-import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { colors, controles, estiloFoco, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -21,34 +21,43 @@ type Props<T extends string> = {
 
 /** Tarjetas uniformes para elegir una única opción dentro de un formulario. */
 export function SelectableOptionCards<T extends string>({ options, value, onChange }: Props<T>) {
+  const { fontScale } = useWindowDimensions();
+  const [enfocada, setEnfocada] = useState<T | null>(null);
+  const enColumna = fontScale > 1.3;
   return (
-    <View style={styles.cards}>
+    <View style={[styles.cards, enColumna && styles.cardsColumn]} accessibilityRole="radiogroup">
       {options.map((option) => {
         const selected = value === option.id;
         return (
-          <TouchableOpacity
+          <Pressable
             key={option.id}
-            style={[styles.card, selected && styles.cardSelected]}
+            style={({ pressed }) => [styles.card, enColumna && styles.cardRow, selected && styles.cardSelected, pressed && styles.pressed, enfocada === option.id && estiloFoco]}
             onPress={() => onChange(option.id)}
+            onFocus={() => setEnfocada(option.id)}
+            onBlur={() => setEnfocada(null)}
             accessibilityRole="radio"
             accessibilityState={{ checked: selected }}
+            aria-checked={selected}
             accessibilityLabel={option.accessibilityLabel}>
             <View style={[styles.icon, selected && styles.iconSelected]}>
               <Ionicons
+                accessible={false}
                 name={option.icon}
                 size={20}
-                color={selected ? colors.textOnPrimary : colors.primaryDark}
+                color={selected ? colors.primary : colors.textSecondary}
               />
             </View>
-            <Text style={[styles.label, selected && styles.labelSelected]}>
+            <Text style={[styles.label, enColumna && styles.labelRow, selected && styles.labelSelected]}>
               {option.label}
             </Text>
-            <Text
+            <Ionicons
               accessible={false}
-              style={[styles.selectedBadge, !selected && styles.hiddenBadge]}>
-              Seleccionado
-            </Text>
-          </TouchableOpacity>
+              name="checkmark-circle"
+              size={16}
+              color={colors.primary}
+              style={[enColumna ? styles.checkRow : styles.check, !selected && styles.hiddenBadge]}
+            />
+          </Pressable>
         );
       })}
     </View>
@@ -57,49 +66,41 @@ export function SelectableOptionCards<T extends string>({ options, value, onChan
 
 const styles = StyleSheet.create({
   cards: { flexDirection: 'row', gap: spacing.sm },
+  cardsColumn: { flexDirection: 'column' },
   card: {
     flex: 1,
     minWidth: 0,
-    // El contenido crece con el tamaño de letra del sistema; todas las opciones
-    // reservan el indicador para que la selección no cambie la altura de la fila.
-    minHeight: 74,
-    paddingHorizontal: spacing.xs,
-    paddingVertical: spacing.xs,
+    minHeight: 60,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
     borderRadius: radius.md,
     backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.bordeControl,
     alignItems: 'center',
-    justifyContent: 'flex-start',
+    justifyContent: 'center',
     gap: spacing.xs,
   },
-  cardSelected: { borderColor: colors.primary, backgroundColor: colors.surfaceMuted },
+  cardRow: { flex: 0, minHeight: controles.altoMinimo, flexDirection: 'row', gap: spacing.sm, justifyContent: 'flex-start' },
+  cardSelected: { borderColor: colors.primary, backgroundColor: colors.primarioSuave },
   icon: {
     width: 20,
     height: 20,
     borderRadius: radius.sm,
-    backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  iconSelected: { backgroundColor: colors.primary },
+  iconSelected: { backgroundColor: colors.primarioSuave },
   label: {
-    fontSize: fontSize.xs,
+    fontSize: fontSize.sm,
     fontWeight: fontWeight.semibold,
     color: colors.text,
     textAlign: 'center',
   },
   labelSelected: { color: colors.primaryDark },
-  selectedBadge: {
-    marginTop: 'auto',
-    alignSelf: 'center',
-    paddingHorizontal: spacing.xs,
-    paddingVertical: 1,
-    borderRadius: radius.pill,
-    backgroundColor: colors.primary,
-    color: colors.textOnPrimary,
-    fontSize: fontSize.xs,
-    fontWeight: fontWeight.semibold,
-  },
+  labelRow: { flex: 1, textAlign: 'left' },
+  check: { position: 'absolute', right: spacing.xs, top: spacing.xs },
+  checkRow: { marginLeft: 'auto' },
+  pressed: { opacity: 0.92 },
   hiddenBadge: { opacity: 0 },
 });

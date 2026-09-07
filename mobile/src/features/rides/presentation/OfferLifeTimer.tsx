@@ -64,6 +64,8 @@ export function OfferLifeTimer({
 
 const styles = StyleSheet.create({
   chip: {
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
@@ -73,6 +75,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceMuted,
   },
   chipLow: { backgroundColor: '#FDECEA' },
-  text: { fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.primary },
+  text: { flexShrink: 1, fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.primary },
   textLow: { color: colors.danger },
 });

@@ -56,6 +56,7 @@ export function LoginScreen() {
               name="email"
               render={({ field: { onChange, onBlur, value } }) => (
                 <TextField
+                  label="Correo electrónico"
                   leadingIcon="mail-outline"
                   placeholder="Correo electrónico"
                   autoCapitalize="none"
@@ -73,6 +74,7 @@ export function LoginScreen() {
               name="password"
               render={({ field: { onChange, onBlur, value } }) => (
                 <TextField
+                  label="Contraseña"
                   leadingIcon="lock-closed-outline"
                   placeholder="Contraseña"
                   password
@@ -86,12 +88,13 @@ export function LoginScreen() {
 
             <TouchableOpacity
               style={styles.forgot}
+              accessibilityRole="button"
               onPress={() => Alert.alert('Próximamente', 'Recuperación de contraseña en camino.')}>
               <Text style={styles.forgotText}>¿Olvidaste tu contraseña?</Text>
             </TouchableOpacity>
 
             <Button
-              title="Iniciar Sesión"
+              title="Iniciar sesión"
               trailingIcon="arrow-forward"
               loading={login.isPending}
               onPress={handleSubmit(onSubmit)}
@@ -124,9 +127,9 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   content: { padding: spacing.lg, gap: spacing.lg, flexGrow: 1, justifyContent: 'center' },
   form: { gap: spacing.md },
-  forgot: { alignSelf: 'flex-end' },
+  forgot: { alignSelf: 'flex-end', minHeight: 48, justifyContent: 'center' },
   forgotText: { color: colors.primary, fontSize: fontSize.sm, fontWeight: fontWeight.medium },
-  footer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
+  footer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center' },
   footerText: { color: colors.textSecondary, fontSize: fontSize.sm },
-  link: { color: colors.primary, fontSize: fontSize.sm, fontWeight: fontWeight.semibold },
+  link: { paddingVertical: spacing.md, color: colors.primary, fontSize: fontSize.sm, fontWeight: fontWeight.semibold, textDecorationLine: 'underline' },
 });

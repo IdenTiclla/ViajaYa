@@ -12,7 +12,6 @@ import { useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
 import { usePreventRemove } from 'expo-router/react-navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Keyboard,
   ScrollView,
   StyleSheet,
@@ -563,16 +562,11 @@ export function ConfigureTripScreen() {
           </ScrollView>
 
           <View style={styles.sheetFooter}>
-            <TouchableOpacity
-              style={[
-                styles.cta,
-                (!tripInServiceArea ||
-                  !labelsReady ||
-                  !fareIsValid ||
-                  createRide.isPending ||
-                  editRide.isPending) &&
-                  styles.ctaDisabled,
-              ]}
+            <Button
+              title={isEditing ? 'Guardar cambios' : 'Buscar ofertas'}
+              trailingIcon="arrow-forward"
+              loading={createRide.isPending || editRide.isPending || labelsResolving}
+              loadingLabel={labelsResolving ? 'Obteniendo direcciones…' : isEditing ? 'Guardando…' : 'Buscando ofertas…'}
               disabled={
                 !tripInServiceArea ||
                 !labelsReady ||
@@ -581,16 +575,7 @@ export function ConfigureTripScreen() {
                 editRide.isPending
               }
               onPress={isEditing ? saveEdit : searchOffers}
-              accessibilityRole="button"
-              accessibilityLabel={isEditing ? 'Guardar cambios' : 'Buscar ofertas'}>
-              {createRide.isPending || editRide.isPending || labelsResolving ? (
-                <ActivityIndicator color={colors.textOnPrimary} />
-              ) : (
-                <Text style={styles.ctaText}>
-                  {isEditing ? 'Guardar cambios' : 'Buscar Ofertas'}
-                </Text>
-              )}
-            </TouchableOpacity>
+            />
           </View>
         </SafeAreaView>
       </View>
@@ -646,8 +631,9 @@ const styles = StyleSheet.create({
   },
   topLeft: { alignItems: 'flex-start', gap: spacing.xs },
   back: {
-    width: 44,
-    height: 44,
+    width: 48,
+    minHeight: 48,
+    paddingVertical: spacing.sm,
     borderRadius: radius.pill,
     backgroundColor: colors.surface,
     alignItems: 'center',
@@ -708,25 +694,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    height: 44,
+    minHeight: 48,
+    paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.bordeControl,
     backgroundColor: colors.surface,
   },
   fareCurrency: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.textSecondary },
   fareInput: { flex: 1, fontSize: fontSize.lg, fontWeight: fontWeight.semibold, color: colors.text, padding: 0 },
 
-  cta: {
-    height: 48,
-    borderRadius: radius.md,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  ctaDisabled: { opacity: 0.5 },
-  ctaText: { color: colors.textOnPrimary, fontSize: fontSize.md, fontWeight: fontWeight.bold },
   locationStatus: { color: colors.textSecondary, fontSize: fontSize.sm, textAlign: 'center' },
   locationError: { gap: spacing.xs },
   error: { color: colors.danger, fontSize: fontSize.sm, textAlign: 'center' },

@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, fontSize, radius, spacing } from '@/core/theme';
+import { colors, controles, estiloFoco, fontSize, radius, spacing } from '@/core/theme';
 
 type Props = {
   checked: boolean;
@@ -13,19 +14,25 @@ type Props = {
 };
 
 export function Checkbox({ checked, onChange, children, error, disabled = false }: Props) {
+  const [enfocado, setEnfocado] = useState(false);
   return (
     <View style={styles.wrapper}>
       <Pressable
         accessibilityRole="checkbox"
         accessibilityState={{ checked, disabled }}
+        aria-checked={checked}
+        aria-disabled={disabled}
         disabled={disabled}
+        onFocus={() => setEnfocado(true)}
+        onBlur={() => setEnfocado(false)}
         onPress={() => onChange(!checked)}
         style={({ pressed }) => [
           styles.row,
           pressed && styles.pressed,
           disabled && styles.disabled,
+          enfocado && estiloFoco,
         ]}>
-        <View style={[styles.box, checked && styles.boxChecked]}>
+        <View style={[styles.box, checked && styles.boxChecked]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
           {checked && <Ionicons name="checkmark" size={14} color={colors.textOnPrimary} />}
         </View>
         <Text style={styles.label}>{children}</Text>
@@ -42,23 +49,22 @@ export function Checkbox({ checked, onChange, children, error, disabled = false 
 const styles = StyleSheet.create({
   wrapper: { gap: spacing.xs },
   row: {
-    minHeight: 44,
+    minHeight: controles.altoMinimo,
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: spacing.sm,
     paddingVertical: spacing.xs,
   },
-  pressed: { opacity: 0.72 },
-  disabled: { opacity: 0.5 },
+  pressed: { opacity: 0.92 },
+  disabled: { backgroundColor: colors.fondoDeshabilitado, borderRadius: radius.sm },
   box: {
     width: 22,
     height: 22,
     borderRadius: radius.sm,
     borderWidth: 1.5,
-    borderColor: colors.border,
+    borderColor: colors.bordeControl,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 1,
   },
   boxChecked: { backgroundColor: colors.primary, borderColor: colors.primary },
   label: { flex: 1, fontSize: fontSize.sm, color: colors.textSecondary, lineHeight: 20 },

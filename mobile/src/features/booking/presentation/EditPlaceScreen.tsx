@@ -9,7 +9,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   ScrollView,
   StyleSheet,
@@ -24,7 +23,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
 import { useDeletePlace, useSavePlace } from '@/features/booking/application/useSavedPlaces';
 import { getBoliviaPlaceError } from '@/features/booking/domain/bolivia';
-import { ConfirmDialog } from '@/shared/components';
+import { Button, ConfirmDialog } from '@/shared/components';
 import type { Place, SavedPlaceCategory } from '@/features/booking/domain/types';
 import {
   CATEGORY_META,
@@ -202,34 +201,25 @@ export function EditPlaceScreen() {
       </ScrollView>
 
       <View style={styles.footer}>
-        <TouchableOpacity
-          style={[styles.save, (!name.trim() || !hasPoint || busy) && styles.saveDisabled]}
+        <Button
+          title={isEditing ? 'Guardar cambios' : 'Guardar lugar'}
+          leadingIcon="bookmark-outline"
+          loading={savePlace.isPending}
+          loadingLabel="Guardando lugar…"
           onPress={onSave}
           disabled={!name.trim() || !hasPoint || busy}
-          accessibilityRole="button"
-          accessibilityLabel="Guardar lugar">
-          {savePlace.isPending ? (
-            <ActivityIndicator color={colors.textOnPrimary} />
-          ) : (
-            <>
-              <Ionicons name="bookmark" size={20} color={colors.textOnPrimary} />
-              <Text style={styles.saveText}>
-                {isEditing ? 'Guardar cambios' : 'Guardar lugar'}
-              </Text>
-            </>
-          )}
-        </TouchableOpacity>
+        />
 
         {isEditing && (
-          <TouchableOpacity
-            style={styles.delete}
+          <Button
+            title="Eliminar lugar"
+            leadingIcon="trash-outline"
+            variant="dangerSoft"
+            loading={deletePlace.isPending}
+            loadingLabel="Eliminando lugar…"
             onPress={() => setConfirmVisible(true)}
             disabled={busy}
-            accessibilityRole="button"
-            accessibilityLabel="Eliminar lugar">
-            <Ionicons name="trash-outline" size={18} color={colors.danger} />
-            <Text style={styles.deleteText}>Eliminar lugar</Text>
-          </TouchableOpacity>
+          />
         )}
       </View>
 
@@ -315,23 +305,4 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
-  save: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    height: 54,
-    borderRadius: radius.md,
-    backgroundColor: colors.primary,
-  },
-  saveDisabled: { opacity: 0.5 },
-  saveText: { color: colors.textOnPrimary, fontSize: fontSize.md, fontWeight: fontWeight.semibold },
-  delete: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    height: 48,
-  },
-  deleteText: { color: colors.danger, fontSize: fontSize.md, fontWeight: fontWeight.medium },
 });

@@ -12,7 +12,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Marker, type MapMarker } from 'react-native-maps';
 
-import { colors, fontWeight, radius, spacing } from '@/core/theme';
+import { fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 import type { Coordinates } from '@/features/booking/domain/types';
 import { PinLoadingIndicator } from '@/shared/components';
 import {
@@ -67,6 +67,7 @@ export function RoutePinMarker({
   loading = false,
   onPress,
 }: Props) {
+  const { colors, styles, modo } = useEstilos(crearEstilos);
   const marcador = useRef<MapMarker>(null);
   const [medidas, setMedidas] = useState({ ancho: 0, alto: TAMANO_PIN_RUTA });
   const [medidasEtiquetas, setMedidasEtiquetas] = useState({
@@ -86,7 +87,7 @@ export function RoutePinMarker({
   const { posicion, separacion, visible } = ubicacion;
   useEffect(() => programarRedibujadoMarcador(() => marcador.current?.redraw()), [
     medidas.ancho, medidas.alto, label, kind, posicion, showTooltip,
-    showEditControl, loading, dim, separacion, visible,
+    showEditControl, loading, dim, separacion, visible, modo,
   ]);
 
   return (
@@ -159,7 +160,7 @@ export function RoutePinMarker({
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   wrap: { alignItems: 'center' },
   etiquetas: { alignItems: 'center', gap: spacing.sm },
   wrapAbajo: { flexDirection: 'column-reverse' },

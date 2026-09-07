@@ -11,11 +11,12 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { colors, controles, estiloFoco, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { controles, fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 
 const ICON_SIZE = 22;
 
 export function PillTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+  const { colors, styles, estiloFoco } = useEstilos(crearEstilos);
   const insets = useSafeAreaInsets();
   const { fontScale } = useWindowDimensions();
   const [enfocada, setEnfocada] = useState<string | null>(null);
@@ -55,7 +56,7 @@ export function PillTabBar({ state, descriptors, navigation }: BottomTabBarProps
             ? options.title
             : route.name;
 
-        const iconColor = isFocused ? colors.text : colors.textSecondary;
+        const iconColor = isFocused ? colors.textoSobreAcento : colors.textSecondary;
         const iconNode =
           typeof options.tabBarIcon === 'function'
             ? options.tabBarIcon({ focused: isFocused, color: iconColor, size: ICON_SIZE })
@@ -93,7 +94,7 @@ export function PillTabBar({ state, descriptors, navigation }: BottomTabBarProps
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   bar: {
     flexDirection: 'row',
     flexWrap: 'wrap',

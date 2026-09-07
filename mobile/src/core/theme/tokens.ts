@@ -3,7 +3,7 @@
  * Única fuente de verdad de colores, espaciado, tipografía y radios (DRY).
  */
 
-export const colors = {
+export const coloresClaros = {
   // Marca
   primary: '#16308C', // azul principal (botones, marca)
   primaryDark: '#0F2266',
@@ -29,12 +29,78 @@ export const colors = {
   danger: '#C52C22',
   success: '#167347',
   peligroSuave: '#FFF0EE',
+  bordePeligro: '#F5C6C2',
+  exitoSuave: '#E8F5EE',
+  aviso: '#806000',
+  avisoSuave: '#FFF7DA',
+  textoSobreAcento: '#352900',
+  mapaTierra: '#EEF1F5',
+  mapaAgua: '#BEDDEC',
+  mapaCalle: '#FFFFFF',
+  mapaPrincipal: '#DDE4EC',
+  mapaEtiqueta: '#536174',
+  mapaContorno: '#FFFFFF',
+  mapaParque: '#D8E8DE',
 
   // Social
   google: '#FFFFFF',
   googleBorder: '#DADCE0',
   facebook: '#1877F2',
 } as const;
+
+export type Colors = { [Clave in keyof typeof coloresClaros]: string };
+export type ModoTema = 'light' | 'dark';
+
+export const coloresOscuros: Colors = {
+  ...coloresClaros,
+  primary: '#A8BDFF',
+  primaryDark: '#8DA8F7',
+  background: '#10151F',
+  surface: '#192230',
+  surfaceMuted: '#222D3D',
+  border: '#3B485C',
+  bordeControl: '#8999AF',
+  primarioSuave: '#273856',
+  text: '#F3F6FC',
+  textSecondary: '#B9C5D6',
+  textOnPrimary: '#10204E',
+  placeholder: '#AAB8CC',
+  fondoDeshabilitado: '#2D3849',
+  textoDeshabilitado: '#ADBACD',
+  danger: '#FFAAA2',
+  success: '#83DEAE',
+  peligroSuave: '#43292D',
+  bordePeligro: '#885057',
+  exitoSuave: '#193C31',
+  aviso: '#F5D76B',
+  avisoSuave: '#382F15',
+  facebook: '#85BAFF',
+  mapaTierra: '#172231',
+  mapaAgua: '#0D1725',
+  mapaCalle: '#334155',
+  mapaPrincipal: '#43536A',
+  mapaEtiqueta: '#CBD5E1',
+  mapaContorno: '#172231',
+  mapaParque: '#203A34',
+};
+
+/** Claro es el valor inicial de la app, independiente del teléfono. */
+export const TEMA_PREDETERMINADO: ModoTema = 'light';
+
+export function resolverModoTema(valor: unknown): ModoTema {
+  return valor === 'dark' ? 'dark' : TEMA_PREDETERMINADO;
+}
+
+export function obtenerTema(modo: ModoTema) {
+  const colors: Colors = modo === 'dark' ? coloresOscuros : coloresClaros;
+  return {
+    modo,
+    colors,
+    estiloFoco: { outlineColor: colors.primary, outlineWidth: 2, outlineOffset: 2 } as const,
+  };
+}
+
+export type Tema = ReturnType<typeof obtenerTema>;
 
 export const spacing = {
   xs: 4,
@@ -71,12 +137,4 @@ export const fontWeight = {
 /** Tamaño táctil mínimo; la altura puede crecer con el texto del sistema. */
 export const controles = { altoMinimo: 48 } as const;
 
-/** Foco de teclado visible sin desplazar el contenido al entrar o salir. */
-export const estiloFoco = {
-  outlineColor: colors.primary,
-  outlineWidth: 2,
-  outlineOffset: 2,
-} as const;
-
-export type Colors = typeof colors;
 export type Spacing = typeof spacing;

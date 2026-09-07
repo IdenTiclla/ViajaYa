@@ -29,7 +29,7 @@ import { useReducedMotion } from 'react-native-reanimated';
 
 import { getApiErrorMessage, getApiErrorStatus } from '@/core/errors/apiError';
 import { useBlockHardwareBack } from '@/core/navigation/useBlockHardwareBack';
-import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
 import { ConfirmationOverlay } from '@/features/booking/presentation/ConfirmationOverlay';
 import { SearchingDriversScreen } from '@/features/booking/presentation/SearchingDriversScreen';
@@ -47,6 +47,7 @@ import { TripRouteMap } from '@/features/rides/presentation/TripRouteMap';
 import { Button, ConfirmDialog, FeedbackState } from '@/shared/components';
 
 export function OffersScreen() {
+  const { colors, styles } = useEstilos(crearEstilos);
   const router = useRouter();
   const { rideId } = useLocalSearchParams<{ rideId?: string }>();
   const id = rideId ?? null;
@@ -439,6 +440,7 @@ export function OffersScreen() {
 
 /** Punto verde que late: indicador "en vivo". */
 function LiveDot() {
+  const { styles } = useEstilos(crearEstilos);
   const reducirMovimiento = useReducedMotion();
   const [value] = useState(() => new Animated.Value(0));
   useEffect(() => {
@@ -470,7 +472,7 @@ function LiveDot() {
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceMuted },
   mapFallback: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: colors.surfaceMuted },
 
@@ -502,8 +504,8 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     borderRadius: radius.sm,
     borderWidth: 1,
-    borderColor: 'rgba(217,45,32,0.28)',
-    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderColor: colors.bordePeligro,
+    backgroundColor: colors.surface,
   },
   connectionWarningText: {
     flex: 1,

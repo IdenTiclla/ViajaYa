@@ -5,7 +5,7 @@
 import { Fragment } from 'react';
 import { Polyline } from 'react-native-maps';
 
-import { colors } from '@/core/theme';
+import { useTema } from '@/core/theme';
 import type { Coordinates } from '@/features/booking/domain/types';
 import {
   ANCHO_CONTORNO_RUTA,
@@ -13,6 +13,7 @@ import {
 } from '@/features/rides/presentation/routeTooltipLayout';
 
 export function RoutePolyline({ coordinates }: { coordinates: Coordinates[] }) {
+  const { colors } = useTema();
   if (coordinates.length < 2) return null;
 
   return (

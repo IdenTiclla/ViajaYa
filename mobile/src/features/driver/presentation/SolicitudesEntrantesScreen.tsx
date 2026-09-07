@@ -24,7 +24,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
-import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 import { DriverSearchMap } from '@/features/driver/presentation/DriverSearchMap';
 import { OfferSentOverlay } from '@/features/driver/presentation/OfferSentOverlay';
 import { RadarPulse } from '@/features/driver/presentation/RadarPulse';
@@ -53,6 +53,7 @@ import { useAuthStore } from '@/store/authStore';
 type ViewMode = 'list' | 'map';
 
 export function SolicitudesEntrantesScreen() {
+  const { colors, styles } = useEstilos(crearEstilos);
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const online = user?.isOnline ?? false;
@@ -520,6 +521,7 @@ function DriverFlowRecovery({
   error?: string;
   onRetry?: () => void;
 }) {
+  const { colors, styles } = useEstilos(crearEstilos);
   return (
     <SafeAreaView style={styles.recovery}>
       {error ? (
@@ -555,6 +557,7 @@ function DriverRequestsState({
   error?: string;
   onRetry?: () => void;
 }) {
+  const { styles } = useEstilos(crearEstilos);
   return (
     <SafeAreaView style={styles.requestsState} edges={['bottom']}>
       <RequestsHeader count={0} />
@@ -576,6 +579,7 @@ function SearchingState({
 }: {
   position: WatchedPosition;
 }) {
+  const { styles } = useEstilos(crearEstilos);
   return (
     <View style={styles.root}>
       <DriverSearchMap coordinates={position.coordinates} status={position.status} retry={position.retry} />
@@ -603,6 +607,7 @@ function RequestsHeader({
   mode?: ViewMode;
   onChangeMode?: (mode: ViewMode) => void;
 }) {
+  const { styles } = useEstilos(crearEstilos);
   const hasModeSwitch = mode != null && onChangeMode != null;
   return (
     <SafeAreaView edges={['top']} style={styles.requestsHeaderSafe} pointerEvents="box-none">
@@ -632,6 +637,7 @@ function ViewModeToggle({
   mode: ViewMode;
   onChange: (mode: ViewMode) => void;
 }) {
+  const { styles } = useEstilos(crearEstilos);
   return (
     <View style={styles.toggle} accessibilityRole="tablist">
       <ToggleButton
@@ -661,6 +667,7 @@ function ToggleButton({
   active: boolean;
   onPress: () => void;
 }) {
+  const { colors, styles } = useEstilos(crearEstilos);
   return (
     <TouchableOpacity
       style={[styles.toggleBtn, active && styles.toggleBtnActive]}
@@ -674,7 +681,7 @@ function ToggleButton({
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
   requestsState: { flex: 1, backgroundColor: colors.background },
   recovery: {
@@ -765,9 +772,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm + 4,
     paddingVertical: spacing.sm,
     borderRadius: radius.md,
-    backgroundColor: 'rgba(255,255,255,0.94)',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: 'rgba(226,228,232,0.7)',
+    borderColor: colors.border,
     shadowColor: '#000',
     shadowOpacity: 0.08,
     shadowRadius: 8,
@@ -790,9 +797,9 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.sm,
     paddingHorizontal: spacing.sm + 4,
     borderRadius: radius.md,
-    backgroundColor: '#FDECEA',
+    backgroundColor: colors.peligroSuave,
     borderWidth: 1,
-    borderColor: '#F5C6C2',
+    borderColor: colors.bordePeligro,
   },
   requestsWarningText: { flex: 1, color: colors.danger, fontSize: fontSize.sm },
 

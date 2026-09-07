@@ -10,7 +10,7 @@ import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import { getPlaceStreetName } from '@/features/booking/domain/placeLabels';
 import type { Coordinates, Place } from '@/features/booking/domain/types';
 import { useRoute } from '@/features/booking/application/useRoute';
-import { declutteredMapStyle } from '@/features/booking/presentation/mapStyle';
+import { useEstiloMapa } from '@/features/booking/presentation/mapStyle';
 import { RoutePinMarker } from '@/features/rides/presentation/RoutePinMarker';
 import { RoutePolyline } from '@/features/rides/presentation/RoutePolyline';
 import { MARGEN_TOOLTIP_RUTA } from '@/features/rides/presentation/routeTooltipLayout';
@@ -31,6 +31,7 @@ export function TripRouteMap({
   showPlaceNamesInTooltip?: boolean;
 }) {
   const mapRef = useRef<MapView>(null);
+  const { estiloMapa, modoMapa } = useEstiloMapa(true);
   const { rumboMapa, zoomMapa, actualizarRumbo } = useRumboMapa(mapRef);
   const { route } = useRoute(origin, destination);
 
@@ -80,7 +81,8 @@ export function TripRouteMap({
       provider={PROVIDER_GOOGLE}
       style={StyleSheet.absoluteFill}
       initialRegion={region}
-      customMapStyle={declutteredMapStyle}
+      customMapStyle={estiloMapa}
+      userInterfaceStyle={modoMapa}
       // La proyección de colisiones comparte la vista cenital del trayecto.
       pitchEnabled={false}
       onMapReady={() => fit(false)}

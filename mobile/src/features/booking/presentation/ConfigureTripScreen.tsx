@@ -24,7 +24,7 @@ import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
-import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
 import { useRoute } from '@/features/booking/application/useRoute';
 import { useTripPlaceLabels } from '@/features/booking/application/useTripPlaceLabels';
@@ -49,7 +49,7 @@ import {
   PASSENGER_ACTIVE_RIDE_KEY,
   useRide,
 } from '@/features/rides/application/useRides';
-import { declutteredMapStyle } from '@/features/booking/presentation/mapStyle';
+import { useEstiloMapa } from '@/features/booking/presentation/mapStyle';
 import { RoutePinMarker } from '@/features/rides/presentation/RoutePinMarker';
 import { RoutePolyline } from '@/features/rides/presentation/RoutePolyline';
 import { MARGEN_TOOLTIP_EDITABLE } from '@/features/rides/presentation/routeTooltipLayout';
@@ -76,6 +76,7 @@ function formatDuration(seconds: number): string {
 }
 
 export function ConfigureTripScreen() {
+  const { colors, styles } = useEstilos(crearEstilos);
   const router = useRouter();
   const isFocused = useIsFocused();
   const { rideId } = useLocalSearchParams<{ rideId?: string }>();
@@ -107,6 +108,7 @@ export function ConfigureTripScreen() {
   const [keyboardOffset, setKeyboardOffset] = useState(0);
   // Mostrar/ocultar etiquetas de lugares (el usuario lo controla con el toggle).
   const [showPlaces, setShowPlaces] = useState(false);
+  const { estiloMapa, modoMapa } = useEstiloMapa(!showPlaces);
   const [confirmExit, setConfirmExit] = useState(false);
   const [allowExit, setAllowExit] = useState(false);
   const [exitAfterSave, setExitAfterSave] = useState(false);
@@ -406,7 +408,8 @@ export function ConfigureTripScreen() {
           provider={PROVIDER_GOOGLE}
           style={StyleSheet.absoluteFill}
           initialRegion={region}
-          customMapStyle={showPlaces ? [] : declutteredMapStyle}
+          customMapStyle={estiloMapa}
+          userInterfaceStyle={modoMapa}
           pitchEnabled={false}
           onRegionChangeComplete={actualizarRumbo}
           onMapReady={() => fitToTrip(false)}>
@@ -606,7 +609,7 @@ export function ConfigureTripScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceMuted },
   fallback: { alignItems: 'center', justifyContent: 'center', gap: spacing.md, padding: spacing.lg },
   fallbackText: { color: colors.textSecondary, fontSize: fontSize.md, textAlign: 'center' },

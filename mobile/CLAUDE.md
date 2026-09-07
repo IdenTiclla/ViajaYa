@@ -20,7 +20,7 @@ El enrutado (`src/app/`) solo monta pantallas; la lógica vive en `src/features/
 ```
 src/
 ├── app/                 # Rutas (expo-router, file-based). Solo composición de pantallas.
-│   ├── _layout.tsx        # Raíz: providers (QueryClient, SafeArea, GestureHandler) + gate por sesión/rol
+│   ├── _layout.tsx        # Raíz: providers (tema, QueryClient, SafeArea, GestureHandler) + gate por sesión/rol
 │   ├── index.tsx          # Redirect por rol → (auth)/login | (app)/(tabs) | (driver)/(tabs)/solicitudes
 │   ├── (auth)/            # login, register
 │   ├── (app)/             # Grupo pasajero (guard: authenticated && !driver)
@@ -42,6 +42,7 @@ src/
 │   │   ├── data/            # ridesRepository.ts (DTO ↔ dominio)
 │   │   ├── application/     # useRides · useRideMutations · useCloseFlow · useNegotiationSocket
 │   │   └── presentation/    # FareKeypad · OfferLifeTimer · RideHistoryScreen · RideRatingCard · …
+│   ├── profile/           # presentación del perfil de pasajero y selector de tema compartido
 │   └── driver/            # application/ + presentation/ únicamente (reusa data/domain de rides)
 │       ├── application/     # useDriverRequests (zustand) · useDriverToasts
 │       └── presentation/    # SolicitudesEntrantesScreen · DriverTopBar · RequestCard · DriverSearchMap · …
@@ -52,7 +53,7 @@ src/
 │   ├── realtime/socket.ts # WS genérico con reconnect (token por subprotocol, backoff exponencial)
 │   ├── errors/apiError.ts
 │   ├── hooks/            # useCountdown (AppState-aware), …
-│   └── theme/            # tokens.ts + index.ts (design system)
+│   └── theme/            # paletas, estilos reactivos y preferencia local persistida
 ├── shared/components/  # UI reutilizable: Button, TextField, Checkbox, ConfirmDialog, SocialButton, …
 └── store/authStore.ts  # Sesión global (zustand); se auto-logout si el refresh falla
 ```
@@ -177,7 +178,18 @@ fuerza otro handshake que decide autoritativamente si sigue `PENDING`.
 
 ## Tema (design system)
 
-`core/theme/tokens.ts` (única fuente de verdad; reexportado por `index.ts`):
+`core/theme/tokens.ts` contiene las paletas clara y oscura y los tokens de diseño.
+La app inicia en **claro**, independientemente del sistema. **Perfil → Apariencia**
+permite elegir Claro u Oscuro para pasajero y conductor. La preferencia vive en
+`viajaya.tema` (SecureStore nativo; localStorage web), se conserva al cerrar sesión
+y no modifica la cuenta del backend.
+
+`ProveedorTema` sincroniza colores, Expo Router, StatusBar, Appearance y el fondo
+nativo. Cambiar el tema actualiza el contexto sin remontar las pantallas ni perder
+formularios o conexiones. `crearStoreTema` acota la lectura a 5 s, descarta resultados
+anteriores a una elección y permite reintentar si el almacenamiento falla.
+
+Paleta clara:
 
 - `colors.primary #16308C` (azul TaxiGo) · `colors.primaryDark #0F2266` · `colors.accent #F5C518`
   (amarillo Stitch: tab activo, estrellas, acentos) · `success #167347` · `danger #C52C22` ·
@@ -188,8 +200,25 @@ fuerza otro handshake que decide autoritativamente si sigue `PENDING`.
 - `spacing` xs/sm/md/lg/xl/xxl = 4/8/16/24/32/48 · `radius` sm/md/lg/pill = 8/12/16/999 ·
   `fontSize` xs…xxl = 12/14/16/20/24/32 · `fontWeight` regular/medium/semibold/bold.
 
-Importa `{ colors, spacing, radius, fontSize, fontWeight }` desde `@/core/theme`. `app.config.ts`
-usa `#16308C` para splash/adaptiveIcon.
+Paleta oscura: fondo `#10151F`, tarjetas `#192230`, texto `#F3F6FC`, primario
+`#A8BDFF` y texto sobre primario `#10204E`. Ambos temas conservan contraste para
+texto, controles y estados. `app.config.ts` mantiene `userInterfaceStyle: 'light'`
+como base nativa; Appearance aplica después la elección explícita de la app.
+
+Importa tokens de tamaño y los hooks desde `@/core/theme`. Dentro del componente,
+usa `useTema()` para colores sueltos o `useEstilos(crearEstilos)` para obtener
+`{ colors, styles, estiloFoco }`. Declara la fábrica fuera del componente:
+
+```tsx
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+  tarjeta: { backgroundColor: colors.surface, padding: spacing.md },
+});
+```
+
+No captures colores en `StyleSheet.create` ni tablas de iconos a nivel de módulo.
+Los mapas usan `useEstiloMapa` y `userInterfaceStyle` explícito; cambiar tema debe
+redibujar también los marcadores nativos. Usa `textoSobreAcento` sobre el amarillo.
+Splash/adaptiveIcon conservan el azul de marca `#16308C`.
 
 ### Controles y accesibilidad
 

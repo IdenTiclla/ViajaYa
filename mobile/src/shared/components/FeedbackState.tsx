@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
-import { colors, fontSize, fontWeight, spacing } from '@/core/theme';
+import { fontSize, fontWeight, spacing, useEstilos, type Tema } from '@/core/theme';
 import { Button } from '@/shared/components/Button';
 
 type Props = {
@@ -24,6 +24,7 @@ export function FeedbackState({
   actionLabel,
   onAction,
 }: Props) {
+  const { colors, styles } = useEstilos(crearEstilos);
   return (
     <View
       style={[styles.root, compact && styles.compact]}
@@ -51,7 +52,7 @@ export function FeedbackState({
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   root: {
     flex: 1,
     minHeight: 260,

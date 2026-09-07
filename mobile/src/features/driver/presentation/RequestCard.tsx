@@ -16,7 +16,7 @@ import ReanimatedSwipeable, {
 } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import Animated, { SlideInDown } from 'react-native-reanimated';
 
-import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 import { useCountdown } from '@/core/hooks/useCountdown';
 import { SERVICE_META } from '@/features/booking/domain/serviceCatalog';
 import { formatKm, haversineKm, pricePerKm } from '@/features/rides/domain/geo';
@@ -72,6 +72,7 @@ export function RequestCard({
   onOpenPriceInput,
   onWithdraw,
 }: Props) {
+  const { colors, styles } = useEstilos(crearEstilos);
   const swipeRef = useRef<SwipeableMethods>(null);
   const tripKm = useMemo(
     () => haversineKm(ride.origin.coordinates, ride.destination.coordinates),
@@ -118,7 +119,7 @@ export function RequestCard({
         )}
         {expired && (
           <View style={styles.expiredBanner}>
-            <Ionicons name="time-outline" size={15} color="#5A4500" />
+            <Ionicons name="time-outline" size={15} color={colors.textoSobreAcento} />
             <Text style={styles.expiredBannerText}>Tu oferta expiró · vuelve a ofertar</Text>
           </View>
         )}
@@ -308,6 +309,7 @@ function OfferedBanner({
 }: {
   expiresAt: string | null;
 }) {
+  const { colors, styles } = useEstilos(crearEstilos);
   const secondsLeft = useCountdown(expiresAt);
   const expiring = secondsLeft != null && secondsLeft <= 0;
   return (
@@ -319,7 +321,7 @@ function OfferedBanner({
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   swipeAction: {
     width: 96,
     backgroundColor: colors.textSecondary,
@@ -335,9 +337,9 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: spacing.md,
     borderRadius: radius.lg,
-    backgroundColor: 'rgba(255,255,255,0.94)',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: 'rgba(226,228,232,0.7)',
+    borderColor: colors.border,
     shadowColor: '#000',
     shadowOpacity: 0.1,
     shadowRadius: 12,
@@ -373,7 +375,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     backgroundColor: colors.accent,
   },
-  expiredBannerText: { color: '#5A4500', fontSize: fontSize.xs, fontWeight: fontWeight.bold },
+  expiredBannerText: { color: colors.textoSobreAcento, fontSize: fontSize.xs, fontWeight: fontWeight.bold },
   pausedBanner: {
     minHeight: 42,
     flexDirection: 'row',
@@ -449,7 +451,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.surface,
   },
-  ratingBadgeText: { color: '#5A4500', fontSize: 10, fontWeight: fontWeight.bold },
+  ratingBadgeText: { color: colors.textoSobreAcento, fontSize: 10, fontWeight: fontWeight.bold },
 
   cardInfo: { flex: 1, gap: 3, justifyContent: 'center' },
   riderName: { fontSize: fontSize.md, fontWeight: fontWeight.bold, color: colors.text },
@@ -468,11 +470,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs + 2,
     borderRadius: radius.pill,
-    backgroundColor: 'rgba(245,197,24,0.18)',
+    backgroundColor: colors.avisoSuave,
     borderWidth: 1,
     borderColor: 'rgba(245,197,24,0.5)',
   },
-  quickPillText: { color: '#7A6000', fontSize: fontSize.sm, fontWeight: fontWeight.bold },
+  quickPillText: { color: colors.aviso, fontSize: fontSize.sm, fontWeight: fontWeight.bold },
   pencilBtn: {
     width: 34,
     height: 34,
@@ -504,7 +506,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   withdrawAction: { flexDirection: 'row', gap: spacing.xs },
-  decline: { flex: 1, backgroundColor: '#FDECEA', borderWidth: 1, borderColor: '#F5C6C2' },
+  decline: { flex: 1, backgroundColor: colors.peligroSuave, borderWidth: 1, borderColor: colors.bordePeligro },
   declineText: { color: colors.danger, fontSize: fontSize.md, fontWeight: fontWeight.bold },
   accept: { flex: 1.6, backgroundColor: colors.primary },
   acceptText: { color: colors.textOnPrimary, fontSize: fontSize.md, fontWeight: fontWeight.bold },

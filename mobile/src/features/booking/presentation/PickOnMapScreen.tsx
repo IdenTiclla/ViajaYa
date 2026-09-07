@@ -20,7 +20,8 @@ import {
 import MapView, { PROVIDER_GOOGLE, type Details, type Region } from 'react-native-maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { useEstiloMapa } from '@/features/booking/presentation/mapStyle';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
 import { useRegionPlace } from '@/features/booking/application/useRegionPlace';
 import {
@@ -52,6 +53,7 @@ function coordenadasCasiIguales(a: Place['coordinates'], b: Place['coordinates']
 }
 
 export function PickOnMapScreen() {
+  const { colors, styles } = useEstilos(crearEstilos);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { target, saveAs, category, id, label, rideId } = useLocalSearchParams<{
@@ -81,6 +83,7 @@ export function PickOnMapScreen() {
     retry: retryLocation,
   } = useCurrentLocation();
   const mapRef = useRef<MapView>(null);
+  const { estiloMapa, modoMapa } = useEstiloMapa(false);
   const mapReady = useRef(false);
   const pendingGpsRegion = useRef<{ region: Region; isEstimated: boolean } | null>(null);
   const usableOrigin = origin && isPlaceInBolivia(origin) ? origin : null;
@@ -285,6 +288,8 @@ export function PickOnMapScreen() {
   return (
     <View style={styles.root}>
       <MapView
+        customMapStyle={estiloMapa}
+        userInterfaceStyle={modoMapa}
         ref={mapRef}
         provider={PROVIDER_GOOGLE}
         style={StyleSheet.absoluteFill}
@@ -482,6 +487,7 @@ function SelectionPointRow({
   error?: boolean;
   loading?: boolean;
 }) {
+  const { colors, styles } = useEstilos(crearEstilos);
   return (
     <View
       style={[
@@ -523,7 +529,7 @@ function SelectionPointRow({
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceMuted },
 
   topArea: {
@@ -580,9 +586,9 @@ const styles = StyleSheet.create({
     minWidth: 0,
     padding: spacing.xs,
     borderRadius: radius.md,
-    backgroundColor: 'rgba(255,255,255,0.96)',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: 'rgba(226,228,232,0.85)',
+    borderColor: colors.border,
     shadowColor: '#000',
     shadowOpacity: 0.1,
     shadowRadius: 8,
@@ -598,8 +604,8 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     borderRadius: radius.sm,
   },
-  routePointActiveOrigin: { backgroundColor: 'rgba(22,48,140,0.06)' },
-  routePointActiveDestination: { backgroundColor: 'rgba(217,45,32,0.06)' },
+  routePointActiveOrigin: { backgroundColor: colors.primarioSuave },
+  routePointActiveDestination: { backgroundColor: colors.peligroSuave },
   routePointBadge: {
     width: 28,
     height: 28,

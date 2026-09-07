@@ -12,8 +12,8 @@ import { useEffect, useRef } from 'react';
 import { Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 
-import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
-import { declutteredMapStyle } from '@/features/booking/presentation/mapStyle';
+import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { useEstiloMapa } from '@/features/booking/presentation/mapStyle';
 import type { Coordinates } from '@/core/domain/geo';
 import type { WatchStatus } from '@/features/home/application/useWatchPosition';
 
@@ -35,7 +35,9 @@ type Props = {
 };
 
 export function DriverSearchMap({ coordinates, status, retry }: Props) {
+  const { colors, styles } = useEstilos(crearEstilos);
   const mapRef = useRef<MapView>(null);
+  const { estiloMapa, modoMapa } = useEstiloMapa(true);
 
   const region: Region = coordinates
     ? {
@@ -67,7 +69,8 @@ export function DriverSearchMap({ coordinates, status, retry }: Props) {
         provider={PROVIDER_GOOGLE}
         style={StyleSheet.absoluteFill}
         initialRegion={region}
-        customMapStyle={declutteredMapStyle}
+        customMapStyle={estiloMapa}
+        userInterfaceStyle={modoMapa}
         scrollEnabled={false}
         zoomEnabled={false}
         rotateEnabled={false}
@@ -104,7 +107,7 @@ export function DriverSearchMap({ coordinates, status, retry }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   container: { flex: 1, overflow: 'hidden', backgroundColor: colors.surfaceMuted },
   permissionOverlay: {
     position: 'absolute',
@@ -121,9 +124,9 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     padding: spacing.lg,
     borderRadius: radius.lg,
-    backgroundColor: 'rgba(255,255,255,0.92)',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: 'rgba(226,228,232,0.7)',
+    borderColor: colors.border,
     shadowColor: '#000',
     shadowOpacity: 0.15,
     shadowRadius: 16,

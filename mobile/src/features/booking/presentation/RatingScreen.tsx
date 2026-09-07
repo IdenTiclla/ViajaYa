@@ -19,7 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
 import { useBlockHardwareBack } from '@/core/navigation/useBlockHardwareBack';
-import { colors, fontSize, spacing } from '@/core/theme';
+import { fontSize, spacing, useEstilos, type Tema } from '@/core/theme';
 import {
   PASSENGER_ACTIVE_RIDE_KEY,
   PENDING_RATING_RIDE_KEY,
@@ -32,6 +32,7 @@ import { Button } from '@/shared/components';
 const SERVICE_LABELS = { taxi: 'Taxi', moto: 'Moto' } as const;
 
 export function RatingScreen() {
+  const { colors, styles } = useEstilos(crearEstilos);
   const router = useRouter();
   const queryClient = useQueryClient();
   const { rideId } = useLocalSearchParams<{ rideId?: string }>();
@@ -131,7 +132,7 @@ export function RatingScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
   center: { alignItems: 'center', justifyContent: 'center' },
   content: { padding: spacing.lg, gap: spacing.md },

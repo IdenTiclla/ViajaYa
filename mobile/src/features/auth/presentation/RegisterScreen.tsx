@@ -13,13 +13,14 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
-import { colors, fontSize, fontWeight, spacing } from '@/core/theme';
+import { fontSize, fontWeight, spacing, useEstilos, type Tema } from '@/core/theme';
 import { useRegister } from '@/features/auth/application/useAuth';
 import { useSocialAuth } from '@/features/auth/application/useSocialAuth';
 import { type RegisterForm, registerSchema } from '@/features/auth/application/validation';
 import { Button, Checkbox, Divider, SocialButton, TextField } from '@/shared/components';
 
 export function RegisterScreen() {
+  const { styles } = useEstilos(crearEstilos);
   const register = useRegister();
   const social = useSocialAuth({
     onError: (message) => Alert.alert('No se pudo crear la cuenta', message),
@@ -174,7 +175,7 @@ export function RegisterScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
   content: { padding: spacing.lg, gap: spacing.lg, flexGrow: 1, justifyContent: 'center' },

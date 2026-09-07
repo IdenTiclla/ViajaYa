@@ -24,7 +24,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
 import { useBlockHardwareBack } from '@/core/navigation/useBlockHardwareBack';
-import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 import { useCancelRide } from '@/features/rides/application/useRideMutations';
 import {
   PASSENGER_ACTIVE_RIDE_KEY,
@@ -77,6 +77,7 @@ const DELIVERY_BANNER: Record<RideStatus, Banner> = {
 const CANCELLABLE: RideStatus[] = ['searching', 'accepted', 'arriving'];
 
 export function TripScreen() {
+  const { colors, styles } = useEstilos(crearEstilos);
   const router = useRouter();
   const queryClient = useQueryClient();
   const { rideId } = useLocalSearchParams<{ rideId?: string }>();
@@ -234,6 +235,7 @@ export function TripScreen() {
 }
 
 function DriverCard({ ride }: { ride: Ride }) {
+  const { colors, styles } = useEstilos(crearEstilos);
   const driver = ride.driver!;
   const vehicle = [
     driver.vehicleType ? SERVICE_LABELS[driver.vehicleType] : null,
@@ -302,6 +304,7 @@ function ContactButton({
   onPress: () => void;
   disabled?: boolean;
 }) {
+  const { colors, styles } = useEstilos(crearEstilos);
   return (
     <TouchableOpacity
       style={[styles.contactBtn, disabled && styles.contactDisabled]}
@@ -315,7 +318,7 @@ function ContactButton({
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceMuted },
   fallback: { flex: 1, backgroundColor: colors.background, padding: spacing.lg, gap: spacing.md },
   center: { alignItems: 'center', justifyContent: 'center' },

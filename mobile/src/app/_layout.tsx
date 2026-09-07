@@ -1,12 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { colors } from '@/core/theme';
+import { useEstilos, type Tema } from '@/core/theme';
+import { ProveedorTema } from '@/core/theme/ProveedorTema';
 import { SessionRecoveryScreen } from '@/features/auth/presentation/SessionRecoveryScreen';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
 import { usePassengerToasts } from '@/features/booking/application/usePassengerToasts';
@@ -20,6 +20,7 @@ const queryClient = new QueryClient({
 });
 
 function RootNavigator() {
+  const { colors, styles } = useEstilos(crearEstilos);
   const status = useAuthStore((s) => s.status);
   const user = useAuthStore((s) => s.user);
   const bootstrap = useAuthStore((s) => s.bootstrap);
@@ -72,12 +73,12 @@ function RootNavigator() {
   );
 }
 
-export default function RootLayout() {
+function ContenidoRaiz() {
+  const { styles } = useEstilos(crearEstilos);
   return (
     <GestureHandlerRootView style={styles.root}>
       <QueryClientProvider client={queryClient}>
         <SafeAreaProvider>
-          <StatusBar style="dark" />
           <RootNavigator />
         </SafeAreaProvider>
       </QueryClientProvider>
@@ -85,7 +86,11 @@ export default function RootLayout() {
   );
 }
 
-const styles = StyleSheet.create({
+export default function RootLayout() {
+  return <ProveedorTema><ContenidoRaiz /></ProveedorTema>;
+}
+
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   root: { flex: 1 },
   splash: {
     flex: 1,

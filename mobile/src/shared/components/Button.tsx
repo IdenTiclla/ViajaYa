@@ -9,7 +9,7 @@ import {
   View,
 } from 'react-native';
 
-import { colors, controles, estiloFoco, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { controles, fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 
 type Variant = 'primary' | 'secondary' | 'danger' | 'dangerSoft';
 
@@ -40,6 +40,7 @@ export function Button({
   onBlur,
   ...rest
 }: Props) {
+  const { colors, styles, estiloFoco } = useEstilos(crearEstilos);
   const isDisabled = disabled || loading;
   const [enfocado, setEnfocado] = useState(false);
   const textoVisible = loading ? (loadingLabel ?? `${title}…`) : title;
@@ -97,7 +98,7 @@ export function Button({
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   base: {
     minHeight: controles.altoMinimo,
     borderRadius: radius.md,

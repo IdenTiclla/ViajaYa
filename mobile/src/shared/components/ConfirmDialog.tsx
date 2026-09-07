@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRef } from 'react';
 import { AccessibilityInfo, findNodeHandle, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
-import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 import { Button } from './Button';
 
 type Props = {
@@ -34,6 +34,7 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: Props) {
+  const { colors, styles } = useEstilos(crearEstilos);
   const accent = destructive ? colors.danger : colors.primary;
   const tituloRef = useRef<Text>(null);
   const { width, fontScale } = useWindowDimensions();
@@ -91,7 +92,7 @@ export function ConfirmDialog({
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.45)',

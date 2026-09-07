@@ -25,7 +25,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
-import { colors, estiloFoco, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
 import { usePlaceSearch } from '@/features/booking/application/usePlaceSearch';
 import { useRecentDestinations } from '@/features/booking/application/useRecentDestinations';
@@ -47,6 +47,7 @@ function placeErrorMessage(error: unknown): string {
 }
 
 export function DestinationSearchScreen() {
+  const { colors, styles } = useEstilos(crearEstilos);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { fontScale } = useWindowDimensions();
@@ -294,6 +295,7 @@ function ShortcutCard({
   enColumna: boolean;
   onPress: () => void;
 }) {
+  const { colors, styles } = useEstilos(crearEstilos);
   const meta = CATEGORY_META[category];
   const tint = colors.primary;
   return (
@@ -335,6 +337,7 @@ function SearchResults({
   onSelect: (suggestion: PlaceSuggestion) => void;
   bottomInset: number;
 }) {
+  const { colors, styles } = useEstilos(crearEstilos);
   if (suggestions.length === 0) {
     return (
       <ScrollView contentContainerStyle={[styles.feedbackScroll, { paddingBottom: bottomInset + spacing.lg }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
@@ -416,6 +419,7 @@ function RecentDestinations({
   error: string | null;
   onRetry: () => void;
 }) {
+  const { colors, styles } = useEstilos(crearEstilos);
   return (
     <>
       <Text style={styles.sectionTitle}>Destinos recientes</Text>
@@ -461,7 +465,7 @@ function RecentDestinations({
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors, estiloFoco }: Tema) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
   header: {
     flexDirection: 'row',

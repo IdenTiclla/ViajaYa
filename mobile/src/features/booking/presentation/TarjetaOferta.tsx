@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
-import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 import { formatBolivianos } from '@/features/rides/domain/money';
 import type { OfferTag } from '@/features/rides/domain/offerTags';
 import type { Offer } from '@/features/rides/domain/types';
@@ -24,6 +24,7 @@ const VEHICULOS = { taxi: 'Taxi', moto: 'Moto' } as const;
 export function TarjetaOferta({
   offer, tag, now, acceptingId, decisionsLocked, onAccept, onReject,
 }: Props) {
+  const { colors, styles } = useEstilos(crearEstilos);
   const { fontScale } = useWindowDimensions();
   const { driver } = offer;
   const segundos = offer.expiresAt == null
@@ -100,7 +101,7 @@ export function TarjetaOferta({
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   tarjeta: { padding: spacing.md, gap: spacing.sm, backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border },
   cabecera: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
   avatar: { width: 40, height: 40, borderRadius: radius.pill, backgroundColor: colors.primarioSuave, justifyContent: 'center', alignItems: 'center' },

@@ -10,7 +10,7 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
-import { colors, estiloFoco, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 import { useRateRide, useSkipRating } from '@/features/rides/application/useCloseFlow';
 import { formatBolivianos } from '@/features/rides/domain/money';
 import type { Ride } from '@/features/rides/domain/types';
@@ -37,6 +37,7 @@ export function RideRatingCard({
   rateeRole,
   onDone,
 }: Props) {
+  const { colors, styles, estiloFoco } = useEstilos(crearEstilos);
   const { fontScale } = useWindowDimensions();
   const [score, setScore] = useState(0);
   const [comment, setComment] = useState('');
@@ -195,7 +196,7 @@ export function RideRatingCard({
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors, estiloFoco }: Tema) => StyleSheet.create({
   root: { gap: spacing.md },
   successHeader: { alignItems: 'center', gap: spacing.xs },
   checkCircle: {

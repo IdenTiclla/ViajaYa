@@ -14,7 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
-import { colors, fontSize, fontWeight, spacing } from '@/core/theme';
+import { fontSize, fontWeight, spacing, useEstilos, type Tema } from '@/core/theme';
 import { useLogin } from '@/features/auth/application/useAuth';
 import { useSocialAuth } from '@/features/auth/application/useSocialAuth';
 import { type LoginForm, loginSchema } from '@/features/auth/application/validation';
@@ -22,6 +22,7 @@ import { BrandHeader } from '@/features/auth/presentation/BrandHeader';
 import { Button, Divider, SocialButton, TextField } from '@/shared/components';
 
 export function LoginScreen() {
+  const { styles } = useEstilos(crearEstilos);
   const login = useLogin();
   const social = useSocialAuth({
     onError: (message) => Alert.alert('No se pudo iniciar sesión', message),
@@ -122,7 +123,7 @@ export function LoginScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
   content: { padding: spacing.lg, gap: spacing.lg, flexGrow: 1, justifyContent: 'center' },

@@ -8,20 +8,21 @@
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 import { PinLoadingIndicator } from '@/shared/components';
 
 const PIN_SIZE = 46;
 
 export function CenterPin({
   label,
-  color = colors.primary,
+  color,
   loading = false,
 }: {
   label: string;
   color?: string;
   loading?: boolean;
 }) {
+  const { colors, styles } = useEstilos(crearEstilos);
   return (
     <View style={styles.overlay} pointerEvents="none">
       <View style={styles.block}>
@@ -31,13 +32,13 @@ export function CenterPin({
             {label}
           </Text>
         </View>
-        <Ionicons name="location" size={PIN_SIZE} color={color} />
+        <Ionicons name="location" size={PIN_SIZE} color={color ?? colors.primary} />
       </View>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   overlay: {
     position: 'absolute',
     top: 0,

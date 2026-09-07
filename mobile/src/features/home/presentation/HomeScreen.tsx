@@ -18,7 +18,8 @@ import MapView, { PROVIDER_GOOGLE, type Details, type Region } from 'react-nativ
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
-import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { useEstiloMapa } from '@/features/booking/presentation/mapStyle';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
 import { useRecentDestinations } from '@/features/booking/application/useRecentDestinations';
 import { useRegionPlace } from '@/features/booking/application/useRegionPlace';
@@ -66,6 +67,7 @@ function coordenadasCasiIguales(a: Coordinates, b: Coordinates): boolean {
 }
 
 export function HomeScreen() {
+  const { colors, styles } = useEstilos(crearEstilos);
   const user = useAuthStore((s) => s.user);
   const insets = useSafeAreaInsets();
   const { height: screenHeight } = useWindowDimensions();
@@ -98,6 +100,7 @@ export function HomeScreen() {
   } = usePendingRatingRide();
   const { status, coordinates, canAskAgain, isEstimated, retry } = useCurrentLocation();
   const mapRef = useRef<MapView>(null);
+  const { estiloMapa, modoMapa } = useEstiloMapa(false);
   const mapReady = useRef(false);
   const pendingAutomaticRegion = useRef<Region | null>(null);
   const lastLocationRefresh = useRef(0);
@@ -454,6 +457,8 @@ export function HomeScreen() {
     <View style={styles.root}>
       {status === 'granted' && region ? (
         <MapView
+          customMapStyle={estiloMapa}
+          userInterfaceStyle={modoMapa}
           ref={mapRef}
           provider={PROVIDER_GOOGLE}
           style={StyleSheet.absoluteFill}
@@ -574,6 +579,7 @@ export function HomeScreen() {
 }
 
 function ActiveRideGate() {
+  const { colors, styles } = useEstilos(crearEstilos);
   return (
     <SafeAreaView style={styles.recovery}>
       <ActivityIndicator size="large" color={colors.primary} />
@@ -593,6 +599,7 @@ function MapPlaceholder({
   outsideArea: boolean;
   onRetry: () => void;
 }) {
+  const { colors, styles } = useEstilos(crearEstilos);
   if (status === 'loading') {
     return (
       <View style={[styles.placeholder, styles.placeholderBg]}>
@@ -626,7 +633,7 @@ function MapPlaceholder({
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceMuted },
   recovery: {
     flex: 1,

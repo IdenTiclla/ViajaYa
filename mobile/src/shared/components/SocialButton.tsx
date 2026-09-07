@@ -9,7 +9,7 @@ import {
   View,
 } from 'react-native';
 
-import { colors, controles, estiloFoco, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { controles, fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 
 type Provider = 'google' | 'facebook';
 
@@ -18,17 +18,17 @@ type Props = PressableProps & {
   loading?: boolean;
 };
 
-const CONFIG: Record<
-  Provider,
-  { label: string; icon: keyof typeof FontAwesome.glyphMap; tint: string }
-> = {
-  google: { label: 'Google', icon: 'google', tint: colors.text },
-  facebook: { label: 'Facebook', icon: 'facebook', tint: colors.facebook },
-};
-
 /** Acceso social con la misma escala táctil que el resto de acciones. */
 export function SocialButton({ provider, loading = false, disabled, style, onFocus, onBlur, accessibilityLabel, accessibilityState, ...rest }: Props) {
+  const { colors, styles, estiloFoco } = useEstilos(crearEstilos);
   const [enfocado, setEnfocado] = useState(false);
+  const CONFIG: Record<
+    Provider,
+    { label: string; icon: keyof typeof FontAwesome.glyphMap; tint: string }
+  > = {
+    google: { label: 'Google', icon: 'google', tint: colors.text },
+    facebook: { label: 'Facebook', icon: 'facebook', tint: colors.facebook },
+  };
   const cfg = CONFIG[provider];
   const isDisabled = disabled || loading;
 
@@ -62,7 +62,7 @@ export function SocialButton({ provider, loading = false, disabled, style, onFoc
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   base: {
     minHeight: controles.altoMinimo,
     paddingHorizontal: spacing.md,

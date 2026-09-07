@@ -24,7 +24,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
-import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 import { useRoute } from '@/features/booking/application/useRoute';
 import { SERVICE_META } from '@/features/booking/domain/serviceCatalog';
 import { useCancelRide, useUpdateRideStatus } from '@/features/rides/application/useRideMutations';
@@ -76,6 +76,7 @@ function formatDuration(seconds: number): string {
 }
 
 export function ViajeEnCursoConductorScreen({ ride }: { ride: Ride }) {
+  const { colors, styles } = useEstilos(crearEstilos);
   const router = useRouter();
   const queryClient = useQueryClient();
   const [confirmCancel, setConfirmCancel] = useState(false);
@@ -348,6 +349,7 @@ function Row({
   label: string;
   value: string;
 }) {
+  const { styles } = useEstilos(crearEstilos);
   return (
     <View style={styles.row}>
       <Ionicons name={icon} size={20} color={color} />
@@ -361,7 +363,7 @@ function Row({
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceMuted },
   ratingRoot: { flex: 1, backgroundColor: colors.background },
   ratingContent: { flexGrow: 1, padding: spacing.lg },
@@ -378,7 +380,7 @@ const styles = StyleSheet.create({
     width: 88,
     height: 88,
     borderRadius: radius.pill,
-    backgroundColor: '#FDECEA',
+    backgroundColor: colors.peligroSuave,
     alignItems: 'center',
     justifyContent: 'center',
   },

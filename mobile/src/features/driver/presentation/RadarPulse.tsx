@@ -20,7 +20,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { colors, radius } from '@/core/theme';
+import { radius, useEstilos, type Tema } from '@/core/theme';
 
 const SIZE = 365;
 const SWEEP_DURATION_MS = 5000;
@@ -28,6 +28,7 @@ const NAVIGATE_OFFSET_DEG = 45;
 const ROTATE_DURATION_MS = 350;
 
 export function RadarPulse({ heading = null }: { heading?: number | null }) {
+  const { colors, styles } = useEstilos(crearEstilos);
   const reduceMotion = useReducedMotion();
   const sweep = useSharedValue(0);
   const scanningEnabled = useSharedValue(reduceMotion ? 0 : 1);
@@ -99,7 +100,7 @@ export function RadarPulse({ heading = null }: { heading?: number | null }) {
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   root: {
     width: SIZE,
     height: SIZE,

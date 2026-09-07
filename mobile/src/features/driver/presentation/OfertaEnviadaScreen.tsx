@@ -37,7 +37,7 @@ import { Button } from '@/shared/components';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
 import { useCountdown } from '@/core/hooks/useCountdown';
-import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 import { useRoute } from '@/features/booking/application/useRoute';
 import { useDriverRequests } from '@/features/driver/application/useDriverRequests';
 import { RideUnavailableScreen } from '@/features/driver/presentation/RideUnavailableScreen';
@@ -57,6 +57,7 @@ function formatDuration(seconds: number): string {
 }
 
 export function OfertaEnviadaScreen() {
+  const { colors, styles } = useEstilos(crearEstilos);
   const router = useRouter();
   const { rideId } = useLocalSearchParams<{ rideId?: string }>();
 
@@ -498,6 +499,7 @@ function OfferRecoveryScreen({
   onBack: () => void;
   onRetry?: () => void;
 }) {
+  const { colors, styles } = useEstilos(crearEstilos);
   return (
     <SafeAreaView style={styles.recoveryRoot}>
       <View style={styles.recoveryTop}>
@@ -558,6 +560,7 @@ function ReofferScreen({
   onImprove: () => void;
   onBack: () => void;
 }) {
+  const { colors, styles } = useEstilos(crearEstilos);
   return (
     <SafeAreaView style={styles.reofferRoot}>
       <View style={styles.reofferIcon}>
@@ -623,6 +626,7 @@ function ReofferScreen({
 
 /** Anillo de carga que gira (indeterminado) alrededor de un ícono de reloj. */
 function SpinnerRing() {
+  const { colors, styles } = useEstilos(crearEstilos);
   const [spin] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
@@ -648,7 +652,7 @@ function SpinnerRing() {
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   recoveryRoot: {
     flex: 1,
     backgroundColor: colors.background,
@@ -822,7 +826,7 @@ const styles = StyleSheet.create({
     width: 88,
     height: 88,
     borderRadius: radius.pill,
-    backgroundColor: '#FDECEA',
+    backgroundColor: colors.peligroSuave,
     alignItems: 'center',
     justifyContent: 'center',
   },

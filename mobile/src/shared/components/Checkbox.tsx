@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, controles, estiloFoco, fontSize, radius, spacing } from '@/core/theme';
+import { controles, fontSize, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 
 type Props = {
   checked: boolean;
@@ -14,6 +14,7 @@ type Props = {
 };
 
 export function Checkbox({ checked, onChange, children, error, disabled = false }: Props) {
+  const { colors, styles, estiloFoco } = useEstilos(crearEstilos);
   const [enfocado, setEnfocado] = useState(false);
   return (
     <View style={styles.wrapper}>
@@ -46,7 +47,7 @@ export function Checkbox({ checked, onChange, children, error, disabled = false 
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   wrapper: { gap: spacing.xs },
   row: {
     minHeight: controles.altoMinimo,

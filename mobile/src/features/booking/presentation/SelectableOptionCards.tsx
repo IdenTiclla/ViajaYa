@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useState, type ComponentProps } from 'react';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
-import { colors, controles, estiloFoco, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { controles, fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -21,6 +21,7 @@ type Props<T extends string> = {
 
 /** Tarjetas uniformes para elegir una única opción dentro de un formulario. */
 export function SelectableOptionCards<T extends string>({ options, value, onChange }: Props<T>) {
+  const { colors, styles, estiloFoco } = useEstilos(crearEstilos);
   const { fontScale } = useWindowDimensions();
   const [enfocada, setEnfocada] = useState<T | null>(null);
   const enColumna = fontScale > 1.3;
@@ -64,7 +65,7 @@ export function SelectableOptionCards<T extends string>({ options, value, onChan
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   cards: { flexDirection: 'row', gap: spacing.sm },
   cardsColumn: { flexDirection: 'column' },
   card: {

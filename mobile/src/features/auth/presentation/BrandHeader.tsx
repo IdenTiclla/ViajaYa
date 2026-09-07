@@ -1,12 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 
 type Props = { title?: string; subtitle?: string };
 
 /** Logo + marca ViajaYa usado en las pantallas de autenticación. */
 export function BrandHeader({ title = 'ViajaYa', subtitle }: Props) {
+  const { colors, styles } = useEstilos(crearEstilos);
   return (
     <View style={styles.wrapper}>
       <View style={styles.logo}>
@@ -18,7 +19,7 @@ export function BrandHeader({ title = 'ViajaYa', subtitle }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   wrapper: { alignItems: 'center', gap: spacing.xs },
   logo: {
     width: 64,

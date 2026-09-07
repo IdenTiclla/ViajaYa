@@ -22,10 +22,10 @@ import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useCountdown } from '@/core/hooks/useCountdown';
-import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 import { useRoute } from '@/features/booking/application/useRoute';
 import { SERVICE_META } from '@/features/booking/domain/serviceCatalog';
-import { declutteredMapStyle } from '@/features/booking/presentation/mapStyle';
+import { useEstiloMapa } from '@/features/booking/presentation/mapStyle';
 import { getPlaceStreetName } from '@/features/booking/domain/placeLabels';
 import type { Coordinates } from '@/features/booking/domain/types';
 import type { SentOffer } from '@/features/driver/application/useDriverRequests';
@@ -87,7 +87,9 @@ export function SolicitudesMapa({
   onOpenPriceInput,
   onWithdraw,
 }: Props) {
+  const { colors, styles } = useEstilos(crearEstilos);
   const mapRef = useRef<MapView>(null);
+  const { estiloMapa, modoMapa } = useEstiloMapa(true);
   const { rumboMapa, zoomMapa, actualizarRumbo } = useRumboMapa(mapRef);
   const listRef = useRef<FlatList<OpenRide>>(null);
   const { width: windowWidth } = useWindowDimensions();
@@ -164,7 +166,8 @@ export function SolicitudesMapa({
         provider={PROVIDER_GOOGLE}
         style={StyleSheet.absoluteFill}
         initialRegion={initialRegion}
-        customMapStyle={declutteredMapStyle}
+        customMapStyle={estiloMapa}
+        userInterfaceStyle={modoMapa}
         pitchEnabled={false}
         onRegionChangeComplete={actualizarRumbo}
         onMapReady={() => fitSelected(false)}
@@ -363,6 +366,7 @@ function MapCard({
   onOpenPriceInput: () => void;
   onWithdraw: () => void;
 }) {
+  const { colors, styles } = useEstilos(crearEstilos);
   const secondsLeft = useCountdown(offerExpiresAt);
   const tripKm = haversineKm(ride.origin.coordinates, ride.destination.coordinates);
   // Con oferta enviada mostramos el monto que el conductor propuso (no el fare
@@ -415,7 +419,7 @@ function MapCard({
       )}
       {expired && (
         <View style={styles.expiredBanner}>
-          <Ionicons name="time-outline" size={15} color="#5A4500" />
+          <Ionicons name="time-outline" size={15} color={colors.textoSobreAcento} />
           <Text style={styles.bannerTextDark}>Tu oferta expiró · vuelve a ofertar</Text>
         </View>
       )}
@@ -502,7 +506,7 @@ function MapCard({
               disabled={disabled}
               accessibilityRole="button"
               accessibilityLabel="Contraofertar con un monto personalizado">
-              <Ionicons name="create-outline" size={16} color="#7A6000" />
+              <Ionicons name="create-outline" size={16} color={colors.aviso} />
               <Text style={styles.quickPillText}>Monto</Text>
             </TouchableOpacity>
           </View>
@@ -578,7 +582,7 @@ function MapCard({
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   root: { flex: 1 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm, padding: spacing.xl },
   emptyText: { fontSize: fontSize.md, color: colors.textSecondary, textAlign: 'center' },
@@ -606,9 +610,9 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     padding: spacing.xs,
     borderRadius: radius.pill,
-    backgroundColor: 'rgba(255,255,255,0.96)',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: 'rgba(226,228,232,0.9)',
+    borderColor: colors.border,
     shadowColor: '#000',
     shadowOpacity: 0.14,
     shadowRadius: 8,
@@ -621,7 +625,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: radius.pill,
-    backgroundColor: 'rgba(22,48,140,0.08)',
+    backgroundColor: colors.primarioSuave,
   },
   pagerButtonDisabled: { backgroundColor: colors.surfaceMuted },
   pagerCopy: { minWidth: 146, alignItems: 'center' },
@@ -633,9 +637,9 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: spacing.md,
     borderRadius: radius.lg,
-    backgroundColor: 'rgba(255,255,255,0.95)',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: 'rgba(226,228,232,0.7)',
+    borderColor: colors.border,
     shadowColor: '#000',
     shadowOpacity: 0.2,
     shadowRadius: 16,
@@ -664,7 +668,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.surface,
   },
-  ratingBadgeText: { color: '#5A4500', fontSize: 10, fontWeight: fontWeight.bold },
+  ratingBadgeText: { color: colors.textoSobreAcento, fontSize: 10, fontWeight: fontWeight.bold },
   cardInfo: { flex: 1, gap: 3, justifyContent: 'center' },
   riderName: { fontSize: fontSize.md, fontWeight: fontWeight.bold, color: colors.text },
   meta: { fontSize: fontSize.xs, color: colors.textSecondary },
@@ -767,7 +771,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs + 2,
     borderRadius: radius.pill,
-    backgroundColor: 'rgba(245,197,24,0.18)',
+    backgroundColor: colors.avisoSuave,
     borderWidth: 1,
     borderColor: 'rgba(245,197,24,0.5)',
   },
@@ -778,12 +782,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs + 2,
     borderRadius: radius.pill,
-    backgroundColor: 'rgba(245,197,24,0.18)',
+    backgroundColor: colors.avisoSuave,
     borderWidth: 1,
     borderColor: 'rgba(245,197,24,0.5)',
     marginLeft: 'auto',
   },
-  quickPillText: { color: '#7A6000', fontSize: fontSize.sm, fontWeight: fontWeight.bold },
+  quickPillText: { color: colors.aviso, fontSize: fontSize.sm, fontWeight: fontWeight.bold },
 
   routeRow: { flexDirection: 'row', gap: spacing.md },
   routeStop: { flex: 1, minWidth: 0 },
@@ -806,7 +810,7 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', gap: spacing.sm },
   actionBtn: { flex: 1, height: 46, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
   withdrawAction: { flexDirection: 'row', gap: spacing.xs },
-  decline: { flex: 1, backgroundColor: '#FDECEA', borderWidth: 1, borderColor: '#F5C6C2' },
+  decline: { flex: 1, backgroundColor: colors.peligroSuave, borderWidth: 1, borderColor: colors.bordePeligro },
   declineText: { color: colors.danger, fontSize: fontSize.md, fontWeight: fontWeight.bold },
   accept: { flex: 1.6, backgroundColor: colors.primary },
   acceptText: { color: colors.textOnPrimary, fontSize: fontSize.md, fontWeight: fontWeight.bold },

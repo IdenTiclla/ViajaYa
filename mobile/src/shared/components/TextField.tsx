@@ -9,7 +9,7 @@ import {
   View,
 } from 'react-native';
 
-import { colors, controles, fontSize, radius, spacing } from '@/core/theme';
+import { controles, fontSize, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 
 type Props = TextInputProps & {
   label?: string;
@@ -38,6 +38,7 @@ export const TextField = forwardRef<TextInput, Props>(function TextField(
   },
   ref,
 ) {
+  const { colors, styles } = useEstilos(crearEstilos);
   const [hidden, setHidden] = useState(password);
   const [focused, setFocused] = useState(false);
   const iconColor = error ? colors.danger : focused ? colors.primary : colors.placeholder;
@@ -102,7 +103,7 @@ export const TextField = forwardRef<TextInput, Props>(function TextField(
   );
 });
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   wrapper: { gap: spacing.xs },
   label: { fontSize: fontSize.sm, color: colors.textSecondary, fontWeight: '500' },
   field: {

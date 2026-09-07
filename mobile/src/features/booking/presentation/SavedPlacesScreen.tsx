@@ -18,7 +18,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
-import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
 import { useRecentDestinations } from '@/features/booking/application/useRecentDestinations';
 import { useSavedPlaces } from '@/features/booking/application/useSavedPlaces';
@@ -31,6 +31,7 @@ import { CATEGORY_META } from '@/features/booking/presentation/savedPlaceCategor
 import { FeedbackState } from '@/shared/components';
 
 export function SavedPlacesScreen() {
+  const { colors, styles } = useEstilos(crearEstilos);
   const router = useRouter();
   const { rideId } = useLocalSearchParams<{ rideId?: string }>();
   const {
@@ -247,7 +248,7 @@ export function SavedPlacesScreen() {
     </SafeAreaView>
   );
 }
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
   header: {
     flexDirection: 'row',
@@ -271,7 +272,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     padding: spacing.md,
     borderRadius: radius.md,
-    backgroundColor: '#FDECEA',
+    backgroundColor: colors.peligroSuave,
   },
   areaWarningText: { flex: 1, color: colors.danger, fontSize: fontSize.sm },
 

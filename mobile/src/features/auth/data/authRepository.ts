@@ -18,7 +18,7 @@ export const authRepository: AuthRepository = {
       email: payload.email,
       password: payload.password,
       phone: payload.phone,
-    });
+    }, { skipAuth: true });
     return toAuthResult(data);
   },
 
@@ -26,12 +26,14 @@ export const authRepository: AuthRepository = {
     const { data } = await api.post<AuthResponseDto>('/auth/login', {
       email: payload.email,
       password: payload.password,
-    });
+    }, { skipAuth: true });
     return toAuthResult(data);
   },
 
   async oauth(provider: Exclude<AuthProvider, 'local'>, token: string): Promise<AuthResult> {
-    const { data } = await api.post<AuthResponseDto>(`/auth/oauth/${provider}`, { token });
+    const { data } = await api.post<AuthResponseDto>(
+      `/auth/oauth/${provider}`, { token }, { skipAuth: true },
+    );
     return toAuthResult(data);
   },
 

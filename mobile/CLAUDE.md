@@ -277,8 +277,9 @@ Splash/adaptiveIcon conservan el azul de marca `#16308C`.
 - **Request interceptor**: adjunta `Authorization: Bearer <accessToken>` desde `tokenStorage`.
 - **Response interceptor**: ante 401 (si la URL no está en `NO_REFRESH_PATHS` y no es `_retry`),
   dispara `refreshAccessToken()` **compartido** (dedupe de concurrencia) → `POST /auth/refresh` →
-  guarda el nuevo par → reintenta el original. Solo un refresh rechazado con 401
-  (o sin credenciales) ejecuta `tokenStorage.clear()` + `onSessionExpired()`;
+  guarda el nuevo par → reintenta el original. Un refresh rechazado con 401
+  (o sin credenciales), o un segundo 401 con el token renovado, ejecuta
+  `tokenStorage.clear()` + `onSessionExpired()`;
   red, timeout y 5xx conservan la sesión para reintentar. El refresh compartido
   siempre se libera en `finally`, incluso si falla SecureStore.
 - `env.apiUrl` viene de `app.config.ts` → `extra.apiUrl`; `env.wsUrl` se deriva con `toWsUrl()`.
@@ -291,8 +292,11 @@ Splash/adaptiveIcon conservan el azul de marca `#16308C`.
   completa. Una respuesta tardía no autoriza navegación después del timeout.
 - Leer SecureStore tiene un límite de 5 s. El arranque completo tiene 30 s y
   muestra `SessionRecoveryScreen` con Reintentar si falla; conserva credenciales
-  ante errores transitorios. Una generación evita restaurar un arranque anterior
-  después de otro intento o de expirar la sesión.
+  ante errores transitorios. También ofrece Volver a iniciar sesión: el borrado
+  nativo tiene un límite de 5 s y su fallo no bloquea el login. Los endpoints de
+  acceso usan `skipAuth` para no depender de credenciales anteriores. Una
+  generación descarta respuestas de arranque y renovaciones anteriores después
+  de salir, iniciar otra sesión o expirar la actual.
 - Confirmar/omitir calificación libera la mutación al recibir el éxito HTTP;
   las invalidaciones posteriores corren en segundo plano. Una lectura antigua se
   cancela antes de retirar de caché ese cierre, conservando otros pendientes.

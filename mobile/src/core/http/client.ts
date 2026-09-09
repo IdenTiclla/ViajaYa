@@ -25,7 +25,18 @@ declare module 'axios' {
   }
 }
 
-type RetriableConfig = InternalAxiosRequestConfig & { _retry?: boolean };
+type RetriableConfig = InternalAxiosRequestConfig & {
+  _retry?: boolean;
+  _generacionSesion?: number;
+};
+
+let generacionSesion = 0;
+
+/** Descarta respuestas pendientes al salir o iniciar otra sesión. */
+export function invalidarSolicitudesSesion(): void {
+  generacionSesion += 1;
+  refreshPromise = null;
+}
 
 let onSessionExpired: (() => void) | null = null;
 
@@ -44,6 +55,7 @@ export const api = axios.create({
 });
 
 api.interceptors.request.use(async (config) => {
+  (config as RetriableConfig)._generacionSesion ??= generacionSesion;
   if (config.skipAuth) return config;
   const tokens = await tokenStorage.get();
   if (tokens?.accessToken) {
@@ -62,7 +74,9 @@ const NO_REFRESH_PATHS = ['/auth/refresh', '/auth/login', '/auth/register', '/au
 let refreshPromise: Promise<string | null> | null = null;
 
 async function refreshAccessToken(): Promise<string | null> {
+  const generacion = generacionSesion;
   const tokens = await tokenStorage.get();
+  if (generacion !== generacionSesion) return null;
   if (!tokens?.refreshToken) return null;
   try {
     // Comparte el timeout del cliente. skipAuth evita adjuntar el token vencido
@@ -70,6 +84,7 @@ async function refreshAccessToken(): Promise<string | null> {
     const { data } = await api.post('/auth/refresh', {
       refresh_token: tokens.refreshToken,
     }, { skipAuth: true });
+    if (generacion !== generacionSesion) return null;
     await tokenStorage.save({
       accessToken: data.access_token,
       refreshToken: data.refresh_token,
@@ -83,12 +98,30 @@ async function refreshAccessToken(): Promise<string | null> {
   }
 }
 
+async function cerrarSesionInvalida(): Promise<void> {
+  invalidarSolicitudesSesion();
+  const generacion = generacionSesion;
+  try {
+    await tokenStorage.clear();
+  } finally {
+    if (generacion === generacionSesion) onSessionExpired?.();
+  }
+}
+
 api.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
     const original = error.config as RetriableConfig | undefined;
     const skipRefresh =
       original?.skipAuth || NO_REFRESH_PATHS.some((path) => original?.url?.includes(path));
+
+    if (original?._generacionSesion !== generacionSesion) return Promise.reject(error);
+
+    // Si incluso el token renovado recibe 401, la identidad dejó de ser válida.
+    if (error.response?.status === 401 && original?._retry && !skipRefresh) {
+      await cerrarSesionInvalida();
+      return Promise.reject(error);
+    }
 
     if (error.response?.status === 401 && original && !original._retry && !skipRefresh) {
       original._retry = true;
@@ -102,15 +135,13 @@ api.interceptors.response.use(
         if (refreshPromise === pending) refreshPromise = null;
       }
 
+      if (original._generacionSesion !== generacionSesion) return Promise.reject(error);
+
       if (newToken) {
         original.headers.Authorization = `Bearer ${newToken}`;
         return api(original as AxiosRequestConfig);
       }
-      try {
-        await tokenStorage.clear();
-      } finally {
-        onSessionExpired?.();
-      }
+      await cerrarSesionInvalida();
     }
     return Promise.reject(error);
   },

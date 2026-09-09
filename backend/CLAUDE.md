@@ -254,6 +254,8 @@ no un valor predeterminado.
 ## API (v1, prefijo `/api/v1`)
 
 - **auth** (`/auth`): `POST /register`, `POST /login`, `POST /refresh`, `POST /oauth/{provider}`, `GET /me`.
+  La renovación exige que el usuario del token siga existiendo; un token válido
+  de una base anterior o un usuario eliminado recibe 401, sin emitir otro par.
 - **rides** (`/rides`):
   - `POST ""` (crear solicitud), `GET /recent-destinations`, `GET /history`, `GET /{id}`.
     `GET /history` pagina con cursor opaco y responde `{items, next_cursor}`.

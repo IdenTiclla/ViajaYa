@@ -14,8 +14,9 @@ const hooks = registerHooks({
   load(url, context, nextLoad) {
     if (url === 'prueba:secure-store') return {
       format: 'module', shortCircuit: true, source: `
-        export const nativo = { leer: async () => 'token' };
+        export const nativo = { leer: async () => 'token', borrar: async () => {} };
         export const getItemAsync = (key) => nativo.leer(key);
+        export const deleteItemAsync = (key) => nativo.borrar(key);
       `,
     };
     return nextLoad(url, context);
@@ -40,4 +41,12 @@ test('SecureStore bloqueado termina la espera y permite una lectura posterior', 
 test('una credencial incompleta se trata como ausencia de sesión', async () => {
   nativo.leer = async (key) => key.endsWith('accessToken') ? 'token' : null;
   assert.equal(await tokenStorage.get(), null);
+});
+
+test('el borrado nativo bloqueado tiene un límite de espera', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  t.mock.method(nativo, 'borrar', () => new Promise(() => {}));
+  const pendiente = assert.rejects(tokenStorage.clear(), /eliminar la sesión/);
+  t.mock.timers.tick(5_000);
+  await pendiente;
 });

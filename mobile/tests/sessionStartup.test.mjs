@@ -7,7 +7,9 @@ const mocks = {
     async get() { return { accessToken: 'anterior', refreshToken: 'válido' }; },
     async save() {}, async clear() {},
   };`,
-  '@/core/http/client': `export let expired; export function setOnSessionExpired(fn) { expired = fn; }`,
+  '@/core/http/client': `export let expired;
+    export function setOnSessionExpired(fn) { expired = fn; }
+    export function invalidarSolicitudesSesion() {}`,
   '@/features/auth/data/authRepository': `export const authRepository = {
     async me() { return { id: 'pasajero' }; },
   };`,
@@ -82,6 +84,26 @@ test('una respuesta de arranque no restaura una sesión que ya venció', async (
   t.after(() => { authRepository.me = me; });
   authRepository.me = async () => { expired(); return { id: 'anterior' }; };
   await useAuthStore.getState().bootstrap();
+  assert.equal(useAuthStore.getState().status, 'unauthenticated');
+  assert.equal(useAuthStore.getState().user, null);
+});
+
+test('salir de la recuperación lleva al login aunque falle el borrado nativo', async (t) => {
+  t.mock.method(tokenStorage, 'clear', async () => { throw new Error('Almacenamiento inaccesible'); });
+  useAuthStore.setState({ status: 'error', user: null, startupError: 'Sin conexión' });
+  await useAuthStore.getState().signOut();
+  assert.equal(useAuthStore.getState().status, 'unauthenticated');
+  assert.equal(useAuthStore.getState().startupError, null);
+});
+
+test('salir descarta una restauración pendiente que responde después', async (t) => {
+  let resolver;
+  t.mock.method(authRepository, 'me', () => new Promise((resolve) => { resolver = resolve; }));
+  const arranque = useAuthStore.getState().bootstrap();
+  await Promise.resolve();
+  await useAuthStore.getState().signOut();
+  resolver({ id: 'anterior' });
+  await arranque;
   assert.equal(useAuthStore.getState().status, 'unauthenticated');
   assert.equal(useAuthStore.getState().user, null);
 });

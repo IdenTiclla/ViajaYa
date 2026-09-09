@@ -8,7 +8,7 @@ import { create } from 'zustand';
 
 import { conTiempoLimite } from '@/core/async/conTiempoLimite';
 import { getApiErrorMessage } from '@/core/errors/apiError';
-import { setOnSessionExpired } from '@/core/http/client';
+import { invalidarSolicitudesSesion, setOnSessionExpired } from '@/core/http/client';
 import { tokenStorage } from '@/core/http/tokenStorage';
 import { authRepository } from '@/features/auth/data/authRepository';
 import type {
@@ -37,6 +37,7 @@ type AuthState = {
 export const useAuthStore = create<AuthState>((set) => {
   async function applySession(result: AuthResult): Promise<void> {
     generacionSesion += 1;
+    invalidarSolicitudesSesion();
     await tokenStorage.save(result.tokens);
     set({ user: result.user, status: 'authenticated', startupError: null });
   }
@@ -83,9 +84,17 @@ export const useAuthStore = create<AuthState>((set) => {
     },
 
     async signOut() {
-      generacionSesion += 1;
-      await tokenStorage.clear();
-      set({ user: null, status: 'unauthenticated', startupError: null });
+      const generacion = ++generacionSesion;
+      invalidarSolicitudesSesion();
+      try {
+        await tokenStorage.clear();
+      } catch {
+        // Un fallo nativo no debe impedir volver al formulario de acceso.
+      } finally {
+        if (generacion === generacionSesion) {
+          set({ user: null, status: 'unauthenticated', startupError: null });
+        }
+      }
     },
   };
 });

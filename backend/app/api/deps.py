@@ -328,8 +328,8 @@ def get_authenticate_user(users: UserRepositoryDep, tokens: TokenServiceDep) -> 
     return AuthenticateUser(users, _hasher(), tokens)
 
 
-def get_refresh_token(tokens: TokenServiceDep) -> RefreshToken:
-    return RefreshToken(tokens)
+def get_refresh_token(tokens: TokenServiceDep, users: UserRepositoryDep) -> RefreshToken:
+    return RefreshToken(tokens, users)
 
 
 def get_authenticate_with_oauth(

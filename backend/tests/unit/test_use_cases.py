@@ -13,6 +13,7 @@ from app.domain.entities import AuthProvider
 from app.domain.exceptions import (
     EmailAlreadyExistsError,
     InvalidCredentialsError,
+    InvalidTokenError,
     UnsupportedProviderError,
     WeakPasswordError,
 )
@@ -98,8 +99,17 @@ async def test_refresh_returns_new_pair(deps):
     user, pair = await RegisterUser(repo, hasher, tokens).execute(
         RegisterInput(full_name="A", email="r@example.com", password="secret123")
     )
-    new_pair = await RefreshToken(tokens).execute(pair.refresh_token)
+    new_pair = await RefreshToken(tokens, repo).execute(pair.refresh_token)
     assert new_pair.access_token == f"access::{user.id}"
+
+
+async def test_refresh_rechaza_usuario_de_otra_base_de_datos(deps):
+    repo, hasher, tokens = deps
+    _, pair = await RegisterUser(repo, hasher, tokens).execute(
+        RegisterInput(full_name="A", email="anterior@example.com", password="secret123")
+    )
+    with pytest.raises(InvalidTokenError):
+        await RefreshToken(tokens, InMemoryUserRepository()).execute(pair.refresh_token)
 
 
 async def test_oauth_creates_user_then_reuses(deps):

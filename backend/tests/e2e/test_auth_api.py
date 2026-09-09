@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import pytest
+from sqlalchemy import delete
+
+from app.infrastructure.db.models import UserModel
 
 REGISTER = "/api/v1/auth/register"
 LOGIN = "/api/v1/auth/login"
@@ -68,6 +71,18 @@ async def test_refresh_flow(client):
 async def test_me_requires_token(client):
     resp = await client.get(ME)
     assert resp.status_code == 401
+
+
+async def test_refresh_rechaza_sesion_sin_usuario(client, session_factory):
+    registro = await client.post(REGISTER, json=_register_payload())
+    tokens = registro.json()["tokens"]
+    async with session_factory() as session:
+        await session.execute(delete(UserModel))
+        await session.commit()
+
+    respuesta = await client.post(REFRESH, json={"refresh_token": tokens["refresh_token"]})
+    assert respuesta.status_code == 401
+    assert "access_token" not in respuesta.json()
 
 
 async def test_me_rejects_invalid_token(client):

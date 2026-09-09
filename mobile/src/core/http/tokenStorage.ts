@@ -29,9 +29,9 @@ export const tokenStorage = {
   },
 
   async clear(): Promise<void> {
-    await Promise.all([
+    await conTiempoLimite(Promise.all([
       SecureStore.deleteItemAsync(ACCESS_KEY),
       SecureStore.deleteItemAsync(REFRESH_KEY),
-    ]);
+    ]), 5_000, 'No pudimos eliminar la sesión guardada.');
   },
 };

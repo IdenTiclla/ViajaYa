@@ -30,7 +30,7 @@ const hooks = registerHooks({
     return nextLoad(url, context);
   },
 });
-const { api, setOnSessionExpired } = await import('../src/core/http/client.ts');
+const { api, setOnSessionExpired, invalidarSolicitudesSesion } = await import('../src/core/http/client.ts');
 const { tokenStorage } = await import('@/core/http/tokenStorage');
 hooks.deregister();
 
@@ -144,4 +144,49 @@ test('una lectura fallida durante el refresh no bloquea renovaciones futuras', a
   };
   await assert.rejects(api.get('/rides/me/active'), /Almacenamiento/);
   assert.equal((await api.get('/rides/me/active')).status, 200);
+});
+
+test('un token renovado rechazado devuelve al login en lugar de repetir la recuperación', async (t) => {
+  const adapter = api.defaults.adapter;
+  t.after(() => { api.defaults.adapter = adapter; setOnSessionExpired(null); });
+  tokenStorage.tokens = { accessToken: 'linux', refreshToken: 'linux-refresh' };
+  let peticiones = 0;
+  let expiraciones = 0;
+  setOnSessionExpired(() => { expiraciones += 1; });
+  api.defaults.adapter = async (config) => {
+    peticiones += 1;
+    if (config.url === '/auth/refresh') return {
+      data: { access_token: 'renovado', refresh_token: 'renovado-refresh' },
+      status: 200, statusText: 'OK', headers: {}, config,
+    };
+    throw unauthorized(config);
+  };
+  await assert.rejects(api.get('/auth/me'));
+  assert.equal(peticiones, 3);
+  assert.equal(expiraciones, 1);
+  assert.equal(tokenStorage.tokens, null);
+});
+
+test('volver al login descarta una renovación anterior que responde tarde', async (t) => {
+  const adapter = api.defaults.adapter;
+  t.after(() => { api.defaults.adapter = adapter; });
+  tokenStorage.tokens = { accessToken: 'anterior', refreshToken: 'anterior-refresh' };
+  let resolver;
+  let avisarInicio;
+  const iniciado = new Promise((resolve) => { avisarInicio = resolve; });
+  api.defaults.adapter = async (config) => {
+    if (config.url !== '/auth/refresh') throw unauthorized(config);
+    return new Promise((resolve) => {
+      resolver = () => resolve({ data: { access_token: 'tardío', refresh_token: 'tardío' },
+        status: 200, statusText: 'OK', headers: {}, config });
+      avisarInicio();
+    });
+  };
+  const pendiente = assert.rejects(api.get('/auth/me'));
+  await iniciado;
+  invalidarSolicitudesSesion();
+  tokenStorage.tokens = { accessToken: 'otra-cuenta', refreshToken: 'otra-cuenta' };
+  resolver();
+  await pendiente;
+  assert.equal(tokenStorage.tokens.accessToken, 'otra-cuenta');
 });

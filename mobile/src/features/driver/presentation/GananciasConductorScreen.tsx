@@ -4,12 +4,12 @@
  * Muestra el total de hoy, contadores y el desglose de viajes completados
  * recientes con su importe.
  */
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, type IoniconsIconName } from '@react-native-vector-icons/ionicons';
 import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
-import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 import { useDriverEarnings } from '@/features/rides/application/useCloseFlow';
 import { formatBolivianos } from '@/features/rides/domain/money';
 import type { EarningsItem } from '@/features/rides/domain/types';
@@ -22,6 +22,7 @@ function formatDate(iso: string | null): string {
 }
 
 export function GananciasConductorScreen() {
+  const { colors, styles } = useEstilos(crearEstilos);
   const { data, isPending, isError, error, isRefetching, refetch } = useDriverEarnings();
   const retry = () => void refetch();
 
@@ -90,10 +91,11 @@ function Card({
   label,
   value,
 }: {
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: IoniconsIconName;
   label: string;
   value: string;
 }) {
+  const { colors, styles } = useEstilos(crearEstilos);
   return (
     <View style={styles.card}>
       <Ionicons name={icon} size={22} color={colors.primary} />
@@ -104,6 +106,7 @@ function Card({
 }
 
 function EarningsRow({ item }: { item: EarningsItem }) {
+  const { colors, styles } = useEstilos(crearEstilos);
   return (
     <View style={styles.row}>
       <View style={styles.rowIcon}>
@@ -120,7 +123,7 @@ function EarningsRow({ item }: { item: EarningsItem }) {
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
   content: { flexGrow: 1, padding: spacing.lg, paddingTop: spacing.md, gap: spacing.sm },
   headerBlock: { gap: spacing.md, marginBottom: spacing.sm },

@@ -3,8 +3,8 @@
  *
  * - Interceptor de request: adjunta el access token (Bearer).
  * - Interceptor de response: ante un 401, intenta refrescar el token una vez y
- *   reintenta la petición original. Si el refresco falla, limpia la sesión y
- *   notifica al listener registrado (lo usa el authStore para cerrar sesión).
+ *   reintenta la petición original. Si el servidor rechaza la renovación,
+ *   limpia la sesión; los fallos transitorios permiten reintentar.
  */
 import axios, {
   AxiosError,
@@ -29,7 +29,7 @@ type RetriableConfig = InternalAxiosRequestConfig & { _retry?: boolean };
 
 let onSessionExpired: (() => void) | null = null;
 
-/** El authStore registra aquí su `signOut` para reaccionar a sesiones expiradas. */
+/** El authStore registra aquí la transición local ante una sesión expirada. */
 export function setOnSessionExpired(handler: (() => void) | null): void {
   onSessionExpired = handler;
 }
@@ -65,16 +65,21 @@ async function refreshAccessToken(): Promise<string | null> {
   const tokens = await tokenStorage.get();
   if (!tokens?.refreshToken) return null;
   try {
-    const { data } = await axios.post(`${env.apiUrl}/auth/refresh`, {
+    // Comparte el timeout del cliente. skipAuth evita adjuntar el token vencido
+    // y que el refresh intente renovarse a sí mismo ante un 401.
+    const { data } = await api.post('/auth/refresh', {
       refresh_token: tokens.refreshToken,
-    });
+    }, { skipAuth: true });
     await tokenStorage.save({
       accessToken: data.access_token,
       refreshToken: data.refresh_token,
     });
     return data.access_token as string;
-  } catch {
-    return null;
+  } catch (error) {
+    // Una caída de red/servidor no demuestra que la sesión haya vencido.
+    // eslint-disable-next-line import/no-named-as-default-member
+    if (axios.isAxiosError(error) && error.response?.status === 401) return null;
+    throw error;
   }
 }
 
@@ -87,16 +92,25 @@ api.interceptors.response.use(
 
     if (error.response?.status === 401 && original && !original._retry && !skipRefresh) {
       original._retry = true;
-      refreshPromise = refreshPromise ?? refreshAccessToken();
-      const newToken = await refreshPromise;
-      refreshPromise = null;
+      const pending = refreshPromise ?? refreshAccessToken();
+      refreshPromise = pending;
+      let newToken: string | null;
+      try {
+        newToken = await pending;
+      } finally {
+        // Un rechazo de SecureStore o HTTP no envenena los siguientes intentos.
+        if (refreshPromise === pending) refreshPromise = null;
+      }
 
       if (newToken) {
         original.headers.Authorization = `Bearer ${newToken}`;
         return api(original as AxiosRequestConfig);
       }
-      await tokenStorage.clear();
-      onSessionExpired?.();
+      try {
+        await tokenStorage.clear();
+      } finally {
+        onSessionExpired?.();
+      }
     }
     return Promise.reject(error);
   },

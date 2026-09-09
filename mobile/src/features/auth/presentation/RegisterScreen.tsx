@@ -13,13 +13,14 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
-import { colors, fontSize, fontWeight, spacing } from '@/core/theme';
+import { fontSize, fontWeight, spacing, useEstilos, type Tema } from '@/core/theme';
 import { useRegister } from '@/features/auth/application/useAuth';
 import { useSocialAuth } from '@/features/auth/application/useSocialAuth';
 import { type RegisterForm, registerSchema } from '@/features/auth/application/validation';
 import { Button, Checkbox, Divider, SocialButton, TextField } from '@/shared/components';
 
 export function RegisterScreen() {
+  const { styles } = useEstilos(crearEstilos);
   const register = useRegister();
   const social = useSocialAuth({
     onError: (message) => Alert.alert('No se pudo crear la cuenta', message),
@@ -136,7 +137,7 @@ export function RegisterScreen() {
             />
 
             <Button
-              title="Crear Cuenta"
+              title="Crear cuenta"
               trailingIcon="arrow-forward"
               loading={register.isPending}
               onPress={handleSubmit(onSubmit)}
@@ -146,12 +147,14 @@ export function RegisterScreen() {
 
             <View style={styles.social}>
               <SocialButton
+                style={styles.socialButton}
                 provider="google"
                 loading={social.googleLoading}
                 disabled={social.googleDisabled}
                 onPress={social.signInWithGoogle}
               />
               <SocialButton
+                style={styles.socialButton}
                 provider="facebook"
                 loading={social.facebookLoading}
                 disabled={social.facebookDisabled}
@@ -172,7 +175,7 @@ export function RegisterScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
   content: { padding: spacing.lg, gap: spacing.lg, flexGrow: 1, justifyContent: 'center' },
@@ -180,8 +183,9 @@ const styles = StyleSheet.create({
   title: { fontSize: fontSize.xl, fontWeight: fontWeight.bold, color: colors.text },
   subtitle: { fontSize: fontSize.sm, color: colors.textSecondary, textAlign: 'center' },
   form: { gap: spacing.md },
-  social: { flexDirection: 'row', gap: spacing.md },
-  footer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
+  social: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  socialButton: { flexGrow: 1, flexBasis: 140 },
+  footer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center' },
   footerText: { color: colors.textSecondary, fontSize: fontSize.sm },
-  link: { color: colors.primary, fontSize: fontSize.sm, fontWeight: fontWeight.semibold },
+  link: { paddingVertical: spacing.md, color: colors.primary, fontSize: fontSize.sm, fontWeight: fontWeight.semibold, textDecorationLine: 'underline' },
 });

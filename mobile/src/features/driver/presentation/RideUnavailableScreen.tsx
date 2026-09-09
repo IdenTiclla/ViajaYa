@@ -6,12 +6,13 @@
  * ventana de negociación. Ícono con ondas, mensaje tranquilizador, tarjeta con la
  * última oferta y el trayecto, y un botón para volver a las solicitudes.
  */
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useEffect, useState } from 'react';
 import { Animated, Easing, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Button } from '@/shared/components';
 
-import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 import { formatBolivianos } from '@/features/rides/domain/money';
 
 export function RideUnavailableScreen({
@@ -35,6 +36,7 @@ export function RideUnavailableScreen({
    * pasa, no se muestra (antes estaba hardcodeada como "Expirado"). */
   badge?: string;
 }) {
+  const { colors, styles } = useEstilos(crearEstilos);
   return (
     <View style={styles.root}>
       <SafeAreaView edges={['top']} style={styles.topBar}>
@@ -98,14 +100,11 @@ export function RideUnavailableScreen({
       </View>
 
       <SafeAreaView edges={['bottom']} style={styles.footer}>
-        <TouchableOpacity
-          style={styles.cta}
+        <Button
+          title="Volver a solicitudes"
+          leadingIcon="compass-outline"
           onPress={onBack}
-          accessibilityRole="button"
-          accessibilityLabel="Volver a solicitudes">
-          <Ionicons name="compass" size={20} color={colors.textOnPrimary} />
-          <Text style={styles.ctaText}>Volver a solicitudes</Text>
-        </TouchableOpacity>
+        />
       </SafeAreaView>
     </View>
   );
@@ -113,6 +112,7 @@ export function RideUnavailableScreen({
 
 /** Ícono central con ondas expandiéndose (ripple), en bucle infinito. */
 function RippleIcon() {
+  const { colors, styles } = useEstilos(crearEstilos);
   const [wave] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
@@ -143,7 +143,7 @@ function RippleIcon() {
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceMuted },
 
   topBar: {
@@ -254,14 +254,4 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
     backgroundColor: colors.surface,
   },
-  cta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    height: 56,
-    borderRadius: radius.md,
-    backgroundColor: colors.primary,
-  },
-  ctaText: { color: colors.textOnPrimary, fontSize: fontSize.md, fontWeight: fontWeight.bold },
 });

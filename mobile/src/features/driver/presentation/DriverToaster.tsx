@@ -3,35 +3,35 @@
  * estilo Material-You glass, con auto-descarte a los 3.5 s. Se monta en el layout
  * del conductor para aparecer sobre cualquier pantalla (lista, mapa, inicio).
  */
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, type IoniconsIconName } from '@react-native-vector-icons/ionicons';
 import { useEffect } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInDown, FadeOutUp, LinearTransition } from 'react-native-reanimated';
 
-import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 import {
   type DriverToast,
   type DriverToastKind,
   useDriverToasts,
 } from '@/features/driver/application/useDriverToasts';
 
-const META: Record<DriverToastKind, { icon: keyof typeof Ionicons.glyphMap; color: string }> = {
-  expired: { icon: 'time-outline', color: '#B07A00' },
-  rejected: { icon: 'close-circle', color: colors.danger },
-  taken: { icon: 'car-sport', color: colors.danger },
-  cancelled: { icon: 'ban-outline', color: colors.danger },
-  paused: { icon: 'create-outline', color: colors.textSecondary },
-  accepted: { icon: 'checkmark-circle', color: colors.success },
-  connection_error: { icon: 'cloud-offline-outline', color: colors.danger },
-};
-
 function ToastItem({ toast, onDismiss }: { toast: DriverToast; onDismiss: () => void }) {
+  const { colors, styles } = useEstilos(crearEstilos);
   useEffect(() => {
     const timer = setTimeout(onDismiss, 3500);
     return () => clearTimeout(timer);
   }, [toast.id, onDismiss]);
 
+  const META: Record<DriverToastKind, { icon: IoniconsIconName; color: string }> = {
+    expired: { icon: 'time-outline', color: colors.aviso },
+    rejected: { icon: 'close-circle', color: colors.danger },
+    taken: { icon: 'car-sport', color: colors.danger },
+    cancelled: { icon: 'ban-outline', color: colors.danger },
+    paused: { icon: 'create-outline', color: colors.textSecondary },
+    accepted: { icon: 'checkmark-circle', color: colors.success },
+    connection_error: { icon: 'cloud-offline-outline', color: colors.danger },
+  };
   const meta = META[toast.kind];
   return (
     <Animated.View
@@ -57,6 +57,7 @@ function ToastItem({ toast, onDismiss }: { toast: DriverToast; onDismiss: () => 
 }
 
 export function DriverToaster() {
+  const { styles } = useEstilos(crearEstilos);
   const toasts = useDriverToasts((s) => s.toasts);
   const dismiss = useDriverToasts((s) => s.dismiss);
 
@@ -72,7 +73,7 @@ export function DriverToaster() {
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   wrap: {
     position: 'absolute',
     top: 0,
@@ -89,9 +90,9 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     padding: spacing.md,
     borderRadius: radius.lg,
-    backgroundColor: 'rgba(255,255,255,0.95)',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: 'rgba(226,228,232,0.7)',
+    borderColor: colors.border,
     shadowColor: '#000',
     shadowOpacity: 0.18,
     shadowRadius: 12,

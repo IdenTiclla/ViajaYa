@@ -6,8 +6,8 @@
  * + toggle Lista/Mapa y tarjetas translúcidas. El conductor **oferta** (no
  * asigna): Enviar oferta deja la tarjeta en "Oferta enviada" y sigue viendo otras.
  */
-import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { Ionicons, type IoniconsIconName } from '@react-native-vector-icons/ionicons';
+import { useIsFocused, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -24,7 +24,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
-import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 import { DriverSearchMap } from '@/features/driver/presentation/DriverSearchMap';
 import { OfferSentOverlay } from '@/features/driver/presentation/OfferSentOverlay';
 import { RadarPulse } from '@/features/driver/presentation/RadarPulse';
@@ -53,7 +53,9 @@ import { useAuthStore } from '@/store/authStore';
 type ViewMode = 'list' | 'map';
 
 export function SolicitudesEntrantesScreen() {
+  const { colors, styles } = useEstilos(crearEstilos);
   const router = useRouter();
+  const enfocada = useIsFocused();
   const user = useAuthStore((s) => s.user);
   const online = user?.isOnline ?? false;
   const { mutate: setDriverOnline, isPending: isSettingOnline } = useSetOnline();
@@ -93,9 +95,7 @@ export function SolicitudesEntrantesScreen() {
   const pendingRatingRide = pendingRatingQuery.ride;
   const flowLoading =
     activeQuery.isLoading ||
-    (!activeRide &&
-      (pendingRatingQuery.isLoading ||
-        (!pendingRatingRide && pendingRatingQuery.isFetching)));
+    (!activeRide && pendingRatingQuery.isLoading);
   const flowError =
     !activeRide && (activeQuery.isError || pendingRatingQuery.isError);
   const openRidesEnabled =
@@ -109,7 +109,7 @@ export function SolicitudesEntrantesScreen() {
   const createOffer = useCreateOffer();
   // Ubicación continua (navegación): el mapa sigue al conductor centrado en el
   // estado de búsqueda y detrás de la lista de solicitudes.
-  const position = useWatchPosition();
+  const position = useWatchPosition(enfocada && !activeRide && !pendingRatingRide);
 
   const dismissed = useDriverRequests((s) => s.dismissed);
   // Autocuración: expira en cliente las ofertas vencidas si se perdió el WS
@@ -293,10 +293,6 @@ export function SolicitudesEntrantesScreen() {
     return <ViajeEnCursoConductorScreen ride={activeRide} />;
   }
 
-  if (flowLoading) {
-    return <DriverFlowRecovery />;
-  }
-
   if (flowError) {
     return (
       <DriverFlowRecovery
@@ -309,6 +305,10 @@ export function SolicitudesEntrantesScreen() {
         }}
       />
     );
+  }
+
+  if (flowLoading) {
+    return <DriverFlowRecovery />;
   }
 
   if (pendingRatingRide) {
@@ -341,7 +341,7 @@ export function SolicitudesEntrantesScreen() {
   }
 
   if (visibleRides.length === 0) {
-    return <SearchingState position={position} />;
+    return <SearchingState position={position} tipoVehiculo={user?.vehicleType ?? null} />;
   }
 
   const requestsHeader = (
@@ -398,6 +398,8 @@ export function SolicitudesEntrantesScreen() {
         <>
           <DriverSearchMap
             coordinates={position.coordinates}
+            heading={position.heading}
+            tipoVehiculo={user?.vehicleType ?? null}
             status={position.status}
             retry={position.retry}
           />
@@ -522,6 +524,7 @@ function DriverFlowRecovery({
   error?: string;
   onRetry?: () => void;
 }) {
+  const { colors, styles } = useEstilos(crearEstilos);
   return (
     <SafeAreaView style={styles.recovery}>
       {error ? (
@@ -557,6 +560,7 @@ function DriverRequestsState({
   error?: string;
   onRetry?: () => void;
 }) {
+  const { styles } = useEstilos(crearEstilos);
   return (
     <SafeAreaView style={styles.requestsState} edges={['bottom']}>
       <RequestsHeader count={0} />
@@ -575,20 +579,25 @@ function DriverRequestsState({
 /** Estado sin solicitudes: mapa y radar. */
 function SearchingState({
   position,
+  tipoVehiculo,
 }: {
   position: WatchedPosition;
+  tipoVehiculo: 'taxi' | 'moto' | null;
 }) {
+  const { styles } = useEstilos(crearEstilos);
   return (
     <View style={styles.root}>
-      <DriverSearchMap coordinates={position.coordinates} status={position.status} retry={position.retry} />
+      <DriverSearchMap
+        coordinates={position.coordinates} heading={position.heading} tipoVehiculo={tipoVehiculo}
+        status={position.status} retry={position.retry} interactivo
+      />
       <View style={styles.scrim} pointerEvents="box-none">
         <RequestsHeader count={0} />
 
-        {/* Pulso centrado: el mapa sigue al conductor centrado, así que coincide
-            con su ubicación. El ícono rota según el rumbo del vehículo. */}
+        {/* El barrido es decorativo; el vehículo pertenece al mapa nativo. */}
         {position.coordinates && (
           <View style={styles.radarLayer} pointerEvents="none">
-            <RadarPulse heading={position.heading} />
+            <RadarPulse />
           </View>
         )}
       </View>
@@ -605,6 +614,7 @@ function RequestsHeader({
   mode?: ViewMode;
   onChangeMode?: (mode: ViewMode) => void;
 }) {
+  const { styles } = useEstilos(crearEstilos);
   const hasModeSwitch = mode != null && onChangeMode != null;
   return (
     <SafeAreaView edges={['top']} style={styles.requestsHeaderSafe} pointerEvents="box-none">
@@ -634,6 +644,7 @@ function ViewModeToggle({
   mode: ViewMode;
   onChange: (mode: ViewMode) => void;
 }) {
+  const { styles } = useEstilos(crearEstilos);
   return (
     <View style={styles.toggle} accessibilityRole="tablist">
       <ToggleButton
@@ -658,11 +669,12 @@ function ToggleButton({
   active,
   onPress,
 }: {
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: IoniconsIconName;
   label: string;
   active: boolean;
   onPress: () => void;
 }) {
+  const { colors, styles } = useEstilos(crearEstilos);
   return (
     <TouchableOpacity
       style={[styles.toggleBtn, active && styles.toggleBtnActive]}
@@ -676,7 +688,7 @@ function ToggleButton({
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
   requestsState: { flex: 1, backgroundColor: colors.background },
   recovery: {
@@ -767,9 +779,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm + 4,
     paddingVertical: spacing.sm,
     borderRadius: radius.md,
-    backgroundColor: 'rgba(255,255,255,0.94)',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: 'rgba(226,228,232,0.7)',
+    borderColor: colors.border,
     shadowColor: '#000',
     shadowOpacity: 0.08,
     shadowRadius: 8,
@@ -792,9 +804,9 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.sm,
     paddingHorizontal: spacing.sm + 4,
     borderRadius: radius.md,
-    backgroundColor: '#FDECEA',
+    backgroundColor: colors.peligroSuave,
     borderWidth: 1,
-    borderColor: '#F5C6C2',
+    borderColor: colors.bordePeligro,
   },
   requestsWarningText: { flex: 1, color: colors.danger, fontSize: fontSize.sm },
 

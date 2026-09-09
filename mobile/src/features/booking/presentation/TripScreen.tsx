@@ -7,7 +7,7 @@
  * Según el estado, un banner indica si el conductor va en camino o ya llegó.
  * Al completarse, lleva a calificar; permite cancelar antes de iniciar.
  */
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, type IoniconsIconName } from '@react-native-vector-icons/ionicons';
 import { useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -24,7 +24,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
 import { useBlockHardwareBack } from '@/core/navigation/useBlockHardwareBack';
-import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 import { useCancelRide } from '@/features/rides/application/useRideMutations';
 import {
   PASSENGER_ACTIVE_RIDE_KEY,
@@ -36,7 +36,7 @@ import { Button, ConfirmDialog, FeedbackState } from '@/shared/components';
 
 const SERVICE_LABELS = { taxi: 'Taxi', moto: 'Moto' } as const;
 
-type Banner = { icon: keyof typeof Ionicons.glyphMap; title: string; hint: string; accent?: boolean };
+type Banner = { icon: IoniconsIconName; title: string; hint: string; accent?: boolean };
 
 const BANNER: Record<RideStatus, Banner> = {
   searching: { icon: 'search', title: 'Buscando conductor', hint: 'Esperando ofertas…' },
@@ -77,6 +77,7 @@ const DELIVERY_BANNER: Record<RideStatus, Banner> = {
 const CANCELLABLE: RideStatus[] = ['searching', 'accepted', 'arriving'];
 
 export function TripScreen() {
+  const { colors, styles } = useEstilos(crearEstilos);
   const router = useRouter();
   const queryClient = useQueryClient();
   const { rideId } = useLocalSearchParams<{ rideId?: string }>();
@@ -84,7 +85,7 @@ export function TripScreen() {
   const { ride, isLoading, isError, error, refetch } = useRide(id);
   const cancelRide = useCancelRide();
   const [confirmCancel, setConfirmCancel] = useState(false);
-  useBlockHardwareBack(Boolean(id) && ride?.status !== 'cancelled' && ride?.status !== 'completed');
+  useBlockHardwareBack(Boolean(ride) && ride?.status !== 'cancelled' && ride?.status !== 'completed');
 
   const goHome = () => router.dismissTo('/(app)/(tabs)');
   const closeAndGoHome = () => {
@@ -121,6 +122,7 @@ export function TripScreen() {
     return (
       <SafeAreaView style={styles.fallback}>
         <FeedbackState loading title="Cargando tu viaje…" />
+        <Button title="Volver al inicio" variant="secondary" onPress={goHome} />
       </SafeAreaView>
     );
   }
@@ -135,6 +137,7 @@ export function TripScreen() {
           actionLabel="Reintentar"
           onAction={() => void refetch()}
         />
+        <Button title="Volver al inicio" variant="secondary" onPress={goHome} />
       </SafeAreaView>
     );
   }
@@ -232,6 +235,7 @@ export function TripScreen() {
 }
 
 function DriverCard({ ride }: { ride: Ride }) {
+  const { colors, styles } = useEstilos(crearEstilos);
   const driver = ride.driver!;
   const vehicle = [
     driver.vehicleType ? SERVICE_LABELS[driver.vehicleType] : null,
@@ -295,11 +299,12 @@ function ContactButton({
   onPress,
   disabled,
 }: {
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: IoniconsIconName;
   label: string;
   onPress: () => void;
   disabled?: boolean;
 }) {
+  const { colors, styles } = useEstilos(crearEstilos);
   return (
     <TouchableOpacity
       style={[styles.contactBtn, disabled && styles.contactDisabled]}
@@ -313,7 +318,7 @@ function ContactButton({
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceMuted },
   fallback: { flex: 1, backgroundColor: colors.background, padding: spacing.lg, gap: spacing.md },
   center: { alignItems: 'center', justifyContent: 'center' },

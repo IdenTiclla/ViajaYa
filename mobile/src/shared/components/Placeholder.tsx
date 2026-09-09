@@ -1,17 +1,18 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, type IoniconsIconName } from '@react-native-vector-icons/ionicons';
 import { StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { colors, fontSize, fontWeight, spacing } from '@/core/theme';
+import { fontSize, fontWeight, spacing, useEstilos, type Tema } from '@/core/theme';
 
 type Props = {
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: IoniconsIconName;
   title: string;
   message?: string;
 };
 
 /** Pantalla de marcador de posición para secciones aún no implementadas. */
 export function Placeholder({ icon, title, message = 'Disponible próximamente.' }: Props) {
+  const { colors, styles } = useEstilos(crearEstilos);
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.content}>
@@ -23,7 +24,7 @@ export function Placeholder({ icon, title, message = 'Disponible próximamente.'
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   content: {
     flex: 1,

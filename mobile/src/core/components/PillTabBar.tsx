@@ -1,22 +1,26 @@
 /**
- * Bottom bar Stitch: el tab activo lleva un pill amarillo (`colors.accent`) con
- * icono + etiqueta en color oscuro; los inactivos van en gris, sin fondo, en
- * columna. Compartida por pasajero y conductor.
+ * Navegación compartida por pasajero y conductor. El icono activo conserva el
+ * acento amarillo; todas las etiquetas tienen espacio y posición estables.
  *
  * Reemplaza al TabBar por defecto de React Navigation (que solo permite cambiar
  * el `tintColor`, no pintar un fondo por tab). Los iconos y títulos se declaran
  * en cada `Tabs.Screen` (`tabBarIcon` / `title`) y aquí se consumen tal cual.
  */
 import type { BottomTabBarProps } from 'expo-router/js-tabs';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { controles, fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 
 const ICON_SIZE = 22;
 
 export function PillTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+  const { colors, styles, estiloFoco } = useEstilos(crearEstilos);
   const insets = useSafeAreaInsets();
+  const { fontScale } = useWindowDimensions();
+  const [enfocada, setEnfocada] = useState<string | null>(null);
+  const dosFilas = fontScale > 1.3;
 
   // Focus por key (no por índice) y filtra rutas ocultas: una tab se oculta
   // declarando `tabBarButton: () => null` (estándar RN); las visibles no la
@@ -27,7 +31,7 @@ export function PillTabBar({ state, descriptors, navigation }: BottomTabBarProps
   );
 
   return (
-    <View style={[styles.bar, { paddingBottom: insets.bottom + spacing.xs }]}>
+    <View style={[styles.bar, { paddingBottom: insets.bottom + spacing.xs }]} accessibilityRole="tablist">
       {visibleRoutes.map((route) => {
         const { options } = descriptors[route.key];
         const isFocused = route.key === focusedKey;
@@ -52,7 +56,7 @@ export function PillTabBar({ state, descriptors, navigation }: BottomTabBarProps
             ? options.title
             : route.name;
 
-        const iconColor = isFocused ? colors.text : colors.textSecondary;
+        const iconColor = isFocused ? colors.textoSobreAcento : colors.textSecondary;
         const iconNode =
           typeof options.tabBarIcon === 'function'
             ? options.tabBarIcon({ focused: isFocused, color: iconColor, size: ICON_SIZE })
@@ -63,19 +67,24 @@ export function PillTabBar({ state, descriptors, navigation }: BottomTabBarProps
             key={route.key}
             onPress={onPress}
             onLongPress={onLongPress}
+            onFocus={() => setEnfocada(route.key)}
+            onBlur={() => setEnfocada(null)}
             android_ripple={{ color: 'transparent', borderless: false }}
             style={({ pressed }) => [
               styles.item,
-              isFocused ? styles.itemFocused : styles.itemIdle,
+              dosFilas && styles.itemGrande,
               pressed && styles.pressed,
+              enfocada === route.key && estiloFoco,
             ]}
-            accessibilityRole="button"
-            accessibilityState={isFocused ? { selected: true } : {}}
-            accessibilityLabel={label}>
-            {iconNode}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: isFocused }}
+            aria-selected={isFocused}
+            accessibilityLabel={options.tabBarAccessibilityLabel ?? label}>
+            <View style={[styles.icono, isFocused && styles.iconoActivo]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+              {iconNode}
+            </View>
             <Text
-              style={[styles.label, isFocused ? styles.labelFocused : styles.labelIdle]}
-              numberOfLines={1}>
+              style={[styles.label, isFocused ? styles.labelFocused : styles.labelIdle]}>
               {label}
             </Text>
           </Pressable>
@@ -85,10 +94,11 @@ export function PillTabBar({ state, descriptors, navigation }: BottomTabBarProps
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   bar: {
     flexDirection: 'row',
-    alignItems: 'center',
+    flexWrap: 'wrap',
+    alignItems: 'stretch',
     justifyContent: 'space-around',
     gap: spacing.xs,
     paddingHorizontal: spacing.sm,
@@ -101,22 +111,19 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 48,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radius.pill,
-  },
-  itemIdle: {
+    minWidth: 0,
+    minHeight: controles.altoMinimo,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.md,
     flexDirection: 'column',
     gap: 2,
   },
-  itemFocused: {
-    flexDirection: 'row',
-    gap: spacing.xs,
-    backgroundColor: colors.accent,
-    paddingHorizontal: spacing.md,
-  },
-  label: { fontSize: fontSize.xs },
+  itemGrande: { flexBasis: '45%' },
+  icono: { minWidth: 48, paddingVertical: 2, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center' },
+  iconoActivo: { backgroundColor: colors.accent },
+  label: { fontSize: fontSize.xs, textAlign: 'center', maxWidth: '100%' },
   labelIdle: { color: colors.textSecondary },
   labelFocused: { color: colors.text, fontWeight: fontWeight.semibold },
-  pressed: { opacity: 0.7 },
+  pressed: { opacity: 0.92 },
 });

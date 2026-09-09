@@ -7,11 +7,10 @@
  * 'destination'); por defecto, destino. El pin es azul para el origen y rojo
  * para el destino. El `Place` vive en estado local hasta que se confirma.
  */
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Linking,
   StyleSheet,
   Text,
@@ -21,7 +20,8 @@ import {
 import MapView, { PROVIDER_GOOGLE, type Details, type Region } from 'react-native-maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { useEstiloMapa } from '@/features/booking/presentation/mapStyle';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
 import { useRegionPlace } from '@/features/booking/application/useRegionPlace';
 import {
@@ -41,7 +41,7 @@ import type { Place } from '@/features/booking/domain/types';
 import { CenterPin } from '@/features/booking/presentation/CenterPin';
 import { useCurrentLocation } from '@/features/home/application/useCurrentLocation';
 import { RoutePinMarker } from '@/features/rides/presentation/RoutePinMarker';
-import { PinLoadingIndicator } from '@/shared/components';
+import { Button, PinLoadingIndicator } from '@/shared/components';
 
 const MIN_DESTINATION_DISTANCE_METERS = 50;
 
@@ -53,6 +53,7 @@ function coordenadasCasiIguales(a: Place['coordinates'], b: Place['coordinates']
 }
 
 export function PickOnMapScreen() {
+  const { colors, styles } = useEstilos(crearEstilos);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { target, saveAs, category, id, label, rideId } = useLocalSearchParams<{
@@ -82,6 +83,7 @@ export function PickOnMapScreen() {
     retry: retryLocation,
   } = useCurrentLocation();
   const mapRef = useRef<MapView>(null);
+  const { estiloMapa, modoMapa } = useEstiloMapa(false);
   const mapReady = useRef(false);
   const pendingGpsRegion = useRef<{ region: Region; isEstimated: boolean } | null>(null);
   const usableOrigin = origin && isPlaceInBolivia(origin) ? origin : null;
@@ -286,6 +288,8 @@ export function PickOnMapScreen() {
   return (
     <View style={styles.root}>
       <MapView
+        customMapStyle={estiloMapa}
+        userInterfaceStyle={modoMapa}
         ref={mapRef}
         provider={PROVIDER_GOOGLE}
         style={StyleSheet.absoluteFill}
@@ -322,7 +326,11 @@ export function PickOnMapScreen() {
         ) : null}
       </MapView>
 
-      <CenterPin label={centerPinLabel} color={pinColor} loading={isResolving} />
+      <CenterPin
+        label={centerPinLabel}
+        tipo={isSaveAs ? 'lugar' : isOrigin ? 'origen' : 'destino'}
+        loading={isResolving}
+      />
 
       <SafeAreaView style={styles.topArea} edges={['top']} pointerEvents="box-none">
         <View style={styles.topBar}>
@@ -454,26 +462,15 @@ export function PickOnMapScreen() {
             ) : null}
           </View>
         )}
-        <TouchableOpacity
-          style={[styles.confirm, confirmDisabled && styles.confirmDisabled]}
+        <Button
+          title={validationMessage ? hasSelectedCenter ? 'Elige otro punto' : 'Mueve el mapa' : confirmLabel}
+          trailingIcon="arrow-forward"
+          loading={isResolving && confirmDisabled}
+          accessibilityState={{ busy: isResolving }}
+          loadingLabel="Obteniendo dirección…"
           disabled={confirmDisabled}
           onPress={confirm}
-          accessibilityRole="button"
-          accessibilityState={{ disabled: confirmDisabled }}
-          accessibilityLabel={confirmLabel}>
-          <Text style={styles.confirmText}>
-            {validationMessage
-              ? hasSelectedCenter
-                ? 'Elige otro punto'
-                : 'Mueve el mapa'
-              : confirmLabel}
-          </Text>
-          {isResolving ? (
-            <ActivityIndicator size="small" color={colors.textOnPrimary} />
-          ) : (
-            <Ionicons name="arrow-forward" size={20} color={colors.textOnPrimary} />
-          )}
-        </TouchableOpacity>
+        />
       </SafeAreaView>
     </View>
   );
@@ -494,6 +491,7 @@ function SelectionPointRow({
   error?: boolean;
   loading?: boolean;
 }) {
+  const { colors, styles } = useEstilos(crearEstilos);
   return (
     <View
       style={[
@@ -535,7 +533,7 @@ function SelectionPointRow({
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceMuted },
 
   topArea: {
@@ -592,9 +590,9 @@ const styles = StyleSheet.create({
     minWidth: 0,
     padding: spacing.xs,
     borderRadius: radius.md,
-    backgroundColor: 'rgba(255,255,255,0.96)',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: 'rgba(226,228,232,0.85)',
+    borderColor: colors.border,
     shadowColor: '#000',
     shadowOpacity: 0.1,
     shadowRadius: 8,
@@ -610,8 +608,8 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     borderRadius: radius.sm,
   },
-  routePointActiveOrigin: { backgroundColor: 'rgba(22,48,140,0.06)' },
-  routePointActiveDestination: { backgroundColor: 'rgba(217,45,32,0.06)' },
+  routePointActiveOrigin: { backgroundColor: colors.primarioSuave },
+  routePointActiveDestination: { backgroundColor: colors.peligroSuave },
   routePointBadge: {
     width: 28,
     height: 28,
@@ -750,15 +748,4 @@ const styles = StyleSheet.create({
     fontWeight: fontWeight.semibold,
   },
 
-  confirm: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    height: 54,
-    borderRadius: radius.md,
-    backgroundColor: colors.primary,
-  },
-  confirmDisabled: { opacity: 0.5 },
-  confirmText: { color: colors.textOnPrimary, fontSize: fontSize.md, fontWeight: fontWeight.semibold },
 });

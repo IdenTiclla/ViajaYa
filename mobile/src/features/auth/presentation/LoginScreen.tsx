@@ -14,7 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
-import { colors, fontSize, fontWeight, spacing } from '@/core/theme';
+import { fontSize, fontWeight, spacing, useEstilos, type Tema } from '@/core/theme';
 import { useLogin } from '@/features/auth/application/useAuth';
 import { useSocialAuth } from '@/features/auth/application/useSocialAuth';
 import { type LoginForm, loginSchema } from '@/features/auth/application/validation';
@@ -22,6 +22,7 @@ import { BrandHeader } from '@/features/auth/presentation/BrandHeader';
 import { Button, Divider, SocialButton, TextField } from '@/shared/components';
 
 export function LoginScreen() {
+  const { styles } = useEstilos(crearEstilos);
   const login = useLogin();
   const social = useSocialAuth({
     onError: (message) => Alert.alert('No se pudo iniciar sesión', message),
@@ -56,6 +57,7 @@ export function LoginScreen() {
               name="email"
               render={({ field: { onChange, onBlur, value } }) => (
                 <TextField
+                  label="Correo electrónico"
                   leadingIcon="mail-outline"
                   placeholder="Correo electrónico"
                   autoCapitalize="none"
@@ -73,6 +75,7 @@ export function LoginScreen() {
               name="password"
               render={({ field: { onChange, onBlur, value } }) => (
                 <TextField
+                  label="Contraseña"
                   leadingIcon="lock-closed-outline"
                   placeholder="Contraseña"
                   password
@@ -86,12 +89,13 @@ export function LoginScreen() {
 
             <TouchableOpacity
               style={styles.forgot}
+              accessibilityRole="button"
               onPress={() => Alert.alert('Próximamente', 'Recuperación de contraseña en camino.')}>
               <Text style={styles.forgotText}>¿Olvidaste tu contraseña?</Text>
             </TouchableOpacity>
 
             <Button
-              title="Iniciar Sesión"
+              title="Iniciar sesión"
               trailingIcon="arrow-forward"
               loading={login.isPending}
               onPress={handleSubmit(onSubmit)}
@@ -119,14 +123,14 @@ export function LoginScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
   content: { padding: spacing.lg, gap: spacing.lg, flexGrow: 1, justifyContent: 'center' },
   form: { gap: spacing.md },
-  forgot: { alignSelf: 'flex-end' },
+  forgot: { alignSelf: 'flex-end', minHeight: 48, justifyContent: 'center' },
   forgotText: { color: colors.primary, fontSize: fontSize.sm, fontWeight: fontWeight.medium },
-  footer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
+  footer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center' },
   footerText: { color: colors.textSecondary, fontSize: fontSize.sm },
-  link: { color: colors.primary, fontSize: fontSize.sm, fontWeight: fontWeight.semibold },
+  link: { paddingVertical: spacing.md, color: colors.primary, fontSize: fontSize.sm, fontWeight: fontWeight.semibold, textDecorationLine: 'underline' },
 });

@@ -6,12 +6,12 @@
  * Usa `react-native-reanimated` (corre en el hilo nativo). Análogo visual al
  * `ConfirmationOverlay` del pasajero, pero para el gesto de ofertar.
  */
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
-import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 
 const AUTO_HIDE_MS = 1200;
 
@@ -22,6 +22,7 @@ export function OfferSentOverlay({
   visible: boolean;
   onDone: () => void;
 }) {
+  const { colors, styles } = useEstilos(crearEstilos);
   useEffect(() => {
     if (!visible) return;
     const timer = setTimeout(onDone, AUTO_HIDE_MS);
@@ -46,7 +47,7 @@ export function OfferSentOverlay({
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   overlay: {
     position: 'absolute',
     top: 0,
@@ -75,7 +76,7 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: radius.pill,
-    backgroundColor: '#E8F5EE',
+    backgroundColor: colors.exitoSuave,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.xs,

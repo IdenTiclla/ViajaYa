@@ -1,7 +1,9 @@
-import { Ionicons } from '@expo/vector-icons';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Ionicons, type IoniconsIconName } from '@react-native-vector-icons/ionicons';
+import { useRef } from 'react';
+import { AccessibilityInfo, findNodeHandle, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
-import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { Button } from './Button';
 
 type Props = {
   visible: boolean;
@@ -12,7 +14,7 @@ type Props = {
   /** Resalta la acción de confirmar en rojo (p. ej. eliminar). */
   destructive?: boolean;
   /** Ícono de Ionicons mostrado sobre el título. */
-  icon?: keyof typeof Ionicons.glyphMap;
+  icon?: IoniconsIconName;
   onConfirm: () => void;
   onCancel: () => void;
 };
@@ -32,7 +34,11 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: Props) {
+  const { colors, styles } = useEstilos(crearEstilos);
   const accent = destructive ? colors.danger : colors.primary;
+  const tituloRef = useRef<Text>(null);
+  const { width, fontScale } = useWindowDimensions();
+  const accionesEnColumna = width < 380 || fontScale > 1.2;
 
   return (
     <Modal
@@ -40,6 +46,12 @@ export function ConfirmDialog({
       transparent
       animationType="fade"
       statusBarTranslucent
+      onShow={() => {
+        // En web el Modal administra el foco mediante su contenedor de diálogo.
+        if (Platform.OS === 'web') return;
+        const titulo = findNodeHandle(tituloRef.current);
+        if (titulo != null) AccessibilityInfo.setAccessibilityFocus(titulo);
+      }}
       onRequestClose={onCancel}>
       {/* Fondo: tocar fuera cancela. */}
       <Pressable style={styles.backdrop} onPress={onCancel} accessible={false}>
@@ -48,54 +60,39 @@ export function ConfirmDialog({
           style={styles.card}
           onPress={() => {}}
           accessible={false}
+          onAccessibilityEscape={onCancel}
           accessibilityViewIsModal>
+          <ScrollView style={styles.scroll} contentContainerStyle={styles.contenido} bounces={false}>
           {icon && (
             <View style={[styles.iconWrap, { backgroundColor: `${accent}1A` }]}>
               <Ionicons name={icon} size={26} color={accent} />
             </View>
           )}
-          <Text style={styles.title}>{title}</Text>
+          <Text ref={tituloRef} style={styles.title} accessibilityRole="header">{title}</Text>
           {message ? <Text style={styles.message}>{message}</Text> : null}
 
-          <View style={styles.actions}>
-            <Pressable
-              style={({ pressed }) => [styles.button, styles.cancel, pressed && styles.pressed]}
+          <View style={[styles.actions, accionesEnColumna && styles.actionsColumn]}>
+            <Button
+              title={cancelText}
+              variant="secondary"
+              style={!accionesEnColumna && styles.button}
               onPress={onCancel}
-              accessibilityRole="button"
-              accessibilityLabel={cancelText}>
-              <Text
-                style={styles.cancelText}
-                numberOfLines={2}
-                adjustsFontSizeToFit
-                minimumFontScale={0.85}>
-                {cancelText}
-              </Text>
-            </Pressable>
-            <Pressable
-              style={({ pressed }) => [
-                styles.button,
-                { backgroundColor: accent },
-                pressed && styles.pressed,
-              ]}
+            />
+            <Button
+              title={confirmText}
+              variant={destructive ? 'danger' : 'primary'}
+              style={!accionesEnColumna && styles.button}
               onPress={onConfirm}
-              accessibilityRole="button"
-              accessibilityLabel={confirmText}>
-              <Text
-                style={styles.confirmText}
-                numberOfLines={2}
-                adjustsFontSizeToFit
-                minimumFontScale={0.85}>
-                {confirmText}
-              </Text>
-            </Pressable>
+            />
           </View>
+          </ScrollView>
         </Pressable>
       </Pressable>
     </Modal>
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.45)',
@@ -106,20 +103,20 @@ const styles = StyleSheet.create({
   card: {
     width: '100%',
     maxWidth: 360,
+    maxHeight: '90%',
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
-    padding: spacing.lg,
-    alignItems: 'center',
-    gap: spacing.sm,
     shadowColor: '#000',
     shadowOpacity: 0.18,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 6 },
     elevation: 12,
   },
+  scroll: { flexShrink: 1 },
+  contenido: { padding: spacing.lg, alignItems: 'center', gap: spacing.sm },
   iconWrap: {
-    width: 52,
-    height: 52,
+    width: 44,
+    height: 44,
     borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
@@ -143,27 +140,6 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     alignSelf: 'stretch',
   },
-  button: {
-    flex: 1,
-    minHeight: 48,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cancel: { backgroundColor: colors.surfaceMuted },
-  pressed: { opacity: 0.7 },
-  cancelText: {
-    fontSize: fontSize.md,
-    fontWeight: fontWeight.semibold,
-    color: colors.text,
-    textAlign: 'center',
-  },
-  confirmText: {
-    fontSize: fontSize.md,
-    fontWeight: fontWeight.semibold,
-    color: colors.textOnPrimary,
-    textAlign: 'center',
-  },
+  actionsColumn: { flexDirection: 'column' },
+  button: { flex: 1 },
 });

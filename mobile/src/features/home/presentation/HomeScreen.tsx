@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useQueryClient } from '@tanstack/react-query';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -18,7 +18,8 @@ import MapView, { PROVIDER_GOOGLE, type Details, type Region } from 'react-nativ
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
-import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { useEstiloMapa } from '@/features/booking/presentation/mapStyle';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
 import { useRecentDestinations } from '@/features/booking/application/useRecentDestinations';
 import { useRegionPlace } from '@/features/booking/application/useRegionPlace';
@@ -37,6 +38,7 @@ import {
 import type { Coordinates, Place } from '@/features/booking/domain/types';
 import { CenterPin } from '@/features/booking/presentation/CenterPin';
 import { ServiceTypeSelector } from '@/features/booking/presentation/ServiceTypeSelector';
+import { confirmarRecuperacion } from '@/features/home/application/confirmarRecuperacion';
 import { useCurrentLocation } from '@/features/home/application/useCurrentLocation';
 import {
   PASSENGER_ACTIVE_RIDE_KEY,
@@ -65,6 +67,7 @@ function coordenadasCasiIguales(a: Coordinates, b: Coordinates): boolean {
 }
 
 export function HomeScreen() {
+  const { colors, styles } = useEstilos(crearEstilos);
   const user = useAuthStore((s) => s.user);
   const insets = useSafeAreaInsets();
   const { height: screenHeight } = useWindowDimensions();
@@ -97,6 +100,7 @@ export function HomeScreen() {
   } = usePendingRatingRide();
   const { status, coordinates, canAskAgain, isEstimated, retry } = useCurrentLocation();
   const mapRef = useRef<MapView>(null);
+  const { estiloMapa, modoMapa } = useEstiloMapa(false);
   const mapReady = useRef(false);
   const pendingAutomaticRegion = useRef<Region | null>(null);
   const lastLocationRefresh = useRef(0);
@@ -104,6 +108,8 @@ export function HomeScreen() {
   const automaticOriginCoordinates = useRef<Coordinates | null>(null);
   const originAdjustedByUser = useRef(false);
   const [recoveryReady, setRecoveryReady] = useState(false);
+  const [recoveryFailure, setRecoveryFailure] = useState<string | null>(null);
+  const [recoveryAttempt, setRecoveryAttempt] = useState(0);
   const [originManuallyAdjusted, setOriginManuallyAdjusted] = useState(false);
   const recoveryReadyRef = useRef(false);
 
@@ -232,12 +238,17 @@ export function HomeScreen() {
       let focused = true;
       recoveryReadyRef.current = false;
       setRecoveryReady(false);
+      setRecoveryFailure(null);
 
       const recover = async () => {
         try {
-          const activeResult = await refetchActiveRide();
-          if (activeResult.isSuccess && activeResult.data == null) {
-            await refetchPendingRating();
+          await confirmarRecuperacion(refetchActiveRide, refetchPendingRating);
+        } catch (error) {
+          if (focused) {
+            setRecoveryFailure(getApiErrorMessage(
+              error,
+              error instanceof Error ? error.message : undefined,
+            ));
           }
         } finally {
           if (focused) {
@@ -252,7 +263,9 @@ export function HomeScreen() {
         focused = false;
         recoveryReadyRef.current = false;
       };
-    }, [refetchActiveRide, refetchPendingRating]),
+    // El contador fuerza otra verificación al pulsar Reintentar con el mismo foco.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [recoveryAttempt, refetchActiveRide, refetchPendingRating]),
   );
 
   // El tab permanece montado: al volver después de un tiempo actualizamos el
@@ -279,6 +292,7 @@ export function HomeScreen() {
       if (
         !recoveryReadyRef.current ||
         !recoveryReady ||
+        recoveryFailure ||
         activeRideLoading ||
         activeRideFetching ||
         activeRideError
@@ -324,6 +338,7 @@ export function HomeScreen() {
       pendingRatingRide,
       queryClient,
       recoveryReady,
+      recoveryFailure,
       router,
     ]),
   );
@@ -399,11 +414,7 @@ export function HomeScreen() {
     router.navigate('/booking/configure');
   };
 
-  if (!recoveryReady || activeRideLoading) {
-    return <ActiveRideGate />;
-  }
-
-  if (activeRideError || (!activeRide && pendingRatingError)) {
+  if (recoveryFailure || activeRideError || (!activeRide && pendingRatingError)) {
     const recoveryError = activeRideError
       ? activeRideErrorValue
       : pendingRatingErrorValue;
@@ -411,12 +422,16 @@ export function HomeScreen() {
       <SafeAreaView style={styles.recovery}>
         <Ionicons name="cloud-offline-outline" size={44} color={colors.textSecondary} />
         <Text style={styles.recoveryTitle}>No pudimos verificar tus viajes</Text>
-        <Text style={styles.recoveryHint}>{getApiErrorMessage(recoveryError)}</Text>
+        <Text style={styles.recoveryHint}>
+          {recoveryFailure ?? getApiErrorMessage(recoveryError)}
+        </Text>
         <TouchableOpacity
           style={styles.retry}
           onPress={() => {
-            void refetchActiveRide();
-            void refetchPendingRating();
+            recoveryReadyRef.current = false;
+            setRecoveryReady(false);
+            setRecoveryFailure(null);
+            setRecoveryAttempt((attempt) => attempt + 1);
           }}
           accessibilityRole="button"
           accessibilityLabel="Reintentar recuperación del viaje">
@@ -426,11 +441,15 @@ export function HomeScreen() {
     );
   }
 
+  if (!recoveryReady || activeRideLoading) {
+    return <ActiveRideGate />;
+  }
+
   if (activeRide) {
     return <ActiveRideGate />;
   }
 
-  if (pendingRatingLoading || pendingRatingFetching || pendingRatingRide) {
+  if (pendingRatingLoading || pendingRatingRide) {
     return <ActiveRideGate />;
   }
 
@@ -438,6 +457,8 @@ export function HomeScreen() {
     <View style={styles.root}>
       {status === 'granted' && region ? (
         <MapView
+          customMapStyle={estiloMapa}
+          userInterfaceStyle={modoMapa}
           ref={mapRef}
           provider={PROVIDER_GOOGLE}
           style={StyleSheet.absoluteFill}
@@ -558,10 +579,11 @@ export function HomeScreen() {
 }
 
 function ActiveRideGate() {
+  const { colors, styles } = useEstilos(crearEstilos);
   return (
     <SafeAreaView style={styles.recovery}>
       <ActivityIndicator size="large" color={colors.primary} />
-      <Text style={styles.recoveryTitle}>Recuperando tu viaje…</Text>
+      <Text style={styles.recoveryTitle}>Verificando tus viajes…</Text>
     </SafeAreaView>
   );
 }
@@ -577,6 +599,7 @@ function MapPlaceholder({
   outsideArea: boolean;
   onRetry: () => void;
 }) {
+  const { colors, styles } = useEstilos(crearEstilos);
   if (status === 'loading') {
     return (
       <View style={[styles.placeholder, styles.placeholderBg]}>
@@ -610,7 +633,7 @@ function MapPlaceholder({
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceMuted },
   recovery: {
     flex: 1,

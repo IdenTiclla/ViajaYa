@@ -1,111 +1,162 @@
 /**
- * Mapa de fondo del conductor "buscando solicitudes": siempre un `MapView` de
- * Google que **sigue al conductor** (lo mantiene centrado mientras se mueve por
- * la ciudad, como un navegador). El ícono del conductor y las ondas se dibujan
- * aparte (overlay centrado), por lo que aquí no hay marker del conductor.
- *
- * La posición llega en vivo desde `useWatchPosition` (el padre); este componente
- * solo re-centra el mapa con cada actualización.
+ * Mapa del conductor "buscando solicitudes": se abre al recibir su ubicación
+ * con un marcador anclado al GPS. La cámara sigue al conductor hasta que
+ * desplaza el mapa; puede volver a activar el seguimiento con un botón.
  */
-import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useRef } from 'react';
-import { Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Ionicons } from '@react-native-vector-icons/ionicons';
+import { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Linking, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 
-import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
-import { declutteredMapStyle } from '@/features/booking/presentation/mapStyle';
+import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { useEstiloMapa } from '@/features/booking/presentation/mapStyle';
 import type { Coordinates } from '@/core/domain/geo';
 import type { WatchStatus } from '@/features/home/application/useWatchPosition';
+import { MarcadorVehiculo } from './MarcadorVehiculo';
 
 // Zoom de navegación urbano: muestra unas manzanas alrededor del conductor.
 const FOLLOW_DELTA = 0.012;
 
-// Región por defecto (centro de La Paz) antes de tener la ubicación.
-const DEFAULT_REGION: Region = {
-  latitude: -16.5,
-  longitude: -68.15,
-  latitudeDelta: 0.08,
-  longitudeDelta: 0.08,
-};
-
 type Props = {
   coordinates: Coordinates | null;
+  heading: number | null;
+  tipoVehiculo: 'taxi' | 'moto' | null;
   status: WatchStatus;
   retry: () => void;
+  interactivo?: boolean;
 };
 
-export function DriverSearchMap({ coordinates, status, retry }: Props) {
-  const mapRef = useRef<MapView>(null);
+export function DriverSearchMap(props: Props) {
+  const { colors, styles } = useEstilos(crearEstilos);
+  const { coordinates, status, retry } = props;
+  if (coordinates) return <MapaUbicado {...props} coordinates={coordinates} />;
 
-  const region: Region = coordinates
-    ? {
-        latitude: coordinates.latitude,
-        longitude: coordinates.longitude,
-        latitudeDelta: FOLLOW_DELTA,
-        longitudeDelta: FOLLOW_DELTA,
-      }
-    : DEFAULT_REGION;
-
-  // Sigue al conductor: re-centra con cada nueva posición.
-  useEffect(() => {
-    if (!coordinates) return;
-    mapRef.current?.animateToRegion(
-      {
-        latitude: coordinates.latitude,
-        longitude: coordinates.longitude,
-        latitudeDelta: FOLLOW_DELTA,
-        longitudeDelta: FOLLOW_DELTA,
-      },
-      500,
-    );
-  }, [coordinates]);
-
+  const cargando = status === 'loading';
+  const abrirConfiguracion = status === 'denied' || status === 'disabled';
+  const mensaje = cargando ? 'Buscando tu ubicación…'
+    : status === 'disabled' ? 'La ubicación del teléfono está desactivada.'
+      : status === 'denied' ? 'Permite el acceso a tu ubicación para mostrarte en el mapa.'
+        : 'Todavía no recibimos tu ubicación. Comprueba la señal y que la ubicación esté activada.';
+  const configurar = () => {
+    if (status === 'disabled' && Platform.OS === 'android') {
+      void Linking.sendIntent('android.settings.LOCATION_SOURCE_SETTINGS').catch(() => Linking.openSettings());
+    } else {
+      void Linking.openSettings();
+    }
+  };
+  // No mostrar una ciudad fija como si fuera la ubicación del conductor.
   return (
     <View style={styles.container}>
+      <View style={styles.permissionOverlay}>
+        <View style={styles.permissionCard}>
+          {cargando ? <ActivityIndicator color={colors.primary} size="large" />
+            : <Ionicons name="location-outline" size={28} color={colors.primary} />}
+          <Text style={styles.permissionText} accessibilityLiveRegion="polite">{mensaje}</Text>
+          {!cargando && (
+            <TouchableOpacity
+              style={styles.retryBtn}
+              onPress={abrirConfiguracion ? configurar : retry}
+              accessibilityRole="button"
+              accessibilityLabel={abrirConfiguracion ? 'Abrir configuración de ubicación' : 'Reintentar ubicación'}>
+              <Text style={styles.retryBtnText}>{abrirConfiguracion ? 'Abrir configuración' : 'Reintentar'}</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function MapaUbicado({ coordinates, heading, tipoVehiculo, interactivo = false }: Props & { coordinates: Coordinates }) {
+  const { colors, styles } = useEstilos(crearEstilos);
+  const mapRef = useRef<MapView>(null);
+  const { estiloMapa, modoMapa } = useEstiloMapa(true);
+  const [listo, setListo] = useState(false);
+  const [seguir, setSeguir] = useState(true);
+  const [solicitudCentrado, setSolicitudCentrado] = useState(0);
+  const [layout, setLayout] = useState({ width: 0, height: 0 });
+  const centrado = useRef(false);
+  const ultimaSolicitudCentrado = useRef(0);
+
+  const region: Region = {
+    latitude: coordinates.latitude,
+    longitude: coordinates.longitude,
+    latitudeDelta: FOLLOW_DELTA,
+    longitudeDelta: FOLLOW_DELTA,
+  };
+
+  // Espera al mapa y su layout: la primera posición puede llegar antes que ambos.
+  useEffect(() => {
+    if (!listo || !seguir || !layout.width || !layout.height) return;
+    const frame = requestAnimationFrame(() => {
+      const mapa = mapRef.current;
+      if (!mapa) return;
+      if (!centrado.current || ultimaSolicitudCentrado.current !== solicitudCentrado) {
+        // Centrado inicial y explícito sin animación: evita el desplazamiento
+        // incorrecto de animateCamera durante el montaje de las pestañas nativas.
+        mapa.setCamera({ center: coordinates, ...(!centrado.current ? { zoom: 16, heading: 0, pitch: 0 } : {}) });
+      } else {
+        mapa.animateCamera({ center: coordinates }, { duration: 500 });
+      }
+      centrado.current = true;
+      ultimaSolicitudCentrado.current = solicitudCentrado;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [coordinates, listo, seguir, layout, solicitudCentrado]);
+
+  return (
+    <View
+      style={styles.container}
+      onLayout={({ nativeEvent: { layout: medidas } }) => {
+        setLayout((actual) => actual.width === medidas.width && actual.height === medidas.height
+          ? actual : { width: medidas.width, height: medidas.height });
+      }}>
       <MapView
         ref={mapRef}
         provider={PROVIDER_GOOGLE}
         style={StyleSheet.absoluteFill}
         initialRegion={region}
-        customMapStyle={declutteredMapStyle}
-        scrollEnabled={false}
-        zoomEnabled={false}
-        rotateEnabled={false}
+        customMapStyle={estiloMapa}
+        userInterfaceStyle={modoMapa}
+        scrollEnabled={interactivo}
+        zoomEnabled={interactivo}
+        rotateEnabled={interactivo}
         pitchEnabled={false}
         showsMyLocationButton={false}
-        showsCompass={false}
+        showsCompass={interactivo}
         showsScale={false}
-      />
+        onMapReady={() => setListo(true)}
+        onPanDrag={() => { if (interactivo) setSeguir(false); }}
+        onRegionChangeComplete={(_, detalles) => {
+          if (interactivo && detalles?.isGesture) setSeguir(false);
+        }}>
+        <MarcadorVehiculo coordinates={coordinates} heading={heading} tipoVehiculo={tipoVehiculo} />
+      </MapView>
 
-      {(status === 'denied' || status === 'error') && (
-        <View style={styles.permissionOverlay} pointerEvents="box-none">
-          <View style={styles.permissionCard}>
-            <Ionicons name="location-outline" size={28} color={colors.primary} />
-            <Text style={styles.permissionText}>
-              {status === 'denied'
-                ? 'Activa tu ubicación para seguir tu ubicación y recibir solicitudes cercanas.'
-                : 'No pudimos obtener tu ubicación.'}
-            </Text>
-            <TouchableOpacity
-              style={styles.retryBtn}
-              onPress={status === 'denied' ? () => void Linking.openSettings() : retry}
-              accessibilityRole="button"
-              accessibilityLabel={
-                status === 'denied' ? 'Abrir configuración de ubicación' : 'Reintentar ubicación'
-              }>
-              <Text style={styles.retryBtnText}>
-                {status === 'denied' ? 'Abrir configuración' : 'Reintentar'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+      {interactivo && (
+        <TouchableOpacity
+          style={styles.seguir}
+          onPress={() => { setSeguir(true); setSolicitudCentrado((solicitud) => solicitud + 1); }}
+          accessibilityRole="button"
+          accessibilityLabel="Volver a seguir mi ubicación">
+          <Ionicons name="locate" size={20} color={colors.primary} />
+          <Text style={styles.seguirTexto}>{seguir ? 'Mi ubicación' : 'Seguir mi ubicación'}</Text>
+        </TouchableOpacity>
       )}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   container: { flex: 1, overflow: 'hidden', backgroundColor: colors.surfaceMuted },
+  seguir: {
+    position: 'absolute', right: spacing.md, bottom: spacing.md,
+    minHeight: 48, maxWidth: '90%', paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    borderRadius: radius.pill, backgroundColor: colors.surface,
+    borderWidth: 1, borderColor: colors.bordeControl,
+  },
+  seguirTexto: { color: colors.text, fontSize: fontSize.sm, fontWeight: fontWeight.semibold, flexShrink: 1 },
   permissionOverlay: {
     position: 'absolute',
     top: 0,
@@ -121,9 +172,9 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     padding: spacing.lg,
     borderRadius: radius.lg,
-    backgroundColor: 'rgba(255,255,255,0.92)',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: 'rgba(226,228,232,0.7)',
+    borderColor: colors.border,
     shadowColor: '#000',
     shadowOpacity: 0.15,
     shadowRadius: 16,
@@ -136,6 +187,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   retryBtn: {
+    minHeight: 48,
+    justifyContent: 'center',
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
     borderRadius: radius.md,

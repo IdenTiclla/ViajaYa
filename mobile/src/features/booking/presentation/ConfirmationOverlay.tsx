@@ -4,11 +4,11 @@
  * mínimo de ~500 ms para evitar un toque accidental) o, como respaldo, se
  * auto-oculta a los 3 s. Al terminar llama a `onDone` (navega al viaje).
  */
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 
 const MIN_DISPLAY_MS = 500;
 const FALLBACK_MS = 3000;
@@ -20,6 +20,7 @@ export function ConfirmationOverlay({
   visible: boolean;
   onDone: () => void;
 }) {
+  const { colors, styles } = useEstilos(crearEstilos);
   const [scale] = useState(() => new Animated.Value(0));
   // Ref (no state): el onPress la lee al tap; evita re-renders en cascada.
   const canDismissRef = useRef(false);
@@ -78,7 +79,7 @@ export function ConfirmationOverlay({
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   overlay: {
     position: 'absolute',
     top: 0,
@@ -107,7 +108,7 @@ const styles = StyleSheet.create({
     width: 88,
     height: 88,
     borderRadius: radius.pill,
-    backgroundColor: '#E8F5EE',
+    backgroundColor: colors.exitoSuave,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.xs,

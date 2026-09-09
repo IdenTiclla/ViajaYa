@@ -20,7 +20,7 @@ El enrutado (`src/app/`) solo monta pantallas; la lógica vive en `src/features/
 ```
 src/
 ├── app/                 # Rutas (expo-router, file-based). Solo composición de pantallas.
-│   ├── _layout.tsx        # Raíz: providers (QueryClient, SafeArea, GestureHandler) + gate por sesión/rol
+│   ├── _layout.tsx        # Raíz: providers (tema, QueryClient, SafeArea, GestureHandler) + gate por sesión/rol
 │   ├── index.tsx          # Redirect por rol → (auth)/login | (app)/(tabs) | (driver)/(tabs)/solicitudes
 │   ├── (auth)/            # login, register
 │   ├── (app)/             # Grupo pasajero (guard: authenticated && !driver)
@@ -36,12 +36,13 @@ src/
 ├── features/            # Una carpeta por feature, en capas (Clean Architecture).
 │   ├── auth/              # domain/ · data/ · application/ · presentation/
 │   ├── booking/           # 4 capas completas (flujo de reserva)
-│   ├── home/              # data/ · application/ · presentation/ (sin domain/)
+│   ├── home/              # domain/ (orientación) · data/ · application/ · presentation/
 │   ├── rides/             # ofertas + ciclo de vida del viaje + hooks de WS del pasajero y conductor
 │   │   ├── domain/          # types.ts · fareInput.ts · geo.ts · offerTags.ts
 │   │   ├── data/            # ridesRepository.ts (DTO ↔ dominio)
 │   │   ├── application/     # useRides · useRideMutations · useCloseFlow · useNegotiationSocket
 │   │   └── presentation/    # FareKeypad · OfferLifeTimer · RideHistoryScreen · RideRatingCard · …
+│   ├── profile/           # presentación del perfil de pasajero y selector de tema compartido
 │   └── driver/            # application/ + presentation/ únicamente (reusa data/domain de rides)
 │       ├── application/     # useDriverRequests (zustand) · useDriverToasts
 │       └── presentation/    # SolicitudesEntrantesScreen · DriverTopBar · RequestCard · DriverSearchMap · …
@@ -52,7 +53,7 @@ src/
 │   ├── realtime/socket.ts # WS genérico con reconnect (token por subprotocol, backoff exponencial)
 │   ├── errors/apiError.ts
 │   ├── hooks/            # useCountdown (AppState-aware), …
-│   └── theme/            # tokens.ts + index.ts (design system)
+│   └── theme/            # paletas, estilos reactivos y preferencia local persistida
 ├── shared/components/  # UI reutilizable: Button, TextField, Checkbox, ConfirmDialog, SocialButton, …
 └── store/authStore.ts  # Sesión global (zustand); se auto-logout si el refresh falla
 ```
@@ -84,7 +85,9 @@ src/
 - conductor → `/(driver)/(tabs)/solicitudes` (cae directo en Solicitudes, no en Inicio)
 
 **Bottom bar Stitch** (`core/components/PillTabBar.tsx`, compartida por pasajero y conductor):
-el tab activo lleva un pill de fondo amarillo (`colors.accent` = `#F5C518`) con icono+etiqueta oscuros.
+el icono activo lleva un pill de fondo amarillo (`colors.accent` = `#F5C518`).
+Todas las etiquetas permanecen debajo de su icono; con letra grande se distribuyen
+en dos filas para conservar el texto completo.
 Las rutas ocultas declaran `tabBarButton: () => null` (ej. el `index` redirect del conductor).
 
 ## State management
@@ -175,16 +178,97 @@ fuerza otro handshake que decide autoritativamente si sigue `PENDING`.
 
 ## Tema (design system)
 
-`core/theme/tokens.ts` (única fuente de verdad; reexportado por `index.ts`):
+`core/theme/tokens.ts` contiene las paletas clara y oscura y los tokens de diseño.
+La app inicia en **claro**, independientemente del sistema. **Perfil → Apariencia**
+permite elegir Claro u Oscuro para pasajero y conductor. La preferencia vive en
+`viajaya.tema` (SecureStore nativo; localStorage web), se conserva al cerrar sesión
+y no modifica la cuenta del backend.
+
+`ProveedorTema` sincroniza colores, Expo Router, StatusBar, Appearance y el fondo
+nativo. Cambiar el tema actualiza el contexto sin remontar las pantallas ni perder
+formularios o conexiones. `crearStoreTema` acota la lectura a 5 s, descarta resultados
+anteriores a una elección y permite reintentar si el almacenamiento falla.
+
+Paleta clara:
 
 - `colors.primary #16308C` (azul TaxiGo) · `colors.primaryDark #0F2266` · `colors.accent #F5C518`
-  (amarillo Stitch: tab activo, estrellas, acentos) · `success #0F9D58` · `danger #D92D20` ·
-  `text #1A1D23` · `textSecondary #60646C` · `surfaceMuted #F2F3F5` · `border #E2E4E8`.
+  (amarillo Stitch: tab activo, estrellas, acentos) · `success #167347` · `danger #C52C22` ·
+  `text #182230` · `textSecondary #536174` · `surfaceMuted #F3F5F8` · `border #DCE2EB`.
+- `bordeControl #7D8796` identifica campos y opciones; `border` se reserva para
+  separadores decorativos. `primarioSuave` y `peligroSuave` acompañan las acciones
+  secundarias con texto oscuro; los estados deshabilitados usan colores explícitos.
 - `spacing` xs/sm/md/lg/xl/xxl = 4/8/16/24/32/48 · `radius` sm/md/lg/pill = 8/12/16/999 ·
   `fontSize` xs…xxl = 12/14/16/20/24/32 · `fontWeight` regular/medium/semibold/bold.
 
-Importa `{ colors, spacing, radius, fontSize, fontWeight }` desde `@/core/theme`. `app.config.ts`
-usa `#16308C` para splash/adaptiveIcon.
+Paleta oscura: fondo `#10151F`, tarjetas `#192230`, texto `#F3F6FC`, primario
+`#A8BDFF` y texto sobre primario `#10204E`. Ambos temas conservan contraste para
+texto, controles y estados. `app.config.ts` mantiene `userInterfaceStyle: 'light'`
+como base nativa; Appearance aplica después la elección explícita de la app.
+
+Importa tokens de tamaño y los hooks desde `@/core/theme`. Dentro del componente,
+usa `useTema()` para colores sueltos o `useEstilos(crearEstilos)` para obtener
+`{ colors, styles, estiloFoco }`. Declara la fábrica fuera del componente:
+
+```tsx
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+  tarjeta: { backgroundColor: colors.surface, padding: spacing.md },
+});
+```
+
+No captures colores en `StyleSheet.create` ni tablas de iconos a nivel de módulo.
+Los mapas usan `useEstiloMapa` y `userInterfaceStyle` explícito; cambiar tema debe
+redibujar también los marcadores nativos. Usa `textoSobreAcento` sobre el amarillo.
+Splash/adaptiveIcon conservan el azul de marca `#16308C`.
+
+### Controles y accesibilidad
+
+- Los iconos usan `@react-native-vector-icons/ionicons` y
+  `@react-native-vector-icons/fontawesome`, con imports por familia. Se conserva
+  la carga dinámica mediante `expo-font`: las fuentes viajan como assets de Metro.
+  `expo.autolinking.exclude` en `package.json` excluye ambas familias para evitar
+  copiarlas también al binario nativo. No añadas imports `/static`, plugins de estas
+  familias ni fuentes manuales sin revisar conjuntamente esa configuración.
+- Los símbolos propios del mapa viven en `shared/components/mapa/`: A circular
+  para origen, B circular para destino y vehículos cenitales taxi/moto. Se dibujan
+  con vistas nativas y tokens, sin fuentes de iconos. La letra A/B tiene escala
+  fija porque forma parte del símbolo; la etiqueta y el nombre accesible conservan
+  el significado. El pin de selección ancla el extremo del tallo al 50% del mapa,
+  sin estimar la altura del texto. `MarcadorVehiculo` pertenece al mapa nativo:
+  coordenadas GPS, `flat` y anclaje central; la rotación sigue el norte geográfico
+  incluso al girar la cámara. El barrido del radar es solo decorativo. El GPS
+  solicita actualizaciones cada segundo; el rumbo de movimiento fiable tiene
+  prioridad y, al detenerse, se usa la brújula calibrada. Se conserva una sola
+  suscripción mientras la pestaña de búsqueda está enfocada; Expo gestiona la
+  pausa nativa en segundo plano. Volver a la app consulta permisos y servicios
+  sin abrir diálogos ni recrear un watcher sano. Al perder foco se cancela incluso
+  un alta pendiente. Una adquisición puntual con precisión equilibrada permite
+  el primer centrado mientras llega el GPS preciso; se comparte si hay reintentos.
+  El mapa se monta solo al recibir coordenadas recientes, sin una ciudad fija de
+  respaldo; la carga tiene 15 s antes de ofrecer Reintentar y una señal tardía
+  recupera el mapa. La cámara mide el contenedor y espera `onMapReady`; el primer
+  centrado y «Mi ubicación» usan `setCamera`, el seguimiento usa `animateCamera`.
+- Reutiliza `Button` para acciones de formulario y pie de pantalla: altura mínima
+  de 48, texto de 14 y crecimiento natural al ampliar la letra. Evita alturas
+  fijas y `adjustsFontSizeToFit` para hacer caber etiquetas de acciones.
+- Reserva `primary` para la acción principal, `secondary` para alternativas,
+  `dangerSoft` para iniciar una acción destructiva y `danger` para confirmarla.
+  `loading` bloquea la acción e informa su estado; `accessibilityState.busy` puede
+  comunicar una consulta en segundo plano que permite seguir interactuando.
+- Conserva el foco de teclado visible (`estiloFoco`) y los estados de selección,
+  carga y deshabilitado también mediante `aria-*`, compatibles con React Native
+  y React Native Web. La selección se distingue además por una marca visible.
+- Los campos mantienen etiquetas al escribir y asocian los errores mediante su
+  pista de accesibilidad. Los diálogos son desplazables y apilan sus acciones
+  cuando falta espacio; al abrirse enfocan el título para el lector nativo.
+- Verifica los controles con texto al 200% y pantallas estrechas. Una
+  previsualización web ayuda a comprobar geometría y teclado; TalkBack y
+  VoiceOver requieren validación en dispositivo.
+- La búsqueda conserva el acceso al mapa en carga, error y sin resultados.
+  `useSeleccionDestino` invalida resoluciones anteriores al cambiar de búsqueda,
+  elegir otro destino o salir de la pantalla; un fallo de recientes no es una lista vacía.
+- Las ofertas separan precio, llegada estimada y vencimiento, conservando nombres
+  y vehículos completos. Calificar permite omitir incluso tras elegir estrellas;
+  mientras se envía o se omite, sus controles quedan bloqueados.
 
 ## HTTP client
 
@@ -193,10 +277,30 @@ usa `#16308C` para splash/adaptiveIcon.
 - **Request interceptor**: adjunta `Authorization: Bearer <accessToken>` desde `tokenStorage`.
 - **Response interceptor**: ante 401 (si la URL no está en `NO_REFRESH_PATHS` y no es `_retry`),
   dispara `refreshAccessToken()` **compartido** (dedupe de concurrencia) → `POST /auth/refresh` →
-  guarda el nuevo par → reintenta el original. Si falla: `tokenStorage.clear()` + `onSessionExpired()`
-  (registrado por `authStore` → auto-logout).
+  guarda el nuevo par → reintenta el original. Solo un refresh rechazado con 401
+  (o sin credenciales) ejecuta `tokenStorage.clear()` + `onSessionExpired()`;
+  red, timeout y 5xx conservan la sesión para reintentar. El refresh compartido
+  siempre se libera en `finally`, incluso si falla SecureStore.
 - `env.apiUrl` viene de `app.config.ts` → `extra.apiUrl`; `env.wsUrl` se deriva con `toWsUrl()`.
 - Tokens en `expo-secure-store` (`viajaya.accessToken`/`viajaya.refreshToken`), nunca en AsyncStorage plano.
+- El refresh también pasa por `api` con `skipAuth: true` y el timeout de 15 s;
+  nunca debe quedar una renovación de sesión sin límite de espera.
+- Home verifica activo y después calificación con un límite total de 30 s en
+  `features/home/application/confirmarRecuperacion.ts`. Un fallo o timeout muestra
+  Reintentar antes que el indicador de carga; reintentar repite la verificación
+  completa. Una respuesta tardía no autoriza navegación después del timeout.
+- Leer SecureStore tiene un límite de 5 s. El arranque completo tiene 30 s y
+  muestra `SessionRecoveryScreen` con Reintentar si falla; conserva credenciales
+  ante errores transitorios. Una generación evita restaurar un arranque anterior
+  después de otro intento o de expirar la sesión.
+- Confirmar/omitir calificación libera la mutación al recibir el éxito HTTP;
+  las invalidaciones posteriores corren en segundo plano. Una lectura antigua se
+  cancela antes de retirar de caché ese cierre, conservando otros pendientes.
+- Las pantallas de recuperación priorizan errores sobre cargas de otras consultas.
+  Una actualización en segundo plano no reemplaza por un spinner una pantalla ya
+  verificada. Sin detalle de viaje, Viaje, Calificación y Edición permiten volver
+  al inicio; una solicitud inaccesible también permite salir de Ofertas. Esa
+  salida no cancela viajes: Home vuelve a consultar el estado autoritativo.
 
 ## Contrato con backend
 
@@ -246,6 +350,23 @@ npm run lint               # expo lint (eslint-config-expo)
 - **Formularios:** react-hook-form + zod (`@hookform/resolvers`), esquemas junto al feature.
 - **Mapas:** `react-native-maps`; ubicación con `expo-location` (permisos en `app.config.ts`).
   Estilo de mapa compartido: `features/booking/presentation/mapStyle.ts` (`declutteredMapStyle`).
+- **Apariencia de trayectos:** todas las vistas reutilizan `RoutePolyline` y
+  `RoutePinMarker`; seguimiento y negociación usan además `TripRouteMap`.
+  `routeTooltipLayout.ts` concentra las medidas lógicas comunes: trazo 3,
+  contorno 5 y pin A/B de 16, sin variantes de tamaño por rol. Configuración
+  conserva su control Editar y permite activar las etiquetas de lugares, pero
+  inicia con el mismo mapa despejado del conductor. No dupliques la polilínea ni
+  los estilos del pin en una pantalla. Conserva el contenedor nativo no aplanable,
+  el anclaje al centro del símbolo y el redibujado cancelable tras cambios de layout.
+  La colocación de tooltips comprueba todos los segmentos en la proyección de
+  pantalla y mide el bloque completo (texto y Editar). Los mapas con ruta son
+  cenitales, con zoom y giro habilitados; ambos actualizan el cálculo. Se busca
+  espacio arriba/abajo con separación acotada. Si no cabe, conserva A/B y su
+  título al tocarlo, sin dibujar la etiqueta sobre la ruta ni agrandar el bitmap
+  sin límite. El onPress de edición/selección permanece disponible.
+  Después de modificar los mapas, verifica también el paquete Android con Metro:
+  TypeScript y las pruebas unitarias no detectan todos los fallos de resolución
+  del servidor de desarrollo que recibe el teléfono.
 - **Hooks AppState-aware** (no se congelan en background): `useCountdown`, `socket.ts` recalculan
   al volver a foreground. Sigue ese patrón al hacer hooks con tiempo/conexión.
 - Comentarios/JSDoc en **español**, alineados con el estilo del repo.

@@ -6,13 +6,12 @@
  * Si el cálculo del trayecto falla (key restringida, sin red), cae a una línea
  * recta entre ambos puntos.
  */
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
 import { usePreventRemove } from 'expo-router/react-navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Keyboard,
   ScrollView,
   StyleSheet,
@@ -25,7 +24,7 @@ import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
-import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
 import { useRoute } from '@/features/booking/application/useRoute';
 import { useTripPlaceLabels } from '@/features/booking/application/useTripPlaceLabels';
@@ -50,9 +49,11 @@ import {
   PASSENGER_ACTIVE_RIDE_KEY,
   useRide,
 } from '@/features/rides/application/useRides';
-import { declutteredMapStyle } from '@/features/booking/presentation/mapStyle';
+import { useEstiloMapa } from '@/features/booking/presentation/mapStyle';
 import { RoutePinMarker } from '@/features/rides/presentation/RoutePinMarker';
 import { RoutePolyline } from '@/features/rides/presentation/RoutePolyline';
+import { MARGEN_TOOLTIP_EDITABLE } from '@/features/rides/presentation/routeTooltipLayout';
+import { useRumboMapa } from '@/features/rides/application/useRumboMapa';
 import { Button, ConfirmDialog, FeedbackState } from '@/shared/components';
 
 const PAYMENTS: readonly SelectableOption<PaymentMethod>[] = [
@@ -75,6 +76,7 @@ function formatDuration(seconds: number): string {
 }
 
 export function ConfigureTripScreen() {
+  const { colors, styles } = useEstilos(crearEstilos);
   const router = useRouter();
   const isFocused = useIsFocused();
   const { rideId } = useLocalSearchParams<{ rideId?: string }>();
@@ -96,6 +98,7 @@ export function ConfigureTripScreen() {
     retry: retryLabels,
   } = useTripPlaceLabels();
   const mapRef = useRef<MapView>(null);
+  const { rumboMapa, zoomMapa, actualizarRumbo } = useRumboMapa(mapRef);
   const queryClient = useQueryClient();
   const editRide = useEditRide();
   const cancelRecoveryRide = useCancelRide();
@@ -104,7 +107,8 @@ export function ConfigureTripScreen() {
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [keyboardOffset, setKeyboardOffset] = useState(0);
   // Mostrar/ocultar etiquetas de lugares (el usuario lo controla con el toggle).
-  const [showPlaces, setShowPlaces] = useState(true);
+  const [showPlaces, setShowPlaces] = useState(false);
+  const { estiloMapa, modoMapa } = useEstiloMapa(!showPlaces);
   const [confirmExit, setConfirmExit] = useState(false);
   const [allowExit, setAllowExit] = useState(false);
   const [exitAfterSave, setExitAfterSave] = useState(false);
@@ -174,7 +178,7 @@ export function ConfigureTripScreen() {
 
   // Intercepta flecha, gesto y back de Android. Una solicitud pausada requiere
   // confirmar la cancelación antes de salir al inicio.
-  usePreventRemove(isEditing && !allowExit, () => {
+  usePreventRemove(isEditing && Boolean(existingRide) && !allowExit, () => {
     if (!editRide.isPending && !cancelRecoveryRide.isPending) requestEditExit();
   });
 
@@ -261,7 +265,7 @@ export function ConfigureTripScreen() {
         edgePadding: {
           top: FIT_TOP,
           right: FIT_SIDES,
-          bottom: sheetHeight + spacing.lg,
+          bottom: sheetHeight + MARGEN_TOOLTIP_EDITABLE,
           left: FIT_SIDES,
         },
         animated,
@@ -279,6 +283,10 @@ export function ConfigureTripScreen() {
     return (
       <SafeAreaView style={styles.root}>
         <FeedbackState loading title="Cargando tu solicitud…" />
+        <Button title="Volver al inicio" variant="secondary" onPress={() => {
+          setExitHome(true);
+          setAllowExit(true);
+        }} />
       </SafeAreaView>
     );
   }
@@ -293,6 +301,10 @@ export function ConfigureTripScreen() {
           actionLabel="Reintentar"
           onAction={() => void editQuery.refetch()}
         />
+        <Button title="Volver al inicio" variant="secondary" onPress={() => {
+          setExitHome(true);
+          setAllowExit(true);
+        }} />
         {cancelRecoveryRide.isError && (
           <Text style={styles.error}>{getApiErrorMessage(cancelRecoveryRide.error)}</Text>
         )}
@@ -396,14 +408,19 @@ export function ConfigureTripScreen() {
           provider={PROVIDER_GOOGLE}
           style={StyleSheet.absoluteFill}
           initialRegion={region}
-          customMapStyle={showPlaces ? [] : declutteredMapStyle}
+          customMapStyle={estiloMapa}
+          userInterfaceStyle={modoMapa}
+          pitchEnabled={false}
+          onRegionChangeComplete={actualizarRumbo}
           onMapReady={() => fitToTrip(false)}>
           <RoutePinMarker
             key={`origin-${tripMapKey}`}
             kind="A"
             coordinate={origin.coordinates}
+            ruta={fitCoordinates}
+            rumboMapa={rumboMapa}
+            zoomMapa={zoomMapa}
             label={`Origen: ${originMapLabel}`}
-            compactTooltip
             showEditControl
             loading={originMapLoading}
             zIndex={20}
@@ -413,8 +430,10 @@ export function ConfigureTripScreen() {
             key={`destination-${tripMapKey}`}
             kind="B"
             coordinate={destination.coordinates}
+            ruta={fitCoordinates}
+            rumboMapa={rumboMapa}
+            zoomMapa={zoomMapa}
             label={`Destino: ${destinationMapLabel}`}
-            compactTooltip
             showEditControl
             loading={destinationMapLoading}
             zIndex={21}
@@ -546,16 +565,11 @@ export function ConfigureTripScreen() {
           </ScrollView>
 
           <View style={styles.sheetFooter}>
-            <TouchableOpacity
-              style={[
-                styles.cta,
-                (!tripInServiceArea ||
-                  !labelsReady ||
-                  !fareIsValid ||
-                  createRide.isPending ||
-                  editRide.isPending) &&
-                  styles.ctaDisabled,
-              ]}
+            <Button
+              title={isEditing ? 'Guardar cambios' : 'Buscar ofertas'}
+              trailingIcon="arrow-forward"
+              loading={createRide.isPending || editRide.isPending || labelsResolving}
+              loadingLabel={labelsResolving ? 'Obteniendo direcciones…' : isEditing ? 'Guardando…' : 'Buscando ofertas…'}
               disabled={
                 !tripInServiceArea ||
                 !labelsReady ||
@@ -564,16 +578,7 @@ export function ConfigureTripScreen() {
                 editRide.isPending
               }
               onPress={isEditing ? saveEdit : searchOffers}
-              accessibilityRole="button"
-              accessibilityLabel={isEditing ? 'Guardar cambios' : 'Buscar ofertas'}>
-              {createRide.isPending || editRide.isPending || labelsResolving ? (
-                <ActivityIndicator color={colors.textOnPrimary} />
-              ) : (
-                <Text style={styles.ctaText}>
-                  {isEditing ? 'Guardar cambios' : 'Buscar Ofertas'}
-                </Text>
-              )}
-            </TouchableOpacity>
+            />
           </View>
         </SafeAreaView>
       </View>
@@ -604,7 +609,7 @@ export function ConfigureTripScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceMuted },
   fallback: { alignItems: 'center', justifyContent: 'center', gap: spacing.md, padding: spacing.lg },
   fallbackText: { color: colors.textSecondary, fontSize: fontSize.md, textAlign: 'center' },
@@ -629,8 +634,9 @@ const styles = StyleSheet.create({
   },
   topLeft: { alignItems: 'flex-start', gap: spacing.xs },
   back: {
-    width: 44,
-    height: 44,
+    width: 48,
+    minHeight: 48,
+    paddingVertical: spacing.sm,
     borderRadius: radius.pill,
     backgroundColor: colors.surface,
     alignItems: 'center',
@@ -691,25 +697,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    height: 44,
+    minHeight: 48,
+    paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.bordeControl,
     backgroundColor: colors.surface,
   },
   fareCurrency: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.textSecondary },
   fareInput: { flex: 1, fontSize: fontSize.lg, fontWeight: fontWeight.semibold, color: colors.text, padding: 0 },
 
-  cta: {
-    height: 48,
-    borderRadius: radius.md,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  ctaDisabled: { opacity: 0.5 },
-  ctaText: { color: colors.textOnPrimary, fontSize: fontSize.md, fontWeight: fontWeight.bold },
   locationStatus: { color: colors.textSecondary, fontSize: fontSize.sm, textAlign: 'center' },
   locationError: { gap: spacing.xs },
   error: { color: colors.danger, fontSize: fontSize.sm, textAlign: 'center' },

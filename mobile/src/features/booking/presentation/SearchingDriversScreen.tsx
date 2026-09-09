@@ -10,7 +10,7 @@
  * La búsqueda no caduca. Al ajustar la oferta, el nuevo monto se anuncia a los
  * conductores en vivo.
  */
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useEffect, useRef, useState } from 'react';
 import {
   Animated,
@@ -28,7 +28,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
-import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useEstilos, useTema, type Tema } from '@/core/theme';
 import type { Place } from '@/features/booking/domain/types';
 import {
   usePauseForEdit,
@@ -64,6 +64,7 @@ export function SearchingDriversScreen({
   onEditReady: (rideId?: string) => void;
   onRetry?: () => void;
 }) {
+  const { colors, styles } = useEstilos(crearEstilos);
   const updateFare = useUpdateRideFare();
   const pauseForEdit = usePauseForEdit();
   const negotiationBusy = cancelPending || updateFare.isPending || pauseForEdit.isPending;
@@ -308,6 +309,7 @@ export function SearchingDriversScreen({
 
 /** Indicador de sincronización activo durante toda la búsqueda de ofertas. */
 function IconoSincronizacionGiratorio({ conError }: { conError: boolean }) {
+  const { colors } = useTema();
   const [giro] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
@@ -344,6 +346,7 @@ function IconoSincronizacionGiratorio({ conError }: { conError: boolean }) {
 
 /** Barra de progreso indeterminada: un segmento que recorre la pista en bucle. */
 function ProgressBar() {
+  const { styles } = useEstilos(crearEstilos);
   const [progress] = useState(() => new Animated.Value(0));
   const [width, setWidth] = useState(0);
 
@@ -372,7 +375,7 @@ function ProgressBar() {
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceMuted },
   mapFallback: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: colors.surfaceMuted },
   scrim: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
@@ -384,7 +387,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: radius.pill,
-    backgroundColor: 'rgba(255,255,255,0.94)',
+    backgroundColor: colors.surface,
     shadowColor: '#000',
     shadowOpacity: 0.15,
     shadowRadius: 6,
@@ -504,9 +507,9 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     height: 48,
     borderRadius: radius.md,
-    backgroundColor: '#FDECEA',
+    backgroundColor: colors.peligroSuave,
     borderWidth: 1,
-    borderColor: '#F5C6C2',
+    borderColor: colors.bordePeligro,
   },
   cancelText: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.danger },
   disabled: { opacity: 0.5 },

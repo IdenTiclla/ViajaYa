@@ -1,26 +1,28 @@
 /**
  * Perfil del conductor — datos de cuenta, vehículo y cierre de sesión.
  */
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, type IoniconsIconName } from '@react-native-vector-icons/ionicons';
 import { useRouter } from 'expo-router';
-import { StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 import { Button } from '@/shared/components';
 import { useAuthStore } from '@/store/authStore';
+import { SelectorTema } from '@/features/profile/presentation/SelectorTema';
 
 const SERVICE_LABELS = { taxi: 'Taxi', moto: 'Moto' } as const;
 
 export function PerfilConductorScreen() {
+  const { colors, styles } = useEstilos(crearEstilos);
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const signOut = useAuthStore((s) => s.signOut);
   const initial = (user?.fullName?.trim().charAt(0) ?? 'C').toUpperCase();
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <View style={styles.content}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>{initial}</Text>
         </View>
@@ -43,6 +45,7 @@ export function PerfilConductorScreen() {
           <Detail icon="card" label="Placa" value={user?.plate ?? '—'} />
         </View>
 
+        <SelectorTema />
         <View style={styles.actions}>
           <Button
             title="Historial de viajes"
@@ -51,7 +54,7 @@ export function PerfilConductorScreen() {
           />
           <Button title="Cerrar sesión" variant="secondary" onPress={() => void signOut()} />
         </View>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -61,22 +64,25 @@ function Detail({
   label,
   value,
 }: {
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: IoniconsIconName;
   label: string;
   value: string;
 }) {
+  const { colors, styles } = useEstilos(crearEstilos);
+  const { fontScale } = useWindowDimensions();
+  const enColumna = fontScale > 1.3;
   return (
-    <View style={styles.detailRow}>
-      <Ionicons name={icon} size={20} color={colors.primary} />
-      <Text style={styles.detailLabel}>{label}</Text>
-      <Text style={styles.detailValue}>{value}</Text>
+    <View style={[styles.detailRow, enColumna && styles.detailColumn]}>
+      {!enColumna && <Ionicons accessible={false} name={icon} size={20} color={colors.primary} />}
+      <Text style={[styles.detailLabel, enColumna && styles.detailFullWidth]}>{label}</Text>
+      <Text style={[styles.detailValue, enColumna && styles.detailFullWidth]}>{value}</Text>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
-  content: { flex: 1, alignItems: 'center', padding: spacing.lg, gap: spacing.xs },
+  content: { flexGrow: 1, alignItems: 'center', padding: spacing.lg, gap: spacing.xs },
   avatar: {
     width: 88,
     height: 88,
@@ -88,8 +94,8 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   avatarText: { color: colors.textOnPrimary, fontSize: fontSize.xxl, fontWeight: fontWeight.bold },
-  name: { fontSize: fontSize.xl, fontWeight: fontWeight.bold, color: colors.text },
-  email: { fontSize: fontSize.md, color: colors.textSecondary },
+  name: { maxWidth: '100%', fontSize: fontSize.xl, fontWeight: fontWeight.bold, color: colors.text, textAlign: 'center' },
+  email: { maxWidth: '100%', fontSize: fontSize.md, color: colors.textSecondary, textAlign: 'center' },
   rating: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: spacing.xs },
   ratingText: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.text },
 
@@ -103,8 +109,10 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   detailRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  detailColumn: { flexDirection: 'column', alignItems: 'flex-start', gap: spacing.xs },
+  detailFullWidth: { flex: 0, width: '100%' },
   detailLabel: { fontSize: fontSize.sm, color: colors.textSecondary, width: 80 },
   detailValue: { flex: 1, fontSize: fontSize.md, fontWeight: fontWeight.medium, color: colors.text },
 
-  actions: { alignSelf: 'stretch', marginTop: 'auto', gap: spacing.sm },
+  actions: { alignSelf: 'stretch', marginTop: spacing.lg, gap: spacing.sm },
 });

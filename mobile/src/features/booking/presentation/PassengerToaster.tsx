@@ -3,31 +3,31 @@
  * estilo Material-You glass, con auto-descarte a los 3.5 s. Se monta en el layout
  * autenticado del pasajero para aparecer sobre cualquier pantalla.
  */
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, type IoniconsIconName } from '@react-native-vector-icons/ionicons';
 import { useEffect } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInDown, FadeOutUp, LinearTransition } from 'react-native-reanimated';
 
-import { colors, fontSize, fontWeight, radius, spacing } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 import {
   type PassengerToast,
   type PassengerToastKind,
   usePassengerToasts,
 } from '@/features/booking/application/usePassengerToasts';
 
-const META: Record<PassengerToastKind, { icon: keyof typeof Ionicons.glyphMap; color: string }> = {
-  offer_received: { icon: 'pricetag', color: colors.success },
-  offer_expired: { icon: 'time-outline', color: '#B07A00' },
-  offer_withdrawn: { icon: 'remove-circle-outline', color: colors.textSecondary },
-};
-
 function ToastItem({ toast, onDismiss }: { toast: PassengerToast; onDismiss: () => void }) {
+  const { colors, styles } = useEstilos(crearEstilos);
   useEffect(() => {
     const timer = setTimeout(onDismiss, 3500);
     return () => clearTimeout(timer);
   }, [toast.id, onDismiss]);
 
+  const META: Record<PassengerToastKind, { icon: IoniconsIconName; color: string }> = {
+    offer_received: { icon: 'pricetag', color: colors.success },
+    offer_expired: { icon: 'time-outline', color: colors.aviso },
+    offer_withdrawn: { icon: 'remove-circle-outline', color: colors.textSecondary },
+  };
   const meta = META[toast.kind];
   return (
     <Animated.View
@@ -53,6 +53,7 @@ function ToastItem({ toast, onDismiss }: { toast: PassengerToast; onDismiss: () 
 }
 
 export function PassengerToaster() {
+  const { styles } = useEstilos(crearEstilos);
   const toasts = usePassengerToasts((s) => s.toasts);
   const dismiss = usePassengerToasts((s) => s.dismiss);
 
@@ -68,7 +69,7 @@ export function PassengerToaster() {
   );
 }
 
-const styles = StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   wrap: {
     position: 'absolute',
     top: 0,
@@ -85,9 +86,9 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     padding: spacing.md,
     borderRadius: radius.lg,
-    backgroundColor: 'rgba(255,255,255,0.95)',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: 'rgba(226,228,232,0.7)',
+    borderColor: colors.border,
     shadowColor: '#000',
     shadowOpacity: 0.18,
     shadowRadius: 12,

@@ -3,11 +3,11 @@
  * Ionicons y la etiqueta legible. Centralizado para que la lista, el formulario
  * y los atajos de la búsqueda muestren lo mismo.
  */
-import type { Ionicons } from '@expo/vector-icons';
+import type { IoniconsIconName } from '@react-native-vector-icons/ionicons';
 
 import type { SavedPlaceCategory } from '@/features/booking/domain/types';
 
-type IconName = keyof typeof Ionicons.glyphMap;
+type IconName = IoniconsIconName;
 
 type CategoryMeta = {
   /** Etiqueta legible (también nombre por defecto al crear). */

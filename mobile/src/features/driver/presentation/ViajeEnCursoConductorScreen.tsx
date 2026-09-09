@@ -6,7 +6,7 @@
  * y un botón único que progresa el ciclo de vida: Llegué → Iniciar → Finalizar
  * (`PATCH /rides/{id}/status`). Al completarse, califica al pasajero.
  */
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, type IoniconsIconName } from '@react-native-vector-icons/ionicons';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
@@ -344,7 +344,7 @@ function Row({
   label,
   value,
 }: {
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: IoniconsIconName;
   color: string;
   label: string;
   value: string;

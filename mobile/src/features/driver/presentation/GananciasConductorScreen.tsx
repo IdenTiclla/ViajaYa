@@ -4,7 +4,7 @@
  * Muestra el total de hoy, contadores y el desglose de viajes completados
  * recientes con su importe.
  */
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, type IoniconsIconName } from '@react-native-vector-icons/ionicons';
 import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -91,7 +91,7 @@ function Card({
   label,
   value,
 }: {
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: IoniconsIconName;
   label: string;
   value: string;
 }) {

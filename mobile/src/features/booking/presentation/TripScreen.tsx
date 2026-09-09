@@ -7,7 +7,7 @@
  * Según el estado, un banner indica si el conductor va en camino o ya llegó.
  * Al completarse, lleva a calificar; permite cancelar antes de iniciar.
  */
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, type IoniconsIconName } from '@react-native-vector-icons/ionicons';
 import { useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -36,7 +36,7 @@ import { Button, ConfirmDialog, FeedbackState } from '@/shared/components';
 
 const SERVICE_LABELS = { taxi: 'Taxi', moto: 'Moto' } as const;
 
-type Banner = { icon: keyof typeof Ionicons.glyphMap; title: string; hint: string; accent?: boolean };
+type Banner = { icon: IoniconsIconName; title: string; hint: string; accent?: boolean };
 
 const BANNER: Record<RideStatus, Banner> = {
   searching: { icon: 'search', title: 'Buscando conductor', hint: 'Esperando ofertas…' },
@@ -299,7 +299,7 @@ function ContactButton({
   onPress,
   disabled,
 }: {
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: IoniconsIconName;
   label: string;
   onPress: () => void;
   disabled?: boolean;

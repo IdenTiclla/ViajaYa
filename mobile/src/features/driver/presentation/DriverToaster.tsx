@@ -3,7 +3,7 @@
  * estilo Material-You glass, con auto-descarte a los 3.5 s. Se monta en el layout
  * del conductor para aparecer sobre cualquier pantalla (lista, mapa, inicio).
  */
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, type IoniconsIconName } from '@react-native-vector-icons/ionicons';
 import { useEffect } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -23,7 +23,7 @@ function ToastItem({ toast, onDismiss }: { toast: DriverToast; onDismiss: () => 
     return () => clearTimeout(timer);
   }, [toast.id, onDismiss]);
 
-  const META: Record<DriverToastKind, { icon: keyof typeof Ionicons.glyphMap; color: string }> = {
+  const META: Record<DriverToastKind, { icon: IoniconsIconName; color: string }> = {
     expired: { icon: 'time-outline', color: colors.aviso },
     rejected: { icon: 'close-circle', color: colors.danger },
     taken: { icon: 'car-sport', color: colors.danger },

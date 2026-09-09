@@ -1,5 +1,5 @@
 /**
- * Marcador de ruta reutilizable: pin circular con letra (A = origen, B = destino)
+ * Marcador de ruta reutilizable: pines circulares A (origen) y B (destino)
  * y un tooltip "Origen"/"Destino" al lado libre de la ruta. Lo usan las vistas de
  * trayecto (pasajero y conductor) para que origen y destino se vean siempre igual.
  *
@@ -7,14 +7,14 @@
  * del marker en iOS y Android; el `anchor` apunta al pin (no al centro del
  * conjunto) para que el punto quede exacto en la coordenada.
  */
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Marker, type MapMarker } from 'react-native-maps';
 
 import { fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 import type { Coordinates } from '@/features/booking/domain/types';
-import { PinLoadingIndicator } from '@/shared/components';
+import { InsigniaPuntoMapa } from '@/shared/components/mapa/InsigniaPuntoMapa';
 import {
   BORDE_PIN_RUTA,
   calcularAnclajePin,
@@ -103,7 +103,7 @@ export function RoutePinMarker({
       onPress={onPress}>
       <View
         // Fabric no debe aplanar este contenedor: Android mide el primer hijo
-        // nativo para dimensionar el bitmap completo (texto, Editar y círculo).
+        // nativo para dimensionar el bitmap completo (texto, Editar y símbolo).
         collapsable={false}
         style={[styles.wrap, posicion === 'abajo' && styles.wrapAbajo]}
         onLayout={(event) => {
@@ -148,13 +148,14 @@ export function RoutePinMarker({
             </View>
           )}
         </View>
-        <View
-          style={[styles.pinBase, kind === 'A' ? styles.pinA : styles.pinB, dim && styles.pinDim]}>
-          <Text style={[styles.pinLabel, loading && styles.pinLabelLoading]}>{kind}</Text>
-          <View style={styles.pinLoader} pointerEvents="none">
-            <PinLoadingIndicator loading={loading} color={colors.textOnPrimary} compact />
-          </View>
-        </View>
+        <InsigniaPuntoMapa
+          tipo={kind === 'A' ? 'origen' : 'destino'}
+          tamano={TAMANO_PIN_RUTA}
+          borde={BORDE_PIN_RUTA}
+          tamanoLetra={TAMANO_LETRA_PIN_RUTA}
+          cargando={loading}
+          atenuado={dim}
+        />
       </View>
     </Marker>
   );
@@ -202,41 +203,5 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     fontWeight: fontWeight.bold,
     color: colors.text,
     textAlign: 'center',
-  },
-  pinBase: {
-    width: TAMANO_PIN_RUTA,
-    height: TAMANO_PIN_RUTA,
-    borderRadius: radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: BORDE_PIN_RUTA,
-    borderColor: colors.surface,
-    shadowColor: '#000',
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
-  },
-  pinA: { backgroundColor: colors.primary },
-  pinB: { backgroundColor: colors.danger },
-  pinDim: { opacity: 0.5 },
-  pinLabel: {
-    color: colors.textOnPrimary,
-    fontSize: TAMANO_LETRA_PIN_RUTA,
-    fontWeight: fontWeight.bold,
-    // Centra la letra dentro del círculo compacto también en Android.
-    includeFontPadding: false,
-    lineHeight: TAMANO_PIN_RUTA - BORDE_PIN_RUTA * 2,
-    textAlign: 'center',
-  },
-  pinLabelLoading: { opacity: 0 },
-  pinLoader: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 });

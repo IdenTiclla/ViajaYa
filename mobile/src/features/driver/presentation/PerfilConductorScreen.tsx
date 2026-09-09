@@ -1,7 +1,7 @@
 /**
  * Perfil del conductor — datos de cuenta, vehículo y cierre de sesión.
  */
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, type IoniconsIconName } from '@react-native-vector-icons/ionicons';
 import { useRouter } from 'expo-router';
 import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -64,7 +64,7 @@ function Detail({
   label,
   value,
 }: {
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: IoniconsIconName;
   label: string;
   value: string;
 }) {

@@ -1,70 +1,138 @@
 /**
  * Hook de ubicación continua (navegación del conductor): subscribe a
- * `watchPositionAsync` y expone la posición y el rumbo (`heading`) en vivo, para
- * que el mapa siga al conductor centrado y el ícono rote según la trayectoria.
- *
- * El `heading` retiene el último valor válido (cuando el vehículo se detiene el
- * rumbo no llega → mantenemos el anterior para que el ícono no salte a 0).
+ * GPS y brújula. Expo gestiona la pausa nativa en segundo plano; conservar la
+ * suscripción evita competir con esa reanudación y reiniciar la adquisición GPS.
  */
 import { useEffect, useState } from 'react';
+import { AppState } from 'react-native';
 
 import type { Coordinates } from '@/core/domain/geo';
 import { locationService } from '@/features/home/data/locationService';
 
-export type WatchStatus = 'loading' | 'granted' | 'denied' | 'error';
+export type WatchStatus = 'loading' | 'granted' | 'denied' | 'disabled' | 'error';
 
 export type WatchedPosition = {
   status: WatchStatus;
   coordinates: Coordinates | null;
-  /** Rumbo en grados (0 = norte). Último valor conocido si el GPS no reporta. */
+  /** Rumbo de movimiento o brújula, en grados desde el norte. */
   heading: number | null;
   retry: () => void;
 };
 
-export function useWatchPosition(): WatchedPosition {
+export function useWatchPosition(habilitado = true): WatchedPosition {
   const [attempt, setAttempt] = useState(0);
-  const [status, setStatus] = useState<WatchStatus>('loading');
-  const [coordinates, setCoordinates] = useState<Coordinates | null>(null);
-  const [heading, setHeading] = useState<number | null>(null);
+  const [position, setPosition] = useState<Omit<WatchedPosition, 'retry'>>({
+    status: 'loading', coordinates: null, heading: null,
+  });
 
   useEffect(() => {
+    if (!habilitado) return;
     let active = true;
     let subscription: { remove: () => void } | null = null;
+    let cancelacion: AbortController | null = null;
+    let generacion = 0;
+    let estadoApp = AppState.currentState;
+    let iniciando = false;
+    let tienePosicion = false;
+    let salidaEn = 0;
+    let espera: ReturnType<typeof setTimeout> | undefined;
 
-    locationService
-      .watchPosition((coords, hd) => {
-        if (!active) return;
-        setStatus('granted');
-        setCoordinates(coords);
-        if (hd != null) setHeading(hd); // conserva el último si llega null
-      })
-      .then((sub) => {
-        if (!active) {
-          sub?.remove();
+    const cancelarEspera = () => { clearTimeout(espera); };
+    const esperarPosicion = () => {
+      cancelarEspera();
+      if (tienePosicion || estadoApp === 'background') return;
+      espera = setTimeout(() => {
+        if (!active || tienePosicion) return;
+        // La escucha sigue viva: una señal que llegue tarde recupera el mapa.
+        setPosition({ status: 'error', coordinates: null, heading: null });
+      }, 15_000);
+    };
+    const detener = () => {
+      generacion += 1;
+      cancelarEspera();
+      cancelacion?.abort();
+      cancelacion = null;
+      subscription?.remove();
+      subscription = null;
+      iniciando = false;
+    };
+    const iniciar = () => {
+      if (!active || subscription || iniciando) return;
+      detener();
+      iniciando = true;
+      tienePosicion = false;
+      const controlador = new AbortController();
+      cancelacion = controlador;
+      const intento = generacion;
+      setPosition({ status: 'loading', coordinates: null, heading: null });
+      const vigente = () => active && intento === generacion;
+      const fallar = (motivo: 'error' | 'disabled' = 'error') => {
+        if (!vigente()) return;
+        detener();
+        setPosition({ status: motivo, coordinates: null, heading: null });
+      };
+
+      void locationService
+        .watchPosition((coords, hd) => {
+          if (!vigente() || estadoApp === 'background') return;
+          tienePosicion = true;
+          cancelarEspera();
+          setPosition({ status: 'granted', coordinates: coords, heading: hd });
+        }, fallar, controlador.signal)
+        .then((sub) => {
+          if (!vigente()) {
+            sub?.remove();
+            return;
+          }
+          iniciando = false;
+          if (sub == null) {
+            cancelarEspera();
+            setPosition({ status: 'denied', coordinates: null, heading: null });
+          } else {
+            subscription = sub;
+            esperarPosicion();
+          }
+        })
+        .catch(() => fallar());
+    };
+    const escucha = AppState.addEventListener('change', (siguiente) => {
+      const anterior = estadoApp;
+      if (siguiente !== 'inactive') estadoApp = siguiente;
+      if (siguiente === 'background') {
+        salidaEn = Date.now();
+        cancelarEspera();
+      }
+      if (siguiente !== 'active' || anterior !== 'background' || iniciando) return;
+      if (!subscription) { iniciar(); return; }
+      if (Date.now() - salidaEn > 30_000) {
+        tienePosicion = false;
+        setPosition({ status: 'loading', coordinates: null, heading: null });
+      }
+      // Conserva el watcher sano. Solo retirarlo si cambiaron los permisos o
+      // se apagó la ubicación mientras la app estaba fuera de primer plano.
+      const intento = generacion;
+      void locationService.consultarDisponibilidad().then((disponibilidad) => {
+        if (!active || intento !== generacion || estadoApp !== 'active') return;
+        if (disponibilidad !== 'granted') {
+          detener();
+          setPosition({ status: disponibilidad, coordinates: null, heading: null });
           return;
         }
-        if (sub == null) {
-          setStatus('denied');
-        } else {
-          subscription = sub;
-        }
-      })
-      .catch(() => {
-        if (active) setStatus('error');
-      });
+        esperarPosicion();
+      }).catch(() => { /* Una consulta fallida no interrumpe un GPS activo. */ });
+    });
+    if (estadoApp !== 'background') iniciar();
 
     return () => {
       active = false;
-      subscription?.remove();
+      detener();
+      escucha.remove();
     };
-  }, [attempt]);
+  }, [attempt, habilitado]);
 
   return {
-    status,
-    coordinates,
-    heading,
+    ...position,
     retry: () => {
-      setStatus('loading');
       setAttempt((n) => n + 1);
     },
   };

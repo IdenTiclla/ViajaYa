@@ -2,37 +2,44 @@
  * Pin fijo en el centro del mapa: el usuario mueve el mapa por debajo y el pin
  * marca siempre el centro geográfico (que coincide con el centro de la cámara).
  * No captura toques (`pointerEvents="none"`) para no interferir con el gesto del
- * mapa. La punta del pin queda alineada con el centro de la pantalla gracias al
- * `marginBottom` igual a la altura del bloque (truco estándar de centrado).
+ * mapa. El extremo del tallo se ancla al 50% del mapa, independientemente de la
+ * altura de la etiqueta o del tamaño de texto elegido en el teléfono.
  */
-import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
-import { PinLoadingIndicator } from '@/shared/components';
-
-const PIN_SIZE = 46;
+import { PinLoadingIndicator } from '@/shared/components/PinLoadingIndicator';
+import { InsigniaPuntoMapa, type TipoPuntoMapa } from '@/shared/components/mapa/InsigniaPuntoMapa';
 
 export function CenterPin({
   label,
-  color,
+  tipo = 'origen',
   loading = false,
 }: {
   label: string;
-  color?: string;
+  tipo?: TipoPuntoMapa;
   loading?: boolean;
 }) {
   const { colors, styles } = useEstilos(crearEstilos);
+  const color = tipo === 'destino' ? colors.danger : colors.primary;
+  const nombre = tipo === 'origen' ? 'Origen' : tipo === 'destino' ? 'Destino' : 'Lugar';
   return (
-    <View style={styles.overlay} pointerEvents="none">
-      <View style={styles.block}>
-        <View style={styles.callout}>
-          <PinLoadingIndicator loading={loading} color={colors.textOnPrimary} compact />
-          <Text style={styles.calloutText} numberOfLines={1} ellipsizeMode="tail">
-            {label}
-          </Text>
-        </View>
-        <Ionicons name="location" size={PIN_SIZE} color={color ?? colors.primary} />
+    <View
+      style={styles.overlay}
+      pointerEvents="none"
+      accessible
+      accessibilityRole="image"
+      accessibilityLabel={`${nombre}. ${label}`}
+      accessibilityState={{ busy: loading }}>
+      <View style={styles.callout}>
+        <PinLoadingIndicator loading={loading} color={colors.surface} compact />
+        <Text style={styles.calloutText} numberOfLines={2} ellipsizeMode="tail">
+          {label}
+        </Text>
+      </View>
+      <InsigniaPuntoMapa tipo={tipo} tamano={32} borde={2} tamanoLetra={17} />
+      <View style={[styles.tallo, { backgroundColor: color }]}>
+        <View style={[styles.puntoExacto, { backgroundColor: color }]} />
       </View>
     </View>
   );
@@ -41,17 +48,19 @@ export function CenterPin({
 const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   overlay: {
     position: 'absolute',
-    top: 0,
     left: 0,
     right: 0,
-    bottom: 0,
+    bottom: '50%',
     alignItems: 'center',
-    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
   },
-  // marginBottom ≈ altura del bloque para que la punta del pin caiga en el centro.
-  block: { alignItems: 'center', marginBottom: PIN_SIZE + 28 },
+  tallo: { width: 2, height: 14, alignItems: 'center' },
+  puntoExacto: {
+    position: 'absolute', bottom: -4, width: 8, height: 8,
+    borderRadius: 4, borderWidth: 1.5, borderColor: colors.surface,
+  },
   callout: {
-    maxWidth: 300,
+    maxWidth: '100%',
     backgroundColor: colors.text,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
@@ -63,7 +72,7 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   },
   calloutText: {
     flexShrink: 1,
-    color: colors.textOnPrimary,
+    color: colors.surface,
     fontSize: fontSize.xs,
     fontWeight: fontWeight.semibold,
     textAlign: 'center',

@@ -1,11 +1,11 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, type IoniconsIconName } from '@react-native-vector-icons/ionicons';
 import { StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { fontSize, fontWeight, spacing, useEstilos, type Tema } from '@/core/theme';
 
 type Props = {
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: IoniconsIconName;
   title: string;
   message?: string;
 };

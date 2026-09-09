@@ -6,7 +6,7 @@
  * muestran los atajos a lugares guardados (Casa/Trabajo + favoritos), el acceso
  * para fijar la ubicación en el mapa y los destinos recientes.
  */
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import {

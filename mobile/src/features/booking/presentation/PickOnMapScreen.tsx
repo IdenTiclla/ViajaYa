@@ -7,7 +7,7 @@
  * 'destination'); por defecto, destino. El pin es azul para el origen y rojo
  * para el destino. El `Place` vive en estado local hasta que se confirma.
  */
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -326,7 +326,11 @@ export function PickOnMapScreen() {
         ) : null}
       </MapView>
 
-      <CenterPin label={centerPinLabel} color={pinColor} loading={isResolving} />
+      <CenterPin
+        label={centerPinLabel}
+        tipo={isSaveAs ? 'lugar' : isOrigin ? 'origen' : 'destino'}
+        loading={isResolving}
+      />
 
       <SafeAreaView style={styles.topArea} edges={['top']} pointerEvents="box-none">
         <View style={styles.topBar}>

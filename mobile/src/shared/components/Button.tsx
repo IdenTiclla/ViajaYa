@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, type IoniconsIconName } from '@react-native-vector-icons/ionicons';
 import { useState } from 'react';
 import {
   ActivityIndicator,
@@ -19,9 +19,9 @@ type Props = PressableProps & {
   loadingLabel?: string;
   variant?: Variant;
   /** Nombre de un ícono de Ionicons mostrado antes del título. */
-  leadingIcon?: keyof typeof Ionicons.glyphMap;
+  leadingIcon?: IoniconsIconName;
   /** Nombre de un ícono de Ionicons mostrado a la derecha del título. */
-  trailingIcon?: keyof typeof Ionicons.glyphMap;
+  trailingIcon?: IoniconsIconName;
 };
 
 export function Button({

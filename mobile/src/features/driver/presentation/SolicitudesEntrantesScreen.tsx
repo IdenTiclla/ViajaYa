@@ -6,8 +6,8 @@
  * + toggle Lista/Mapa y tarjetas translúcidas. El conductor **oferta** (no
  * asigna): Enviar oferta deja la tarjeta en "Oferta enviada" y sigue viendo otras.
  */
-import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { Ionicons, type IoniconsIconName } from '@react-native-vector-icons/ionicons';
+import { useIsFocused, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -55,6 +55,7 @@ type ViewMode = 'list' | 'map';
 export function SolicitudesEntrantesScreen() {
   const { colors, styles } = useEstilos(crearEstilos);
   const router = useRouter();
+  const enfocada = useIsFocused();
   const user = useAuthStore((s) => s.user);
   const online = user?.isOnline ?? false;
   const { mutate: setDriverOnline, isPending: isSettingOnline } = useSetOnline();
@@ -108,7 +109,7 @@ export function SolicitudesEntrantesScreen() {
   const createOffer = useCreateOffer();
   // Ubicación continua (navegación): el mapa sigue al conductor centrado en el
   // estado de búsqueda y detrás de la lista de solicitudes.
-  const position = useWatchPosition();
+  const position = useWatchPosition(enfocada && !activeRide && !pendingRatingRide);
 
   const dismissed = useDriverRequests((s) => s.dismissed);
   // Autocuración: expira en cliente las ofertas vencidas si se perdió el WS
@@ -340,7 +341,7 @@ export function SolicitudesEntrantesScreen() {
   }
 
   if (visibleRides.length === 0) {
-    return <SearchingState position={position} />;
+    return <SearchingState position={position} tipoVehiculo={user?.vehicleType ?? null} />;
   }
 
   const requestsHeader = (
@@ -397,6 +398,8 @@ export function SolicitudesEntrantesScreen() {
         <>
           <DriverSearchMap
             coordinates={position.coordinates}
+            heading={position.heading}
+            tipoVehiculo={user?.vehicleType ?? null}
             status={position.status}
             retry={position.retry}
           />
@@ -576,21 +579,25 @@ function DriverRequestsState({
 /** Estado sin solicitudes: mapa y radar. */
 function SearchingState({
   position,
+  tipoVehiculo,
 }: {
   position: WatchedPosition;
+  tipoVehiculo: 'taxi' | 'moto' | null;
 }) {
   const { styles } = useEstilos(crearEstilos);
   return (
     <View style={styles.root}>
-      <DriverSearchMap coordinates={position.coordinates} status={position.status} retry={position.retry} />
+      <DriverSearchMap
+        coordinates={position.coordinates} heading={position.heading} tipoVehiculo={tipoVehiculo}
+        status={position.status} retry={position.retry} interactivo
+      />
       <View style={styles.scrim} pointerEvents="box-none">
         <RequestsHeader count={0} />
 
-        {/* Pulso centrado: el mapa sigue al conductor centrado, así que coincide
-            con su ubicación. El ícono rota según el rumbo del vehículo. */}
+        {/* El barrido es decorativo; el vehículo pertenece al mapa nativo. */}
         {position.coordinates && (
           <View style={styles.radarLayer} pointerEvents="none">
-            <RadarPulse heading={position.heading} />
+            <RadarPulse />
           </View>
         )}
       </View>
@@ -662,7 +669,7 @@ function ToggleButton({
   active,
   onPress,
 }: {
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: IoniconsIconName;
   label: string;
   active: boolean;
   onPress: () => void;

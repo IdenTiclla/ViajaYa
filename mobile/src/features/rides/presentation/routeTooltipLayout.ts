@@ -128,7 +128,7 @@ export function elegirPosicionTooltip(
   return haciaArriba > 0 ? 'abajo' : 'arriba';
 }
 
-/** Mantiene el centro del círculo sobre la coordenada, incluso con varias líneas. */
+/** Mantiene el centro del símbolo sobre la coordenada, incluso con varias líneas. */
 export function calcularAnclajePin(altura: number, posicion: PosicionTooltip) {
   const alturaReal = Math.max(altura, TAMANO_PIN_RUTA);
   const centroPin = posicion === 'arriba'

@@ -4,7 +4,7 @@
  * para llamar la atención. No corre su propio reloj (recibe los segundos ya
  * calculados) para compartir un solo tick.
  */
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { StyleSheet, Text } from 'react-native';
 import Animated, {
   useAnimatedStyle,

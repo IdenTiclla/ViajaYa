@@ -6,7 +6,7 @@
  * ventana de negociación. Ícono con ondas, mensaje tranquilizador, tarjeta con la
  * última oferta y el trayecto, y un botón para volver a las solicitudes.
  */
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useEffect, useState } from 'react';
 import { Animated, Easing, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';

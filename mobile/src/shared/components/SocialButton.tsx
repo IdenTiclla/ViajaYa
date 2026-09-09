@@ -1,4 +1,4 @@
-import { FontAwesome } from '@expo/vector-icons';
+import { FontAwesome, type FontAwesomeIconName } from '@react-native-vector-icons/fontawesome';
 import { useState } from 'react';
 import {
   ActivityIndicator,
@@ -24,7 +24,7 @@ export function SocialButton({ provider, loading = false, disabled, style, onFoc
   const [enfocado, setEnfocado] = useState(false);
   const CONFIG: Record<
     Provider,
-    { label: string; icon: keyof typeof FontAwesome.glyphMap; tint: string }
+    { label: string; icon: FontAwesomeIconName; tint: string }
   > = {
     google: { label: 'Google', icon: 'google', tint: colors.text },
     facebook: { label: 'Facebook', icon: 'facebook', tint: colors.facebook },

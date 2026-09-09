@@ -12,7 +12,7 @@
  * propio contador por tarjeta. Mientras no llegan ofertas se muestra la pantalla
  * de búsqueda.
  */
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {

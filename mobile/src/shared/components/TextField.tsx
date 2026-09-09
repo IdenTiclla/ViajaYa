@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, type IoniconsIconName } from '@react-native-vector-icons/ionicons';
 import { forwardRef, useState } from 'react';
 import {
   StyleSheet,
@@ -14,7 +14,7 @@ import { controles, fontSize, radius, spacing, useEstilos, type Tema } from '@/c
 type Props = TextInputProps & {
   label?: string;
   /** Ícono de Ionicons a la izquierda (sobre el diseño Stitch: mail, lock-closed…). */
-  leadingIcon?: keyof typeof Ionicons.glyphMap;
+  leadingIcon?: IoniconsIconName;
   /** Activa el toggle de mostrar/ocultar contraseña. */
   password?: boolean;
   error?: string;

@@ -3,7 +3,7 @@
  * estilo Material-You glass, con auto-descarte a los 3.5 s. Se monta en el layout
  * autenticado del pasajero para aparecer sobre cualquier pantalla.
  */
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, type IoniconsIconName } from '@react-native-vector-icons/ionicons';
 import { useEffect } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -23,7 +23,7 @@ function ToastItem({ toast, onDismiss }: { toast: PassengerToast; onDismiss: () 
     return () => clearTimeout(timer);
   }, [toast.id, onDismiss]);
 
-  const META: Record<PassengerToastKind, { icon: keyof typeof Ionicons.glyphMap; color: string }> = {
+  const META: Record<PassengerToastKind, { icon: IoniconsIconName; color: string }> = {
     offer_received: { icon: 'pricetag', color: colors.success },
     offer_expired: { icon: 'time-outline', color: colors.aviso },
     offer_withdrawn: { icon: 'remove-circle-outline', color: colors.textSecondary },

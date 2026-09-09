@@ -14,7 +14,7 @@
  * Los datos de la oferta se leen del store `useDriverRequests` (no de params),
  * así la vista es consistente venga de donde venga.
  */
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {

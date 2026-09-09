@@ -27,14 +27,19 @@ const dobles = {
       textos.push({ ...props, style: aplanar(props.style) }); return props.children;
     }
   `,
-  '@expo/vector-icons': 'export function Ionicons() { return null; }',
+  '@react-native-vector-icons/ionicons': 'export function Ionicons() { return null; }',
   '@/shared/components': 'export function PinLoadingIndicator() { return null; }',
+  '@/shared/components/PinLoadingIndicator': 'export function PinLoadingIndicator() { return null; }',
 };
 const hooks = registerHooks({
   resolve(specifier, context, nextResolve) {
     if (specifier in dobles) return { url: `prueba:${specifier}`, shortCircuit: true };
     if (specifier === '@/core/theme') return {
       url: new URL('../src/core/theme/index.ts', import.meta.url).href, shortCircuit: true,
+    };
+    if (specifier.startsWith('@/shared/components/mapa/')) return {
+      url: new URL(`../src/${specifier.slice(2)}.tsx`, import.meta.url).href,
+      shortCircuit: true,
     };
     if (context.parentURL?.includes('/core/theme/') && specifier.startsWith('.')) return {
       url: new URL(`${specifier}.ts`, context.parentURL).href, shortCircuit: true,
@@ -109,7 +114,7 @@ test('una ruta vacía o de un solo punto no deja trazos sueltos', () => {
   }
 });
 
-test('A y B mantienen el mismo diámetro y tipografía al editar, cargar u ocultar el tooltip', () => {
+test('A y B mantienen tamaño y tipografía al editar, cargar u ocultar el tooltip', () => {
   for (const kind of ['A', 'B']) {
     for (const variante of [{}, { showEditControl: true }, { loading: true }, { showTooltip: false }]) {
       vistas.length = textos.length = marcadores.length = 0;
@@ -121,14 +126,32 @@ test('A y B mantienen el mismo diámetro y tipografía al editar, cargar u ocult
       const pin = vistas.find((vista) => vista.style.width === 16 && vista.style.height === 16);
       assert.ok(pin, 'El pin debe medir 16 en todas las variantes');
       assert.equal(pin.style.borderWidth, 1.5);
+      assert.equal(pin.style.borderRadius, 8, 'Origen y destino conservan su forma circular');
       assert.equal(letra.style.fontSize, 9);
       assert.equal(letra.style.includeFontPadding, false);
+      assert.equal(letra.allowFontScaling, false, 'La letra del símbolo conserva el anclaje del mapa');
       assert.equal(vistas[0].collapsable, false, 'Conserva el contenedor nativo completo');
       assert.equal(marcadores[0].coordinate, kind === 'A' ? origen : destino);
       if (variante.showTooltip !== false) {
         const tooltip = textos.find((texto) => texto.numberOfLines === 2);
         assert.equal(tooltip.style.fontSize, 10, 'La etiqueta no cambia de tamaño por pantalla');
       }
+    }
+  }
+});
+
+test('los pines conservan su forma y actualizan sus colores en ambos temas', () => {
+  for (const modo of ['light', 'dark']) {
+    const tema = obtenerTema(modo);
+    for (const kind of ['A', 'B']) {
+      vistas.length = textos.length = marcadores.length = 0;
+      renderToStaticMarkup(createElement(ContextoTema.Provider, { value: tema },
+        createElement(RoutePinMarker, { kind, coordinate: origen, label: 'Punto del viaje' })));
+      const pin = vistas.find((vista) => vista.style.width === 16 && vista.style.height === 16);
+      assert.equal(pin.style.backgroundColor, kind === 'A' ? tema.colors.primary : tema.colors.danger);
+      assert.equal(pin.style.borderColor, tema.colors.surface);
+      assert.equal(textos.find((texto) => texto.children === kind).style.color, tema.colors.textOnPrimary);
+      assert.equal(marcadores[0].accessibilityLabel, 'Punto del viaje');
     }
   }
 });

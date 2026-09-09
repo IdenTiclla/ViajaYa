@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, type IoniconsIconName } from '@react-native-vector-icons/ionicons';
 import { useRef } from 'react';
 import { AccessibilityInfo, findNodeHandle, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
@@ -14,7 +14,7 @@ type Props = {
   /** Resalta la acción de confirmar en rojo (p. ej. eliminar). */
   destructive?: boolean;
   /** Ícono de Ionicons mostrado sobre el título. */
-  icon?: keyof typeof Ionicons.glyphMap;
+  icon?: IoniconsIconName;
   onConfirm: () => void;
   onCancel: () => void;
 };

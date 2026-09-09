@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, type IoniconsIconName } from '@react-native-vector-icons/ionicons';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { fontSize, fontWeight, spacing, useEstilos, type Tema } from '@/core/theme';
@@ -7,7 +7,7 @@ import { Button } from '@/shared/components/Button';
 type Props = {
   title: string;
   message?: string;
-  icon?: keyof typeof Ionicons.glyphMap;
+  icon?: IoniconsIconName;
   loading?: boolean;
   compact?: boolean;
   actionLabel?: string;

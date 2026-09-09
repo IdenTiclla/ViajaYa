@@ -7,7 +7,7 @@
  * contraoferta rápida +Bs, ruta y Rechazar/Enviar oferta) y un paginador visible
  * para navegar entre solicitudes. Tocar la tarjeta abre el detalle.
  */
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,

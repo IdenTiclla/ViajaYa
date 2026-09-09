@@ -6,7 +6,7 @@
  * Si el cálculo del trayecto falla (key restringida, sin red), cae a una línea
  * recta entre ambos puntos.
  */
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
 import { usePreventRemove } from 'expo-router/react-navigation';

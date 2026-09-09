@@ -5,7 +5,7 @@
  * mapa) más, en modo edición, `id`/`label`/`category`. El usuario pone un nombre
  * y una categoría; al guardar se persiste en el backend (`/saved-places`).
  */
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import {

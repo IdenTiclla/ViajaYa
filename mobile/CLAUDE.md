@@ -36,7 +36,7 @@ src/
 ├── features/            # Una carpeta por feature, en capas (Clean Architecture).
 │   ├── auth/              # domain/ · data/ · application/ · presentation/
 │   ├── booking/           # 4 capas completas (flujo de reserva)
-│   ├── home/              # data/ · application/ · presentation/ (sin domain/)
+│   ├── home/              # domain/ (orientación) · data/ · application/ · presentation/
 │   ├── rides/             # ofertas + ciclo de vida del viaje + hooks de WS del pasajero y conductor
 │   │   ├── domain/          # types.ts · fareInput.ts · geo.ts · offerTags.ts
 │   │   ├── data/            # ridesRepository.ts (DTO ↔ dominio)
@@ -222,6 +222,31 @@ Splash/adaptiveIcon conservan el azul de marca `#16308C`.
 
 ### Controles y accesibilidad
 
+- Los iconos usan `@react-native-vector-icons/ionicons` y
+  `@react-native-vector-icons/fontawesome`, con imports por familia. Se conserva
+  la carga dinámica mediante `expo-font`: las fuentes viajan como assets de Metro.
+  `expo.autolinking.exclude` en `package.json` excluye ambas familias para evitar
+  copiarlas también al binario nativo. No añadas imports `/static`, plugins de estas
+  familias ni fuentes manuales sin revisar conjuntamente esa configuración.
+- Los símbolos propios del mapa viven en `shared/components/mapa/`: A circular
+  para origen, B circular para destino y vehículos cenitales taxi/moto. Se dibujan
+  con vistas nativas y tokens, sin fuentes de iconos. La letra A/B tiene escala
+  fija porque forma parte del símbolo; la etiqueta y el nombre accesible conservan
+  el significado. El pin de selección ancla el extremo del tallo al 50% del mapa,
+  sin estimar la altura del texto. `MarcadorVehiculo` pertenece al mapa nativo:
+  coordenadas GPS, `flat` y anclaje central; la rotación sigue el norte geográfico
+  incluso al girar la cámara. El barrido del radar es solo decorativo. El GPS
+  solicita actualizaciones cada segundo; el rumbo de movimiento fiable tiene
+  prioridad y, al detenerse, se usa la brújula calibrada. Se conserva una sola
+  suscripción mientras la pestaña de búsqueda está enfocada; Expo gestiona la
+  pausa nativa en segundo plano. Volver a la app consulta permisos y servicios
+  sin abrir diálogos ni recrear un watcher sano. Al perder foco se cancela incluso
+  un alta pendiente. Una adquisición puntual con precisión equilibrada permite
+  el primer centrado mientras llega el GPS preciso; se comparte si hay reintentos.
+  El mapa se monta solo al recibir coordenadas recientes, sin una ciudad fija de
+  respaldo; la carga tiene 15 s antes de ofrecer Reintentar y una señal tardía
+  recupera el mapa. La cámara mide el contenedor y espera `onMapReady`; el primer
+  centrado y «Mi ubicación» usan `setCamera`, el seguimiento usa `animateCamera`.
 - Reutiliza `Button` para acciones de formulario y pie de pantalla: altura mínima
   de 48, texto de 14 y crecimiento natural al ampliar la letra. Evita alturas
   fijas y `adjustsFontSizeToFit` para hacer caber etiquetas de acciones.
@@ -332,7 +357,7 @@ npm run lint               # expo lint (eslint-config-expo)
   conserva su control Editar y permite activar las etiquetas de lugares, pero
   inicia con el mismo mapa despejado del conductor. No dupliques la polilínea ni
   los estilos del pin en una pantalla. Conserva el contenedor nativo no aplanable,
-  el anclaje al centro del círculo y el redibujado cancelable tras cambios de layout.
+  el anclaje al centro del símbolo y el redibujado cancelable tras cambios de layout.
   La colocación de tooltips comprueba todos los segmentos en la proyección de
   pantalla y mide el bloque completo (texto y Editar). Los mapas con ruta son
   cenitales, con zoom y giro habilitados; ambos actualizan el cálculo. Se busca

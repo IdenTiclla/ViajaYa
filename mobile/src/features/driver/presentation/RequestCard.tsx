@@ -8,7 +8,7 @@
  * `offered` → banner "Oferta enviada"; `rejected` → reofertar. Se puede
  * **rechazar deslizando** para no volver a verla hasta que el pasajero la modifique.
  */
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useMemo, useRef } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import ReanimatedSwipeable, {

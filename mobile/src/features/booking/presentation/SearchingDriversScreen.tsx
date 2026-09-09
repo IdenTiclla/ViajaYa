@@ -10,7 +10,7 @@
  * La búsqueda no caduca. Al ajustar la oferta, el nuevo monto se anuncia a los
  * conductores en vivo.
  */
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useEffect, useRef, useState } from 'react';
 import {
   Animated,

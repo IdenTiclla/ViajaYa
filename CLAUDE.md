@@ -79,7 +79,7 @@ npx expo start                    # dev build en emulador/dispositivo (NO Expo G
 
 ## Convenciones globales
 
-- **Idioma:** código, comentarios, docs y mensajes de commit en **español**.
+- **Idioma:** código, identificadores, comentarios y docstrings nuevos en **inglés**, por preferencia del usuario del 2026-09-09. Interfaz, comunicación y documentación para el usuario en español. Verifica cada implementación; conserva la compatibilidad al modificar nombres existentes. Ver la preferencia persistente en `AGENTS.md`.
 - **Arquitectura:** ambos proyectos respetan límites de capas (dominio sin dependencias hacia afuera).
   No cruces capas para "ir más rápido"; sigue las reglas del `CLAUDE.md` del subproyecto.
 - **Antes de commitear:** corre lint y type-check del subproyecto tocado

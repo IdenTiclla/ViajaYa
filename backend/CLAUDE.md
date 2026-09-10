@@ -256,6 +256,10 @@ no un valor predeterminado.
 - **auth** (`/auth`): `POST /register`, `POST /login`, `POST /refresh`, `POST /oauth/{provider}`, `GET /me`.
   La renovación exige que el usuario del token siga existiendo; un token válido
   de una base anterior o un usuario eliminado recibe 401, sin emitir otro par.
+  F02-A agrega `POST /phone/challenges` y `POST /phone/verify`, desactivados por
+  defecto con `PHONE_OTP_ENABLED=false`. Requieren la migración 0024 y emiten un
+  comprobante temporal, no una sesión operativa. El acceso unificado se conecta
+  en F02-B; ver `docs/implementation-plans/0010-phone-identity-and-otp.md` en la raíz.
 - **rides** (`/rides`):
   - `POST ""` (crear solicitud), `GET /recent-destinations`, `GET /history`, `GET /{id}`.
     `GET /history` pagina con cursor opaco y responde `{items, next_cursor}`.
@@ -373,8 +377,8 @@ cerrar la app o perder ambos canales durante toda la gracia cancela la búsqueda
 ## Migraciones (Alembic)
 
 - Config: `alembic.ini` + `migrations/env.py` (engine **async** con `async_engine_from_config`).
-- **23 migraciones** en `migrations/versions/` (`0001_create_users` …
-  `0023_outbox_correlation_id`).
+- **24 migraciones** en `migrations/versions/` (`0001_create_users` …
+  `0024_phone_verification`). La última no verifica ni vincula teléfonos históricos.
 - Importante: los enums se persisten por **valor** minúsculo vía `values_callable=_enum_values`
   en `infrastructure/db/models.py` (migración `0006_normalize_enum_values`). No rompas esa convención
   o se caerán columnas existentes.
@@ -412,6 +416,6 @@ común `ViajaYa1234#`): `passenger1/2@viajaya.com`, `driver.auto1/2@viajaya.com`
 
 - Todo async de punta a punta (FastAPI, SQLAlchemy async, repos `async def`).
 - `from __future__ import annotations` al inicio de cada módulo; type hints en todo.
-- Docstrings y comentarios en **español** (sigue el estilo del repo).
+- Código, identificadores, docstrings y comentarios nuevos en **inglés**, según la preferencia persistente de `../AGENTS.md`. Verifica cada implementación antes de entregarla.
 - Ruff con `line-length = 100`, `target-version = "py311"`, reglas `E,F,I,UP,B,C4`.
 - Imports ordenados por isort (regla `I`).

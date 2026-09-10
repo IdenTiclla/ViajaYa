@@ -283,7 +283,7 @@ Splash/adaptiveIcon conservan el azul de marca `#16308C`.
   red, timeout y 5xx conservan la sesión para reintentar. El refresh compartido
   siempre se libera en `finally`, incluso si falla SecureStore.
 - `env.apiUrl` viene de `app.config.ts` → `extra.apiUrl`; `env.wsUrl` se deriva con `toWsUrl()`.
-- Tokens en `expo-secure-store` (`viajaya.accessToken`/`viajaya.refreshToken`), nunca en AsyncStorage plano.
+- Tokens en `expo-secure-store`, valor atómico `viajaya.session.v2` con `refreshRequestId`; las claves antiguas `viajaya.accessToken`/`viajaya.refreshToken` se leen para migración. Las escrituras se serializan, tienen espera acotada y el cierre deja una marca para impedir que claves antiguas restauren la sesión. Nunca usar AsyncStorage plano para credenciales.
 - El refresh también pasa por `api` con `skipAuth: true` y el timeout de 15 s;
   nunca debe quedar una renovación de sesión sin límite de espera.
 - Home verifica activo y después calificación con un límite total de 30 s en
@@ -373,5 +373,5 @@ npm run lint               # expo lint (eslint-config-expo)
   del servidor de desarrollo que recibe el teléfono.
 - **Hooks AppState-aware** (no se congelan en background): `useCountdown`, `socket.ts` recalculan
   al volver a foreground. Sigue ese patrón al hacer hooks con tiempo/conexión.
-- Comentarios/JSDoc en **español**, alineados con el estilo del repo.
+- Código, identificadores, comentarios y JSDoc nuevos en **inglés**, según la preferencia persistente de `../AGENTS.md`. Conserva la interfaz en español y verifica cada implementación.
 - Antes de tocar APIs de Expo, confirma firmas en los docs de la **v56** (no asumas versiones previas).

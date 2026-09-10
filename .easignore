@@ -1,0 +1,38 @@
+# EAS builds only need the mobile application from this monorepo.
+/*
+!/mobile
+!/mobile/**
+!/.easignore
+
+# Dependencies and native projects are generated on the build worker.
+node_modules
+/mobile/android
+/mobile/ios
+.expo
+.kotlin
+dist
+web-build
+.metro-health-check*
+*.tsbuildinfo
+
+# Private runtime configuration and signing files never belong in the archive.
+.env
+.env.*
+*.jks
+*.keystore
+*.p8
+*.p12
+*.key
+*.pem
+*.mobileprovision
+credentials.json
+
+# Local editor state, logs, and temporary files are not build inputs.
+.git
+.codex
+.agents
+.claude
+.vscode
+*.log
+*.orig.*
+.DS_Store

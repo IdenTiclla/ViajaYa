@@ -1,7 +1,9 @@
 /**
- * Acceso tipado a la configuración de `extra` (app.config.ts) vía expo-constants.
+ * Validated access to public build configuration through expo-constants.
  */
 import Constants from 'expo-constants';
+
+import { parseRuntimeEnvironment } from './environment';
 
 type Extra = {
   apiUrl: string;
@@ -10,18 +12,20 @@ type Extra = {
   facebookAppId: string;
 };
 
-const extra = (Constants.expoConfig?.extra ?? {}) as Partial<Extra>;
+const extra = (Constants.expoConfig?.extra ?? {}) as Partial<Extra> & Record<string, unknown>;
+const runtime = parseRuntimeEnvironment(extra);
 
-const apiUrl = extra.apiUrl ?? 'http://localhost:8000/api/v1';
+const apiUrl = runtime.apiUrl;
 
-/** Deriva la URL del WebSocket del `apiUrl` (http→ws, https→wss). */
+/** Preserve the API origin and path when selecting the WebSocket transport. */
 function toWsUrl(httpUrl: string): string {
   return httpUrl.replace(/^http(s?):\/\//i, (_match, secure) => `ws${secure}://`);
 }
 
 export const env = {
+  ...runtime,
   apiUrl,
-  /** Base del WebSocket (mismo host que la API); los sockets le añaden `/ws/...`. */
+  /** Sockets append /ws/... to the environment-specific API base. */
   wsUrl: toWsUrl(apiUrl),
   googleMapsApiKey: extra.googleMapsApiKey ?? '',
   googleClientIds: {

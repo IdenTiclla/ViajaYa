@@ -5,8 +5,9 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { useEstilos, type Tema } from '@/core/theme';
-import { ProveedorTema } from '@/core/theme/ProveedorTema';
+import { EnvironmentBadge } from '@/core/components/EnvironmentBadge';
+import { useEstilos as useThemedStyles, type Tema as Theme } from '@/core/theme';
+import { ProveedorTema as ThemeProvider } from '@/core/theme/ProveedorTema';
 import { SessionRecoveryScreen } from '@/features/auth/presentation/SessionRecoveryScreen';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
 import { usePassengerToasts } from '@/features/booking/application/usePassengerToasts';
@@ -14,26 +15,25 @@ import { useDriverRequests } from '@/features/driver/application/useDriverReques
 import { useDriverToasts } from '@/features/driver/application/useDriverToasts';
 import { useAuthStore } from '@/store/authStore';
 
-// Singleton a nivel de módulo: una sola instancia para toda la app.
+// Reuse one query client for the entire application.
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 30_000 } },
 });
 
 function RootNavigator() {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   const status = useAuthStore((s) => s.status);
   const user = useAuthStore((s) => s.user);
   const bootstrap = useAuthStore((s) => s.bootstrap);
   const identity = user?.id ?? null;
   const [readyIdentity, setReadyIdentity] = useState<string | null | undefined>(undefined);
 
-  // Restaura la sesión desde SecureStore al arrancar.
+  // Restore the stored session at startup.
   useEffect(() => {
     void bootstrap();
   }, [bootstrap]);
 
-  // No monta ninguna pantalla de la nueva sesión hasta haber limpiado todo el
-  // estado en memoria de la identidad anterior.
+  // Clear the previous identity before mounting screens for the next session.
   useEffect(() => {
     if (status === 'loading' || readyIdentity === identity) return;
     queryClient.clear();
@@ -73,13 +73,14 @@ function RootNavigator() {
   );
 }
 
-function ContenidoRaiz() {
-  const { styles } = useEstilos(crearEstilos);
+function RootContent() {
+  const { styles } = useThemedStyles(createStyles);
   return (
     <GestureHandlerRootView style={styles.root}>
       <QueryClientProvider client={queryClient}>
         <SafeAreaProvider>
           <RootNavigator />
+          <EnvironmentBadge />
         </SafeAreaProvider>
       </QueryClientProvider>
     </GestureHandlerRootView>
@@ -87,10 +88,10 @@ function ContenidoRaiz() {
 }
 
 export default function RootLayout() {
-  return <ProveedorTema><ContenidoRaiz /></ProveedorTema>;
+  return <ThemeProvider><RootContent /></ThemeProvider>;
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   root: { flex: 1 },
   splash: {
     flex: 1,

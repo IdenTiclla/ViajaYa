@@ -5,6 +5,7 @@
 __pycache__/
 *.py[cod]
 .venv/
+.venv-f01/
 venv/
 *.egg-info/
 .pytest_cache/

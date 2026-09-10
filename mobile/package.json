@@ -47,7 +47,10 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "test": "node --experimental-strip-types --test tests/*.test.mjs",
+    "verify:environments": "node scripts/verify-environments.mjs",
+    "verify:environments:native": "node scripts/verify-environments.mjs --native"
   },
   "private": true,
   "expo": {

@@ -29,7 +29,6 @@ from app.infrastructure.db.models import ScheduledActionModel
 from app.infrastructure.db.repositories import (
     SqlAlchemyOfferRepository,
     SqlAlchemyRideRequestRepository,
-    SqlAlchemyUserRepository,
 )
 from app.infrastructure.db.scheduled_actions import (
     SqlAlchemyScheduledActionRepository,
@@ -58,21 +57,35 @@ async def test_upgrade_backfill_y_downgrade_seguro_0022(pg_test_db) -> None:
     try:
         sessions = async_sessionmaker(pg_test_db.engine, expire_on_commit=False)
         async with sessions() as session:
-            users = SqlAlchemyUserRepository(session)
-            rider = await users.add(
-                User(
-                    full_name="Pasajero backfill scheduler",
-                    email=f"rider-scheduler-{uuid.uuid4()}@test.com",
-                )
+            rider = User(
+                full_name="Pasajero backfill scheduler",
+                email=f"rider-scheduler-{uuid.uuid4()}@test.com",
             )
-            driver = await users.add(
-                User(
-                    full_name="Conductor backfill scheduler",
-                    email=f"driver-scheduler-{uuid.uuid4()}@test.com",
-                    role=UserRole.DRIVER,
-                    vehicle_type=VehicleType.TAXI,
-                    is_online=True,
-                )
+            driver = User(
+                full_name="Conductor backfill scheduler",
+                email=f"driver-scheduler-{uuid.uuid4()}@test.com",
+                role=UserRole.DRIVER,
+                vehicle_type=VehicleType.TAXI,
+                is_online=True,
+            )
+            # Seed only columns present at this historical migration revision.
+            await session.execute(
+                sa.text(
+                    "INSERT INTO users "
+                    "(id, full_name, email, role, vehicle_type, is_online, auth_provider) "
+                    "VALUES (:id, :full_name, :email, :role, :vehicle_type, :is_online, 'local')"
+                ),
+                [
+                    {
+                        "id": user.id,
+                        "full_name": user.full_name,
+                        "email": user.email,
+                        "role": user.role.value,
+                        "vehicle_type": user.vehicle_type.value if user.vehicle_type else None,
+                        "is_online": user.is_online,
+                    }
+                    for user in (rider, driver)
+                ],
             )
             ride = await SqlAlchemyRideRequestRepository(session).add(
                 RideRequest(

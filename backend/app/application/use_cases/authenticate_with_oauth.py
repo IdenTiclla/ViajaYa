@@ -10,7 +10,7 @@ from app.application.dto import OAuthLoginInput, TokenPair
 from app.application.interfaces import SocialIdentityVerifier, TokenService
 from app.application.token_issuer import issue_token_pair
 from app.domain.entities import User
-from app.domain.exceptions import UnsupportedProviderError
+from app.domain.exceptions import InvalidCredentialsError, UnsupportedProviderError
 from app.domain.repositories import UserRepository
 
 
@@ -33,6 +33,8 @@ class AuthenticateWithOAuth:
 
         profile = await verifier.verify(data.token)
         user = await self._find_or_create(profile)
+        if user.legacy_auth_disabled or not user.is_active:
+            raise InvalidCredentialsError("Verifica tu teléfono para iniciar sesión.")
         return user, issue_token_pair(self._tokens, user.id)
 
     async def _find_or_create(self, profile) -> User:

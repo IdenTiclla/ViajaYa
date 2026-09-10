@@ -85,8 +85,13 @@ class UserModel(Base):
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    email: Mapped[str] = mapped_column(String(320), unique=True, index=True, nullable=False)
+    email: Mapped[str | None] = mapped_column(String(320), unique=True, index=True, nullable=True)
     phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    phone_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    legacy_auth_disabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+    terms_version: Mapped[str | None] = mapped_column(String(80))
+    terms_accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     hashed_password: Mapped[str | None] = mapped_column(String(255), nullable=True)
     auth_provider: Mapped[AuthProvider] = mapped_column(
         Enum(
@@ -133,6 +138,127 @@ class UserModel(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class UserIdentityModel(Base):
+    __tablename__ = "user_identities"
+    __table_args__ = (
+        UniqueConstraint("user_id", "provider", name="uq_user_identity_provider"),
+        CheckConstraint("provider IN ('phone', 'google', 'facebook')",
+                        name="ck_user_identity_provider"),
+    )
+
+    provider: Mapped[str] = mapped_column(String(16), primary_key=True)
+    subject: Mapped[str] = mapped_column(String(255), primary_key=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True,
+    )
+    verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class PhoneChallengeModel(Base):
+    __tablename__ = "phone_challenges"
+    __table_args__ = (
+        CheckConstraint("attempts >= 0 AND attempts <= 5", name="ck_phone_challenge_attempts"),
+        Index("ix_phone_challenge_binding", "phone", "device_digest", "purpose"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True)
+    phone: Mapped[str] = mapped_column(String(16), nullable=False)
+    purpose: Mapped[str] = mapped_column(String(32), nullable=False)
+    actor_user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid())
+    device_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    code_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    provider_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    proof_digest: Mapped[str | None] = mapped_column(String(64), unique=True)
+    proof_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class PhoneRateBudgetModel(Base):
+    __tablename__ = "phone_rate_budgets"
+
+    key: Mapped[str] = mapped_column(String(128), primary_key=True)
+    count: Mapped[int] = mapped_column(Integer, nullable=False)
+    resets_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class AuthSessionModel(Base):
+    __tablename__ = "auth_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(), ForeignKey("users.id", ondelete="CASCADE"), index=True,
+    )
+    device_id: Mapped[uuid.UUID] = mapped_column(Uuid())
+    device_name: Mapped[str] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revocation_reason: Mapped[str | None] = mapped_column(String(40))
+
+
+class RefreshCredentialModel(Base):
+    __tablename__ = "auth_refresh_credentials"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True)
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(), ForeignKey("auth_sessions.id", ondelete="CASCADE"), index=True,
+    )
+    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    access_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    request_id: Mapped[uuid.UUID | None] = mapped_column(Uuid())
+    successor_id: Mapped[uuid.UUID | None] = mapped_column(Uuid())
+
+
+class PhoneCompletionModel(Base):
+    __tablename__ = "phone_completion_receipts"
+
+    proof_digest: Mapped[str] = mapped_column(String(64), primary_key=True)
+    request_id: Mapped[uuid.UUID] = mapped_column(Uuid())
+    device_digest: Mapped[str] = mapped_column(String(64))
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(), ForeignKey("auth_sessions.id", ondelete="CASCADE"),
+    )
+    credential_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(), ForeignKey("auth_refresh_credentials.id", ondelete="CASCADE"),
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class AccountAuditModel(Base):
+    __tablename__ = "account_audit_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True, default=uuid.uuid4)
+    event: Mapped[str] = mapped_column(String(60))
+    user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(), index=True)
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(Uuid())
+    details: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class RecoveryRequestModel(Base):
+    __tablename__ = "account_recovery_requests"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True, default=uuid.uuid4)
+    proof_digest: Mapped[str] = mapped_column(String(64), unique=True)
+    device_digest: Mapped[str] = mapped_column(String(64))
+    request_id: Mapped[uuid.UUID] = mapped_column(Uuid())
+    contact_phone: Mapped[str] = mapped_column(String(16))
+    account_hint: Mapped[str] = mapped_column(String(255))
+    reason: Mapped[str] = mapped_column(String(1000))
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid())
+    reviewer_id: Mapped[uuid.UUID | None] = mapped_column(Uuid())
+    evidence_reference: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class RideRequestModel(Base):

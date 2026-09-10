@@ -8,7 +8,7 @@ import { create } from 'zustand';
 
 import { conTiempoLimite } from '@/core/async/conTiempoLimite';
 import { getApiErrorMessage } from '@/core/errors/apiError';
-import { invalidarSolicitudesSesion, setOnSessionExpired } from '@/core/http/client';
+import { api, invalidarSolicitudesSesion, setOnSessionExpired } from '@/core/http/client';
 import { tokenStorage } from '@/core/http/tokenStorage';
 import { authRepository } from '@/features/auth/data/authRepository';
 import type {
@@ -32,13 +32,15 @@ type AuthState = {
   signUp: (payload: RegisterPayload) => Promise<void>;
   signInWithOAuth: (provider: Exclude<AuthProvider, 'local'>, token: string) => Promise<void>;
   signOut: () => Promise<void>;
+  acceptPhoneSession: (result: AuthResult) => Promise<void>;
 };
 
 export const useAuthStore = create<AuthState>((set) => {
   async function applySession(result: AuthResult): Promise<void> {
-    generacionSesion += 1;
+    const generation = ++generacionSesion;
     invalidarSolicitudesSesion();
     await tokenStorage.save(result.tokens);
+    if (generation !== generacionSesion) return;
     set({ user: result.user, status: 'authenticated', startupError: null });
   }
 
@@ -46,6 +48,7 @@ export const useAuthStore = create<AuthState>((set) => {
     user: null,
     status: 'loading',
     startupError: null,
+    acceptPhoneSession: applySession,
 
     async bootstrap() {
       const generacion = ++generacionSesion;
@@ -72,21 +75,35 @@ export const useAuthStore = create<AuthState>((set) => {
     },
 
     async signIn(payload) {
-      await applySession(await authRepository.login(payload));
+      const attempt = ++generacionSesion;
+      const result = await authRepository.login(payload);
+      if (attempt === generacionSesion) await applySession(result);
     },
 
     async signUp(payload) {
-      await applySession(await authRepository.register(payload));
+      const attempt = ++generacionSesion;
+      const result = await authRepository.register(payload);
+      if (attempt === generacionSesion) await applySession(result);
     },
 
     async signInWithOAuth(provider, token) {
-      await applySession(await authRepository.oauth(provider, token));
+      const attempt = ++generacionSesion;
+      const result = await authRepository.oauth(provider, token);
+      if (attempt === generacionSesion) await applySession(result);
     },
 
     async signOut() {
       const generacion = ++generacionSesion;
       invalidarSolicitudesSesion();
       try {
+        const tokens = await tokenStorage.get().catch(() => null);
+        if (tokens?.refreshToken) {
+          // Logging out locally remains available when the API is unreachable.
+          await api.post('/auth/logout', { refresh_token: tokens.refreshToken }, {
+            skipAuth: true, timeout: 5_000,
+          }).catch(() => {});
+        }
+        if (generacion !== generacionSesion) return;
         await tokenStorage.clear();
       } catch {
         // Un fallo nativo no debe impedir volver al formulario de acceso.

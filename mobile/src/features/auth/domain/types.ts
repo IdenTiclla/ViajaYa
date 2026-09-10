@@ -10,8 +10,9 @@ export type VehicleType = 'taxi' | 'moto';
 export type User = {
   id: string;
   fullName: string;
-  email: string;
+  email: string | null;
   phone: string | null;
+  phoneVerifiedAt: string | null;
   authProvider: AuthProvider;
   role: UserRole;
   /** Solo conductores: tipo de vehículo y datos del mismo. */

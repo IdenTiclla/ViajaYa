@@ -55,6 +55,8 @@ export const api = axios.create({
 });
 
 api.interceptors.request.use(async (config) => {
+  // Include the environment on login and refresh as well as authenticated requests.
+  config.headers.set('X-App-Environment', env.appEnv);
   (config as RetriableConfig)._generacionSesion ??= generacionSesion;
   if (config.skipAuth) return config;
   const tokens = await tokenStorage.get();
@@ -75,7 +77,7 @@ let refreshPromise: Promise<string | null> | null = null;
 
 async function refreshAccessToken(): Promise<string | null> {
   const generacion = generacionSesion;
-  const tokens = await tokenStorage.get();
+  const tokens = await tokenStorage.prepareRefresh();
   if (generacion !== generacionSesion) return null;
   if (!tokens?.refreshToken) return null;
   try {
@@ -83,12 +85,14 @@ async function refreshAccessToken(): Promise<string | null> {
     // y que el refresh intente renovarse a sí mismo ante un 401.
     const { data } = await api.post('/auth/refresh', {
       refresh_token: tokens.refreshToken,
+      request_id: tokens.refreshRequestId,
     }, { skipAuth: true });
     if (generacion !== generacionSesion) return null;
     await tokenStorage.save({
       accessToken: data.access_token,
       refreshToken: data.refresh_token,
     });
+    if (generacion !== generacionSesion) return null;
     return data.access_token as string;
   } catch (error) {
     // Una caída de red/servidor no demuestra que la sesión haya vencido.

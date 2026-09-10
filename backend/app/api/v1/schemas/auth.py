@@ -26,7 +26,8 @@ class LoginRequest(BaseModel):
 
 
 class RefreshRequest(BaseModel):
-    refresh_token: str
+    refresh_token: str = Field(max_length=4096, repr=False)
+    request_id: uuid.UUID | None = None
 
 
 class OAuthRequest(BaseModel):
@@ -46,8 +47,9 @@ class UserResponse(BaseModel):
 
     id: uuid.UUID
     full_name: str
-    email: EmailStr
+    email: EmailStr | None
     phone: str | None
+    phone_verified_at: datetime | None
     auth_provider: AuthProvider
     role: UserRole
     vehicle_type: VehicleType | None

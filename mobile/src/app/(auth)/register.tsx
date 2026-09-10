@@ -1,3 +1,1 @@
-import { RegisterScreen } from '@/features/auth/presentation/RegisterScreen';
-
-export default RegisterScreen;
+export { PhoneEntryScreen as default } from '@/features/auth/presentation/PhoneEntryScreen';

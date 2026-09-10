@@ -4,10 +4,11 @@ import type { AuthResult, AuthTokens, User } from '@/features/auth/domain/types'
 type UserDto = {
   id: string;
   full_name: string;
-  email: string;
+  email: string | null;
   phone: string | null;
+  phone_verified_at?: string | null;
   auth_provider: User['authProvider'];
-  role: User['role'];
+  role: User['role'] | 'delivery';
   vehicle_type: User['vehicleType'];
   plate: string | null;
   vehicle_model: string | null;
@@ -24,11 +25,13 @@ type TokenDto = {
 export type AuthResponseDto = { user: UserDto; tokens: TokenDto };
 
 export function toUser(dto: UserDto): User {
+  if (dto.role === 'delivery') throw new Error('El acceso de reparto aún no está habilitado en esta app.');
   return {
     id: dto.id,
     fullName: dto.full_name,
     email: dto.email,
     phone: dto.phone,
+    phoneVerifiedAt: dto.phone_verified_at ?? null,
     authProvider: dto.auth_provider,
     role: dto.role,
     vehicleType: dto.vehicle_type,

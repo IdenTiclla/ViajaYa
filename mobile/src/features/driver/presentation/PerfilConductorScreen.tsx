@@ -10,6 +10,7 @@ import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/
 import { Button } from '@/shared/components';
 import { useAuthStore } from '@/store/authStore';
 import { SelectorTema } from '@/features/profile/presentation/SelectorTema';
+import { AccountSecurityPanel } from '@/features/auth/presentation/AccountSecurityPanel';
 
 const SERVICE_LABELS = { taxi: 'Taxi', moto: 'Moto' } as const;
 
@@ -27,7 +28,7 @@ export function PerfilConductorScreen() {
           <Text style={styles.avatarText}>{initial}</Text>
         </View>
         <Text style={styles.name}>{user?.fullName ?? 'Conductor'}</Text>
-        <Text style={styles.email}>{user?.email}</Text>
+        <Text style={styles.email}>{user?.phoneVerifiedAt ? user.phone : user?.email}</Text>
         {user?.rating != null && (
           <View style={styles.rating}>
             <Ionicons name="star" size={16} color={colors.accent} />
@@ -46,6 +47,7 @@ export function PerfilConductorScreen() {
         </View>
 
         <SelectorTema />
+        <AccountSecurityPanel />
         <View style={styles.actions}>
           <Button
             title="Historial de viajes"

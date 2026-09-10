@@ -126,6 +126,9 @@ def _to_entity(row: UserModel) -> User:
         rating=row.rating,
         is_online=row.is_online,
         created_at=row.created_at,
+        phone_verified_at=row.phone_verified_at,
+        legacy_auth_disabled=row.legacy_auth_disabled,
+        is_active=row.is_active,
     )
 
 

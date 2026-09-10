@@ -26,7 +26,7 @@ from app.api.v1.schemas.auth import (
 from app.application.dto import LoginInput, OAuthLoginInput, RegisterInput
 from app.application.use_cases.authenticate_user import AuthenticateUser
 from app.application.use_cases.authenticate_with_oauth import AuthenticateWithOAuth
-from app.application.use_cases.refresh_token import RefreshToken
+from app.application.use_cases.refresh_managed_session import RefreshManagedSession
 from app.application.use_cases.register_user import RegisterUser
 from app.domain.entities import AuthProvider
 from app.domain.exceptions import UnsupportedProviderError
@@ -72,9 +72,9 @@ async def login(
 @router.post("/refresh", response_model=TokenResponse)
 async def refresh(
     body: RefreshRequest,
-    use_case: Annotated[RefreshToken, Depends(get_refresh_token)],
+    use_case: Annotated[RefreshManagedSession, Depends(get_refresh_token)],
 ) -> TokenResponse:
-    tokens = await use_case.execute(body.refresh_token)
+    tokens = await use_case.execute(body.refresh_token, body.request_id)
     return TokenResponse(
         access_token=tokens.access_token,
         refresh_token=tokens.refresh_token,

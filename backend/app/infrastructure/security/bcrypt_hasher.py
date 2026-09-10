@@ -1,25 +1,29 @@
-"""Implementación de ``PasswordHasher`` con la librería ``bcrypt``.
-
-bcrypt opera sobre como máximo 72 bytes; las contraseñas más largas se truncan a
-ese límite (comportamiento estándar) para evitar errores en bcrypt >= 5.
-"""
+"""Reject ambiguous legacy passwords instead of silently truncating UTF-8 bytes."""
 
 from __future__ import annotations
 
 import bcrypt
 
 from app.application.interfaces import PasswordHasher
+from app.domain.exceptions import WeakPasswordError
 
 _MAX_BYTES = 72
 
 
 def _encode(plain: str) -> bytes:
-    return plain.encode("utf-8")[:_MAX_BYTES]
+    encoded = plain.encode("utf-8")
+    if len(encoded) > _MAX_BYTES:
+        raise ValueError("Password exceeds bcrypt byte limit")
+    return encoded
 
 
 class BcryptPasswordHasher(PasswordHasher):
     def hash(self, plain: str) -> str:
-        return bcrypt.hashpw(_encode(plain), bcrypt.gensalt()).decode("utf-8")
+        try:
+            encoded = _encode(plain)
+        except ValueError as exc:
+            raise WeakPasswordError("La contraseña no puede superar 72 bytes UTF-8.") from exc
+        return bcrypt.hashpw(encoded, bcrypt.gensalt()).decode("utf-8")
 
     def verify(self, plain: str, hashed: str) -> bool:
         try:

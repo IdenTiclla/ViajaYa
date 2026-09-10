@@ -15,13 +15,14 @@ const hooks = registerHooks({
   load(url, context, nextLoad) {
     if (url === 'prueba:@/core/config/env') {
       return { format: 'module', shortCircuit: true,
-        source: 'export const env = { apiUrl: "https://api.example.test/api/v1" };' };
+        source: 'export const env = { appEnv: "development", apiUrl: "https://api.example.test/api/v1" };' };
     }
     if (url === 'prueba:@/core/http/tokenStorage') {
       return { format: 'module', shortCircuit: true, source: `
         export const tokenStorage = {
           tokens: null,
           async get() { return this.tokens; },
+          async prepareRefresh() { return this.get(); },
           async save(tokens) { this.tokens = tokens; },
           async clear() { this.tokens = null; },
         };
@@ -33,6 +34,19 @@ const hooks = registerHooks({
 const { api, setOnSessionExpired, invalidarSolicitudesSesion } = await import('../src/core/http/client.ts');
 const { tokenStorage } = await import('@/core/http/tokenStorage');
 hooks.deregister();
+
+test('authentication requests always declare their build environment', async (t) => {
+  const originalAdapter = api.defaults.adapter;
+  t.after(() => { api.defaults.adapter = originalAdapter; });
+  api.defaults.adapter = async (config) => {
+    assert.equal(config.headers.get('X-App-Environment'), 'development');
+    return { status: 200, statusText: 'OK', headers: {}, config, data: {} };
+  };
+  await api.post('/auth/login', {}, {
+    skipAuth: true,
+    headers: { 'X-App-Environment': 'production' },
+  });
+});
 
 function unauthorized(config) {
   return new AxiosError('Sesión vencida', 'ERR_BAD_REQUEST', config, null, {

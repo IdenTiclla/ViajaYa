@@ -72,7 +72,7 @@ class User:
     """
 
     full_name: str
-    email: str
+    email: str | None
     phone: str | None = None
     hashed_password: str | None = None
     auth_provider: AuthProvider = AuthProvider.LOCAL
@@ -85,6 +85,9 @@ class User:
     is_online: bool = False
     id: uuid.UUID = field(default_factory=uuid.uuid4)
     created_at: datetime | None = None
+    phone_verified_at: datetime | None = None
+    legacy_auth_disabled: bool = False
+    is_active: bool = True
 
     @property
     def is_social(self) -> bool:

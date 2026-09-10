@@ -8,6 +8,7 @@ const mocks = {
     async save() {}, async clear() {},
   };`,
   '@/core/http/client': `export let expired;
+    export const api = { async post() {} };
     export function setOnSessionExpired(fn) { expired = fn; }
     export function invalidarSolicitudesSesion() {}`,
   '@/features/auth/data/authRepository': `export const authRepository = {

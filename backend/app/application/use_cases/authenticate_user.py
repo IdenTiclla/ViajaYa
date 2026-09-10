@@ -24,7 +24,8 @@ class AuthenticateUser:
     async def execute(self, data: LoginInput) -> tuple[User, TokenPair]:
         user = await self._users.get_by_email(data.email.strip().lower())
         # Mensaje genérico para no revelar si el correo existe.
-        if user is None or user.hashed_password is None:
+        if (user is None or user.hashed_password is None
+                or user.legacy_auth_disabled or not user.is_active):
             raise InvalidCredentialsError("Correo o contraseña incorrectos.")
         if not self._hasher.verify(data.password, user.hashed_password):
             raise InvalidCredentialsError("Correo o contraseña incorrectos.")

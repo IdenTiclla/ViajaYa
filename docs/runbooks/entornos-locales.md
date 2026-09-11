@@ -20,6 +20,32 @@ fallo del código: usa la versión fijada.
 Los scripts dependen de `httpx`, `websockets` y `python-dotenv`, ya incluidos en las
 dependencias de desarrollo del backend.
 
+## Primera vez en una máquina
+
+```bash
+git clone https://github.com/IdenTiclla/ViajaYa.git && cd ViajaYa
+
+# Backend
+cd backend && uv sync && cp .env.example .env      # editar JWT_SECRET y credenciales
+cd ..
+
+# Mobile
+cd mobile && npm install && cp .env.example .env   # API_URL = IP LAN, claves Maps/OAuth
+cd ..
+```
+
+En `mobile/.env`, `API_URL` debe apuntar a la IP LAN de esta máquina (`ipconfig` o
+`ip addr`), no a `localhost`: el teléfono necesita alcanzarla. `verify_apk.py development`
+compara el APK contra ese mismo valor.
+
+**Qué traer de la máquina anterior**, si la hay: `private-state.json` y los dumps de
+PostgreSQL. Nada de eso se puede regenerar a partir del repositorio. Sin el estado privado,
+la base de Pruebas anterior queda inaccesible y hay que crear un entorno nuevo; sin los
+dumps, se pierden las cuentas y el historial.
+
+**Qué no hace falta traer:** las variables del proyecto en EAS, incluida `TESTING_API_URL`,
+viven en el servidor de Expo y las ve cualquier máquina con `eas login`.
+
 ## Dónde se guarda lo que no se versiona
 
 Por defecto todo cuelga de `local-files/`, ignorado por git. Cada ruta se puede mover con
@@ -78,8 +104,16 @@ python ops/scripts/manage_testing.py seed      # cuentas ficticias
 python ops/scripts/manage_testing.py status
 ```
 
-`start-api` exige que el estado tenga una `api_url`. Ponla antes de arrancar: es la URL
-pública con la que se compilará el APK.
+`prepare` genera contraseñas y secreto JWT nuevos la primera vez, y no vuelve a tocarlos
+en ejecuciones posteriores. No necesita la imagen de cloudflared: si no está, el entorno se
+genera sin servicio de túnel, que es lo correcto cuando el túnel corre en el host.
+
+`start-api` exige que el estado tenga una `api_url`, la URL pública con la que se compilará
+el APK. Se fija sin editar el JSON a mano:
+
+```bash
+python ops/scripts/manage_testing.py set-url https://<tu-dominio>/api/v1
+```
 
 Para restaurar un respaldo en una base recién creada:
 
@@ -99,8 +133,13 @@ ngrok config add-authtoken <token>          # en una terminal aparte, no en un a
 ngrok http --url=https://<tu-dominio> 8001
 ```
 
-Después, actualiza `api_url` en el estado privado y reinicia el API para que `CORS_ORIGINS`
-y `PUBLIC_API_URL` coincidan.
+Después, fija la URL y reinicia el API para que `CORS_ORIGINS` y `PUBLIC_API_URL`
+coincidan:
+
+```bash
+python ops/scripts/manage_testing.py set-url https://<tu-dominio>/api/v1
+python ops/scripts/manage_testing.py start-api
+```
 
 ## Compilar e instalar el APK de Pruebas
 

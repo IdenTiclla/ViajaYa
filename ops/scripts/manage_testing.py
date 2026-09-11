@@ -31,6 +31,15 @@ def compose(*arguments: str, **kwargs: object) -> str:
     return docker("compose", "-f", str(COMPOSE_PATH), "-p", PROJECT, *arguments, **kwargs)
 
 
+def image_id(reference: str) -> str:
+    """Return the local image id, or an empty string when it is not present."""
+    try:
+        return docker("image", "inspect", reference, "--format", "{{.Id}}",
+                      capture=True, stderr=subprocess.DEVNULL)
+    except subprocess.CalledProcessError:
+        return ""
+
+
 def read_state() -> dict:
     return json.loads(STATE_PATH.read_text(encoding="utf-8"))
 
@@ -96,15 +105,6 @@ def write_configuration(state: dict) -> None:
                     "interval": "3s", "timeout": "3s", "retries": 20,
                 },
             },
-            "testing-tunnel": {
-                "image": state["images"]["tunnel"],
-                "command": ["tunnel", "--no-autoupdate", "--protocol", "http2",
-                            "--url", "http://testing-api:8000"],
-                "read_only": True,
-                "tmpfs": ["/tmp"],
-                "security_opt": ["no-new-privileges:true"],
-                "cap_drop": ["ALL"],
-            },
             "testing-api": {**api, "ports": ["127.0.0.1:8001:8000"]},
             "migrate": {
                 **api, "profiles": ["setup"],
@@ -114,6 +114,16 @@ def write_configuration(state: dict) -> None:
         },
         "volumes": {"testing_database": {}},
     }
+    if state["images"].get("tunnel"):
+        configuration["services"]["testing-tunnel"] = {
+            "image": state["images"]["tunnel"],
+            "command": ["tunnel", "--no-autoupdate", "--protocol", "http2",
+                        "--url", "http://testing-api:8000"],
+            "read_only": True,
+            "tmpfs": ["/tmp"],
+            "security_opt": ["no-new-privileges:true"],
+            "cap_drop": ["ALL"],
+        }
     STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
     STATE_PATH.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
     COMPOSE_PATH.write_text(json.dumps(configuration, indent=2) + "\n", encoding="utf-8")
@@ -129,19 +139,29 @@ def initialize() -> None:
         raise RuntimeError(
             "Testing containers already exist without the corresponding private state."
         )
+    required = {"api": os.environ.get("VIAJAYA_API_IMAGE", "viajaya-phase1:runtime"),
+                "database": "postgres:16-alpine", "cache": "redis:7.4-alpine"}
     images = {
         key: docker("image", "inspect", image, "--format", "{{.Id}}", capture=True)
-        for key, image in {
-            "api": "viajaya-phase1:runtime", "database": "postgres:16-alpine",
-            "cache": "redis:7.4-alpine", "tunnel": "cloudflare/cloudflared:latest",
-        }.items()
+        for key, image in required.items()
     }
+    images["tunnel"] = image_id("cloudflare/cloudflared:latest")
     write_configuration({
         "images": images,
         "database_password": secrets.token_hex(24),
         "jwt_secret": secrets.token_hex(48),
         "account_password": "Testing-" + secrets.token_urlsafe(14) + "!9",
     })
+
+
+def set_url(api_url: str) -> None:
+    """Point the environment at the public URL its build will be compiled against."""
+    if not api_url.startswith("https://") or not api_url.endswith("/api/v1"):
+        raise SystemExit("The URL must start with https:// and end with /api/v1.")
+    state = read_state()
+    state["api_url"] = api_url
+    write_configuration(state)
+    print(json.dumps({"environment": "testing", "api_url": api_url}))
 
 
 def capture_url() -> None:
@@ -194,6 +214,8 @@ if __name__ == "__main__":
         compose("up", "-d", "testing-database", "testing-cache", "testing-tunnel")
     elif action == "capture-url":
         capture_url()
+    elif action == "set-url":
+        set_url(sys.argv[2])
     elif action == "start-api":
         assert "api_url" in read_state(), "Capture the real HTTPS URL before starting the API."
         compose("run", "--rm", "-T", "migrate")

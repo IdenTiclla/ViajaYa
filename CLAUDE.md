@@ -11,6 +11,7 @@ ViajaYa/
 ├── backend/                 # API FastAPI (Python 3.11+, async, PostgreSQL). Ver backend/CLAUDE.md
 ├── mobile/                  # App Expo + React Native + TypeScript. Ver mobile/CLAUDE.md
 ├── docs/implementation-plans/   # Planes de implementación por fases (0001-…)
+├── docs/plans/              # Plan de salida a producción (F01-F10) y su presentación
 ├── docker-compose.yml       # PostgreSQL + Redis para desarrollo
 └── README.md                # Estado del producto y contexto de negocio
 ```
@@ -25,6 +26,7 @@ ViajaYa/
 | API, dominio, DB, auth o WebSockets del servidor | `backend/CLAUDE.md` |
 | Pantallas, navegación, mapas, estado o WS del cliente | `mobile/CLAUDE.md` |
 | Contexto/estado del producto, decisiones de negocio | `README.md` + `docs/implementation-plans/` |
+| Hoja de ruta hasta producción y estado por fase | `docs/plans/plan-salida-produccion.md` |
 | Contrato entre backend y mobile | sección "Contrato backend ↔ mobile" abajo |
 
 ## Arranque rápido

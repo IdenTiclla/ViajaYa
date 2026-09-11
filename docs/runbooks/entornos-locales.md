@@ -71,7 +71,7 @@ cd backend && docker build --target runtime -t viajaya-phase1:runtime .
 python ops/scripts/manage_testing.py prepare
 
 # 3) Infraestructura, migraciones y API
-docker compose -f "$VIAJAYA_WORK_DIR/phase01/testing/compose.json" \
+docker compose -f local-files/phase01/testing/compose.json \
   -p viajaya-testing-local up -d testing-database testing-cache
 python ops/scripts/manage_testing.py start-api
 python ops/scripts/manage_testing.py seed      # cuentas ficticias

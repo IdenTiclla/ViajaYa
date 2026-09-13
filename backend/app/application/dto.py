@@ -298,26 +298,6 @@ class Page(Generic[T]):
 
 
 @dataclass(frozen=True)
-class RegisterInput:
-    full_name: str
-    email: str
-    password: str
-    phone: str | None = None
-
-
-@dataclass(frozen=True)
-class LoginInput:
-    email: str
-    password: str
-
-
-@dataclass(frozen=True)
-class OAuthLoginInput:
-    provider: AuthProvider
-    token: str
-
-
-@dataclass(frozen=True)
 class SocialProfile:
     """Perfil normalizado devuelto por un proveedor OAuth tras verificar el token."""
 

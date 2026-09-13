@@ -435,14 +435,6 @@ class DriverAvailabilityEventRecorder(ABC):
         """Añade los retiros producidos al quedar offline; online no emite."""
 
 
-class PasswordHasher(ABC):
-    @abstractmethod
-    def hash(self, plain: str) -> str: ...
-
-    @abstractmethod
-    def verify(self, plain: str, hashed: str) -> bool: ...
-
-
 class TokenService(ABC):
     @abstractmethod
     def create_access_token(self, user_id: uuid.UUID) -> str: ...

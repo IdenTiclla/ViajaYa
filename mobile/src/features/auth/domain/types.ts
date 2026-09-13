@@ -34,22 +34,7 @@ export type AuthResult = {
   tokens: AuthTokens;
 };
 
-export type RegisterPayload = {
-  fullName: string;
-  email: string;
-  password: string;
-  phone?: string;
-};
-
-export type LoginPayload = {
-  email: string;
-  password: string;
-};
-
-/** Puerto de datos de auth. La implementación HTTP vive en `data/`. */
+/** Session data port; sign-in itself lives in `PhoneAccessRepository`. */
 export interface AuthRepository {
-  register(payload: RegisterPayload): Promise<AuthResult>;
-  login(payload: LoginPayload): Promise<AuthResult>;
-  oauth(provider: Exclude<AuthProvider, 'local'>, token: string): Promise<AuthResult>;
   me(): Promise<User>;
 }

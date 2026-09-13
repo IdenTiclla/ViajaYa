@@ -70,7 +70,7 @@ api.interceptors.request.use(async (config) => {
 // bucles) y los de credenciales (un 401 ahí es un fallo de auth real, no un
 // token expirado). `/auth/me` sí debe poder refrescar (p. ej. al rehidratar
 // la sesión con un access token vencido pero refresh válido).
-const NO_REFRESH_PATHS = ['/auth/refresh', '/auth/login', '/auth/register', '/auth/oauth'];
+const NO_REFRESH_PATHS = ['/auth/refresh', '/auth/phone/', '/auth/social/'];
 
 // Refresco compartido: si llegan varias 401 a la vez, esperan al mismo refresh.
 let refreshPromise: Promise<string | null> | null = null;

@@ -4,17 +4,14 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 from app.application.dto import TokenPair
-from app.application.interfaces import TokenService, UnitOfWork
+from app.application.interfaces import UnitOfWork
 from app.application.managed_sessions import ManagedSessions
-from app.application.token_issuer import issue_token_pair
 from app.domain.exceptions import InvalidTokenError
 
 
 class RefreshManagedSession:
-    def __init__(
-        self, access: ManagedSessions, uow: UnitOfWork, legacy_tokens: TokenService
-    ) -> None:
-        self.access, self.uow, self.legacy_tokens = access, uow, legacy_tokens
+    def __init__(self, access: ManagedSessions, uow: UnitOfWork) -> None:
+        self.access, self.uow = access, uow
 
     async def execute(self, refresh_token: str, request_id: UUID | None = None) -> TokenPair:
         claims = self.access.tokens.decode_refresh_claims(refresh_token)
@@ -22,9 +19,8 @@ class RefreshManagedSession:
         if not user or not user.is_active:
             raise InvalidTokenError("La sesión ya no está activa.")
         if not claims.session_id:
-            if user.legacy_auth_disabled:
-                raise InvalidTokenError("Verifica tu teléfono para iniciar sesión.")
-            return issue_token_pair(self.legacy_tokens, user.id)
+            # Session-less tokens predate managed sessions; they are no longer renewable.
+            raise InvalidTokenError("Verifica tu teléfono para iniciar sesión.")
         session = self.access.validate(
             await self.access.sessions.get(claims.session_id, lock=True),
             user.id,

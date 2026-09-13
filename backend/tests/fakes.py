@@ -29,14 +29,12 @@ from app.application.interfaces import (
     CreateOfferEventRecorder,
     DriverAvailabilityEventRecorder,
     ExpireOfferEventRecorder,
-    PasswordHasher,
     PauseRideEventRecorder,
     RejectOfferEventRecorder,
     RepublishRideEventRecorder,
     RideReadRepository,
     ScheduledActionScheduler,
     SocialIdentityVerifier,
-    TokenService,
     UnitOfWork,
     UpdateRideStatusEventRecorder,
     WithdrawOfferEventRecorder,
@@ -1415,37 +1413,6 @@ class InMemorySavedPlaceRepository(SavedPlaceRepository):
 
     async def delete(self, place: SavedPlace) -> None:
         self.places = [p for p in self.places if p.id != place.id]
-
-
-class FakePasswordHasher(PasswordHasher):
-    """Hash trivial reversible: solo para tests."""
-
-    def hash(self, plain: str) -> str:
-        return f"hashed::{plain}"
-
-    def verify(self, plain: str, hashed: str) -> bool:
-        return hashed == f"hashed::{plain}"
-
-
-class FakeTokenService(TokenService):
-    def create_access_token(self, user_id: uuid.UUID) -> str:
-        return f"access::{user_id}"
-
-    def create_refresh_token(self, user_id: uuid.UUID) -> str:
-        return f"refresh::{user_id}"
-
-    def decode_access_token(self, token: str) -> uuid.UUID:
-        return self._decode(token, "access")
-
-    def decode_refresh_token(self, token: str) -> uuid.UUID:
-        return self._decode(token, "refresh")
-
-    @staticmethod
-    def _decode(token: str, kind: str) -> uuid.UUID:
-        prefix = f"{kind}::"
-        if not token.startswith(prefix):
-            raise InvalidTokenError("token de prueba inválido")
-        return uuid.UUID(token[len(prefix) :])
 
 
 class FakeVerifier(SocialIdentityVerifier):

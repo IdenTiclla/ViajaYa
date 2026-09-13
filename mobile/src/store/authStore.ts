@@ -2,7 +2,7 @@
  * Estado global de sesión (zustand).
  *
  * Orquesta el repositorio de auth y la persistencia de tokens (SecureStore).
- * El login local y el SSO (Fase 6) terminan en el mismo `setSession`.
+ * El acceso por teléfono y el social terminan en el mismo `acceptPhoneSession`.
  */
 import { create } from 'zustand';
 
@@ -11,13 +11,7 @@ import { getApiErrorMessage } from '@/core/errors/apiError';
 import { api, invalidarSolicitudesSesion, setOnSessionExpired } from '@/core/http/client';
 import { tokenStorage } from '@/core/http/tokenStorage';
 import { authRepository } from '@/features/auth/data/authRepository';
-import type {
-  AuthProvider,
-  AuthResult,
-  LoginPayload,
-  RegisterPayload,
-  User,
-} from '@/features/auth/domain/types';
+import type { AuthResult, User } from '@/features/auth/domain/types';
 
 type Status = 'loading' | 'error' | 'authenticated' | 'unauthenticated';
 
@@ -28,9 +22,6 @@ type AuthState = {
   status: Status;
   startupError: string | null;
   bootstrap: () => Promise<void>;
-  signIn: (payload: LoginPayload) => Promise<void>;
-  signUp: (payload: RegisterPayload) => Promise<void>;
-  signInWithOAuth: (provider: Exclude<AuthProvider, 'local'>, token: string) => Promise<void>;
   signOut: () => Promise<void>;
   acceptPhoneSession: (result: AuthResult) => Promise<void>;
 };
@@ -72,24 +63,6 @@ export const useAuthStore = create<AuthState>((set) => {
             error instanceof Error ? error.message : 'No pudimos recuperar tu sesión.'),
         });
       }
-    },
-
-    async signIn(payload) {
-      const attempt = ++generacionSesion;
-      const result = await authRepository.login(payload);
-      if (attempt === generacionSesion) await applySession(result);
-    },
-
-    async signUp(payload) {
-      const attempt = ++generacionSesion;
-      const result = await authRepository.register(payload);
-      if (attempt === generacionSesion) await applySession(result);
-    },
-
-    async signInWithOAuth(provider, token) {
-      const attempt = ++generacionSesion;
-      const result = await authRepository.oauth(provider, token);
-      if (attempt === generacionSesion) await applySession(result);
     },
 
     async signOut() {

@@ -94,13 +94,42 @@ Guía actual para teléfono y estado operativo: `local-files/phase02/f02b-phone-
 - `POST /auth/social/{provider}/sign-in` verifica el token del proveedor y recibe instalación/nombre de dispositivo. Devuelve `phone_required` sin crear cuenta ni sesión si todavía falta la vinculación con un teléfono verificado. Una identidad ya vinculada recibe una sesión administrada y revocable.
 - La app solicita número y OTP, muestra una confirmación explícita y llama a `POST /auth/phone/link-social`. Ambos comprobantes se verifican antes de vincular. Los usuarios nuevos completan nombre y condiciones; las cuentas anteriores se buscan exclusivamente por proveedor/identificador, conservando UUID, datos y rol. El correo del proveedor no fusiona cuentas.
 - La vinculación, el consumo del OTP y la emisión de sesión comparten transacción. El bloqueo PostgreSQL sigue el orden identidad social → teléfono → cuenta; la unicidad existente impide mover una identidad o reemplazar silenciosamente otra del mismo proveedor. Repetir el comprobante y `request_id` recupera el resultado. Una identidad social no cambia un teléfono ya verificado por otro número.
-- `/auth/oauth/{provider}` queda como puente para cuentas sociales históricas aún no migradas. Ya no crea cuentas ni fusiona por correo; deja de autenticar al completar la migración. Su eliminación definitiva exige certificar la transición de los clientes existentes.
+- `/auth/oauth/{provider}` fue un puente temporal para cuentas sociales históricas; se eliminó el 2026-09-13 junto con todo el acceso por correo (ver «Retiro del acceso por correo»).
 - Google usa el SDK nativo y un ID token cuya audiencia corresponde al cliente web del servidor. La verificación de certificados se ejecuta fuera del event loop y con espera acotada. Facebook Android usa el SDK nativo; el backend valida aplicación, tipo USER, vigencia e igualdad del sujeto entre `debug_token` y `me`, sin exigir correo. Graph API v26.0; los tokens no se registran mediante el log de URLs de HTTPX.
 - Los SDK nativos se cargan al usarlos; un APK anterior mantiene el acceso por teléfono y deja los botones sociales deshabilitados. Facebook no se inicializa al abrir la app ni registra eventos/publicidad automáticamente. Facebook en iOS queda deshabilitado hasta implementar y verificar Limited Login con nonce. La web conserva AuthSession; no se certificó su recorrido con proveedores reales.
 
 Evidencia manual del 2026-09-13 (Desarrollo): `GET /auth/phone/capabilities` anuncia `social_providers: ["google"]`; el recorrido completo registró `POST /auth/social/google/sign-in` 200 → `POST /auth/phone/challenges` 201 → `POST /auth/phone/verify` 200 → `POST /auth/phone/link-social` 200, primero en el emulador `viajaya_pasajero` y después en un teléfono Xiaomi con el mismo dev build (`com.viajaya.app.dev`, keystore de debug), donde la identidad ya vinculada reutilizó la cuenta. La pantalla de consentimiento sigue en modo *Testing*: solo entran los usuarios de prueba registrados; publicarla (scopes básicos, sin verificación de Google) abre el acceso a cualquier cuenta. La IP LAN de Desarrollo cambió a `192.168.1.57`. Sin cambios de código en esta certificación.
 
 Evidencia automatizada de la continuación anterior: **701 pruebas backend y 275 móviles aprobadas**, Ruff, TypeScript, lint, OpenAPI y tipos generados aprobados. **7 pruebas PostgreSQL aprobadas** en una base recién creada y eliminada al finalizar, incluidas ocho vinculaciones simultáneas idempotentes y dos teléfonos compitiendo por una identidad. Generación Android verificada en copias aisladas para Desarrollo, Pruebas y Producción, con proveedores ausentes y con configuración sintética. El bundle completo servido por Metro incluye la espera/reintento del OTP, la confirmación social y la detección de SDK nativo; ambas API y HTTPS de Pruebas devolvieron 200 al finalizar. Estas comprobaciones no certifican un APK firmado ni un login real en Google/Facebook. Pruebas conserva su imagen/API de F02-B hasta desplegar el nuevo código. Guía de configuración y límites: [acceso social](../social-access-setup.md).
+
+## Retiro del acceso por correo y contraseña (2026-09-13)
+
+Decisión del usuario, antes de producción y sin usuarios reales: se eliminó por completo el
+acceso por correo en lugar de mantener el puente de migración.
+
+- Backend: `POST /auth/register`, `/auth/login`, `/auth/oauth/{provider}` y `/auth/phone/link-legacy`
+  ya no existen (404); se borraron `RegisterUser`, `AuthenticateUser`, `AuthenticateWithOAuth`,
+  `RefreshToken` legacy, `PasswordHasher`/bcrypt, `RawPassword`, `token_issuer` y `authenticate_ws`.
+  La migración `0026_drop_password_access` elimina `users.hashed_password` y
+  `users.legacy_auth_disabled`. Un JWT sin `session_id` recibe 401 en `/me`, `/refresh` y WS.
+  `CompletePhoneSignIn` conserva solo los caminos teléfono y teléfono+social. Sin `bcrypt` en
+  las dependencias.
+- Seed y smokes: `scripts/seed.py` crea cuentas con teléfono verificado (`+59170000001/2`,
+  `+59170000011/12`, `+59170000021/22`); `scripts/phone_access.py` autentica los smokes por OTP
+  simulado; `smoke_environment_image.py` valida la imagen por el mismo flujo.
+- Tests: `tests/e2e/helpers.py` (`sign_in`, `sign_in_sync`, `promote_to_driver`, `test_settings`)
+  reemplaza a `/auth/register` en toda la suite; `conftest.py` ya no depende del `.env`. La
+  certificación PostgreSQL purga cuentas de prueba antes de bajar de `0025`.
+- Mobile: rutas `(auth)/login` y `(auth)/register` → única ruta `(auth)` con `PhoneEntryScreen`;
+  eliminados `LoginScreen`, `RegisterScreen`, `useAuth` (`useLogin`/`useRegister`), `validation.ts`,
+  `SocialButton`, `Checkbox`, `Divider`, el modo `legacy` del controlador y los métodos
+  `register/login/oauth` de `authRepository`; `authStore` conserva `bootstrap`, `acceptPhoneSession`
+  y `signOut`. Dependencias `react-hook-form` y `@hookform/resolvers` retiradas.
+- Evidencia: backend 685 pruebas rápidas + 72 PostgreSQL aprobadas, ruff limpio; mobile 274
+  pruebas, tsc y lint aprobados; OpenAPI y tipos regenerados. En el emulador (Desarrollo): la
+  sesión Google previa sobrevivió a la migración, `Cerrar sesión` llevó a la pantalla única de
+  acceso (sin «Ya tenía una cuenta con correo») y `+59170000001` entró con OTP simulado como
+  cuenta existente sin pedir perfil.
 
 ## Evidencia anterior de F02-A
 

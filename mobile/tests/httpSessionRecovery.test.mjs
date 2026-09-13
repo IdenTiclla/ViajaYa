@@ -42,7 +42,7 @@ test('authentication requests always declare their build environment', async (t)
     assert.equal(config.headers.get('X-App-Environment'), 'development');
     return { status: 200, statusText: 'OK', headers: {}, config, data: {} };
   };
-  await api.post('/auth/login', {}, {
+  await api.post('/auth/phone/challenges', {}, {
     skipAuth: true,
     headers: { 'X-App-Environment': 'production' },
   });

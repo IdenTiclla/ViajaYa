@@ -3,15 +3,13 @@
 import uuid
 
 import pytest
-from sqlalchemy import select
 from starlette.websockets import WebSocketDisconnect
 
 from app.api.deps import build_managed_sessions
-from app.infrastructure.config import Settings
 from app.infrastructure.db.models import UserModel
+from tests.e2e.helpers import sign_in_sync, test_settings
 from tests.e2e.test_negotiation_ws import (
     _headers,
-    _register,
     _ride_payload,
     _websocket_connect,
 )
@@ -21,13 +19,12 @@ from tests.e2e.test_negotiation_ws import (
 
 
 def test_managed_session_revocation_closes_live_socket_and_rejects_reconnect(ws_client):
-    _register(ws_client, "managed-ws@example.com")
+    account = sign_in_sync(ws_client, "managed-ws")
 
     async def create_session():
         async with ws_client.factory() as session:
-            user = await session.scalar(select(UserModel).where(
-                UserModel.email == "managed-ws@example.com"))
-            access = build_managed_sessions(session, Settings())
+            user = await session.get(UserModel, uuid.UUID(account.user_id))
+            access = build_managed_sessions(session, test_settings())
             await access.accounts.lock_user(user.id)
             grant = await access.create(user.id, uuid.uuid4(), "WebSocket test")
             await session.commit()

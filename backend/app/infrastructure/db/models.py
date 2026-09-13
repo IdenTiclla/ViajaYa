@@ -88,11 +88,9 @@ class UserModel(Base):
     email: Mapped[str | None] = mapped_column(String(320), unique=True, index=True, nullable=True)
     phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
     phone_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    legacy_auth_disabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
     terms_version: Mapped[str | None] = mapped_column(String(80))
     terms_accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    hashed_password: Mapped[str | None] = mapped_column(String(255), nullable=True)
     auth_provider: Mapped[AuthProvider] = mapped_column(
         Enum(
             AuthProvider,

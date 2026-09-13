@@ -34,11 +34,13 @@ from app.api.v1.realtime_outbox import (
 )
 from app.domain.entities import UserRole, VehicleType
 from app.infrastructure.config import Settings
+from app.infrastructure.db.account_access import SqlAlchemyPhoneAccountRepository
 from app.infrastructure.db.models import RealtimeOutboxModel
 from app.infrastructure.db.repositories import SqlAlchemyUserRepository
 from app.infrastructure.realtime.hub import hub
 from app.infrastructure.realtime.ws_auth import AUTH_SUBPROTOCOL
 from app.main import create_app
+from scripts.phone_access import sign_in
 from scripts.realtime_faults import (
     FaultInjectingRealtimeOutboxBatchPublisher,
     FaultInjectingRealtimeOutboxBatchValidator,
@@ -48,7 +50,6 @@ from scripts.realtime_faults import (
 )
 
 _JWT_SECRET = "mobile-realtime-smoke-only-secret-not-for-production"
-_PASSWORD = "ViajaYa1234#"
 _OPERATION_TIMEOUT_SECONDS = 20.0
 
 
@@ -89,23 +90,9 @@ def _headers(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-async def _register(
-    client: httpx.AsyncClient,
-    *,
-    email: str,
-    full_name: str,
-) -> str:
-    response = await client.post(
-        "/api/v1/auth/register",
-        json={
-            "full_name": full_name,
-            "email": email,
-            "password": _PASSWORD,
-            "phone": None,
-        },
-    )
-    response.raise_for_status()
-    return response.json()["tokens"]["access_token"]
+def _smoke_phone() -> str:
+    """Fresh Bolivian mobile number per run; the mock OTP accepts any number."""
+    return f"+5917{uuid.uuid4().int % 10_000_000:07d}"
 
 
 async def _wait_server(server: uvicorn.Server) -> None:
@@ -157,11 +144,8 @@ class MobileRealtimeSmoke:
         *,
         arm: RealtimeFaultAction | None,
     ) -> OpenRide:
-        suffix = uuid.uuid4().hex
-        rider_token = await _register(
-            self._client,
-            email=f"mobile-smoke-rider-{suffix}@example.com",
-            full_name="Pasajero smoke realtime",
+        rider_token = await sign_in(
+            self._client, _smoke_phone(), full_name="Pasajero smoke realtime",
         )
         response = await self._client.post(
             "/api/v1/rides",
@@ -292,6 +276,7 @@ async def _run(args: argparse.Namespace) -> None:
         _env_file=None,
         database_url=database_url,
         jwt_secret=_JWT_SECRET,
+        phone_otp_enabled=True,
         realtime_outbox_dispatch_mode="live_local",
         realtime_outbox_recording_enabled=True,
         realtime_outbox_poll_interval_seconds=0.01,
@@ -331,16 +316,13 @@ async def _run(args: argparse.Namespace) -> None:
         ) as client:
             ready = await client.get("/health/ready")
             ready.raise_for_status()
-            suffix = uuid.uuid4().hex
-            driver_email = f"mobile-smoke-driver-{suffix}@example.com"
-            driver_token = await _register(
-                client,
-                email=driver_email,
-                full_name="Conductor smoke realtime",
+            driver_phone = _smoke_phone()
+            driver_token = await sign_in(
+                client, driver_phone, full_name="Conductor smoke realtime",
             )
             async with sessions() as session:
                 users = SqlAlchemyUserRepository(session)
-                driver = await users.get_by_email(driver_email)
+                driver = await SqlAlchemyPhoneAccountRepository(session).find_by_phone(driver_phone)
                 assert driver is not None
                 driver.role = UserRole.DRIVER
                 driver.vehicle_type = VehicleType.TAXI
@@ -357,8 +339,7 @@ async def _run(args: argparse.Namespace) -> None:
                 f"\nAPI del emulador: http://10.0.2.2:{args.port}/api/v1",
                 flush=True,
             )
-            print(f"Correo: {driver_email}", flush=True)
-            print(f"Contraseña: {_PASSWORD}", flush=True)
+            print(f"Teléfono del conductor: {driver_phone} (OTP simulado)", flush=True)
             print(
                 "Inicia sesión en el dev build y espera snapshot_applied antes de inyectar.",
                 flush=True,

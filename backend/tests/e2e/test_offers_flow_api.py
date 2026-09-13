@@ -6,14 +6,11 @@ import uuid
 from decimal import Decimal
 from unittest.mock import AsyncMock
 
-from app.domain.entities import Location, RideRequest, ServiceType, UserRole, VehicleType
-from app.infrastructure.db.repositories import (
-    SqlAlchemyRideRequestRepository,
-    SqlAlchemyUserRepository,
-)
+from app.domain.entities import Location, RideRequest, ServiceType, VehicleType
+from app.infrastructure.db.repositories import SqlAlchemyRideRequestRepository
 from app.infrastructure.realtime.hub import hub, ride_topic
+from tests.e2e.helpers import promote_to_driver, sign_in
 
-REGISTER = "/api/v1/auth/register"
 RIDES = "/api/v1/rides"
 
 
@@ -31,24 +28,13 @@ def _mark_present(ride_id: str) -> _FakeWS:
     return ws
 
 
-async def _register(client, email: str) -> tuple[str, str]:
-    resp = await client.post(
-        REGISTER,
-        json={"full_name": email.split("@")[0], "email": email, "password": "secret123"},
-    )
-    body = resp.json()
-    return body["user"]["id"], body["tokens"]["access_token"]
+async def _register(client, label: str) -> tuple[str, str]:
+    account = await sign_in(client, label)
+    return account.user_id, account.token
 
 
-async def _promote_to_driver(session_factory, email: str, vehicle: VehicleType) -> None:
-    async with session_factory() as session:
-        users = SqlAlchemyUserRepository(session)
-        user = await users.get_by_email(email)
-        assert user is not None
-        user.role = UserRole.DRIVER
-        user.vehicle_type = vehicle
-        user.is_online = True
-        await users.update(user)
+async def _promote_to_driver(session_factory, label: str, vehicle: VehicleType) -> None:
+    await promote_to_driver(session_factory, label, vehicle)
 
 
 def _headers(token: str) -> dict[str, str]:
@@ -72,11 +58,11 @@ def _ride_payload(service_type: str = "taxi") -> dict:
 async def test_dismissed_request_persists_for_driver_until_passenger_updates_it(
     client, session_factory
 ):
-    _, rider_token = await _register(client, "dismiss-rider@example.com")
-    _, first_driver_token = await _register(client, "dismiss-first@example.com")
-    _, second_driver_token = await _register(client, "dismiss-second@example.com")
-    await _promote_to_driver(session_factory, "dismiss-first@example.com", VehicleType.TAXI)
-    await _promote_to_driver(session_factory, "dismiss-second@example.com", VehicleType.TAXI)
+    _, rider_token = await _register(client, "dismiss-rider")
+    _, first_driver_token = await _register(client, "dismiss-first")
+    _, second_driver_token = await _register(client, "dismiss-second")
+    await _promote_to_driver(session_factory, "dismiss-first", VehicleType.TAXI)
+    await _promote_to_driver(session_factory, "dismiss-second", VehicleType.TAXI)
 
     rider_h = _headers(rider_token)
     first_driver_h = _headers(first_driver_token)
@@ -115,12 +101,12 @@ async def test_dismissed_request_persists_for_driver_until_passenger_updates_it(
 
 
 async def test_open_rides_uses_opaque_keyset_cursor(client, session_factory):
-    _, first_rider_token = await _register(client, "pool-page-rider-1@example.com")
-    _, second_rider_token = await _register(client, "pool-page-rider-2@example.com")
-    _, driver_token = await _register(client, "pool-page-driver@example.com")
+    _, first_rider_token = await _register(client, "pool-page-rider-1")
+    _, second_rider_token = await _register(client, "pool-page-rider-2")
+    _, driver_token = await _register(client, "pool-page-driver")
     await _promote_to_driver(
         session_factory,
-        "pool-page-driver@example.com",
+        "pool-page-driver",
         VehicleType.TAXI,
     )
     first = await client.post(
@@ -160,10 +146,10 @@ async def test_open_rides_uses_opaque_keyset_cursor(client, session_factory):
 
 
 async def test_pagination_rejects_invalid_cursor_and_limits(client, session_factory):
-    _, driver_token = await _register(client, "pagination-driver@example.com")
+    _, driver_token = await _register(client, "pagination-driver")
     await _promote_to_driver(
         session_factory,
-        "pagination-driver@example.com",
+        "pagination-driver",
         VehicleType.TAXI,
     )
     headers = _headers(driver_token)
@@ -210,11 +196,11 @@ async def _complete_ride(client, rider_h: dict[str, str], driver_h: dict[str, st
 
 async def test_full_ride_flow(client, session_factory):
     # --- usuarios ---
-    _, rider_token = await _register(client, "rider@example.com")
-    _, d1_token = await _register(client, "driver1@example.com")
-    _, d2_token = await _register(client, "driver2@example.com")
-    await _promote_to_driver(session_factory, "driver1@example.com", VehicleType.TAXI)
-    await _promote_to_driver(session_factory, "driver2@example.com", VehicleType.TAXI)
+    _, rider_token = await _register(client, "rider")
+    _, d1_token = await _register(client, "driver1")
+    _, d2_token = await _register(client, "driver2")
+    await _promote_to_driver(session_factory, "driver1", VehicleType.TAXI)
+    await _promote_to_driver(session_factory, "driver2", VehicleType.TAXI)
 
     rider_h = _headers(rider_token)
     d1_h = _headers(d1_token)
@@ -291,9 +277,9 @@ async def test_full_ride_flow(client, session_factory):
 
 
 async def test_driver_cannot_offer_on_other_service(client, session_factory):
-    _, rider_token = await _register(client, "rider2@example.com")
-    _, moto_token = await _register(client, "moto@example.com")
-    await _promote_to_driver(session_factory, "moto@example.com", VehicleType.MOTO)
+    _, rider_token = await _register(client, "rider2")
+    _, moto_token = await _register(client, "moto")
+    await _promote_to_driver(session_factory, "moto", VehicleType.MOTO)
 
     resp = await client.post(RIDES, json=_ride_payload(), headers=_headers(rider_token))
     ride_id = resp.json()["id"]
@@ -312,14 +298,14 @@ async def test_driver_cannot_offer_on_other_service(client, session_factory):
 
 
 async def test_taxi_and_moto_drivers_can_serve_delivery(client, session_factory):
-    _, rider_token = await _register(client, "delivery-rider@example.com")
-    _, taxi_token = await _register(client, "delivery-taxi@example.com")
-    _, moto_token = await _register(client, "delivery-moto@example.com")
+    _, rider_token = await _register(client, "delivery-rider")
+    _, taxi_token = await _register(client, "delivery-taxi")
+    _, moto_token = await _register(client, "delivery-moto")
     await _promote_to_driver(
-        session_factory, "delivery-taxi@example.com", VehicleType.TAXI
+        session_factory, "delivery-taxi", VehicleType.TAXI
     )
     await _promote_to_driver(
-        session_factory, "delivery-moto@example.com", VehicleType.MOTO
+        session_factory, "delivery-moto", VehicleType.MOTO
     )
     rider_h = _headers(rider_token)
     taxi_h = _headers(taxi_token)
@@ -367,9 +353,9 @@ async def test_taxi_and_moto_drivers_can_serve_delivery(client, session_factory)
 
 async def test_passenger_active_ride_and_duplicate_request(client, session_factory):
     """El pasajero recupera su flujo y no puede abrir dos viajes simultáneos."""
-    _, rider_token = await _register(client, "active-rider@example.com")
-    _, driver_token = await _register(client, "active-driver@example.com")
-    await _promote_to_driver(session_factory, "active-driver@example.com", VehicleType.TAXI)
+    _, rider_token = await _register(client, "active-rider")
+    _, driver_token = await _register(client, "active-driver")
+    await _promote_to_driver(session_factory, "active-driver", VehicleType.TAXI)
     rider_h, driver_h = _headers(rider_token), _headers(driver_token)
 
     empty = await client.get(f"{RIDES}/me/active", headers=rider_h)
@@ -425,7 +411,7 @@ async def test_passenger_active_ride_and_duplicate_request(client, session_facto
 
 async def test_cancelled_search_is_not_recovered_as_active(client):
     """Cancelar una búsqueda debe dejar libre el flujo incluso tras recuperarlo."""
-    _, rider_token = await _register(client, "cancel-active-rider@example.com")
+    _, rider_token = await _register(client, "cancel-active-rider")
     rider_h = _headers(rider_token)
 
     created = await client.post(RIDES, json=_ride_payload(), headers=rider_h)
@@ -455,7 +441,7 @@ async def test_database_constraint_rejects_raced_second_active_ride(
     client, session_factory
 ):
     """El índice conserva el invariante aunque una lectura concurrente no vea el activo."""
-    rider_id, rider_token = await _register(client, "active-race-rider@example.com")
+    rider_id, rider_token = await _register(client, "active-race-rider")
     created = await client.post(
         RIDES,
         json=_ride_payload(),
@@ -482,9 +468,9 @@ async def test_database_constraint_rejects_raced_second_active_ride(
 
 
 async def test_close_flow_rating_history_earnings(client, session_factory):
-    _, rider_token = await _register(client, "rider3@example.com")
-    _, drv_token = await _register(client, "driver3@example.com")
-    await _promote_to_driver(session_factory, "driver3@example.com", VehicleType.TAXI)
+    _, rider_token = await _register(client, "rider3")
+    _, drv_token = await _register(client, "driver3")
+    await _promote_to_driver(session_factory, "driver3", VehicleType.TAXI)
     rider_h, drv_h = _headers(rider_token), _headers(drv_token)
 
     # viaje completo: crear → ofertar → aceptar → confirmar → avanzar a completado
@@ -555,10 +541,10 @@ async def test_close_flow_rating_history_earnings(client, session_factory):
 async def test_pending_rating_recovers_latest_completed_for_both_roles(
     client, session_factory
 ):
-    _, rider_token = await _register(client, "pending-rider@example.com")
-    _, driver_token = await _register(client, "pending-driver@example.com")
+    _, rider_token = await _register(client, "pending-rider")
+    _, driver_token = await _register(client, "pending-driver")
     await _promote_to_driver(
-        session_factory, "pending-driver@example.com", VehicleType.TAXI
+        session_factory, "pending-driver", VehicleType.TAXI
     )
     rider_h, driver_h = _headers(rider_token), _headers(driver_token)
     endpoint = f"{RIDES}/me/pending-rating"
@@ -635,10 +621,10 @@ async def test_pending_rating_recovers_latest_completed_for_both_roles(
 
 
 async def test_skip_rating_is_persistent_for_both_roles(client, session_factory):
-    _, rider_token = await _register(client, "skip-rider@example.com")
-    _, driver_token = await _register(client, "skip-driver@example.com")
-    _, stranger_token = await _register(client, "skip-stranger@example.com")
-    await _promote_to_driver(session_factory, "skip-driver@example.com", VehicleType.TAXI)
+    _, rider_token = await _register(client, "skip-rider")
+    _, driver_token = await _register(client, "skip-driver")
+    _, stranger_token = await _register(client, "skip-stranger")
+    await _promote_to_driver(session_factory, "skip-driver", VehicleType.TAXI)
     rider_h = _headers(rider_token)
     driver_h = _headers(driver_token)
     stranger_h = _headers(stranger_token)

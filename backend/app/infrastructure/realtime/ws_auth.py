@@ -4,11 +4,6 @@ from __future__ import annotations
 
 from starlette.websockets import WebSocket
 
-from app.application.interfaces import TokenService
-from app.domain.entities import User
-from app.domain.exceptions import InvalidTokenError
-from app.domain.repositories import UserRepository
-
 AUTH_SUBPROTOCOL = "viajaya.auth"
 
 
@@ -29,15 +24,3 @@ def token_from_subprotocol(websocket: WebSocket) -> str | None:
         return None
     return protocols[index + 1]
 
-
-async def authenticate_ws(
-    token: str | None, users: UserRepository, tokens: TokenService
-) -> User | None:
-    """Devuelve el usuario del token, o ``None`` si es inválido/inexistente."""
-    if not token:
-        return None
-    try:
-        user_id = tokens.decode_access_token(token)
-    except InvalidTokenError:
-        return None
-    return await users.get_by_id(user_id)

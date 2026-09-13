@@ -3,11 +3,12 @@
 # ViajaYa — Mobile (Expo + React Native + TypeScript)
 
 App de taxis y encomiendas. Expo Router (file-based, rutas tipadas), React Query (server state),
-Zustand (auth/cliente), axios, react-native-maps, SSO Google/Facebook, tiempo real por WebSocket.
+Zustand (auth/cliente), axios, react-native-maps, acceso por teléfono + OTP con Google/Facebook
+vinculados a un teléfono verificado (sin correo/contraseña), tiempo real por WebSocket.
 
 Stack: **Expo ~56.0.7** · React Native 0.85.3 · React 19 · TypeScript ~6.0.3 ·
 `expo-router ~56.2.8` · `zustand ^5` · `@tanstack/react-query ^5` · `axios ^1.16` ·
-`react-native-maps 1.27` · `react-hook-form ^7` + `zod ^4`.
+`react-native-maps 1.27` · `zod ^4` (esquemas de WS).
 
 > ⚠️ **Expo 56 cambió mucho.** Lee SIEMPRE los docs versionados antes de escribir código:
 > https://docs.expo.dev/versions/v56.0.0/ (ver `AGENTS.md`).
@@ -21,8 +22,8 @@ El enrutado (`src/app/`) solo monta pantallas; la lógica vive en `src/features/
 src/
 ├── app/                 # Rutas (expo-router, file-based). Solo composición de pantallas.
 │   ├── _layout.tsx        # Raíz: providers (tema, QueryClient, SafeArea, GestureHandler) + gate por sesión/rol
-│   ├── index.tsx          # Redirect por rol → (auth)/login | (app)/(tabs) | (driver)/(tabs)/solicitudes
-│   ├── (auth)/            # login, register
+│   ├── index.tsx          # Redirect por rol → (auth) | (app)/(tabs) | (driver)/(tabs)/solicitudes
+│   ├── (auth)/            # index → PhoneEntryScreen (teléfono + OTP, Google/Facebook). Sin correo/contraseña
 │   ├── (app)/             # Grupo pasajero (guard: authenticated && !driver)
 │   │   ├── _layout.tsx      # Monta <PassengerToaster/> sobre el stack
 │   │   ├── (tabs)/          # Viaje · Historial · Billetera · Perfil  (PillTabBar)
@@ -54,8 +55,8 @@ src/
 │   ├── errors/apiError.ts
 │   ├── hooks/            # useCountdown (AppState-aware), …
 │   └── theme/            # paletas, estilos reactivos y preferencia local persistida
-├── shared/components/  # UI reutilizable: Button, TextField, Checkbox, ConfirmDialog, SocialButton, …
-└── store/authStore.ts  # Sesión global (zustand); se auto-logout si el refresh falla
+├── shared/components/  # UI reutilizable: Button, TextField, ConfirmDialog, FeedbackState, mapa/, …
+└── store/authStore.ts  # Sesión global (zustand): bootstrap/`acceptPhoneSession`/signOut; auto-logout si el refresh falla
 ```
 
 ### Reglas al añadir código
@@ -80,7 +81,7 @@ src/
 `src/app/_layout.tsx` usa `<Stack.Protected guard=...>` con 3 guards mutuamente excluyentes:
 `(app)` (auth && !driver), `(driver)` (driver), `(auth)` (!auth). `src/app/index.tsx` redirige:
 
-- no autenticado → `/(auth)/login`
+- no autenticado → `/(auth)` (`PhoneEntryScreen`: única pantalla de acceso)
 - pasajero → `/(app)/(tabs)` (tab inicial: Viaje)
 - conductor → `/(driver)/(tabs)/solicitudes` (cae directo en Solicitudes, no en Inicio)
 
@@ -351,7 +352,8 @@ npm run lint               # expo lint (eslint-config-expo)
 ## Convenciones
 
 - **TypeScript estricto** (`strict: true`); evita `any`, tipa los datos de la API en `domain/types.ts`.
-- **Formularios:** react-hook-form + zod (`@hookform/resolvers`), esquemas junto al feature.
+- **Formularios:** estado local + `TextField`/`Button` de `shared/components` (react-hook-form fue
+  retirado con el registro por correo); `zod` se reserva para validar frames del WS.
 - **Mapas:** `react-native-maps`; ubicación con `expo-location` (permisos en `app.config.ts`).
   Estilo de mapa compartido: `features/booking/presentation/mapStyle.ts` (`declutteredMapStyle`).
 - **Apariencia de trayectos:** todas las vistas reutilizan `RoutePolyline` y

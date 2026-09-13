@@ -143,7 +143,7 @@ async def test_concurrent_verification_and_consumption_have_single_winners(pg_te
     assert sum(isinstance(item, InvalidPhoneCodeError) for item in claims) == 7
     async with factory() as session:
         assert await session.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0025_managed_accounts"
+            "0026_drop_password_access"
         )
 
 

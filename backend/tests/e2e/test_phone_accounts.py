@@ -10,11 +10,12 @@ from sqlalchemy import select, update
 from app.api.deps import build_managed_sessions
 from app.application.use_cases.review_account_recovery import ReviewAccountRecovery
 from app.domain.account_access import AccountAccessDeniedError
-from app.domain.entities import UserRole
 from app.infrastructure.config import Settings
 from app.infrastructure.db.account_recovery import SqlAlchemyRecoveryRepository
 from app.infrastructure.db.models import AuthSessionModel, PhoneRateBudgetModel, UserModel
 from app.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
+from app.infrastructure.security.jwt_service import JwtTokenService
+from tests.e2e.helpers import test_settings
 from tests.e2e.test_phone_verification_api import phone_client as phone_client
 from tests.unit.test_environment import environment_values
 
@@ -120,76 +121,35 @@ async def test_profile_required_terms_role_and_idempotent_completion(phone_clien
         assert len(users) == 1 and users[0].terms_version == "testing-2026-09"
 
 
-async def test_unverified_historical_phone_never_merges_accounts(phone_client):
-    old = await phone_client.post(
-        f"{BASE}/register",
-        json={
-            "email": "old@example.com",
-            "password": "Legacy1234#",
-            "full_name": "Old User",
-            "phone": PHONE,
-        },
-    )
-    auth, _ = await sign_in(phone_client)
-    assert auth["user"]["id"] != old.json()["user"]["id"]
-
-
-async def test_legacy_migration_preserves_uuid_role_and_revokes_legacy(
-    phone_client, session_factory
-):
-    old = await phone_client.post(
-        f"{BASE}/register",
-        json={
-            "email": "driver@example.com",
-            "password": "Legacy1234#",
-            "full_name": "Old Driver",
-        },
-    )
-    old_id = old.json()["user"]["id"]
+async def test_unverified_historical_phone_never_merges_accounts(phone_client, session_factory):
     async with session_factory() as session:
-        await session.execute(
-            update(UserModel).where(UserModel.id == UUID(old_id)).values(role=UserRole.DRIVER)
-        )
+        session.add(UserModel(full_name="Old User", email="old@example.com", phone=PHONE))
         await session.commit()
-    payload = await proof_payload(phone_client)
-    linked = await phone_client.post(
-        f"{BASE}/phone/link-legacy",
-        json={
-            **payload,
-            "email": "driver@example.com",
-            "password": "Legacy1234#",
-        },
+        old_id = await session.scalar(select(UserModel.id).where(UserModel.phone == PHONE))
+    auth, _ = await sign_in(phone_client)
+    assert auth["user"]["id"] != str(old_id)
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["/register", "/login", "/oauth/google", "/phone/link-legacy"],
+)
+async def test_email_and_password_access_is_gone(phone_client, path):
+    response = await phone_client.post(f"{BASE}{path}", json={"email": "x@example.com"})
+    assert response.status_code == 404, response.text
+
+
+async def test_session_less_tokens_are_rejected_everywhere(phone_client):
+    auth, _ = await sign_in(phone_client)
+    tokens = JwtTokenService(test_settings())
+    user_id = UUID(auth["user"]["id"])
+    legacy = {"Authorization": f"Bearer {tokens.create_access_token(user_id)}"}
+    assert (await phone_client.get(f"{BASE}/me", headers=legacy)).status_code == 401
+    refresh = await phone_client.post(
+        f"{BASE}/refresh", json={"refresh_token": tokens.create_refresh_token(user_id)},
     )
-    assert linked.status_code == 200, linked.text
-    auth = linked.json()["auth"]
-    assert auth["user"]["id"] == old_id and auth["user"]["role"] == "driver"
-    assert (
-        await phone_client.get(f"{BASE}/me", headers=auth_headers(old.json()))
-    ).status_code == 401
-    assert (
-        await phone_client.post(
-            f"{BASE}/refresh",
-            json={
-                "refresh_token": old.json()["tokens"]["refresh_token"],
-            },
-        )
-    ).status_code == 401
-    assert (
-        await phone_client.post(
-            f"{BASE}/login",
-            json={
-                "email": "driver@example.com",
-                "password": "Legacy1234#",
-            },
-        )
-    ).status_code == 401
-
-
-async def test_legacy_wrong_password_consumes_proof(phone_client):
-    payload = await proof_payload(phone_client)
-    body = {**payload, "email": "absent@example.com", "password": "wrong-password"}
-    assert (await phone_client.post(f"{BASE}/phone/link-legacy", json=body)).status_code == 401
-    assert (await phone_client.post(f"{BASE}/phone/link-legacy", json=body)).status_code == 400
+    assert refresh.status_code == 401
+    assert (await phone_client.get(f"{BASE}/me", headers=auth_headers(auth))).status_code == 200
 
 
 @pytest.mark.parametrize(
@@ -212,29 +172,6 @@ async def test_completion_rejects_a_proof_outside_its_binding(phone_client, chan
         },
     )
     assert result.status_code == 400
-
-
-async def test_legacy_bridge_rejects_ambiguous_bcrypt_boundary(phone_client):
-    password = "a" * 72
-    registered = await phone_client.post(
-        f"{BASE}/register",
-        json={
-            "full_name": "Boundary password",
-            "email": "boundary@example.com",
-            "password": password,
-        },
-    )
-    assert registered.status_code == 201
-    payload = await proof_payload(phone_client)
-    result = await phone_client.post(
-        f"{BASE}/phone/link-legacy",
-        json={
-            **payload,
-            "email": "boundary@example.com",
-            "password": password,
-        },
-    )
-    assert result.status_code == 401
 
 
 async def test_refresh_retry_is_idempotent_and_reuse_revokes_access(phone_client):

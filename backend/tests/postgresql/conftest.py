@@ -54,6 +54,17 @@ class PostgreSQLTestDatabase:
         """Evita anidar el ``asyncio.run`` de Alembic en el loop de pytest."""
         await asyncio.to_thread(self.migrate, action, revision)
 
+    async def purge_accounts(self) -> None:
+        """Drop every test account so a downgrade below 0025 is not refused.
+
+        Phone-only accounts are the norm now; the 0025 guard still protects real
+        environments, but this database is disposable by construction.
+        """
+        async with self.engine.begin() as connection:
+            exists = await connection.scalar(text("SELECT to_regclass('users') IS NOT NULL"))
+            if exists:
+                await connection.execute(text("TRUNCATE TABLE users CASCADE"))
+
 
 def _test_database_url() -> str:
     raw_url = os.getenv(_TEST_DATABASE_ENV)
@@ -82,11 +93,13 @@ async def pg_test_db() -> PostgreSQLTestDatabase:
     engine = create_async_engine(url, poolclass=NullPool)
     database = PostgreSQLTestDatabase(url=url, engine=engine)
 
+    await database.purge_accounts()
     await database.migrate_async("downgrade", "base")
     await database.migrate_async("upgrade", "head")
     try:
         yield database
     finally:
+        await database.purge_accounts()
         await engine.dispose()
         await database.migrate_async("downgrade", "base")
 

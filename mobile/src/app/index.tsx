@@ -8,7 +8,7 @@ export default function Index() {
   const user = useAuthStore((s) => s.user);
 
   if (status === 'loading') return null;
-  if (status !== 'authenticated') return <Redirect href="/(auth)/login" />;
+  if (status !== 'authenticated') return <Redirect href="/(auth)" />;
   // El conductor entra viendo las solicitudes/ofertas entrantes; el pasajero, su viaje.
   return (
     <Redirect

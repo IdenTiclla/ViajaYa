@@ -19,8 +19,6 @@ export type PhoneCompletion = {
   requestId: string;
   fullName?: string;
   termsVersion?: string;
-  email?: string;
-  password?: string;
   social?: SocialCredential;
 };
 

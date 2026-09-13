@@ -70,8 +70,10 @@ npx expo start                    # dev build en emulador/dispositivo (NO Expo G
 ## Contrato backend ↔ mobile
 
 - La API vive bajo `/api/v1`. El mobile la consume vía `env.apiUrl` (config en `mobile/app.config.ts`).
-- **Auth:** JWT Bearer. El cliente guarda access/refresh token y refresca ante 401 (interceptor en
-  `mobile/src/core/http/client.ts`); el backend valida en `backend/app/api/deps.py`.
+- **Auth:** solo teléfono + OTP (Google/Facebook opcionales, siempre vinculados a un teléfono
+  verificado); **no existe acceso por correo/contraseña**. JWT Bearer de sesión administrada: el
+  cliente guarda access/refresh y refresca ante 401 (interceptor en `mobile/src/core/http/client.ts`);
+  el backend valida en `backend/app/api/deps.py`.
 - **WebSocket:** token por subprotocolos `viajaya.auth` + access token, nunca en la URL.
   Endpoints: `/ws/driver` (pool + viaje activo del conductor), `/ws/rides/{ride_id}` (ofertas y
   estado al pasajero). Eventos en `backend/app/api/v1/events.py`.

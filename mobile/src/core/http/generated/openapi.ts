@@ -4,23 +4,6 @@
  */
 
 export interface paths {
-    "/api/v1/auth/login": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Login */
-        post: operations["login_api_v1_auth_login_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/auth/logout": {
         parameters: {
             query?: never;
@@ -49,23 +32,6 @@ export interface paths {
         get: operations["me_api_v1_auth_me_get"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/oauth/{provider}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Oauth Login */
-        post: operations["oauth_login_api_v1_auth_oauth__provider__post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -174,23 +140,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/auth/phone/link-legacy": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Link Legacy */
-        post: operations["link_legacy_api_v1_auth_phone_link_legacy_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/auth/phone/link-social": {
         parameters: {
             query?: never;
@@ -270,23 +219,6 @@ export interface paths {
         put?: never;
         /** Refresh */
         post: operations["refresh_api_v1_auth_refresh_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/register": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Register */
-        post: operations["register_api_v1_auth_register_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -970,7 +902,7 @@ export interface components {
         AuthProvider: "local" | "google" | "facebook";
         /**
          * AuthResponse
-         * @description Respuesta de register / login / oauth: tokens + datos del usuario.
+         * @description Operational session issued after phone or social sign-in: tokens + user.
          */
         AuthResponse: {
             tokens: components["schemas"]["TokenResponse"];
@@ -1053,61 +985,10 @@ export interface components {
             vehicle_model: string | null;
             vehicle_type: components["schemas"]["VehicleType"] | null;
         };
-        /** LegacyPhoneLinkRequest */
-        LegacyPhoneLinkRequest: {
-            /**
-             * Device Id
-             * Format: uuid
-             */
-            device_id: string;
-            /**
-             * Device Name
-             * @default Teléfono
-             */
-            device_name: string;
-            /**
-             * Email
-             * Format: email
-             */
-            email: string;
-            /** Full Name */
-            full_name?: string | null;
-            /** Password */
-            password: string;
-            /** Phone */
-            phone: string;
-            /**
-             * Request Id
-             * Format: uuid
-             */
-            request_id: string;
-            /** Terms Version */
-            terms_version?: string | null;
-            /** Verification Token */
-            verification_token: string;
-        };
-        /** LoginRequest */
-        LoginRequest: {
-            /**
-             * Email
-             * Format: email
-             */
-            email: string;
-            /** Password */
-            password: string;
-        };
         /** LogoutRequest */
         LogoutRequest: {
             /** Refresh Token */
             refresh_token: string;
-        };
-        /**
-         * OAuthRequest
-         * @description Token emitido por el proveedor (id_token de Google / access_token de Facebook).
-         */
-        OAuthRequest: {
-            /** Token */
-            token: string;
         };
         /**
          * OfferCreate
@@ -1656,20 +1537,6 @@ export interface components {
             /** Request Id */
             request_id?: string | null;
         };
-        /** RegisterRequest */
-        RegisterRequest: {
-            /**
-             * Email
-             * Format: email
-             */
-            email: string;
-            /** Full Name */
-            full_name: string;
-            /** Password */
-            password: string;
-            /** Phone */
-            phone?: string | null;
-        };
         /**
          * RideDriverSchema
          * @description Datos del conductor asignado, expuestos al pasajero durante el viaje.
@@ -2085,39 +1952,6 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    login_api_v1_auth_login_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["LoginRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     logout_api_v1_auth_logout_post: {
         parameters: {
             query?: never;
@@ -2167,41 +2001,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    oauth_login_api_v1_auth_oauth__provider__post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                provider: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["OAuthRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthResponse"];
                 };
             };
             /** @description Validation Error */
@@ -2406,39 +2205,6 @@ export interface operations {
             };
         };
     };
-    link_legacy_api_v1_auth_phone_link_legacy_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["LegacyPhoneLinkRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PhoneCompleteResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     link_social_api_v1_auth_phone_link_social_post: {
         parameters: {
             query?: never;
@@ -2591,39 +2357,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TokenResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    register_api_v1_auth_register_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RegisterRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthResponse"];
                 };
             };
             /** @description Validation Error */

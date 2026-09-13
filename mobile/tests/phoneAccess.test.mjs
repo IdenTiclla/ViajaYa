@@ -54,15 +54,6 @@ test('leaving the entry flow ignores a late account response', async () => {
   assert.equal(accepted.length, 0); assert.equal(controller.getSnapshot().step, 'phone');
 });
 
-test('legacy entry waits for explicit credentials after OTP', async () => {
-  const { controller, requests } = setup();
-  await controller.initialize(); controller.start('+59171234567', 'legacy');
-  await controller.verified(proof);
-  assert.equal(controller.getSnapshot().step, 'legacy'); assert.equal(requests.length, 0);
-  await controller.complete({ email: 'old@example.test', password: 'legacy-secret' });
-  assert.equal(requests[0].email, 'old@example.test');
-});
-
 test('a recovery request reports its case and never issues a local session', async () => {
   const { controller, accepted } = setup();
   await controller.initialize(); controller.start('+59171234567', 'recovery');

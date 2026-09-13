@@ -14,7 +14,6 @@ from app.domain.exceptions import (
     AlreadyRatedError,
     DomainError,
     DriverUnavailableError,
-    EmailAlreadyExistsError,
     InvalidCredentialsError,
     InvalidEmailError,
     InvalidFareError,
@@ -29,7 +28,6 @@ from app.domain.exceptions import (
     RideNotFoundError,
     SavedPlaceNotFoundError,
     UnsupportedProviderError,
-    WeakPasswordError,
 )
 from app.domain.phone_identity import (
     IdentityAlreadyLinkedError,
@@ -47,11 +45,9 @@ _STATUS_MAP: dict[type[DomainError], int] = {
     InvalidPhoneError: 422,
     PhoneVerificationRateLimitError: 429,
     PhoneVerificationUnavailableError: 503,
-    EmailAlreadyExistsError: status.HTTP_409_CONFLICT,
     InvalidCredentialsError: status.HTTP_401_UNAUTHORIZED,
     InvalidTokenError: status.HTTP_401_UNAUTHORIZED,
     InvalidEmailError: 422,
-    WeakPasswordError: 422,
     InvalidLocationError: 422,
     InvalidFareError: 422,
     SavedPlaceNotFoundError: status.HTTP_404_NOT_FOUND,

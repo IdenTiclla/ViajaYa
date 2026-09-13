@@ -32,7 +32,6 @@ from app.infrastructure.db.models import (
     UserIdentityModel,
     UserModel,
 )
-from app.infrastructure.security.jwt_service import JwtTokenService
 from tests.fakes import FakeVerifier
 from tests.unit.test_environment import environment_values
 
@@ -134,9 +133,7 @@ async def test_simultaneous_refresh_retries_rotate_only_once(accounts_db):
 
     async def rotate():
         async with accounts_db() as session:
-            use_case = get_refresh_token(
-                session, build_managed_sessions(session, SETTINGS), JwtTokenService(SETTINGS)
-            )
+            use_case = get_refresh_token(session, build_managed_sessions(session, SETTINGS))
             return await use_case.execute(result.tokens.refresh_token, request_id)
 
     results = await asyncio.gather(*(rotate() for _ in range(8)))

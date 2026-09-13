@@ -10,30 +10,13 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
+from app.application.dto import TokenPair
 from app.domain.entities import AuthProvider, User, UserRole, VehicleType
-
-
-class RegisterRequest(BaseModel):
-    full_name: str = Field(min_length=1, max_length=255)
-    email: EmailStr
-    password: str = Field(min_length=8, max_length=128)
-    phone: str | None = Field(default=None, max_length=32)
-
-
-class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str
 
 
 class RefreshRequest(BaseModel):
     refresh_token: str = Field(max_length=4096, repr=False)
     request_id: uuid.UUID | None = None
-
-
-class OAuthRequest(BaseModel):
-    """Token emitido por el proveedor (id_token de Google / access_token de Facebook)."""
-
-    token: str
 
 
 class TokenResponse(BaseModel):
@@ -65,7 +48,16 @@ class UserResponse(BaseModel):
 
 
 class AuthResponse(BaseModel):
-    """Respuesta de register / login / oauth: tokens + datos del usuario."""
+    """Operational session issued after phone or social sign-in: tokens + user."""
 
     user: UserResponse
     tokens: TokenResponse
+
+    @classmethod
+    def from_session(cls, user: User, tokens: TokenPair) -> AuthResponse:
+        return cls(
+            user=UserResponse.from_entity(user),
+            tokens=TokenResponse(
+                access_token=tokens.access_token, refresh_token=tokens.refresh_token,
+            ),
+        )

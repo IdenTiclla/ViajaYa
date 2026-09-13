@@ -204,11 +204,7 @@ class SqlAlchemyPhoneAccountRepository:
         await self.db.execute(
             update(UserModel)
             .where(UserModel.id == user_id)
-            .values(
-                phone=phone,
-                phone_verified_at=now,
-                legacy_auth_disabled=True,
-            )
+            .values(phone=phone, phone_verified_at=now)
         )
         await self.db.flush()
 

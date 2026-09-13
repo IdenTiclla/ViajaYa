@@ -116,7 +116,6 @@ def _to_entity(row: UserModel) -> User:
         full_name=row.full_name,
         email=row.email,
         phone=row.phone,
-        hashed_password=row.hashed_password,
         auth_provider=row.auth_provider,
         provider_id=row.provider_id,
         role=row.role,
@@ -127,7 +126,6 @@ def _to_entity(row: UserModel) -> User:
         is_online=row.is_online,
         created_at=row.created_at,
         phone_verified_at=row.phone_verified_at,
-        legacy_auth_disabled=row.legacy_auth_disabled,
         is_active=row.is_active,
     )
 
@@ -169,7 +167,6 @@ class SqlAlchemyUserRepository(UserRepository):
             full_name=user.full_name,
             email=user.email,
             phone=user.phone,
-            hashed_password=user.hashed_password,
             auth_provider=user.auth_provider,
             provider_id=user.provider_id,
             role=user.role,

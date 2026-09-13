@@ -3,9 +3,9 @@ import type { PhoneAccessRepository, PhoneCapabilities, PhoneCompletion, SocialC
 import type { PhoneVerificationProof } from '../domain/phoneVerification';
 import type { AuthResult } from '../domain/types';
 
-export type EntryMode = 'sign_in' | 'social' | 'legacy' | 'recovery' | 'recovery_complete';
+export type EntryMode = 'sign_in' | 'social' | 'recovery' | 'recovery_complete';
 type State = {
-  step: 'loading' | 'phone' | 'code' | 'profile' | 'legacy' | 'recovery' | 'case' | 'complete' | 'social_confirmation';
+  step: 'loading' | 'phone' | 'code' | 'profile' | 'recovery' | 'case' | 'complete' | 'social_confirmation';
   socialProvider: SocialProvider | null;
   mode: EntryMode;
   capabilities: PhoneCapabilities | null;
@@ -105,7 +105,6 @@ export function createPhoneAccessController(dependencies: {
         deviceId: state.deviceId, deviceName: dependencies.deviceName, requestId: dependencies.randomId(),
         ...(social ? { social } : {}) };
       if (social) { publish({ step: 'social_confirmation' }); return; }
-      if (state.mode === 'legacy') { publish({ step: 'legacy' }); return; }
       if (state.mode.startsWith('recovery')) { publish({ step: 'recovery' }); return; }
       publish({ step: 'complete' });
       await complete();

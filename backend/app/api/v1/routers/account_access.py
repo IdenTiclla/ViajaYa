@@ -17,11 +17,9 @@ from app.api.deps import (
     get_sign_in_with_social,
 )
 from app.api.errors import unauthorized
-from app.api.v1.routers.auth import _auth_response
 from app.api.v1.schemas.account_access import (
     AccountSessionResponse,
     AccountSessionsResponse,
-    LegacyPhoneLinkRequest,
     LogoutRequest,
     PhoneCapabilitiesResponse,
     PhoneChangeRequest,
@@ -60,7 +58,7 @@ BearerDep = Annotated[str, Depends(bearer_token)]
 def _completion(result: PhoneSignInResult) -> PhoneCompleteResponse:
     return PhoneCompleteResponse(
         status="authenticated" if result.user else "profile_required",
-        auth=_auth_response(result.user, result.tokens) if result.user else None,
+        auth=AuthResponse.from_session(result.user, result.tokens) if result.user else None,
     )
 
 
@@ -97,22 +95,6 @@ async def complete_phone(
     return _completion(await use_case.execute(**body.model_dump()))
 
 
-@router.post("/phone/link-legacy", response_model=PhoneCompleteResponse)
-async def link_legacy(
-    body: LegacyPhoneLinkRequest,
-    use_case: CompleteDep,
-    response: Response,
-) -> PhoneCompleteResponse:
-    response.headers["Cache-Control"] = "no-store"
-    return _completion(
-        await use_case.execute(
-            **body.model_dump(exclude={"email", "password"}),
-            legacy_email=body.email,
-            legacy_password=body.password,
-        )
-    )
-
-
 @router.post("/phone/link-social", response_model=PhoneCompleteResponse)
 async def link_social(
     body: SocialPhoneLinkRequest, use_case: CompleteDep, response: Response,
@@ -130,7 +112,7 @@ async def social_sign_in(
     result = await use_case.execute(provider, **body.model_dump())
     return SocialSignInResponse(
         status="authenticated" if result.user else "phone_required",
-        auth=_auth_response(result.user, result.tokens) if result.user else None,
+        auth=AuthResponse.from_session(result.user, result.tokens) if result.user else None,
     )
 
 
@@ -178,7 +160,7 @@ async def change_phone(
 ) -> AuthResponse:
     response.headers["Cache-Control"] = "no-store"
     user, tokens = await use_case.execute(token, **body.model_dump())
-    return _auth_response(user, tokens)
+    return AuthResponse.from_session(user, tokens)
 
 
 @router.post("/recovery", response_model=RecoveryCaseResponse, status_code=201)

@@ -29,8 +29,6 @@ export function PhoneEntryScreen() {
   const [fullName, setFullName] = useState('');
   const [accepted, setAccepted] = useState(false);
   const [termsFocused, setTermsFocused] = useState(false);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [hint, setHint] = useState('');
   const [reason, setReason] = useState('');
   const [caseId, setCaseId] = useState('');
@@ -45,7 +43,7 @@ export function PhoneEntryScreen() {
     return () => controller.dispose();
   }, [controller]);
   const recovering = mode === 'recovery' || mode === 'recovery_complete';
-  const back = () => { setPassword(''); setSocialError(null); controller.back(); };
+  const back = () => { setSocialError(null); controller.back(); };
   const socialName = state.socialProvider === 'google' ? 'Google' : 'Facebook';
   const socialBusy = social.googleLoading || social.facebookLoading;
   return (
@@ -61,12 +59,11 @@ export function PhoneEntryScreen() {
             </>}
             {state.step === 'phone' && <>
               <Text accessibilityRole="header" style={styles.title}>
-                {recovering ? 'Recupera tu cuenta' : mode === 'legacy' ? 'Conserva tu cuenta anterior' : 'Entra con tu número'}
+                {recovering ? 'Recupera tu cuenta' : 'Entra con tu número'}
               </Text>
               <Text style={styles.text}>{recovering
                 ? 'Verifica un número al que tengas acceso. La recuperación requiere revisar tu identidad.'
-                : mode === 'legacy' ? 'Verifica tu número y luego usa tu correo y contraseña anteriores. Conservaremos tus viajes y tu rol.'
-                  : 'Usa tu teléfono para iniciar sesión o crear tu cuenta.'}</Text>
+                : 'Usa tu teléfono para iniciar sesión o crear tu cuenta.'}</Text>
               {state.socialProvider && <Text style={styles.text}>
                 Verificamos tu cuenta de {socialName}. Ahora verifica tu número; después podrás confirmar la vinculación.
               </Text>}
@@ -95,9 +92,6 @@ export function PhoneEntryScreen() {
               </>}
               {state.socialProvider && <Button title="Usar solo mi teléfono" variant="secondary" disabled={state.busy || socialBusy}
                 onPress={back} />}
-              <Button title={mode === 'legacy' ? 'Volver al acceso por teléfono' : 'Ya tenía una cuenta con correo'}
-                variant="secondary" disabled={state.busy || socialBusy}
-                onPress={() => { back(); setMode(mode === 'legacy' ? 'sign_in' : 'legacy'); }} />
               <Button title={recovering ? 'Volver al acceso por teléfono' : 'No tengo acceso a mi número'}
                 variant="secondary" disabled={state.busy || socialBusy}
                 onPress={() => { back(); setMode(recovering ? 'sign_in' : 'recovery'); }} />
@@ -128,18 +122,6 @@ export function PhoneEntryScreen() {
               </Pressable>
               <Button title="Crear cuenta" loading={state.busy} disabled={!accepted || fullName.trim().length < 2}
                 onPress={() => { void controller.complete({ fullName, termsVersion: state.capabilities?.termsVersion }); }} />
-              <Button title="Ya tenía una cuenta" variant="secondary" disabled={state.busy}
-                onPress={() => { setMode('legacy'); back(); }} />
-            </>}
-            {state.step === 'legacy' && <>
-              <Text style={styles.title}>Vincula tu cuenta anterior</Text>
-              <Text style={styles.text}>Tu número {state.phone} será la nueva forma de entrar.</Text>
-              <TextField label="Correo anterior" value={email} onChangeText={setEmail}
-                autoCapitalize="none" keyboardType="email-address" autoComplete="email" editable={!state.busy} />
-              <TextField label="Contraseña anterior" value={password} onChangeText={setPassword}
-                password autoComplete="current-password" editable={!state.busy} />
-              <Button title="Conservar mi cuenta" loading={state.busy} disabled={!email.trim() || !password}
-                onPress={() => { void controller.complete({ email: email.trim(), password }); }} />
             </>}
             {state.step === 'recovery' && (state.mode === 'recovery_complete' ? <>
               <Text style={styles.title}>Completa la recuperación</Text>
@@ -149,7 +131,7 @@ export function PhoneEntryScreen() {
                 onPress={() => { void controller.completeRecovery(caseId.trim()); }} />
             </> : <>
               <Text style={styles.title}>Solicita una revisión</Text>
-              <TextField label="Número anterior o correo de la cuenta" value={hint} onChangeText={setHint}
+              <TextField label="Número anterior de la cuenta" value={hint} onChangeText={setHint}
                 maxLength={255} editable={!state.busy} />
               <TextField label="Cuéntanos qué ocurrió" value={reason} onChangeText={setReason}
                 multiline maxLength={1000} editable={!state.busy} />

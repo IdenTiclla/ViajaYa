@@ -38,11 +38,9 @@ class ManagedSessions:
         user = await self.users.get_by_id(claims.user_id)
         if not user or not user.is_active:
             raise InvalidTokenError("La sesión ya no está activa.")
-        if claims.session_id:
-            session = await self.sessions.get(claims.session_id)
-            self.validate(session, claims.user_id)
-        elif user.legacy_auth_disabled:
+        if not claims.session_id:
             raise InvalidTokenError("Verifica tu teléfono para iniciar sesión.")
+        self.validate(await self.sessions.get(claims.session_id), claims.user_id)
         return user, claims
 
     @staticmethod

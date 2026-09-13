@@ -51,6 +51,7 @@ async def _table_exists(pg_test_db) -> bool:
 
 
 async def test_upgrade_backfill_y_downgrade_seguro_0022(pg_test_db) -> None:
+    await pg_test_db.purge_accounts()
     await pg_test_db.migrate_async("downgrade", _REVISION_0021)
     user_ids: list[uuid.UUID] = []
     offer_id: uuid.UUID | None = None

@@ -48,6 +48,37 @@ def request(
         return error.code, json.load(error)
 
 
+def phone_sign_in(base: str, phone: str) -> dict:
+    """Mock-OTP sign-in: the only access flow; returns the session token pair."""
+    device_id = str(uuid.uuid4())
+    binding = {"phone": phone, "device_id": device_id, "purpose": "sign_in"}
+    status, challenge = request(base, "/api/v1/auth/phone/challenges", binding)
+    assert status == 201, f"Challenge failed with HTTP {status}"
+    status, proof = request(
+        base,
+        "/api/v1/auth/phone/verify",
+        {**binding, "challenge_id": challenge["challenge_id"], "code": challenge["test_code"]},
+    )
+    assert status == 200, f"Verification failed with HTTP {status}"
+    status, capabilities = request(base, "/api/v1/auth/phone/capabilities")
+    assert status == 200
+    status, completed = request(
+        base,
+        "/api/v1/auth/phone/complete",
+        {
+            "phone": phone,
+            "device_id": device_id,
+            "device_name": "Environment smoke",
+            "verification_token": proof["verification_token"],
+            "request_id": str(uuid.uuid4()),
+            "full_name": "Environment Smoke",
+            "terms_version": capabilities["terms_version"],
+        },
+    )
+    assert status == 200 and completed["status"] == "authenticated", completed
+    return completed["auth"]["tokens"]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--image", default="viajaya-phase1:runtime")
@@ -96,6 +127,7 @@ def main() -> None:
             "REALTIME_REDIS_CHANNEL": "viajaya:testing:realtime:v2",
             "REALTIME_PRESENCE_KEY_PREFIX": "viajaya:testing:presence:v1",
             "PAYMENT_MODE": "sandbox",
+            "PHONE_OTP_ENABLED": "true",
         }
         environment = [
             item for key, value in configuration.items() for item in ("-e", f"{key}={value}")
@@ -144,18 +176,7 @@ def main() -> None:
             time.sleep(1)
         else:
             raise RuntimeError("The isolated API did not become ready.")
-        status, registered = request(
-            base,
-            "/api/v1/auth/register",
-            {
-                "full_name": "Environment Smoke",
-                "email": "smoke@example.com",
-                "password": "Smoke-test-only-1234",
-                "phone": "+59170000001",
-            },
-        )
-        assert status == 201, f"Registration failed with HTTP {status}"
-        tokens = registered["tokens"]
+        tokens = phone_sign_in(base, "+59170000001")
         claims = jwt.decode(
             tokens["access_token"],
             secret,
@@ -171,7 +192,10 @@ def main() -> None:
         claims.update(iss="viajaya:production", aud="viajaya:mobile:production")
         crossed = jwt.encode(claims, secret, algorithm="HS256")
         assert request(base, "/api/v1/auth/me", token=crossed)[0] == 401
-        assert request(base, "/api/v1/auth/login", {}, environment="development")[0] == 400
+        assert (
+            request(base, "/api/v1/auth/phone/challenges", {}, environment="development")[0]
+            == 400
+        )
         unsafe = docker(
             "run",
             "--rm",

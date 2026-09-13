@@ -91,8 +91,9 @@ async def test_migrating_social_driver_preserves_identity_role_and_disables_old_
             role="driver", auth_provider=provider, provider_id="social-1",
         ))
         await session.commit()
-    legacy = await social_client.post(f"{BASE}/oauth/{provider}", json={"token": "social-1"})
-    assert legacy.status_code == 200, legacy.text
+    # The historical OAuth bridge is gone: only the phone-linked flow remains.
+    gone = await social_client.post(f"{BASE}/oauth/{provider}", json={"token": "social-1"})
+    assert gone.status_code == 404, gone.text
     assert (await social_access(social_client, provider)).json()["auth"] is None
     payload = {**await proof_payload(social_client),
                "social_provider": provider, "social_token": "social-1"}
@@ -101,25 +102,21 @@ async def test_migrating_social_driver_preserves_identity_role_and_disables_old_
     user = completed.json()["auth"]["user"]
     assert user["id"] == str(user_id) and user["role"] == "driver"
     assert user["full_name"] == "Historical Driver" and user["email"] == "legacy@example.com"
-    old_access = await social_client.get(f"{BASE}/me", headers=auth_headers(legacy.json()))
-    old_login = await social_client.post(f"{BASE}/oauth/{provider}", json={"token": "social-1"})
-    assert old_access.status_code == old_login.status_code == 401
 
 
-async def test_social_email_match_never_merges_password_account(social_client, session_factory):
-    old = await social_client.post(f"{BASE}/register", json={
-        "email": "social-1.google@example.com", "password": "Legacy1234#",
-        "full_name": "Existing Password Account",
-    })
-    assert old.status_code == 201
-    old_login = await social_client.post(f"{BASE}/oauth/google", json={"token": "social-1"})
-    assert old_login.status_code == 401
+async def test_social_email_match_never_merges_historical_account(social_client, session_factory):
+    old_id = uuid4()
+    async with session_factory() as session:
+        session.add(UserModel(
+            id=old_id, email="social-1.google@example.com", full_name="Existing Email Account",
+        ))
+        await session.commit()
     payload = {**await proof_payload(social_client), "social_provider": "google",
                "social_token": "social-1", "full_name": "Separate Phone Account",
                "terms_version": "testing-2026-09"}
     result = await social_client.post(f"{BASE}/phone/link-social", json=payload)
     assert result.status_code == 200, result.text
-    assert result.json()["auth"]["user"]["id"] != old.json()["user"]["id"]
+    assert result.json()["auth"]["user"]["id"] != str(old_id)
     async with session_factory() as session:
         assert await session.scalar(select(func.count()).select_from(UserModel)) == 2
 

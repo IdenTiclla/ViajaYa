@@ -1,7 +1,8 @@
 # ViajaYa — Backend (FastAPI + Clean Architecture)
 
 API de taxis y encomiendas. Python 3.11+, FastAPI async, SQLAlchemy 2.0 async sobre
-PostgreSQL, autenticación JWT y SSO (Google/Facebook), tiempo real por WebSocket.
+PostgreSQL, acceso por teléfono + OTP (con Google/Facebook opcionales vinculados a un
+teléfono verificado), sesiones administradas JWT y tiempo real por WebSocket.
 
 ## Arquitectura (Clean Architecture)
 
@@ -14,19 +15,18 @@ app/
 │   ├── entities.py            # User, RideRequest, Offer, RideRating, SavedPlace + enums
 │   │                          #   (AuthProvider, UserRole, VehicleType, ServiceType, PaymentMethod,
 │   │                          #    RideStatus, OfferStatus, SavedPlaceCategory)
-│   ├── value_objects.py       # Email, RawPassword, GeoPoint, FareOffer (frozen, slots)
+│   ├── value_objects.py       # Email, GeoPoint, FareOffer (frozen, slots)
 │   ├── repositories.py        # Interfaces (puertos): User, RideRequest, Offer, Rating, SavedPlace
 │   ├── ride_policy.py         # OFFER_TTL=30s + offer_expires_at / is_offer_expired / is_offer_active
 │   └── exceptions.py          # DomainError + 16 excepciones específicas
 ├── application/             # Casos de uso. Orquestan el dominio.
-│   ├── use_cases/             # UN caso de uso por archivo · 36 UC (lista abajo)
+│   ├── use_cases/             # UN caso de uso por archivo (lista abajo)
 │   ├── interfaces.py          # Puertos técnicos y proyecciones de lectura de aplicación
 │   ├── dto.py                 # @dataclass(frozen=True) de entrada/salida entre capas
-│   └── token_issuer.py        # Helper issue_token_pair(tokens, user_id)  (NO es una clase)
 ├── infrastructure/          # Adaptadores concretos.
 │   ├── config.py              # Settings (pydantic-settings). ÚNICA fuente de verdad de config.
 │   ├── db/                    # SQLAlchemy: models, repos, UnitOfWork y outbox durable
-│   ├── security/              # bcrypt_hasher, jwt_service
+│   ├── security/              # jwt_service, phone_verification (HMAC de comprobantes)
 │   ├── oauth/                 # google_verifier, facebook_verifier
 │   └── realtime/              # hub local, dispatcher y coordinación de transporte
 └── api/                     # Capa HTTP (FastAPI).
@@ -253,13 +253,20 @@ no un valor predeterminado.
 
 ## API (v1, prefijo `/api/v1`)
 
-- **auth** (`/auth`): `POST /register`, `POST /login`, `POST /refresh`, `POST /oauth/{provider}`, `GET /me`.
-  La renovación exige que el usuario del token siga existiendo; un token válido
-  de una base anterior o un usuario eliminado recibe 401, sin emitir otro par.
-  F02-A agrega `POST /phone/challenges` y `POST /phone/verify`, desactivados por
-  defecto con `PHONE_OTP_ENABLED=false`. Requieren la migración 0024 y emiten un
-  comprobante temporal, no una sesión operativa. El acceso unificado se conecta
-  en F02-B; ver `docs/implementation-plans/0010-phone-identity-and-otp.md` en la raíz.
+- **auth** (`/auth`): **no existe acceso por correo/contraseña** (retirado el 2026-09-13;
+  `/register`, `/login`, `/oauth/{provider}` y `/phone/link-legacy` responden 404 y la
+  migración `0026` eliminó `hashed_password`/`legacy_auth_disabled`). Todo token debe
+  pertenecer a una sesión administrada; un JWT sin `session_id` recibe 401 en HTTP, WS y refresh.
+  - Sesión: `POST /refresh` (rotación + detección de reuso), `GET /me`, `GET /sessions`,
+    `POST /logout`, `POST /phone/change`.
+  - Teléfono (`PHONE_OTP_ENABLED`; simulado con `test_code` fuera de producción):
+    `GET /phone/capabilities` (países, condiciones y `social_providers` configurados),
+    `POST /phone/challenges`, `POST /phone/verify`, `POST /phone/complete`
+    (`profile_required` → repetir con `full_name` + `terms_version`).
+  - Social: `POST /social/{provider}/sign-in` (`phone_required` si la identidad no está
+    vinculada) y `POST /phone/link-social` (OTP + token del proveedor en una transacción).
+  - Recuperación: `POST /recovery`, `POST /recovery/complete` (revisión de operador en F03-B).
+  Ver `docs/implementation-plans/0010-phone-identity-and-otp.md`.
 - **rides** (`/rides`):
   - `POST ""` (crear solicitud), `GET /recent-destinations`, `GET /history`, `GET /{id}`.
     `GET /history` pagina con cursor opaco y responde `{items, next_cursor}`.
@@ -274,10 +281,12 @@ no un valor predeterminado.
 
 Rutas protegidas: usan `CurrentUserDep` (header `Authorization: Bearer <access_token>`).
 
-### Casos de uso (36)
+### Casos de uso
 
-`register_user`, `authenticate_user`, `authenticate_with_oauth`, `refresh_token`,
-`create_ride_request`, `announce_open_ride`, `list_recent_destinations`, `list_open_rides`, `dismiss_open_ride`,
+Acceso: `request_phone_code`, `verify_phone_code`, `complete_phone_sign_in`,
+`sign_in_with_social`, `refresh_managed_session`, `manage_account_sessions`,
+`change_account_phone`, `request_account_recovery`, `review_account_recovery`,
+`complete_account_recovery`. Viajes: `create_ride_request`, `announce_open_ride`, `list_recent_destinations`, `list_open_rides`, `dismiss_open_ride`,
 `get_ride`, `get_passenger_active_ride`, `get_pending_rating_ride`, `list_ride_history`,
 `create_offer`, `list_offers_for_ride`, `accept_offer`, `reject_offer`,
 `withdraw_offer`, `expire_offer`, `update_ride_status`, `update_ride_fare`, `cancel_ride`,
@@ -377,8 +386,8 @@ cerrar la app o perder ambos canales durante toda la gracia cancela la búsqueda
 ## Migraciones (Alembic)
 
 - Config: `alembic.ini` + `migrations/env.py` (engine **async** con `async_engine_from_config`).
-- **24 migraciones** en `migrations/versions/` (`0001_create_users` …
-  `0024_phone_verification`). La última no verifica ni vincula teléfonos históricos.
+- **26 migraciones** en `migrations/versions/` (`0001_create_users` …
+  `0026_drop_password_access`). `0025` rechaza el downgrade si hay cuentas solo-teléfono.
 - Importante: los enums se persisten por **valor** minúsculo vía `values_callable=_enum_values`
   en `infrastructure/db/models.py` (migración `0006_normalize_enum_values`). No rompas esa convención
   o se caerán columnas existentes.
@@ -392,15 +401,17 @@ python -m scripts.seed        # idempotente; requiere DB levantada + alembic upg
 python -m scripts.smoke_ws    # prueba de humo del flujo WS contra servidor en vivo (passenger + driver simulados)
 ```
 
-`scripts/` es un namespace package (`__init__.py`). El seed crea 2 usuarios por rol (contraseña
-común `ViajaYa1234#`): `passenger1/2@viajaya.com`, `driver.auto1/2@viajaya.com` (taxi) y
-`driver.moto1/2@viajaya.com` (moto).
+`scripts/` es un namespace package (`__init__.py`). El seed crea 2 usuarios por rol con teléfono
+verificado; se entra con el OTP simulado: pasajeros `+59170000001/2`, taxis `+59170000011/12`,
+motos `+59170000021/22`. `scripts/phone_access.py` expone `sign_in(client, phone)` para los smokes.
 
 ## Tests
 
 - `tests/unit/` — UC con dobles (`tests/fakes.py`), sin DB real.
 - `tests/e2e/` — API completa contra SQLite async (`aiosqlite`); fixtures en `conftest.py`
-  (override de `get_session` y `get_oauth_verifiers` con `FakeVerifier`).
+  (override de `get_session` y `get_oauth_verifiers` con `FakeVerifier`; settings sintéticos con
+  OTP simulado, nunca el `.env`). `tests/e2e/helpers.py` autentica por teléfono:
+  `sign_in(client, label)` / `sign_in_sync` y `promote_to_driver(session_factory, label, vehicle)`.
 - `tests/e2e/test_negotiation_ws.py` — flujo WS de negociación passenger↔driver.
 - `tests/postgresql/` — certificación destructiva opt-in contra una base exclusivamente
   desechable indicada por `VIAJAYA_TEST_DATABASE_URL`; hace skip si la variable no existe.

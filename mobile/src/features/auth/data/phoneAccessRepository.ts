@@ -27,13 +27,11 @@ export const phoneAccessRepository: PhoneAccessRepository = {
     };
   },
   async complete(payload, signal) {
-    const legacy = payload.email !== undefined;
     const social = payload.social;
     const { data } = await api.post<Schemas['PhoneCompleteResponse']>(
-      social ? '/auth/phone/link-social' : legacy ? '/auth/phone/link-legacy' : '/auth/phone/complete',
+      social ? '/auth/phone/link-social' : '/auth/phone/complete',
       { ...completeDto(payload), ...(social
-        ? { social_provider: social.provider, social_token: social.token }
-        : legacy ? { email: payload.email, password: payload.password } : {}) },
+        ? { social_provider: social.provider, social_token: social.token } : {}) },
       { skipAuth: true, signal },
     );
     if (data.status === 'profile_required') return null;

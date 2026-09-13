@@ -1,4 +1,4 @@
-"""Fixtures e2e: app FastAPI con DB SQLite en memoria y OAuth simulado."""
+"""Fixtures e2e: app FastAPI con DB SQLite en memoria, OTP simulado y OAuth simulado."""
 
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ from app.domain.entities import AuthProvider
 from app.infrastructure.db.base import Base
 from app.infrastructure.db.session import get_session
 from app.main import create_app
+from tests.e2e.helpers import test_settings
 from tests.fakes import FakeVerifier
 
 
@@ -50,7 +51,7 @@ async def client(session_factory) -> AsyncIterator[AsyncClient]:
             AuthProvider.FACEBOOK.value: FakeVerifier(AuthProvider.FACEBOOK),
         }
 
-    app = create_app()
+    app = create_app(settings=test_settings())
     app.dependency_overrides[get_session] = override_get_session
     app.dependency_overrides[get_session_factory] = lambda: session_factory
     app.dependency_overrides[get_oauth_verifiers] = override_get_verifiers

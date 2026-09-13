@@ -9,20 +9,12 @@ class DomainError(Exception):
     """Excepción base para errores de reglas de negocio."""
 
 
-class EmailAlreadyExistsError(DomainError):
-    """Ya existe un usuario registrado con ese correo."""
-
-
 class InvalidCredentialsError(DomainError):
     """Las credenciales (email/contraseña) no son válidas."""
 
 
 class InvalidEmailError(DomainError):
     """El formato del correo no es válido."""
-
-
-class WeakPasswordError(DomainError):
-    """La contraseña no cumple los requisitos mínimos."""
 
 
 class InvalidTokenError(DomainError):

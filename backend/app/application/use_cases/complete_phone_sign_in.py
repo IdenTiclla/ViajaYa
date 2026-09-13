@@ -1,11 +1,11 @@
-"""Complete phone sign-in or explicitly migrate a password account in one transaction."""
+"""Complete phone sign-in (plain or social-linked) in one transaction."""
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID
 
 from app.application.dto import TokenPair
-from app.application.interfaces import PasswordHasher, UnitOfWork
+from app.application.interfaces import UnitOfWork
 from app.application.managed_sessions import ManagedSessions
 from app.application.phone_verification import (
     PhoneChallengeStore,
@@ -36,7 +36,6 @@ class CompletePhoneSignIn:
         challenges: PhoneChallengeStore,
         secrets: PhoneVerificationSecrets,
         normalizer: PhoneNumberNormalizer,
-        passwords: PasswordHasher,
         uow: UnitOfWork,
         *,
         enabled: bool,
@@ -44,7 +43,7 @@ class CompletePhoneSignIn:
         social: SocialAccounts | None = None,
     ) -> None:
         self.access, self.challenges, self.secrets = access, challenges, secrets
-        self.normalizer, self.passwords, self.uow = normalizer, passwords, uow
+        self.normalizer, self.uow = normalizer, uow
         self.enabled, self.terms_version = enabled, terms_version
         self.social = social
 
@@ -58,8 +57,6 @@ class CompletePhoneSignIn:
         *,
         full_name: str | None = None,
         terms_version: str | None = None,
-        legacy_email: str | None = None,
-        legacy_password: str | None = None,
         social_provider: str | None = None,
         social_token: str | None = None,
     ) -> PhoneSignInResult:
@@ -71,7 +68,7 @@ class CompletePhoneSignIn:
         accounts = self.access.accounts
         profile = None
         if social_provider is not None:
-            if not self.social or not social_token or legacy_email is not None:
+            if not self.social or not social_token:
                 raise InvalidCredentialsError("Vuelve a elegir tu cuenta social.")
             profile = await self.social.verify(social_provider, social_token)
             # Every social mutation locks subject, then phone, then account.
@@ -115,28 +112,6 @@ class CompletePhoneSignIn:
                 user = await accounts.lock_user(user.id)
                 if user and user.phone != phone:
                     user = None
-        elif legacy_email is not None:
-            candidate = await self.access.users.get_by_email(legacy_email.strip().lower())
-            candidate = await accounts.lock_user(candidate.id) if candidate else None
-            # A verified number cannot be replaced through the legacy password bridge.
-            if (
-                not candidate
-                or candidate.legacy_auth_disabled
-                or not candidate.is_active
-                or not candidate.hashed_password
-                or not legacy_password
-                or len(legacy_password.encode("utf-8")) >= 72
-                or not self.passwords.verify(legacy_password, candidate.hashed_password)
-            ):
-                # One credential attempt per proof bounds password guessing even after a valid OTP.
-                await self.challenges.consume(digest, phone, "sign_in", device_digest, now)
-                await self.uow.commit()
-                raise InvalidCredentialsError(
-                    "No pudimos vincular la cuenta. Verifica los datos y pide otro código."
-                )
-            if user and user.id != candidate.id:
-                raise IdentityAlreadyLinkedError()
-            user = candidate
         elif user:
             user = await accounts.lock_user(user.id)
             # A phone change may have committed while this request waited for the user lock.
@@ -153,7 +128,7 @@ class CompletePhoneSignIn:
                     "Revisa tu nombre y acepta las condiciones vigentes."
                 )
             user = await accounts.create(
-                User(full_name=full_name, email=None, legacy_auth_disabled=True)
+                User(full_name=full_name, email=None)
             )
             await accounts.accept_terms(user.id, terms_version, now)
             await accounts.audit("account.created", user.id, user.id, {}, now)
@@ -170,9 +145,7 @@ class CompletePhoneSignIn:
                 "identity.phone_verified",
                 user.id,
                 user.id,
-                {"source": profile.provider.value if profile else (
-                    "legacy_password" if legacy_email else "phone"
-                )},
+                {"source": profile.provider.value if profile else "phone"},
                 now,
             )
             user = await accounts.lock_user(user.id)

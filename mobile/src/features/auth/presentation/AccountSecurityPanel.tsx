@@ -49,7 +49,7 @@ export function AccountSecurityPanel() {
     <View style={styles.container}>
       <Text accessibilityRole="header" style={styles.title}>Acceso y seguridad</Text>
       {!user?.phoneVerifiedAt ? <>
-        <Text style={styles.text}>Esta cuenta todavía usa correo. Vuelve al inicio y elige «Ya tenía una cuenta con correo» para vincular tu teléfono y conservar tus viajes.</Text>
+        <Text style={styles.text}>Esta cuenta no tiene un número verificado. Cierra sesión y vuelve a entrar con tu teléfono para administrar tus sesiones.</Text>
       </> : <>
         <Text style={styles.text}>Número verificado: {user.phone}</Text>
         <Button title={sessions ? 'Actualizar sesiones' : 'Ver sesiones abiertas'} variant="secondary"

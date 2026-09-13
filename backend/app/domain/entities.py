@@ -63,9 +63,9 @@ def services_for_vehicle(vehicle_type: VehicleType) -> tuple[ServiceType, ...]:
 class User:
     """Usuario de la plataforma.
 
-    ``hashed_password`` es opcional: los usuarios creados vía SSO (Google /
-    Facebook) no tienen contraseña local. ``provider_id`` guarda el id del
-    usuario en el proveedor externo cuando aplica.
+    Every account signs in through a verified phone (optionally linked to a
+    social identity); there is no password. ``email`` is informational only
+    (filled by Google) and ``provider_id`` keeps the historical provider id.
 
     Los campos de conductor (``vehicle_type``, ``plate``, ``vehicle_model``,
     ``rating``, ``is_online``) solo aplican cuando ``role`` es ``DRIVER``.
@@ -74,7 +74,6 @@ class User:
     full_name: str
     email: str | None
     phone: str | None = None
-    hashed_password: str | None = None
     auth_provider: AuthProvider = AuthProvider.LOCAL
     provider_id: str | None = None
     role: UserRole = UserRole.PASSENGER
@@ -86,7 +85,6 @@ class User:
     id: uuid.UUID = field(default_factory=uuid.uuid4)
     created_at: datetime | None = None
     phone_verified_at: datetime | None = None
-    legacy_auth_disabled: bool = False
     is_active: bool = True
 
     @property

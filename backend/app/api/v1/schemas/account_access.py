@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.v1.schemas.auth import AuthResponse
 
@@ -19,11 +19,6 @@ class PhoneCompleteRequest(BaseModel):
     request_id: UUID
     full_name: str | None = Field(default=None, min_length=2, max_length=100)
     terms_version: str | None = Field(default=None, max_length=80)
-
-
-class LegacyPhoneLinkRequest(PhoneCompleteRequest):
-    email: EmailStr
-    password: str = Field(min_length=1, max_length=256, repr=False)
 
 
 class SocialPhoneLinkRequest(PhoneCompleteRequest):

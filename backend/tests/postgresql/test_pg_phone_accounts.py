@@ -14,9 +14,11 @@ from app.api.deps import (
     get_complete_phone_sign_in,
     get_refresh_token,
     get_request_phone_code,
+    get_social_accounts,
     get_verify_phone_code,
 )
-from app.domain.phone_identity import InvalidPhoneCodeError
+from app.domain.entities import AuthProvider
+from app.domain.phone_identity import IdentityAlreadyLinkedError, InvalidPhoneCodeError
 from app.infrastructure.config import Settings
 from app.infrastructure.db.account_access import SqlAlchemyPhoneAccountRepository
 from app.infrastructure.db.models import (
@@ -31,6 +33,7 @@ from app.infrastructure.db.models import (
     UserModel,
 )
 from app.infrastructure.security.jwt_service import JwtTokenService
+from tests.fakes import FakeVerifier
 from tests.unit.test_environment import environment_values
 
 PHONE = "+59173456789"
@@ -81,8 +84,11 @@ async def proof(factory, phone=PHONE):
 
 async def complete(factory, payload):
     async with factory() as session:
+        access = build_managed_sessions(session, SETTINGS)
         use_case = get_complete_phone_sign_in(
-            session, SETTINGS, build_managed_sessions(session, SETTINGS)
+            session, SETTINGS, access, get_social_accounts(session, access.users, {
+                "google": FakeVerifier(AuthProvider.GOOGLE),
+            }),
         )
         return await use_case.execute(**payload)
 
@@ -169,7 +175,9 @@ async def test_waiting_sign_in_cannot_restore_the_previous_phone_owner(accounts_
                     return await original_lock(user_id)
 
                 access.accounts.lock_user = observed_lock
-                return await get_complete_phone_sign_in(session, SETTINGS, access).execute(
+                return await get_complete_phone_sign_in(
+                    session, SETTINGS, access, get_social_accounts(session, access.users, {}),
+                ).execute(
                     **payload
                 )
 
@@ -192,3 +200,32 @@ async def test_nullable_email_migration_refuses_a_lossy_downgrade(accounts_db, p
         user = await session.get(UserModel, result.user.id)
         assert user.email is None and user.phone == PHONE
         assert user.id == UUID(str(result.user.id))
+
+
+async def test_social_link_retries_are_atomic_on_postgresql(accounts_db):
+    payload = {
+        **await proof(accounts_db), "social_provider": "google", "social_token": "social-subject",
+        "full_name": "Social Passenger", "terms_version": "testing-2026-09",
+    }
+    results = await asyncio.gather(*(complete(accounts_db, payload) for _ in range(8)))
+    assert len({result.user.id for result in results}) == 1
+    assert len({result.tokens.refresh_token for result in results}) == 1
+    async with accounts_db() as session:
+        identities = list(await session.scalars(select(UserIdentityModel)))
+        assert len(identities) == 2
+        assert {identity.provider for identity in identities} == {"google", "phone"}
+
+
+async def test_two_phone_accounts_cannot_claim_the_same_social_subject(accounts_db):
+    payloads = [{
+        **await proof(accounts_db, phone=phone),
+        "social_provider": "google", "social_token": "contested-subject",
+        "full_name": "Social Passenger", "terms_version": "testing-2026-09",
+    } for phone in (PHONE, "+59174567890")]
+    results = await asyncio.gather(
+        *(complete(accounts_db, payload) for payload in payloads), return_exceptions=True,
+    )
+    assert sum(not isinstance(result, Exception) for result in results) == 1
+    assert sum(isinstance(result, IdentityAlreadyLinkedError) for result in results) == 1
+    async with accounts_db() as session:
+        assert await session.scalar(select(func.count()).select_from(AuthSessionModel)) == 1

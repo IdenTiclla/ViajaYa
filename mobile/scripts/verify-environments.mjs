@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const native = process.argv.includes('--native');
+const social = process.argv.includes('--social');
 const reportRoot = resolve(root, '../local-files/phase01');
 const profiles = [
   ['development', 'development', 'com.viajaya.app.dev', 'viajaya-dev'],
@@ -39,6 +40,15 @@ for (const [profile, appEnv, appId, scheme] of profiles) {
   for (const key of Object.keys(environment)) {
     if (/GOOGLE_|FACEBOOK_|OTP_PROVIDER_/.test(key)) delete environment[key];
   }
+  if (social) {
+    const prefix = appEnv === 'development' ? '' : `${appEnv.toUpperCase()}_`;
+    Object.assign(environment, {
+      [`${prefix}GOOGLE_OAUTH_CLIENT_ID_WEB`]: `123-${appEnv}.apps.googleusercontent.com`,
+      [`${prefix}GOOGLE_OAUTH_CLIENT_ID_IOS`]: `456-${appEnv}.apps.googleusercontent.com`,
+      [`${prefix}FACEBOOK_APP_ID`]: '123456789000001',
+      [`${prefix}FACEBOOK_CLIENT_TOKEN`]: `synthetic-public-client-token-${appEnv}`,
+    });
+  }
   const config = JSON.parse(expo(root, ['config', '--type', 'public', '--json'], environment));
   assert.equal(config.android.package, appId);
   assert.equal(config.ios.bundleIdentifier, appId);
@@ -64,6 +74,15 @@ for (const [profile, appEnv, appId, scheme] of profiles) {
     assert.ok(gradle.includes(`applicationId '${appId}'`) || gradle.includes(`applicationId "${appId}"`));
     assert.ok(manifest.includes(`android:scheme="${scheme}"`));
     assert.ok(strings.includes(config.name));
+    for (const name of ['AutoInitEnabled', 'AutoLogAppEventsEnabled', 'AdvertiserIDCollectionEnabled']) {
+      assert.match(manifest, new RegExp(`android:name="com.facebook.sdk.${name}" android:value="false"`));
+    }
+    if (social) {
+      assert.ok(manifest.includes('android:scheme="@string/fb_login_protocol_scheme"'));
+      assert.ok(strings.includes('>fb123456789000001</string>'));
+      assert.ok(strings.includes(`synthetic-public-client-token-${appEnv}`));
+      assert.equal(config.extra.facebookClientToken, `synthetic-public-client-token-${appEnv}`);
+    }
     console.log(JSON.stringify({ environment: appEnv, appId, nativeProject: project }));
   } else {
     console.log(JSON.stringify({ environment: appEnv, appId, configuration: 'verified' }));

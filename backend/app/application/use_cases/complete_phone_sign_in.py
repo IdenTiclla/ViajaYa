@@ -12,6 +12,7 @@ from app.application.phone_verification import (
     PhoneNumberNormalizer,
     PhoneVerificationSecrets,
 )
+from app.application.social_accounts import SocialAccounts
 from app.domain.account_access import InvalidAccountProfileError
 from app.domain.entities import User
 from app.domain.exceptions import InvalidCredentialsError
@@ -40,10 +41,12 @@ class CompletePhoneSignIn:
         *,
         enabled: bool,
         terms_version: str,
+        social: SocialAccounts | None = None,
     ) -> None:
         self.access, self.challenges, self.secrets = access, challenges, secrets
         self.normalizer, self.passwords, self.uow = normalizer, passwords, uow
         self.enabled, self.terms_version = enabled, terms_version
+        self.social = social
 
     async def execute(
         self,
@@ -57,6 +60,8 @@ class CompletePhoneSignIn:
         terms_version: str | None = None,
         legacy_email: str | None = None,
         legacy_password: str | None = None,
+        social_provider: str | None = None,
+        social_token: str | None = None,
     ) -> PhoneSignInResult:
         if not self.enabled:
             raise PhoneVerificationUnavailableError()
@@ -64,6 +69,13 @@ class CompletePhoneSignIn:
         digest = self.secrets.digest("proof", verification_token)
         device_digest = self.secrets.digest("device", str(device_id))
         accounts = self.access.accounts
+        profile = None
+        if social_provider is not None:
+            if not self.social or not social_token or legacy_email is not None:
+                raise InvalidCredentialsError("Vuelve a elegir tu cuenta social.")
+            profile = await self.social.verify(social_provider, social_token)
+            # Every social mutation locks subject, then phone, then account.
+            await self.social.identities.lock(social_provider, profile.provider_id)
         # Phone lock precedes proof/account locks in every phone mutation.
         await accounts.lock_phone(phone)
         proof = await accounts.get_proof(digest)
@@ -82,10 +94,28 @@ class CompletePhoneSignIn:
             user = await accounts.lock_user(receipt.user_id) if receipt else None
             if not user or not user.is_active:
                 raise InvalidPhoneCodeError()
+            if profile:
+                identity = await self.social.identities.find(
+                    profile.provider.value, profile.provider_id,
+                )
+                if not identity or identity.user_id != user.id:
+                    raise InvalidPhoneCodeError()
             return PhoneSignInResult(user, self.access.tokens.create_session_pair(receipt))
 
         user = await accounts.find_by_phone(phone)
-        if legacy_email is not None:
+        if profile:
+            candidate = await self.social.owner(profile)
+            if candidate:
+                if user and user.id != candidate.id:
+                    raise IdentityAlreadyLinkedError()
+                user = await accounts.lock_user(candidate.id)
+                if user and user.phone_verified_at and user.phone != phone:
+                    raise IdentityAlreadyLinkedError()
+            elif user:
+                user = await accounts.lock_user(user.id)
+                if user and user.phone != phone:
+                    user = None
+        elif legacy_email is not None:
             candidate = await self.access.users.get_by_email(legacy_email.strip().lower())
             candidate = await accounts.lock_user(candidate.id) if candidate else None
             # A verified number cannot be replaced through the legacy password bridge.
@@ -128,13 +158,21 @@ class CompletePhoneSignIn:
             await accounts.accept_terms(user.id, terms_version, now)
             await accounts.audit("account.created", user.id, user.id, {}, now)
         await self.challenges.consume(digest, phone, "sign_in", device_digest, now)
+        if profile:
+            await self.social.link(profile, user.id, now)
+            await accounts.audit(
+                "identity.social_linked", user.id, user.id,
+                {"provider": profile.provider.value}, now,
+            )
         if not user.phone_verified_at:
             await accounts.set_verified_phone(user.id, phone, now)
             await accounts.audit(
                 "identity.phone_verified",
                 user.id,
                 user.id,
-                {"source": "legacy_password" if legacy_email else "phone"},
+                {"source": profile.provider.value if profile else (
+                    "legacy_password" if legacy_email else "phone"
+                )},
                 now,
             )
             user = await accounts.lock_user(user.id)

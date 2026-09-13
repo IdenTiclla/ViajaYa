@@ -54,6 +54,14 @@ test('public configuration never serializes backend secrets', () => {
   assert.equal(build.googleMapsApiKey, 'public-mobile-key');
 });
 
+test('Facebook public client tokens stay inside their selected build environment', () => {
+  const values = { ...variables, FACEBOOK_CLIENT_TOKEN: 'development-token',
+    TESTING_FACEBOOK_CLIENT_TOKEN: 'testing-token', PRODUCTION_FACEBOOK_CLIENT_TOKEN: 'production-token' };
+  for (const appEnv of environments) {
+    assert.equal(resolveBuildEnvironment({ ...values, APP_ENV: appEnv }).facebookClientToken, `${appEnv}-token`);
+  }
+});
+
 for (const invalidUrl of [
   'http://api.example.test/api/v1', 'https://localhost/api/v1', 'https://127.0.0.1/api/v1',
   'https://[::1]/api/v1', 'https://2130706433/api/v1', 'https://api.local/api/v1',

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { AppState, StyleSheet, Text, View } from 'react-native';
 
 import { fontSize, spacing, useEstilos, type Tema } from '@/core/theme';
 import { Button } from '@/shared/components/Button';
@@ -31,8 +31,16 @@ export function PhoneCodeForm({ phone, deviceId, onVerified, onChangePhone,
   }, [autoRequest, controller, phone, deviceId]);
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') setNow(Date.now());
+    });
+    return () => { clearInterval(timer); subscription.remove(); };
   }, []);
+  useEffect(() => {
+    if (state.phase === 'waiting' && AppState.currentState === 'active') {
+      void controller.retryRequest(phone, deviceId);
+    }
+  }, [controller, deviceId, now, phone, state.phase]);
   useEffect(() => {
     if (state.proof && controller.getSnapshot().proof === state.proof
       && deliveredProof.current !== state.proof.verificationToken) {
@@ -48,6 +56,9 @@ export function PhoneCodeForm({ phone, deviceId, onVerified, onChangePhone,
       <Text style={styles.title}>Verifica tu número</Text>
       <Text style={styles.text}>{phone}</Text>
       {controller.simulated && <Text style={styles.text}>OTP de prueba · sin SMS</Text>}
+      {state.phase === 'waiting' && <Text accessibilityRole="text" accessibilityLiveRegion="polite" style={styles.text}>
+        Ya solicitaste un código hace poco. Pediremos uno nuevo cuando termine la espera.
+      </Text>}
       {state.challenge && (
         <>
           <TextField label="Código de seis dígitos" value={state.code}

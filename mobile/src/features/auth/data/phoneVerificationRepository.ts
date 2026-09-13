@@ -13,7 +13,10 @@ function translateError(error: unknown): never {
   if (isAxiosError(error)) {
     const body: unknown = error.response?.data;
     const detail = body && typeof body === 'object' && 'detail' in body ? body.detail : null;
-    const retry = Number(error.response?.headers?.['retry-after'] ?? 0);
+    const bodyRetry = body && typeof body === 'object' && 'retry_after_seconds' in body
+      ? Number(body.retry_after_seconds) : 0;
+    const headerRetry = Number(error.response?.headers?.['retry-after']);
+    const retry = Number.isFinite(headerRetry) && headerRetry >= 0 ? headerRetry : bodyRetry;
     throw new PhoneVerificationError(
       typeof detail === 'string' ? detail : 'No pudimos conectar. Vuelve a intentarlo.',
       Number.isFinite(retry) ? retry : 0,

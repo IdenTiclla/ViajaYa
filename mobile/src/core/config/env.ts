@@ -10,6 +10,7 @@ type Extra = {
   googleMapsApiKey: string;
   googleClientIds: { ios: string; android: string; web: string };
   facebookAppId: string;
+  facebookClientToken: string;
 };
 
 const extra = (Constants.expoConfig?.extra ?? {}) as Partial<Extra> & Record<string, unknown>;
@@ -34,4 +35,5 @@ export const env = {
     web: extra.googleClientIds?.web ?? '',
   },
   facebookAppId: extra.facebookAppId ?? '',
+  facebookClientToken: extra.facebookClientToken ?? '',
 } as const;

@@ -1,6 +1,6 @@
 # F02 — Identidad por teléfono y OTP
 
-Fecha: 2026-09-10. Fase en curso. **F02-A/B están implementados y ambas API están activadas y verificadas localmente**. Desarrollo responde también por la LAN y Metro sirve la interfaz nueva. Pruebas necesita recuperar una dirección HTTPS funcional antes de compilar el APK autorizado: dos túneles de Cloudflare se registraron pero sus dominios devolvieron NXDOMAIN. Se conserva el trabajo de F01 en la rama `codex/phase-01-environments`, sin commits ni publicación nuevos.
+Fecha inicial: 2026-09-10. Actualización: 2026-09-13. Fase en curso. **Google certificado en Desarrollo** (emulador y teléfono físico) el 2026-09-13; Facebook aplazado por la verificación de negocio de Meta. **F02-A/B están implementados y ambas API están activadas y verificadas localmente**. Desarrollo responde por la LAN; Pruebas tiene HTTPS mediante ngrok y un APK de F02-B descargado y verificado. Esta continuación corrige el OTP y añade el acceso/vinculación social de F02-C. Las credenciales sociales, el nuevo APK con adaptadores nativos y el recorrido manual siguen pendientes. Se conserva la rama `codex/phase-01-environments`, sin commits ni publicación nuevos.
 
 ## Alcance del bloque A
 
@@ -11,10 +11,15 @@ Fecha: 2026-09-10. Fase en curso. **F02-A/B están implementados y ambas API est
 - [x] Controlador y formulario móvil reutilizable con autofill de prueba, confirmación explícita, reintentos y salida para cambiar el número.
 - [x] F02-B (código): acceso unificado, alta/condiciones de pruebas, sesiones por dispositivo, rotación/revocación, cambio de número y recuperación.
 - [x] F02-B (API): respaldos, migraciones y acceso OTP/sesiones verificados contra Desarrollo y Pruebas locales.
-- [ ] F02-B (distribución): recuperar HTTPS público, generar APK de Pruebas y recorrer las pantallas en los teléfonos.
-- [ ] F02-C: Google/Facebook con vinculación explícita, migración probada de cuentas existentes y adaptador OTP real.
+- [x] F02-B (distribución inicial): HTTPS público recuperado con ngrok y APK de Pruebas de F02-B verificado.
+- [ ] F02-B (certificación): actualizar Pruebas con las correcciones de entrada/OTP y completar el recorrido manual en ambas variantes.
+- [x] F02-C (código): acceso social, vinculación explícita y migración de cuentas Google/Facebook con pruebas HTTP y PostgreSQL.
+- [x] F02-C (certificación Google, Desarrollo): cliente web + cliente Android en Google Cloud, dev build con SDK nativo y recorrido Google → teléfono → OTP → vinculación en emulador y en un Xiaomi físico (2026-09-13).
+- [ ] F02-C (certificación Google, Pruebas): SHA-1 del keystore de EAS registrado, `TESTING_GOOGLE_OAUTH_CLIENT_ID_WEB` en EAS, `GOOGLE_CLIENT_ID` en la API de Pruebas y APK `preview` recorrido en teléfono.
+- [ ] F02-C (Facebook): aplazado el 2026-09-13; Meta exige verificación de negocio para salir del modo desarrollo. El código queda listo y los botones permanecen deshabilitados mientras `FACEBOOK_APP_ID` esté vacío. Limited Login en iOS sigue pendiente.
+- [ ] F02-C (SMS): elegir proveedor e implementar el adaptador real. El usuario confirmó el 2026-09-11 que aún no eligió uno.
 
-Las rutas de login y registro ahora componen el mismo acceso por teléfono. El APK de Pruebas instalado anteriormente conserva la interfaz de F01 hasta generar e instalar su actualización.
+Las rutas de login y registro componen el mismo acceso por teléfono. El APK de Pruebas descargado durante la transferencia ya incluye F02-B; conserva la versión anterior a las correcciones y al acceso social de esta continuación.
 
 ## Contrato y decisiones
 
@@ -43,7 +48,7 @@ La migración `0024_phone_verification` añade `user_identities`, `phone_challen
 
 `PHONE_OTP_ENABLED=false` por defecto permite preparar el código sin habilitar el acceso. F02-B necesita `0025_managed_accounts`. Desarrollo y Pruebas ya tienen ambas migraciones y el acceso habilitado, con respaldos previos. Activación, respaldos e informe de pruebas reales: `local-files/phase02/`.
 
-Producción responde 503 al acceso por teléfono hasta conectar el adaptador real de F02-C. Nunca cae al simulador como respaldo. No se enviaron SMS ni se contrató un proveedor. Las sesiones emitidas en la certificación de F02-B usaron cuentas y bases de prueba aisladas. Google/Facebook, el adaptador real y la migración social siguen pendientes en F02-C; soporte y su panel se completan en F03.
+Producción responde 503 al acceso por teléfono hasta conectar el adaptador real de F02-C. Nunca cae al simulador como respaldo. No se enviaron SMS ni se contrató un proveedor. Las sesiones emitidas en la certificación de F02-B usaron cuentas y bases de prueba aisladas. La certificación de Google/Facebook y el adaptador SMS real siguen pendientes; soporte y su panel se completan en F03.
 
 ## F02-B: cuentas y sesiones
 
@@ -61,6 +66,15 @@ Los JWT antiguos sin sesión administrada se aceptan transitoriamente para cuent
 
 ## Evidencia de F02-B
 
+- OTP en Desarrollo (2026-09-11): los registros mostraban respuestas 429 al repetir solicitudes; no se observaron errores 500 de generación. La app descartaba el desafío al fallar un reenvío. Ahora conserva el código no vencido, permite verificarlo aunque el reenvío tenga espera y distingue ese límite del límite de verificación. Sin desafío disponible, muestra la espera y reintenta al vencer `Retry-After` mientras la pantalla permanece activa. Cambiar de número o salir cancela el intento. También interpreta `retry_after_seconds` cuando no está la cabecera. Pruebas de regresión: límite inicial, reenvío fallido, verificación durante la espera y cancelación de respuestas tardías.
+- Recorrido en Desarrollo (2026-09-11): se reportó «La solicitud no es válida» después
+  del login. El stack del pasajero abría `booking/offers` sin `rideId` porque era su
+  primera pantalla declarada. Se establece `(tabs)` como entrada explícita; Home
+  conserva la recuperación del viaje activo. Dos pruebas de regresión reprodujeron
+  el fallo antes del cambio y aprobaron después. Suite móvil: **260 aprobadas**,
+  TypeScript y lint aprobados. La confirmación manual del usuario sigue pendiente;
+  el APK de Pruebas descargado anteriormente requiere una nueva compilación para
+  incorporar esta corrección.
 - Suite completa del backend: **685 pruebas unitarias/e2e aprobadas**; dos advertencias de deprecación existentes de Starlette. Ruff, OpenAPI y contrato de tiempo real aprobados.
 - Pruebas HTTP: alta sin correo, términos vigentes, rol fijo, comprobantes ligados a número/dispositivo, reintentos idempotentes, migración de conductor conservando UUID/rol, contraseñas ambiguas, refresh repetido, separación de dispositivos, revocación propia, cambio de número y recuperación con autorización.
 - PostgreSQL: ocho altas simultáneas crean una cuenta/sesión; distintos IDs no reutilizan un comprobante; ocho refresh simultáneos rotan una vez; cambiar el número mientras otro login espera no entrega la cuenta anterior. La migración rechaza un downgrade que perdería cuentas sin correo.
@@ -72,7 +86,21 @@ Los JWT antiguos sin sesión administrada se aceptan transitoriamente para cuent
 - Compatibilidad en vivo: login del conductor existente y recepción del snapshot por WebSocket aprobados en ambos servicios locales; las API permanecieron listas después de desconectar. Informe: `local-files/phase02/local-websocket-verification.json`.
 - Se recuperó Docker conservando con otro nombre dos directorios que solo contenían sockets temporales vacíos e inaccesibles. Los volúmenes y las imágenes permanecieron intactos. Los dos dominios temporales de Cloudflare probados devolvieron NXDOMAIN, incluso al consultar DNS público/autoritativo; no se declara la certificación HTTPS/WS pública completada. Se propuso ngrok gratuito con dominio asignado estable, sujeto a la cuenta del usuario.
 
-Guía para teléfono y estado operativo: `local-files/phase02/como-probar-f02b.md`. Los logs de verificación quedan en `local-files/phase02/`.
+Guía actual para teléfono y estado operativo: `local-files/phase02/f02b-phone-checklist.md`. Los logs de verificación quedan en `local-files/phase02/`; los párrafos anteriores sobre Cloudflare documentan la situación previa a recuperar ngrok.
+
+## F02-C: acceso social y vinculación
+
+- `GET /auth/phone/capabilities` añade `social_providers`. Solo anuncia proveedores con configuración de servidor; clientes anteriores ignoran el campo y los nuevos toleran servidores sin él.
+- `POST /auth/social/{provider}/sign-in` verifica el token del proveedor y recibe instalación/nombre de dispositivo. Devuelve `phone_required` sin crear cuenta ni sesión si todavía falta la vinculación con un teléfono verificado. Una identidad ya vinculada recibe una sesión administrada y revocable.
+- La app solicita número y OTP, muestra una confirmación explícita y llama a `POST /auth/phone/link-social`. Ambos comprobantes se verifican antes de vincular. Los usuarios nuevos completan nombre y condiciones; las cuentas anteriores se buscan exclusivamente por proveedor/identificador, conservando UUID, datos y rol. El correo del proveedor no fusiona cuentas.
+- La vinculación, el consumo del OTP y la emisión de sesión comparten transacción. El bloqueo PostgreSQL sigue el orden identidad social → teléfono → cuenta; la unicidad existente impide mover una identidad o reemplazar silenciosamente otra del mismo proveedor. Repetir el comprobante y `request_id` recupera el resultado. Una identidad social no cambia un teléfono ya verificado por otro número.
+- `/auth/oauth/{provider}` queda como puente para cuentas sociales históricas aún no migradas. Ya no crea cuentas ni fusiona por correo; deja de autenticar al completar la migración. Su eliminación definitiva exige certificar la transición de los clientes existentes.
+- Google usa el SDK nativo y un ID token cuya audiencia corresponde al cliente web del servidor. La verificación de certificados se ejecuta fuera del event loop y con espera acotada. Facebook Android usa el SDK nativo; el backend valida aplicación, tipo USER, vigencia e igualdad del sujeto entre `debug_token` y `me`, sin exigir correo. Graph API v26.0; los tokens no se registran mediante el log de URLs de HTTPX.
+- Los SDK nativos se cargan al usarlos; un APK anterior mantiene el acceso por teléfono y deja los botones sociales deshabilitados. Facebook no se inicializa al abrir la app ni registra eventos/publicidad automáticamente. Facebook en iOS queda deshabilitado hasta implementar y verificar Limited Login con nonce. La web conserva AuthSession; no se certificó su recorrido con proveedores reales.
+
+Evidencia manual del 2026-09-13 (Desarrollo): `GET /auth/phone/capabilities` anuncia `social_providers: ["google"]`; el recorrido completo registró `POST /auth/social/google/sign-in` 200 → `POST /auth/phone/challenges` 201 → `POST /auth/phone/verify` 200 → `POST /auth/phone/link-social` 200, primero en el emulador `viajaya_pasajero` y después en un teléfono Xiaomi con el mismo dev build (`com.viajaya.app.dev`, keystore de debug), donde la identidad ya vinculada reutilizó la cuenta. La pantalla de consentimiento sigue en modo *Testing*: solo entran los usuarios de prueba registrados; publicarla (scopes básicos, sin verificación de Google) abre el acceso a cualquier cuenta. La IP LAN de Desarrollo cambió a `192.168.1.57`. Sin cambios de código en esta certificación.
+
+Evidencia automatizada de la continuación anterior: **701 pruebas backend y 275 móviles aprobadas**, Ruff, TypeScript, lint, OpenAPI y tipos generados aprobados. **7 pruebas PostgreSQL aprobadas** en una base recién creada y eliminada al finalizar, incluidas ocho vinculaciones simultáneas idempotentes y dos teléfonos compitiendo por una identidad. Generación Android verificada en copias aisladas para Desarrollo, Pruebas y Producción, con proveedores ausentes y con configuración sintética. El bundle completo servido por Metro incluye la espera/reintento del OTP, la confirmación social y la detección de SDK nativo; ambas API y HTTPS de Pruebas devolvieron 200 al finalizar. Estas comprobaciones no certifican un APK firmado ni un login real en Google/Facebook. Pruebas conserva su imagen/API de F02-B hasta desplegar el nuevo código. Guía de configuración y límites: [acceso social](../social-access-setup.md).
 
 ## Evidencia anterior de F02-A
 

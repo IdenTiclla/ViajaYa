@@ -4,7 +4,7 @@ import type {
 } from '../domain/phoneVerification';
 
 type State = {
-  phase: 'idle' | 'requesting' | 'code' | 'verifying' | 'verified';
+  phase: 'idle' | 'requesting' | 'waiting' | 'code' | 'verifying' | 'verified';
   challenge: PhoneChallenge | null;
   code: string;
   error: string | null;
@@ -35,15 +35,41 @@ export function createPhoneVerificationController(
     state = next;
     listeners.forEach((listener) => listener());
   };
-  const fail = (error: unknown, phase: 'idle' | 'code') => {
+  const fail = (error: unknown, operation: 'request' | 'verify') => {
     const retry = error instanceof PhoneVerificationError ? error.retryAfterSeconds : 0;
-    publish({ ...state, phase,
-      error: error instanceof PhoneVerificationError
+    const requesting = operation === 'request';
+    const challenge = state.challenge && Date.parse(state.challenge.expiresAt) > clock()
+      ? state.challenge : null;
+    publish({ ...state, challenge, code: challenge ? state.code : '',
+      phase: challenge ? 'code' : requesting && retry > 0 ? 'waiting' : 'idle',
+      error: requesting && retry > 0 ? null : error instanceof PhoneVerificationError
         ? error.message : 'No pudimos conectar. Vuelve a intentarlo.',
-      resendAt: Math.max(state.resendAt, clock() + retry * 1000),
-      verifyAt: phase === 'code' ? clock() + retry * 1000 : state.verifyAt,
+      resendAt: requesting ? Math.max(state.resendAt, clock() + retry * 1000) : state.resendAt,
+      verifyAt: requesting ? state.verifyAt : clock() + retry * 1000,
     });
   };
+
+  async function request(phone: string, deviceId: string) {
+    if (pending || clock() < state.resendAt || state.phase === 'verified') return;
+    const current = ++generation;
+    const abort = new AbortController();
+    pending = abort;
+    // A rejected resend does not invalidate the challenge already delivered to the user.
+    publish({ ...state, phase: 'requesting', error: null });
+    try {
+      const result = await repository.request(phone, deviceId, abort.signal);
+      if (current !== generation) return;
+      const { testCode, ...challenge } = result;
+      const code = simulated && policy.otpTestAutofill && /^[0-9]{6}$/.test(testCode ?? '')
+        ? testCode! : '';
+      publish({ ...state, phase: 'code', challenge, code,
+        resendAt: clock() + result.resendAfterSeconds * 1000 });
+    } catch (error) {
+      if (current === generation) fail(error, 'request');
+    } finally {
+      if (current === generation) pending = null;
+    }
+  }
 
   return {
     getSnapshot: () => state,
@@ -62,25 +88,9 @@ export function createPhoneVerificationController(
       pending = null;
       publish(initialState());
     },
-    async request(phone: string, deviceId: string) {
-      if (pending || clock() < state.resendAt || state.phase === 'verified') return;
-      const current = ++generation;
-      const abort = new AbortController();
-      pending = abort;
-      publish({ ...state, phase: 'requesting', challenge: null, code: '', error: null });
-      try {
-        const result = await repository.request(phone, deviceId, abort.signal);
-        if (current !== generation) return;
-        const { testCode, ...challenge } = result;
-        const code = simulated && policy.otpTestAutofill && /^[0-9]{6}$/.test(testCode ?? '')
-          ? testCode! : '';
-        publish({ ...state, phase: 'code', challenge, code,
-          resendAt: clock() + result.resendAfterSeconds * 1000 });
-      } catch (error) {
-        if (current === generation) fail(error, 'idle');
-      } finally {
-        if (current === generation) pending = null;
-      }
+    request,
+    async retryRequest(phone: string, deviceId: string) {
+      if (state.phase === 'waiting') await request(phone, deviceId);
     },
     async verify(deviceId: string) {
       if (pending || state.phase !== 'code' || !state.challenge || clock() < state.verifyAt) return;
@@ -103,7 +113,7 @@ export function createPhoneVerificationController(
           publish({ ...state, phase: 'verified', code: '', challenge: null, proof });
         }
       } catch (error) {
-        if (current === generation) fail(error, 'code');
+        if (current === generation) fail(error, 'verify');
       } finally {
         if (current === generation) pending = null;
       }

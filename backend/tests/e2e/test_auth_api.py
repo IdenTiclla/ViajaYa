@@ -91,13 +91,10 @@ async def test_me_rejects_invalid_token(client):
 
 
 @pytest.mark.parametrize("provider", ["google", "facebook"])
-async def test_oauth_login_creates_user(client, provider):
+async def test_legacy_oauth_requires_phone_for_new_accounts(client, provider):
     resp = await client.post(f"/api/v1/auth/oauth/{provider}", json={"token": "uid-42"})
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["user"]["auth_provider"] == provider
-    assert body["user"]["email"] == f"uid-42.{provider}@example.com"
-    assert "access_token" in body["tokens"]
+    assert resp.status_code == 401
+    assert "teléfono" in resp.json()["detail"]
 
 
 async def test_oauth_unsupported_provider(client):

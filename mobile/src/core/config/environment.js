@@ -72,6 +72,7 @@ function resolveBuildEnvironment(variables) {
       web: read('GOOGLE_OAUTH_CLIENT_ID_WEB'),
     },
     facebookAppId: read('FACEBOOK_APP_ID'),
+    facebookClientToken: read('FACEBOOK_CLIENT_TOKEN'),
   };
 }
 

@@ -1,8 +1,4 @@
-"""Caso de uso: autenticar/registrar mediante un proveedor OAuth (Google/Facebook).
-
-Verifica el token con el proveedor, hace find-or-create del usuario y emite
-nuestros propios JWT (reutilizando ``issue_token_pair``).
-"""
+"""Keep existing social accounts accessible while phone migration rolls out."""
 
 from __future__ import annotations
 
@@ -32,26 +28,7 @@ class AuthenticateWithOAuth:
             raise UnsupportedProviderError(f"Proveedor no soportado: {data.provider.value}")
 
         profile = await verifier.verify(data.token)
-        user = await self._find_or_create(profile)
-        if user.legacy_auth_disabled or not user.is_active:
+        user = await self._users.get_by_provider(profile.provider, profile.provider_id)
+        if not user or user.legacy_auth_disabled or not user.is_active:
             raise InvalidCredentialsError("Verifica tu teléfono para iniciar sesión.")
         return user, issue_token_pair(self._tokens, user.id)
-
-    async def _find_or_create(self, profile) -> User:
-        existing = await self._users.get_by_provider(profile.provider, profile.provider_id)
-        if existing:
-            return existing
-
-        # Vincula por email si ya hay una cuenta con ese correo.
-        by_email = await self._users.get_by_email(profile.email)
-        if by_email:
-            return by_email
-
-        return await self._users.add(
-            User(
-                full_name=profile.full_name,
-                email=profile.email,
-                auth_provider=profile.provider,
-                provider_id=profile.provider_id,
-            )
-        )

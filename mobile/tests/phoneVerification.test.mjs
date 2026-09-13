@@ -118,7 +118,7 @@ test('incorrect codes keep the form editable and allow recovery', async () => {
   assert.equal(controller.getSnapshot().phase, 'verified');
 });
 
-test('network errors leave a retry path and respect Retry-After', async () => {
+test('request limits show a waiting state and respect Retry-After', async () => {
   let calls = 0;
   const { controller, advance } = fixture({
     async request() {
@@ -127,12 +127,69 @@ test('network errors leave a retry path and respect Retry-After', async () => {
     },
   });
   await controller.request(phone, device);
-  assert.equal(controller.getSnapshot().phase, 'idle');
+  assert.equal(controller.getSnapshot().phase, 'waiting');
+  assert.equal(controller.getSnapshot().error, null);
   await controller.request(phone, device);
   assert.equal(calls, 1);
   advance(90_000);
   await controller.request(phone, device);
   assert.equal(calls, 2);
+});
+
+test('an initial request automatically resumes once the server cooldown ends', async () => {
+  let calls = 0;
+  const { controller, advance } = fixture({
+    async request() {
+      calls += 1;
+      if (calls === 1) throw new PhoneVerificationError('Espera.', 30);
+      return { challengeId: 'retry', phone, purpose: 'sign_in',
+        expiresAt: '2026-09-10T05:10:00Z', resendAfterSeconds: 60, testCode: '098765' };
+    },
+  });
+  await controller.request(phone, device);
+  await controller.retryRequest(phone, device);
+  assert.equal(calls, 1);
+  advance(30_000);
+  await controller.retryRequest(phone, device);
+  assert.equal(controller.getSnapshot().phase, 'code');
+  assert.equal(controller.getSnapshot().code, '098765');
+  await controller.retryRequest(phone, device);
+  assert.equal(calls, 2);
+});
+
+for (const retryAfterSeconds of [0, 90]) {
+  test(`a failed resend preserves the current code and verification (${retryAfterSeconds}s)`, async () => {
+    let calls = 0;
+    const { controller, advance } = fixture({
+      async request() {
+        calls += 1;
+        if (calls > 1) throw new PhoneVerificationError('No se pudo reenviar.', retryAfterSeconds);
+        return { challengeId: 'current', phone, purpose: 'sign_in',
+          expiresAt: '2026-09-10T05:10:00Z', resendAfterSeconds: 60, testCode: '098765' };
+      },
+    });
+    await controller.request(phone, device);
+    advance(60_000);
+    await controller.request(phone, device);
+    assert.equal(controller.getSnapshot().challenge?.challengeId, 'current');
+    assert.equal(controller.getSnapshot().code, '098765');
+    await controller.verify(device);
+    assert.equal(controller.getSnapshot().phase, 'verified');
+  });
+}
+
+test('leaving a cooldown cancels its automatic retry', async () => {
+  let calls = 0;
+  const { controller, advance } = fixture({ async request() {
+    calls += 1;
+    throw new PhoneVerificationError('Espera.', 30);
+  } });
+  await controller.request(phone, device);
+  controller.reset();
+  advance(30_000);
+  await controller.retryRequest(phone, device);
+  assert.equal(calls, 1);
+  assert.equal(controller.getSnapshot().phase, 'idle');
 });
 
 test('changing phone cancels the request and ignores a late response', async () => {

@@ -20,6 +20,7 @@ export const phoneAccessRepository: PhoneAccessRepository = {
     );
     return {
       enabled: data.enabled, termsVersion: data.terms_version, termsText: data.terms_text,
+      socialProviders: data.social_providers ?? [],
       countries: data.countries.map((country) => ({
         region: country.region, callingCode: country.calling_code,
       })),
@@ -27,12 +28,25 @@ export const phoneAccessRepository: PhoneAccessRepository = {
   },
   async complete(payload, signal) {
     const legacy = payload.email !== undefined;
+    const social = payload.social;
     const { data } = await api.post<Schemas['PhoneCompleteResponse']>(
-      legacy ? '/auth/phone/link-legacy' : '/auth/phone/complete',
-      { ...completeDto(payload), ...(legacy ? { email: payload.email, password: payload.password } : {}) },
+      social ? '/auth/phone/link-social' : legacy ? '/auth/phone/link-legacy' : '/auth/phone/complete',
+      { ...completeDto(payload), ...(social
+        ? { social_provider: social.provider, social_token: social.token }
+        : legacy ? { email: payload.email, password: payload.password } : {}) },
       { skipAuth: true, signal },
     );
     if (data.status === 'profile_required') return null;
+    if (!data.auth) throw new Error('La respuesta de acceso está incompleta. Vuelve a intentar.');
+    return toAuthResult(data.auth);
+  },
+  async signInSocial(credential, deviceId, deviceName, signal) {
+    const { data } = await api.post<Schemas['SocialSignInResponse']>(
+      `/auth/social/${credential.provider}/sign-in`,
+      { token: credential.token, device_id: deviceId, device_name: deviceName },
+      { skipAuth: true, signal },
+    );
+    if (data.status === 'phone_required') return null;
     if (!data.auth) throw new Error('La respuesta de acceso está incompleta. Vuelve a intentar.');
     return toAuthResult(data.auth);
   },

@@ -26,6 +26,23 @@ class LegacyPhoneLinkRequest(PhoneCompleteRequest):
     password: str = Field(min_length=1, max_length=256, repr=False)
 
 
+class SocialPhoneLinkRequest(PhoneCompleteRequest):
+    social_provider: Literal["google", "facebook"]
+    social_token: str = Field(min_length=1, max_length=8192, repr=False)
+
+
+class SocialSignInRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    token: str = Field(min_length=1, max_length=8192, repr=False)
+    device_id: UUID
+    device_name: str = Field(default="Teléfono", min_length=1, max_length=100)
+
+
+class SocialSignInResponse(BaseModel):
+    status: Literal["phone_required", "authenticated"]
+    auth: AuthResponse | None = None
+
+
 class PhoneCompleteResponse(BaseModel):
     status: Literal["profile_required", "authenticated"]
     auth: AuthResponse | None = None
@@ -41,6 +58,7 @@ class PhoneCapabilitiesResponse(BaseModel):
     countries: list[PhoneCountry]
     terms_version: str
     terms_text: str
+    social_providers: list[Literal["google", "facebook"]] = Field(default_factory=list)
 
 
 class AccountSessionResponse(BaseModel):

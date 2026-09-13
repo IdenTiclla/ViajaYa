@@ -1,11 +1,12 @@
 /** Keep account completion retryable and discard work from abandoned entry attempts. */
-import type { PhoneAccessRepository, PhoneCapabilities, PhoneCompletion } from '../domain/phoneAccess';
+import type { PhoneAccessRepository, PhoneCapabilities, PhoneCompletion, SocialCredential, SocialProvider } from '../domain/phoneAccess';
 import type { PhoneVerificationProof } from '../domain/phoneVerification';
 import type { AuthResult } from '../domain/types';
 
-export type EntryMode = 'sign_in' | 'legacy' | 'recovery' | 'recovery_complete';
+export type EntryMode = 'sign_in' | 'social' | 'legacy' | 'recovery' | 'recovery_complete';
 type State = {
-  step: 'loading' | 'phone' | 'code' | 'profile' | 'legacy' | 'recovery' | 'case' | 'complete';
+  step: 'loading' | 'phone' | 'code' | 'profile' | 'legacy' | 'recovery' | 'case' | 'complete' | 'social_confirmation';
+  socialProvider: SocialProvider | null;
   mode: EntryMode;
   capabilities: PhoneCapabilities | null;
   deviceId: string;
@@ -24,11 +25,12 @@ export function createPhoneAccessController(dependencies: {
   errorMessage: (error: unknown) => string;
 }) {
   let state: State = { step: 'loading', mode: 'sign_in', capabilities: null,
-    deviceId: '', phone: '', busy: false, error: null, caseId: null };
+    deviceId: '', phone: '', busy: false, error: null, caseId: null, socialProvider: null };
   const listeners = new Set<() => void>();
   let generation = 0;
   let pending: AbortController | null = null;
   let completion: PhoneCompletion | null = null;
+  let social: SocialCredential | null = null;
   const publish = (values: Partial<State>) => {
     state = { ...state, ...values };
     listeners.forEach((listener) => listener());
@@ -62,7 +64,7 @@ export function createPhoneAccessController(dependencies: {
   return {
     getSnapshot: () => state,
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
-    dispose() { cancel(); publish({ busy: false }); },
+    dispose() { cancel(); completion = null; social = null; publish({ busy: false, socialProvider: null }); },
     async initialize() {
       await run(async (signal, current) => {
         const [capabilities, deviceId] = await Promise.all([
@@ -73,15 +75,36 @@ export function createPhoneAccessController(dependencies: {
     },
     start(phone: string, mode: EntryMode) {
       cancel(); completion = null;
-      publish({ phone, mode, step: 'code', busy: false, error: null, caseId: null });
+      if (mode !== 'social') social = null;
+      publish({ phone, mode, step: 'code', busy: false, error: null, caseId: null,
+        socialProvider: social?.provider ?? null });
     },
     back() {
-      cancel(); completion = null;
-      publish({ step: 'phone', busy: false, error: null });
+      cancel(); completion = null; social = null;
+      publish({ step: 'phone', mode: 'sign_in', busy: false, error: null, socialProvider: null });
+    },
+    async signInSocial(credential: SocialCredential) {
+      if (!state.deviceId || state.busy) return;
+      completion = null; social = null;
+      await run(async (signal, current) => {
+        const result = await dependencies.repository.signInSocial(
+          credential, state.deviceId, dependencies.deviceName, signal,
+        );
+        if (!current()) return;
+        if (!result) {
+          social = credential;
+          publish({ step: 'phone', mode: 'social', socialProvider: credential.provider });
+          return;
+        }
+        await dependencies.acceptSession(result);
+        if (current()) publish({ step: 'complete', socialProvider: null });
+      });
     },
     async verified(proof: PhoneVerificationProof) {
       completion = { phone: state.phone, verificationToken: proof.verificationToken,
-        deviceId: state.deviceId, deviceName: dependencies.deviceName, requestId: dependencies.randomId() };
+        deviceId: state.deviceId, deviceName: dependencies.deviceName, requestId: dependencies.randomId(),
+        ...(social ? { social } : {}) };
+      if (social) { publish({ step: 'social_confirmation' }); return; }
       if (state.mode === 'legacy') { publish({ step: 'legacy' }); return; }
       if (state.mode.startsWith('recovery')) { publish({ step: 'recovery' }); return; }
       publish({ step: 'complete' });

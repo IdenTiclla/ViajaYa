@@ -8,6 +8,7 @@ import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/
 import { Button, TextField } from '@/shared/components';
 import { useAuthStore } from '@/store/authStore';
 import { createPhoneAccessController, type EntryMode } from '../application/phoneAccessController';
+import { useSocialAuth } from '../application/useSocialAuth';
 import { getInstallationId } from '../data/installationId';
 import { phoneAccessRepository } from '../data/phoneAccessRepository';
 import { BrandHeader } from './BrandHeader';
@@ -34,12 +35,19 @@ export function PhoneEntryScreen() {
   const [reason, setReason] = useState('');
   const [caseId, setCaseId] = useState('');
   const [mode, setMode] = useState<EntryMode>('sign_in');
+  const [socialError, setSocialError] = useState<string | null>(null);
+  const social = useSocialAuth({
+    onCredential: (credential) => controller.signInSocial(credential),
+    onError: setSocialError,
+  });
   useEffect(() => {
     void controller.initialize();
     return () => controller.dispose();
   }, [controller]);
   const recovering = mode === 'recovery' || mode === 'recovery_complete';
-  const back = () => { setPassword(''); controller.back(); };
+  const back = () => { setPassword(''); setSocialError(null); controller.back(); };
+  const socialName = state.socialProvider === 'google' ? 'Google' : 'Facebook';
+  const socialBusy = social.googleLoading || social.facebookLoading;
   return (
     <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -59,6 +67,9 @@ export function PhoneEntryScreen() {
                 ? 'Verifica un número al que tengas acceso. La recuperación requiere revisar tu identidad.'
                 : mode === 'legacy' ? 'Verifica tu número y luego usa tu correo y contraseña anteriores. Conservaremos tus viajes y tu rol.'
                   : 'Usa tu teléfono para iniciar sesión o crear tu cuenta.'}</Text>
+              {state.socialProvider && <Text style={styles.text}>
+                Verificamos tu cuenta de {socialName}. Ahora verifica tu número; después podrás confirmar la vinculación.
+              </Text>}
               {state.capabilities?.countries.map((country) => (
                 <Button key={country.region} title={`${country.region === 'BO' ? 'Bolivia' : country.region} (${country.callingCode})${callingCode === country.callingCode ? ' ✓' : ''}`}
                   variant="secondary" onPress={() => setCallingCode(country.callingCode)} />
@@ -72,18 +83,37 @@ export function PhoneEntryScreen() {
               </Text>}
               {!state.capabilities?.enabled && <Button title="Reintentar conexión" variant="secondary"
                 loading={state.busy} onPress={() => { void controller.initialize(); }} />}
-              <Button title="Continuar" disabled={!state.capabilities?.enabled || number.length < 6}
-                onPress={() => controller.start(`${callingCode}${number}`, mode)} />
+              <Button title="Continuar" disabled={!state.capabilities?.enabled || number.length < 6 || state.busy || socialBusy}
+                onPress={() => controller.start(`${callingCode}${number}`, state.socialProvider ? 'social' : mode)} />
+              {mode === 'sign_in' && !state.socialProvider && <>
+                <Button title="Continuar con Google" variant="secondary" loading={social.googleLoading}
+                  disabled={state.busy || social.googleDisabled || !state.capabilities?.socialProviders.includes('google')}
+                  onPress={() => { setSocialError(null); social.signInWithGoogle(); }} />
+                <Button title="Continuar con Facebook" variant="secondary" loading={social.facebookLoading}
+                  disabled={state.busy || social.facebookDisabled || !state.capabilities?.socialProviders.includes('facebook')}
+                  onPress={() => { setSocialError(null); social.signInWithFacebook(); }} />
+              </>}
+              {state.socialProvider && <Button title="Usar solo mi teléfono" variant="secondary" disabled={state.busy || socialBusy}
+                onPress={back} />}
               <Button title={mode === 'legacy' ? 'Volver al acceso por teléfono' : 'Ya tenía una cuenta con correo'}
-                variant="secondary" onPress={() => setMode(mode === 'legacy' ? 'sign_in' : 'legacy')} />
+                variant="secondary" disabled={state.busy || socialBusy}
+                onPress={() => { back(); setMode(mode === 'legacy' ? 'sign_in' : 'legacy'); }} />
               <Button title={recovering ? 'Volver al acceso por teléfono' : 'No tengo acceso a mi número'}
-                variant="secondary" onPress={() => setMode(recovering ? 'sign_in' : 'recovery')} />
+                variant="secondary" disabled={state.busy || socialBusy}
+                onPress={() => { back(); setMode(recovering ? 'sign_in' : 'recovery'); }} />
               {recovering && <Button title={mode === 'recovery_complete' ? 'Solicitar una revisión' : 'Ya tengo una recuperación aprobada'}
                 variant="secondary" onPress={() => setMode(mode === 'recovery_complete' ? 'recovery' : 'recovery_complete')} />}
             </>}
             {state.step === 'code' && <PhoneCodeForm phone={state.phone} deviceId={state.deviceId}
               autoRequest purpose={state.mode.startsWith('recovery') ? 'recovery' : 'sign_in'}
               onVerified={(proof) => { void controller.verified(proof); }} onChangePhone={back} />}
+            {state.step === 'social_confirmation' && <>
+              <Text accessibilityRole="header" style={styles.title}>Confirma tu acceso con {socialName}</Text>
+              <Text style={styles.text}>Vincularemos tu cuenta de {socialName} con el número verificado {state.phone}.
+                Si ya tenías una cuenta con esa identidad, conservaremos tus viajes y tu rol.</Text>
+              <Button title={`Vincular ${socialName} y continuar`} loading={state.busy}
+                onPress={() => { void controller.complete(); }} />
+            </>}
             {state.step === 'profile' && <>
               <Text accessibilityRole="header" style={styles.title}>Completa tu cuenta</Text>
               <Text style={styles.text}>{state.phone} · verificado</Text>
@@ -134,6 +164,7 @@ export function PhoneEntryScreen() {
               <Text style={styles.text}>Tu cuenta conserva sus datos. La revisión de solicitudes se habilitará con el soporte de ViajaYa; en esta etapa de pruebas no hay un plazo de respuesta.</Text>
             </>}
             {state.error && <Text accessibilityRole="alert" style={styles.error}>{state.error}</Text>}
+            {socialError && <Text accessibilityRole="alert" style={styles.error}>{socialError}</Text>}
             {state.step === 'complete' && <Button title="Reintentar acceso" loading={state.busy}
               onPress={() => { void controller.complete(); }} />}
             {!['phone', 'code', 'loading'].includes(state.step) && <Button title="Volver al inicio"

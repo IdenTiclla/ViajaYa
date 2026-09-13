@@ -1,6 +1,6 @@
 """Translate account access and session management requests into use cases."""
 
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 import phonenumbers
@@ -8,11 +8,13 @@ from fastapi import APIRouter, Depends, Header, Response
 
 from app.api.deps import (
     SettingsDep,
+    SocialAccountsDep,
     get_change_account_phone,
     get_complete_account_recovery,
     get_complete_phone_sign_in,
     get_manage_account_sessions,
     get_request_account_recovery,
+    get_sign_in_with_social,
 )
 from app.api.errors import unauthorized
 from app.api.v1.routers.auth import _auth_response
@@ -29,6 +31,9 @@ from app.api.v1.schemas.account_access import (
     RecoveryCaseResponse,
     RecoveryCompleteRequest,
     RecoverySubmitRequest,
+    SocialPhoneLinkRequest,
+    SocialSignInRequest,
+    SocialSignInResponse,
 )
 from app.api.v1.schemas.auth import AuthResponse
 from app.application.use_cases.change_account_phone import ChangeAccountPhone
@@ -36,6 +41,7 @@ from app.application.use_cases.complete_account_recovery import CompleteAccountR
 from app.application.use_cases.complete_phone_sign_in import CompletePhoneSignIn, PhoneSignInResult
 from app.application.use_cases.manage_account_sessions import ManageAccountSessions
 from app.application.use_cases.request_account_recovery import RequestAccountRecovery
+from app.application.use_cases.sign_in_with_social import SignInWithSocial
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 CompleteDep = Annotated[CompletePhoneSignIn, Depends(get_complete_phone_sign_in)]
@@ -59,7 +65,9 @@ def _completion(result: PhoneSignInResult) -> PhoneCompleteResponse:
 
 
 @router.get("/phone/capabilities", response_model=PhoneCapabilitiesResponse)
-async def capabilities(settings: SettingsDep, response: Response) -> PhoneCapabilitiesResponse:
+async def capabilities(
+    settings: SettingsDep, social: SocialAccountsDep, response: Response,
+) -> PhoneCapabilitiesResponse:
     response.headers["Cache-Control"] = "no-store"
     return PhoneCapabilitiesResponse(
         enabled=(
@@ -75,6 +83,7 @@ async def capabilities(settings: SettingsDep, response: Response) -> PhoneCapabi
         ],
         terms_version=settings.phone_terms_version,
         terms_text=settings.phone_terms_text,
+        social_providers=list(social.verifiers),
     )
 
 
@@ -101,6 +110,27 @@ async def link_legacy(
             legacy_email=body.email,
             legacy_password=body.password,
         )
+    )
+
+
+@router.post("/phone/link-social", response_model=PhoneCompleteResponse)
+async def link_social(
+    body: SocialPhoneLinkRequest, use_case: CompleteDep, response: Response,
+) -> PhoneCompleteResponse:
+    response.headers["Cache-Control"] = "no-store"
+    return _completion(await use_case.execute(**body.model_dump()))
+
+
+@router.post("/social/{provider}/sign-in", response_model=SocialSignInResponse)
+async def social_sign_in(
+    provider: Literal["google", "facebook"], body: SocialSignInRequest, response: Response,
+    use_case: Annotated[SignInWithSocial, Depends(get_sign_in_with_social)],
+) -> SocialSignInResponse:
+    response.headers["Cache-Control"] = "no-store"
+    result = await use_case.execute(provider, **body.model_dump())
+    return SocialSignInResponse(
+        status="authenticated" if result.user else "phone_required",
+        auth=_auth_response(result.user, result.tokens) if result.user else None,
     )
 
 

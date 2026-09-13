@@ -112,3 +112,17 @@ test('Retry-After reaches the form without trying to refresh an authentication s
   ), (error) => error.retryAfterSeconds === 90);
   assert.equal(requests, 1);
 });
+
+test('a cooldown survives a missing Retry-After header through the response body', async (t) => {
+  const adapter = api.defaults.adapter;
+  t.after(() => { api.defaults.adapter = adapter; });
+  api.defaults.adapter = async (config) => {
+    throw new AxiosError('limited', 'ERR_BAD_REQUEST', config, null, {
+      status: 429, statusText: 'Too Many Requests', config, headers: {},
+      data: { detail: 'Espera antes de volver a intentarlo.', retry_after_seconds: 45 },
+    });
+  };
+  await assert.rejects(phoneVerificationRepository.request(
+    '+59171234567', 'device-1', new AbortController().signal,
+  ), (error) => error.retryAfterSeconds === 45);
+});

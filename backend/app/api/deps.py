@@ -48,6 +48,7 @@ from app.application.interfaces import (
     TokenService,
 )
 from app.application.managed_sessions import ManagedSessions
+from app.application.social_accounts import SocialAccounts
 from app.application.use_cases.accept_offer import AcceptOffer
 from app.application.use_cases.announce_open_ride import AnnounceOpenRide
 from app.application.use_cases.authenticate_user import AuthenticateUser
@@ -108,6 +109,7 @@ from app.application.use_cases.renew_passenger_presence import RenewPassengerPre
 from app.application.use_cases.request_account_recovery import RequestAccountRecovery
 from app.application.use_cases.request_phone_code import RequestPhoneCode
 from app.application.use_cases.set_driver_online import SetDriverOnline
+from app.application.use_cases.sign_in_with_social import SignInWithSocial
 from app.application.use_cases.skip_ride_rating import SkipRideRating
 from app.application.use_cases.update_ride_fare import UpdateRideFare
 from app.application.use_cases.update_ride_status import UpdateRideStatus
@@ -155,6 +157,7 @@ from app.infrastructure.db.scheduled_actions_observability import (
     SqlAlchemyScheduledActionsOperationalReader,
 )
 from app.infrastructure.db.session import async_session_factory, get_session
+from app.infrastructure.db.social_identities import SqlAlchemySocialIdentityRepository
 from app.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from app.infrastructure.oauth.facebook_verifier import FacebookIdentityVerifier
 from app.infrastructure.oauth.google_verifier import GoogleIdentityVerifier
@@ -315,12 +318,30 @@ TokenServiceDep = Annotated[TokenService, Depends(get_token_service)]
 
 
 def get_oauth_verifiers(settings: SettingsDep) -> dict[str, SocialIdentityVerifier]:
-    return {
-        AuthProvider.GOOGLE.value: GoogleIdentityVerifier(settings.google_client_id),
-        AuthProvider.FACEBOOK.value: FacebookIdentityVerifier(
+    verifiers: dict[str, SocialIdentityVerifier] = {}
+    if settings.google_client_id:
+        verifiers[AuthProvider.GOOGLE.value] = GoogleIdentityVerifier(settings.google_client_id)
+    if settings.facebook_app_id and settings.facebook_app_secret:
+        verifiers[AuthProvider.FACEBOOK.value] = FacebookIdentityVerifier(
             settings.facebook_app_id, settings.facebook_app_secret
-        ),
-    }
+        )
+    return verifiers
+
+
+def get_social_accounts(
+    session: SessionDep, users: UserRepositoryDep,
+    verifiers: Annotated[dict[str, SocialIdentityVerifier], Depends(get_oauth_verifiers)],
+) -> SocialAccounts:
+    return SocialAccounts(SqlAlchemySocialIdentityRepository(session), users, verifiers)
+
+
+SocialAccountsDep = Annotated[SocialAccounts, Depends(get_social_accounts)]
+
+
+def get_sign_in_with_social(
+    session: SessionDep, access: ManagedSessionsDep, social: SocialAccountsDep,
+) -> SignInWithSocial:
+    return SignInWithSocial(social, access, SqlAlchemyUnitOfWork(session))
 
 
 # --- Casos de uso ---
@@ -392,6 +413,7 @@ def get_refresh_token(
 
 def get_complete_phone_sign_in(
     session: SessionDep, settings: SettingsDep, access: ManagedSessionsDep,
+    social: SocialAccountsDep,
 ) -> CompletePhoneSignIn:
     return CompletePhoneSignIn(
         access, SqlAlchemyPhoneChallengeStore(session),
@@ -401,6 +423,7 @@ def get_complete_phone_sign_in(
         enabled=(settings.phone_otp_enabled and settings.app_env != "production"
                  and settings.otp_mode == "mock"),
         terms_version=settings.phone_terms_version,
+        social=social,
     )
 
 

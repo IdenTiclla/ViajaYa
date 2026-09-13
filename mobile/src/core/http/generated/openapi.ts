@@ -191,6 +191,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/phone/link-social": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Link Social */
+        post: operations["link_social_api_v1_auth_phone_link_social_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/phone/verify": {
         parameters: {
             query?: never;
@@ -322,6 +339,23 @@ export interface paths {
         post?: never;
         /** Revoke Session */
         delete: operations["revoke_session_api_v1_auth_sessions__session_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/social/{provider}/sign-in": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Social Sign In */
+        post: operations["social_sign_in_api_v1_auth_social__provider__sign_in_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1218,6 +1252,8 @@ export interface components {
             countries: components["schemas"]["PhoneCountry"][];
             /** Enabled */
             enabled: boolean;
+            /** Social Providers */
+            social_providers?: ("google" | "facebook")[];
             /** Terms Text */
             terms_text: string;
             /** Terms Version */
@@ -1890,6 +1926,63 @@ export interface components {
          * @enum {string}
          */
         ServiceType: "taxi" | "moto" | "delivery";
+        /** SocialPhoneLinkRequest */
+        SocialPhoneLinkRequest: {
+            /**
+             * Device Id
+             * Format: uuid
+             */
+            device_id: string;
+            /**
+             * Device Name
+             * @default Teléfono
+             */
+            device_name: string;
+            /** Full Name */
+            full_name?: string | null;
+            /** Phone */
+            phone: string;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /**
+             * Social Provider
+             * @enum {string}
+             */
+            social_provider: "google" | "facebook";
+            /** Social Token */
+            social_token: string;
+            /** Terms Version */
+            terms_version?: string | null;
+            /** Verification Token */
+            verification_token: string;
+        };
+        /** SocialSignInRequest */
+        SocialSignInRequest: {
+            /**
+             * Device Id
+             * Format: uuid
+             */
+            device_id: string;
+            /**
+             * Device Name
+             * @default Teléfono
+             */
+            device_name: string;
+            /** Token */
+            token: string;
+        };
+        /** SocialSignInResponse */
+        SocialSignInResponse: {
+            auth?: components["schemas"]["AuthResponse"] | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "phone_required" | "authenticated";
+        };
         /** TestPhoneChallengeResponse */
         TestPhoneChallengeResponse: {
             /**
@@ -2346,6 +2439,39 @@ export interface operations {
             };
         };
     };
+    link_social_api_v1_auth_phone_link_social_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SocialPhoneLinkRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PhoneCompleteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     verify_code_api_v1_auth_phone_verify_post: {
         parameters: {
             query?: never;
@@ -2590,6 +2716,41 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    social_sign_in_api_v1_auth_social__provider__sign_in_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: "google" | "facebook";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SocialSignInRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SocialSignInResponse"];
+                };
             };
             /** @description Validation Error */
             422: {

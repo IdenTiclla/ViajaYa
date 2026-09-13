@@ -1,6 +1,6 @@
 # Plan de salida a producción de ViajaYa
 
-Fecha inicial: 9 de septiembre de 2026. Actualización: 10 de septiembre de 2026. Estado: F01 completada; F02-A/B implementados y ambas API activadas y verificadas localmente. Desarrollo está disponible por Wi-Fi con Metro. La distribución del APK de Pruebas espera recuperar HTTPS público; F02-C, F03–F10 y la certificación productiva continúan pendientes.
+Fecha inicial: 9 de septiembre de 2026. Actualización: 13 de septiembre de 2026. Estado: F01 completada; F02-A/B implementados y ambas API activadas y verificadas. Pruebas dispone de HTTPS con ngrok y APK de F02-B. Se corrigieron la entrada del pasajero y el manejo del OTP; F02-C incorpora acceso/vinculación social y migración probada de cuentas existentes. Google quedó certificado en Desarrollo el 13 de septiembre (emulador y teléfono); Facebook se aplazó por la verificación de negocio de Meta. Faltan el APK de Pruebas con Google, el recorrido en Pruebas y el proveedor/adaptador SMS real. F03–F10 y la certificación productiva siguen pendientes. Estado y evidencia vigentes: `docs/implementation-plans/0010-phone-identity-and-otp.md`.
 
 Revisión 2: acceso principal por teléfono y OTP, Google/Facebook con teléfono verificado y navegación del conductor dentro de la app.
 
@@ -46,7 +46,7 @@ Cada fase produce una entrega revisable. Los PR sugeridos ordenan unidades de im
 | Fase | Entrega | Dependencias para cerrar | Estado |
 |---|---|---|---|
 | F01 | Base técnica y tres entornos | Ninguna; punto de inicio. | Completada localmente |
-| F02 | Teléfono, OTP y cuentas sociales | F01. | En curso: A/B locales; activación y C pendientes |
+| F02 | Teléfono, OTP y cuentas sociales | F01. | En curso: A/B activos; C Google certificado en Desarrollo, Facebook aplazado; APK de Pruebas y SMS pendientes |
 | F03 | Países, panel base y feature flags | F01–F02. | Pendiente |
 | F04 | Conductores y operación del viaje | F02–F03. | Pendiente |
 | F05 | Seguimiento, mapas y notificaciones | F04. | Pendiente |
@@ -148,7 +148,8 @@ El aislamiento se construye desde F01 y se mantiene en cada fase. La promoción 
 - [x] F02-B · Código del flujo móvil unificado, sesiones, cambio de número y recuperación de acceso.
 - [x] F02-B · Activar ambas API y verificar OTP, cuentas y sesiones contra los servicios locales.
 - [ ] F02-B · Recuperar HTTPS público, compilar/instalar el APK de Pruebas autorizado y recorrerlo en teléfono.
-- [ ] F02-C · Google/Facebook, vinculación y migración de cuentas existentes.
+- [x] F02-C · Google: credenciales, dev build nativo y recorrido de vinculación verificados en Desarrollo (emulador y teléfono, 13/09/2026).
+- [ ] F02-C · Google en Pruebas (cliente Android con el SHA-1 de EAS, APK `preview`) y Facebook (aplazado: Meta exige verificación de negocio).
 
 **Alcance y decisiones técnicas**
 

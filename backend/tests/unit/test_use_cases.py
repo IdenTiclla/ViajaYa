@@ -9,7 +9,7 @@ from app.application.use_cases.authenticate_user import AuthenticateUser
 from app.application.use_cases.authenticate_with_oauth import AuthenticateWithOAuth
 from app.application.use_cases.refresh_token import RefreshToken
 from app.application.use_cases.register_user import RegisterUser
-from app.domain.entities import AuthProvider
+from app.domain.entities import AuthProvider, User
 from app.domain.exceptions import (
     EmailAlreadyExistsError,
     InvalidCredentialsError,
@@ -112,21 +112,23 @@ async def test_refresh_rechaza_usuario_de_otra_base_de_datos(deps):
         await RefreshToken(tokens, InMemoryUserRepository()).execute(pair.refresh_token)
 
 
-async def test_oauth_creates_user_then_reuses(deps):
+async def test_legacy_oauth_only_reuses_existing_subject(deps):
     repo, _, tokens = deps
     verifiers = {AuthProvider.GOOGLE.value: FakeVerifier(AuthProvider.GOOGLE)}
     use_case = AuthenticateWithOAuth(repo, tokens, verifiers)
 
-    user1, _ = await use_case.execute(
-        OAuthLoginInput(provider=AuthProvider.GOOGLE, token="g-123")
-    )
-    assert user1.auth_provider is AuthProvider.GOOGLE
-    assert user1.provider_id == "g-123"
+    with pytest.raises(InvalidCredentialsError):
+        await use_case.execute(OAuthLoginInput(provider=AuthProvider.GOOGLE, token="g-123"))
+    assert not repo.users
+    user1 = await repo.add(User(
+        full_name="Historical Google User", email="google@example.com",
+        auth_provider=AuthProvider.GOOGLE, provider_id="g-123",
+    ))
 
     user2, _ = await use_case.execute(
         OAuthLoginInput(provider=AuthProvider.GOOGLE, token="g-123")
     )
-    assert user2.id == user1.id  # find-or-create reutiliza
+    assert user2.id == user1.id
     assert len(repo.users) == 1
 
 

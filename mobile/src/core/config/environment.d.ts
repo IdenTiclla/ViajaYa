@@ -17,6 +17,7 @@ export type BuildEnvironment = RuntimeEnvironment & {
   googleMapsApiKey: string;
   googleClientIds: { ios: string; android: string; web: string };
   facebookAppId: string;
+  facebookClientToken: string;
 };
 
 export function parseAppEnvironment(value: unknown): AppEnvironment;

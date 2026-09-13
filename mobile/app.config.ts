@@ -8,6 +8,20 @@ import { resolveBuildEnvironment } from './src/core/config/environment';
  */
 export default ({ config }: ConfigContext): ExpoConfig => {
   const environment = resolveBuildEnvironment(process.env);
+  const socialPlugins: NonNullable<ExpoConfig['plugins']> = ['./plugins/withSocialSdkDefaults'];
+  if (environment.googleClientIds.ios) {
+    socialPlugins.push(['@react-native-google-signin/google-signin', {
+      iosUrlScheme: environment.googleClientIds.ios.split('.').reverse().join('.'),
+    }]);
+  }
+  if (environment.facebookAppId && environment.facebookClientToken) {
+    socialPlugins.push(['react-native-fbsdk-next', {
+      appID: environment.facebookAppId, clientToken: environment.facebookClientToken,
+      displayName: environment.name, scheme: `fb${environment.facebookAppId}`,
+      isAutoInitEnabled: false, autoLogAppEventsEnabled: false,
+      advertiserIDCollectionEnabled: false, iosUserTrackingPermission: false,
+    }]);
+  }
   return {
     ...config,
     name: environment.name,
@@ -52,6 +66,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       favicon: './assets/images/favicon.png',
     },
     plugins: [
+      ...socialPlugins,
       'expo-router',
       'expo-secure-store',
       ['expo-dev-client', { addGeneratedScheme: environment.appEnv === 'development' }],
@@ -88,6 +103,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       googleMapsApiKey: environment.googleMapsApiKey,
       googleClientIds: environment.googleClientIds,
       facebookAppId: environment.facebookAppId,
+      facebookClientToken: environment.facebookClientToken,
     },
   };
 };

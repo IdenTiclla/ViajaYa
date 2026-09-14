@@ -21,6 +21,7 @@ from app.domain.entities import (
     SavedPlaceCategory,
     ServiceType,
     User,
+    VehicleType,
 )
 from app.domain.repositories import OpenRideDetail, WithdrawnOfferReference
 
@@ -522,3 +523,18 @@ class DriverEarnings:
     total_all_time: Decimal
     trips_all_time: int
     recent: list[EarningsItem]
+
+
+@dataclass(frozen=True)
+class DriverApplicationInput:
+    """What a passenger fills in to register as a driver.
+
+    ``services`` must be a non-empty subset of what ``vehicle_type`` allows
+    (see ``services_for_vehicle``): a taxi may serve ``taxi`` and/or
+    ``delivery``, a moto ``moto`` and/or ``delivery``, a truck only ``moving``.
+    """
+
+    vehicle_type: VehicleType
+    plate: str
+    vehicle_model: str
+    services: tuple[ServiceType, ...]

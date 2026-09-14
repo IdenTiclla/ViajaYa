@@ -34,6 +34,10 @@ class Settings(EnvironmentSettings):
         "probar la aplicación. No uses documentos ni información sensible en estas pruebas."
     )
 
+    # Development shortcut: approve driver applications at once instead of the
+    # operator review of F04-A. Never allowed in production.
+    driver_auto_approve: bool = False
+
     # Expose operational metrics only behind the monitoring network perimeter.
     openmetrics_enabled: bool = False
 
@@ -143,6 +147,12 @@ class Settings(EnvironmentSettings):
         ge=1,
         le=10000,
     )
+
+    @model_validator(mode="after")
+    def validate_driver_auto_approve(self) -> Settings:
+        if self.driver_auto_approve and self.app_env == "production":
+            raise ValueError("DRIVER_AUTO_APPROVE is not allowed in production.")
+        return self
 
     @model_validator(mode="after")
     def validate_realtime_outbox_rollout(self) -> Settings:

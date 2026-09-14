@@ -19,8 +19,7 @@ class BuildDriverRealtimeSnapshot:
             )
 
         streams = (
-            f"pool:{driver.vehicle_type.value}",
-            "pool:delivery",
+            *(f"pool:{service.value}" for service in driver.offered_services),
             f"driver:{driver.id}",
         )
         snapshot = await self._snapshots.read_driver(driver.id, streams)

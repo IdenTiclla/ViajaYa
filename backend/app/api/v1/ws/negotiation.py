@@ -56,7 +56,7 @@ from app.application.use_cases.build_passenger_realtime_snapshot import (
 from app.application.use_cases.get_driver_active_ride import GetDriverActiveRide
 from app.application.use_cases.list_offers_for_ride import ListOffersForRide
 from app.application.use_cases.list_open_rides import ListOpenRides
-from app.domain.entities import UserRole, services_for_vehicle
+from app.domain.entities import UserRole
 from app.domain.exceptions import InvalidTokenError
 from app.domain.ride_policy import is_offer_expired
 from app.infrastructure.db.repositories import (
@@ -283,7 +283,7 @@ async def driver_ws(
                 return
 
             topics = [
-                *(pool_topic(service.value) for service in services_for_vehicle(user.vehicle_type)),
+                *(pool_topic(service.value) for service in user.offered_services),
                 driver_topic(user.id),
             ]
             # Suscribir dentro de la barrera cierra la ventana entre leer el estado

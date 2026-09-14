@@ -75,3 +75,7 @@ class AlreadyRatedError(DomainError):
 
 class InvalidRatingError(DomainError):
     """La calificación está fuera del rango permitido (1–5)."""
+
+
+class InvalidDriverApplicationError(DomainError):
+    """The driver application is inconsistent (services outside the vehicle, bad plate…)."""

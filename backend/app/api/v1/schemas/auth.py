@@ -11,7 +11,14 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from app.application.dto import TokenPair
-from app.domain.entities import AuthProvider, User, UserRole, VehicleType
+from app.domain.entities import (
+    AuthProvider,
+    DriverStatus,
+    ServiceType,
+    User,
+    UserRole,
+    VehicleType,
+)
 
 
 class RefreshRequest(BaseModel):
@@ -38,13 +45,18 @@ class UserResponse(BaseModel):
     vehicle_type: VehicleType | None
     plate: str | None
     vehicle_model: str | None
+    driver_services: list[ServiceType]
+    driver_status: DriverStatus | None
     rating: float | None
     is_online: bool
     created_at: datetime | None
 
     @classmethod
     def from_entity(cls, user: User) -> UserResponse:
-        return cls.model_validate(user)
+        # Expose the effective services so legacy drivers (empty choice) read the same.
+        return cls.model_validate(user).model_copy(
+            update={"driver_services": list(user.offered_services)}
+        )
 
 
 class AuthResponse(BaseModel):

@@ -6,7 +6,7 @@ import hashlib
 import uuid
 from dataclasses import dataclass
 
-from app.domain.entities import UserRole, VehicleType
+from app.domain.entities import DriverStatus, UserRole, VehicleType, services_for_vehicle
 from app.infrastructure.config import Settings
 from app.infrastructure.db.account_access import SqlAlchemyPhoneAccountRepository
 from app.infrastructure.db.repositories import SqlAlchemyUserRepository
@@ -114,5 +114,7 @@ async def promote_to_driver(
         assert user is not None
         user.role = UserRole.DRIVER
         user.vehicle_type = vehicle
+        user.driver_services = services_for_vehicle(vehicle)
+        user.driver_status = DriverStatus.APPROVED
         user.is_online = online
         await users.update(user)

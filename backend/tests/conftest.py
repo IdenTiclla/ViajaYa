@@ -40,7 +40,11 @@ async def session_factory() -> AsyncIterator[async_sessionmaker]:
 
 
 @pytest_asyncio.fixture
-async def client(session_factory) -> AsyncIterator[AsyncClient]:
+async def client(request, session_factory) -> AsyncIterator[AsyncClient]:
+    """App under test; ``@pytest.mark.settings(**overrides)`` tunes its Settings."""
+    marker = request.node.get_closest_marker("settings")
+    overrides = dict(marker.kwargs) if marker else {}
+
     async def override_get_session() -> AsyncIterator:
         async with session_factory() as session:
             yield session
@@ -51,7 +55,7 @@ async def client(session_factory) -> AsyncIterator[AsyncClient]:
             AuthProvider.FACEBOOK.value: FakeVerifier(AuthProvider.FACEBOOK),
         }
 
-    app = create_app(settings=test_settings())
+    app = create_app(settings=test_settings(**overrides))
     app.dependency_overrides[get_session] = override_get_session
     app.dependency_overrides[get_session_factory] = lambda: session_factory
     app.dependency_overrides[get_oauth_verifiers] = override_get_verifiers

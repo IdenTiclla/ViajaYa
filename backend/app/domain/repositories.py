@@ -21,9 +21,9 @@ from app.domain.entities import (
     RideRequest,
     RideStatus,
     SavedPlace,
+    ServiceType,
     User,
     UserRole,
-    VehicleType,
 )
 
 
@@ -183,13 +183,13 @@ class RideRequestRepository(ABC):
         """Cancela atómicamente solo un ride ``SEARCHING`` y no pausado."""
 
     @abstractmethod
-    async def list_open_for_vehicle(self, vehicle_type: VehicleType) -> list[RideRequest]:
+    async def list_open_for_services(self, services: tuple[ServiceType, ...]) -> list[RideRequest]:
         """Solicitudes compatibles con el vehiculo, de la mas nueva a la mas vieja."""
 
     @abstractmethod
-    async def list_open_with_rider_for_vehicle(
+    async def list_open_with_rider_for_services(
         self,
-        vehicle_type: VehicleType,
+        services: tuple[ServiceType, ...],
         *,
         driver_id: uuid.UUID | None = None,
         before_created_at: datetime | None = None,
@@ -209,9 +209,7 @@ class RideRequestRepository(ABC):
         """Guarda que el conductor ocultó esta versión de la solicitud."""
 
     @abstractmethod
-    async def list_paused_with_rider_for_driver(
-        self, driver_id: uuid.UUID
-    ) -> list[OpenRideDetail]:
+    async def list_paused_with_rider_for_driver(self, driver_id: uuid.UUID) -> list[OpenRideDetail]:
         """Solicitudes pausadas sobre las que el conductor ya había ofertado."""
 
     @abstractmethod

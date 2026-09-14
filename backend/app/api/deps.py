@@ -49,6 +49,7 @@ from app.application.managed_sessions import ManagedSessions
 from app.application.social_accounts import SocialAccounts
 from app.application.use_cases.accept_offer import AcceptOffer
 from app.application.use_cases.announce_open_ride import AnnounceOpenRide
+from app.application.use_cases.apply_as_driver import ApplyAsDriver
 from app.application.use_cases.build_driver_realtime_snapshot import (
     BuildDriverRealtimeSnapshot,
 )
@@ -106,6 +107,7 @@ from app.application.use_cases.request_phone_code import RequestPhoneCode
 from app.application.use_cases.set_driver_online import SetDriverOnline
 from app.application.use_cases.sign_in_with_social import SignInWithSocial
 from app.application.use_cases.skip_ride_rating import SkipRideRating
+from app.application.use_cases.switch_account_mode import SwitchAccountMode
 from app.application.use_cases.update_ride_fare import UpdateRideFare
 from app.application.use_cases.update_ride_status import UpdateRideStatus
 from app.application.use_cases.update_saved_place import UpdateSavedPlace
@@ -792,6 +794,20 @@ def get_set_driver_online(
         SqlAlchemyOfferRepository(session, commit_set_driver_offline=False),
         SqlAlchemyUnitOfWork(session),
         recorder,
+    )
+
+
+def get_apply_as_driver(session: SessionDep, settings: SettingsDep) -> ApplyAsDriver:
+    return ApplyAsDriver(
+        SqlAlchemyUserRepository(session),
+        auto_approve=settings.driver_auto_approve,
+    )
+
+
+def get_switch_account_mode(session: SessionDep) -> SwitchAccountMode:
+    return SwitchAccountMode(
+        SqlAlchemyUserRepository(session),
+        SqlAlchemyRideRequestRepository(session),
     )
 
 

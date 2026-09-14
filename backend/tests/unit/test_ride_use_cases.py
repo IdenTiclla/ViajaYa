@@ -265,9 +265,7 @@ async def test_recent_destinations_dedupes_and_orders():
     second.status = RideStatus.CANCELLED
     await repo.update(second)
     # Repite A: no debe duplicarse, pero pasa al frente por ser el más reciente.
-    await create.execute(
-        rider, _input(destination=LocationInput(-16.49, -68.14, "A", "dir A"))
-    )
+    await create.execute(rider, _input(destination=LocationInput(-16.49, -68.14, "A", "dir A")))
 
     destinations = await ListRecentDestinations(repo).execute(rider.id)
 
@@ -395,7 +393,7 @@ async def test_pause_ride_hides_from_pool_and_kills_offers():
     assert (await offers.get_by_id(offer.detail.offer.id)).status is OfferStatus.REJECTED
     assert len(result.paused_offers) == 1
     # Y la solicitud ya no aparece en el pool.
-    assert await rides.list_open_for_vehicle(VehicleType.TAXI) == []
+    assert await rides.list_open_for_services((ServiceType.TAXI, ServiceType.DELIVERY)) == []
 
 
 async def test_pause_ride_does_not_overwrite_concurrent_fare_increase():
@@ -457,9 +455,7 @@ async def test_edit_ride_updates_fields_and_unpauses():
         rider,
         _input(fare=Decimal("25.00")),
     )
-    await pause_ride_use_case(rides, InMemoryOfferRepository(rides=rides)).execute(
-        rider, ride.id
-    )
+    await pause_ride_use_case(rides, InMemoryOfferRepository(rides=rides)).execute(rider, ride.id)
 
     updated = (
         await edit_ride_use_case(rides).execute(
@@ -479,7 +475,7 @@ async def test_edit_ride_updates_fields_and_unpauses():
     assert updated.payment_method is PaymentMethod.QR
     assert updated.pool_version == 2
     # Y vuelve a aparecer en el pool.
-    open_rides = await rides.list_open_for_vehicle(VehicleType.TAXI)
+    open_rides = await rides.list_open_for_services((ServiceType.TAXI, ServiceType.DELIVERY))
     assert [r.id for r in open_rides] == [ride.id]
 
 
@@ -515,9 +511,7 @@ async def test_edit_ride_rejects_destination_outside_bolivia_without_mutating_ri
     rides = InMemoryRideRequestRepository()
     rider = _rider()
     ride = await create_ride_request_use_case(rides).execute(rider, _input())
-    await pause_ride_use_case(rides, InMemoryOfferRepository(rides=rides)).execute(
-        rider, ride.id
-    )
+    await pause_ride_use_case(rides, InMemoryOfferRepository(rides=rides)).execute(rider, ride.id)
 
     with pytest.raises(InvalidLocationError, match="Bolivia"):
         await edit_ride_use_case(rides).execute(

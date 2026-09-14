@@ -30,6 +30,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.domain.entities import (
     AuthProvider,
+    DriverStatus,
     OfferStatus,
     PaymentMethod,
     RideStatus,
@@ -129,6 +130,22 @@ class UserModel(Base):
     )
     plate: Mapped[str | None] = mapped_column(String(20), nullable=True)
     vehicle_model: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # Services the driver chose to serve (subset of what the vehicle allows), as
+    # a JSON list of ServiceType values. Empty means "every service of the vehicle"
+    # for drivers registered before per-driver services existed.
+    driver_services: Mapped[list[str]] = mapped_column(
+        _OUTBOX_PAYLOAD_TYPE, default=list, server_default="[]", nullable=False
+    )
+    driver_status: Mapped[DriverStatus | None] = mapped_column(
+        Enum(
+            DriverStatus,
+            name="driver_status",
+            native_enum=False,
+            length=20,
+            values_callable=_enum_values,
+        ),
+        nullable=True,
+    )
     rating: Mapped[float | None] = mapped_column(Float, nullable=True)
     is_online: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="0", nullable=False

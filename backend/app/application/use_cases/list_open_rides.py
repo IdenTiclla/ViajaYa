@@ -24,8 +24,8 @@ class ListOpenRides:
             )
         if not driver.is_online:
             raise DriverUnavailableError("Debes estar en línea para ver solicitudes abiertas.")
-        details = await self._rides.list_open_with_rider_for_vehicle(
-            driver.vehicle_type,
+        details = await self._rides.list_open_with_rider_for_services(
+            driver.offered_services,
             driver_id=driver.id,
             before_created_at=cursor.created_at if cursor else None,
             before_id=cursor.id if cursor else None,

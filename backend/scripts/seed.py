@@ -14,7 +14,7 @@ import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from app.domain.entities import User, UserRole, VehicleType
+from app.domain.entities import DriverStatus, User, UserRole, VehicleType, services_for_vehicle
 from app.infrastructure.config import get_settings
 from app.infrastructure.db.account_access import SqlAlchemyPhoneAccountRepository
 from app.infrastructure.db.session import async_session_factory
@@ -70,6 +70,15 @@ SEED_USERS: list[SeedUser] = [
         vehicle_model="Yamaha YBR125",
         rating=4.7,
     ),
+    SeedUser(
+        "Conductor Mudanzas Uno",
+        "+59170000031",
+        role=UserRole.DRIVER,
+        vehicle_type=VehicleType.TRUCK,
+        plate="C-301",
+        vehicle_model="Toyota Hilux",
+        rating=4.8,
+    ),
 ]
 
 
@@ -93,6 +102,15 @@ async def seed() -> None:
                     vehicle_type=seed_user.vehicle_type,
                     plate=seed_user.plate,
                     vehicle_model=seed_user.vehicle_model,
+                    # Seeded drivers are approved and serve everything their vehicle allows.
+                    driver_services=(
+                        services_for_vehicle(seed_user.vehicle_type)
+                        if seed_user.vehicle_type is not None
+                        else ()
+                    ),
+                    driver_status=(
+                        DriverStatus.APPROVED if seed_user.role is UserRole.DRIVER else None
+                    ),
                     rating=seed_user.rating,
                 )
             )

@@ -63,11 +63,10 @@ from app.domain.entities import (
     RideRequest,
     RideStatus,
     SavedPlace,
+    ServiceType,
     User,
     UserRole,
-    VehicleType,
-    services_for_vehicle,
-    vehicle_can_serve,
+    driver_can_serve,
 )
 from app.domain.exceptions import InvalidTokenError
 from app.domain.repositories import (
@@ -240,18 +239,20 @@ class InMemoryRideRequestRepository(RideRequestRepository):
             return updated
         return None
 
-    async def list_open_for_vehicle(self, vehicle_type: VehicleType) -> list[RideRequest]:
+    async def list_open_for_services(
+        self, services: tuple[ServiceType, ...]
+    ) -> list[RideRequest]:
         return [
             r
             for r in reversed(self.rides)
-            if r.service_type in services_for_vehicle(vehicle_type)
+            if r.service_type in services
             and r.status is RideStatus.SEARCHING
             and not r.paused
         ]
 
-    async def list_open_with_rider_for_vehicle(
+    async def list_open_with_rider_for_services(
         self,
-        vehicle_type: VehicleType,
+        services: tuple[ServiceType, ...],
         *,
         driver_id: uuid.UUID | None = None,
         before_created_at: datetime | None = None,
@@ -269,7 +270,7 @@ class InMemoryRideRequestRepository(RideRequestRepository):
             (
                 r
                 for r in self.rides
-                if r.service_type in services_for_vehicle(vehicle_type)
+                if r.service_type in services
                 and r.status is RideStatus.SEARCHING
                 and not r.paused
                 and (
@@ -427,7 +428,7 @@ class InMemoryOfferRepository(OfferRepository):
                 or not driver.is_online
                 or (
                     self._rides is not None
-                    and not vehicle_can_serve(ride.service_type, driver.vehicle_type)
+                    and not driver_can_serve(driver, ride.service_type)
                 )
             ):
                 return None
@@ -655,7 +656,7 @@ class InMemoryOfferRepository(OfferRepository):
             ride is None
             or ride.status is not RideStatus.SEARCHING
             or ride.paused
-            or not vehicle_can_serve(ride.service_type, driver.vehicle_type)
+            or not driver_can_serve(driver, ride.service_type)
         ):
             return None
         if is_offer_expired(offer):

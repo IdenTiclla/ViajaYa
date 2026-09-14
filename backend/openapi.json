@@ -1,6 +1,19 @@
 {
   "components": {
     "schemas": {
+      "AccountModeRequest": {
+        "description": "Active mode of the account: ``passenger`` or ``driver``.",
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/UserRole"
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "title": "AccountModeRequest",
+        "type": "object"
+      },
       "AccountSessionResponse": {
         "properties": {
           "created_at": {
@@ -129,6 +142,43 @@
         "title": "CreateRideRequestRequest",
         "type": "object"
       },
+      "DriverApplicationRequest": {
+        "description": "Vehicle and services a passenger registers to drive with.",
+        "properties": {
+          "plate": {
+            "maxLength": 20,
+            "minLength": 3,
+            "title": "Plate",
+            "type": "string"
+          },
+          "services": {
+            "items": {
+              "$ref": "#/components/schemas/ServiceType"
+            },
+            "maxItems": 4,
+            "minItems": 1,
+            "title": "Services",
+            "type": "array"
+          },
+          "vehicle_model": {
+            "maxLength": 120,
+            "minLength": 2,
+            "title": "Vehicle Model",
+            "type": "string"
+          },
+          "vehicle_type": {
+            "$ref": "#/components/schemas/VehicleType"
+          }
+        },
+        "required": [
+          "vehicle_type",
+          "plate",
+          "vehicle_model",
+          "services"
+        ],
+        "title": "DriverApplicationRequest",
+        "type": "object"
+      },
       "DriverEarningsResponse": {
         "description": "Resumen de ganancias del conductor (hoy, histórico y recientes).",
         "properties": {
@@ -167,6 +217,16 @@
         ],
         "title": "DriverEarningsResponse",
         "type": "object"
+      },
+      "DriverStatus": {
+        "description": "Outcome of a driver application; only ``APPROVED`` can enter driver mode.",
+        "enum": [
+          "pending",
+          "approved",
+          "rejected"
+        ],
+        "title": "DriverStatus",
+        "type": "string"
       },
       "EarningsItemResponse": {
         "description": "Una línea del desglose de ganancias.",
@@ -2553,11 +2613,12 @@
         "type": "object"
       },
       "ServiceType": {
-        "description": "Tipo de servicio solicitado por un pasajero.",
+        "description": "Service requested by a passenger (``MOVING`` is a house/office move).",
         "enum": [
           "taxi",
           "moto",
-          "delivery"
+          "delivery",
+          "moving"
         ],
         "title": "ServiceType",
         "type": "string"
@@ -2792,6 +2853,23 @@
             ],
             "title": "Created At"
           },
+          "driver_services": {
+            "items": {
+              "$ref": "#/components/schemas/ServiceType"
+            },
+            "title": "Driver Services",
+            "type": "array"
+          },
+          "driver_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DriverStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "email": {
             "anyOf": [
               {
@@ -2898,6 +2976,8 @@
           "vehicle_type",
           "plate",
           "vehicle_model",
+          "driver_services",
+          "driver_status",
           "rating",
           "is_online",
           "created_at"
@@ -2956,10 +3036,11 @@
         "type": "object"
       },
       "VehicleType": {
-        "description": "Tipo fisico de vehiculo registrado por un conductor.",
+        "description": "Physical vehicle registered by a driver (``TRUCK`` covers vans and trucks).",
         "enum": [
           "taxi",
-          "moto"
+          "moto",
+          "truck"
         ],
         "title": "VehicleType",
         "type": "string"
@@ -3797,6 +3878,66 @@
         ]
       }
     },
+    "/api/v1/drivers/me/application": {
+      "post": {
+        "description": "Register (or update) the vehicle and services the account wants to drive with.\n\nThe account stays in passenger mode; ``driver_status`` tells whether it can\nswitch to driver mode (``approved``) or is still under review (``pending``).",
+        "operationId": "apply_as_driver_api_v1_drivers_me_application_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DriverApplicationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Apply As Driver",
+        "tags": [
+          "drivers"
+        ]
+      }
+    },
     "/api/v1/drivers/me/earnings": {
       "get": {
         "description": "Resumen de ganancias del conductor (hoy, histórico y viajes recientes).",
@@ -3842,6 +3983,66 @@
           }
         },
         "summary": "Earnings",
+        "tags": [
+          "drivers"
+        ]
+      }
+    },
+    "/api/v1/drivers/me/mode": {
+      "post": {
+        "description": "Switch the account between passenger and driver mode (approved drivers only).",
+        "operationId": "switch_account_mode_api_v1_drivers_me_mode_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountModeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Switch Account Mode",
         "tags": [
           "drivers"
         ]

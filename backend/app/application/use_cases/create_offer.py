@@ -20,7 +20,7 @@ from app.application.interfaces import (
     ScheduledActionScheduler,
     UnitOfWork,
 )
-from app.domain.entities import Offer, RideStatus, User, vehicle_can_serve
+from app.domain.entities import Offer, RideStatus, User, driver_can_serve
 from app.domain.exceptions import (
     DriverUnavailableError,
     InvalidFareError,
@@ -94,15 +94,12 @@ class CreateOffer:
             raise InvalidRideTransitionError("La solicitud ya no admite ofertas.")
         if ride.paused:
             raise InvalidRideTransitionError("La solicitud está siendo modificada.")
-        if not vehicle_can_serve(ride.service_type, driver.vehicle_type):
-            raise NotAuthorizedActionError(
-                "Tu vehículo no coincide con el servicio solicitado."
-            )
+        if not driver_can_serve(driver, ride.service_type):
+            raise NotAuthorizedActionError("Tu vehículo no coincide con el servicio solicitado.")
 
         active_rides = await self._rides.list_by_driver(driver.id)
         if any(
-            active.status
-            in {RideStatus.ACCEPTED, RideStatus.ARRIVING, RideStatus.IN_PROGRESS}
+            active.status in {RideStatus.ACCEPTED, RideStatus.ARRIVING, RideStatus.IN_PROGRESS}
             for active in active_rides
         ):
             raise DriverUnavailableError("Ya tienes un viaje activo.")

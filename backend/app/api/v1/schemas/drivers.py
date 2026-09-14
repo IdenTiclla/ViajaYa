@@ -6,15 +6,39 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from app.application.dto import DriverEarnings
+from app.application.dto import DriverApplicationInput, DriverEarnings
+from app.domain.entities import ServiceType, UserRole, VehicleType
 
 
 class OnlineRequest(BaseModel):
     """Cuerpo para alternar disponibilidad del conductor."""
 
     is_online: bool
+
+
+class DriverApplicationRequest(BaseModel):
+    """Vehicle and services a passenger registers to drive with."""
+
+    vehicle_type: VehicleType
+    plate: str = Field(min_length=3, max_length=20)
+    vehicle_model: str = Field(min_length=2, max_length=120)
+    services: list[ServiceType] = Field(min_length=1, max_length=4)
+
+    def to_input(self) -> DriverApplicationInput:
+        return DriverApplicationInput(
+            vehicle_type=self.vehicle_type,
+            plate=self.plate,
+            vehicle_model=self.vehicle_model,
+            services=tuple(self.services),
+        )
+
+
+class AccountModeRequest(BaseModel):
+    """Active mode of the account: ``passenger`` or ``driver``."""
+
+    mode: UserRole
 
 
 class EarningsItemResponse(BaseModel):

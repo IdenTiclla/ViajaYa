@@ -30,33 +30,70 @@ class UserRole(enum.StrEnum):
 
 
 class VehicleType(enum.StrEnum):
-    """Tipo fisico de vehiculo registrado por un conductor."""
+    """Physical vehicle registered by a driver (``TRUCK`` covers vans and trucks)."""
 
     TAXI = "taxi"
     MOTO = "moto"
+    TRUCK = "truck"
 
 
 class ServiceType(enum.StrEnum):
-    """Tipo de servicio solicitado por un pasajero."""
+    """Service requested by a passenger (``MOVING`` is a house/office move)."""
 
     TAXI = "taxi"
     MOTO = "moto"
     DELIVERY = "delivery"
+    MOVING = "moving"
 
 
-def vehicle_can_serve(service_type: ServiceType, vehicle_type: VehicleType) -> bool:
-    """Taxi y moto pueden transportar encomiendas; viajes personales exigen coincidencia."""
+class DriverStatus(enum.StrEnum):
+    """Outcome of a driver application; only ``APPROVED`` can enter driver mode."""
 
-    return (
-        service_type is ServiceType.DELIVERY
-        or service_type.value == vehicle_type.value
-    )
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
+_VEHICLE_SERVICES: dict[VehicleType, tuple[ServiceType, ...]] = {
+    VehicleType.TAXI: (ServiceType.TAXI, ServiceType.DELIVERY),
+    VehicleType.MOTO: (ServiceType.MOTO, ServiceType.DELIVERY),
+    VehicleType.TRUCK: (ServiceType.MOVING,),
+}
 
 
 def services_for_vehicle(vehicle_type: VehicleType) -> tuple[ServiceType, ...]:
-    """Servicios visibles para un conductor según su vehículo."""
+    """Services a vehicle is allowed to offer: taxi/moto may add deliveries, trucks move."""
 
-    return (ServiceType(vehicle_type.value), ServiceType.DELIVERY)
+    return _VEHICLE_SERVICES[vehicle_type]
+
+
+def vehicle_can_serve(service_type: ServiceType, vehicle_type: VehicleType) -> bool:
+    """Whether the vehicle may offer that service at all (regardless of the driver's choice)."""
+
+    return service_type in services_for_vehicle(vehicle_type)
+
+
+def offered_services(
+    vehicle_type: VehicleType | None,
+    driver_services: tuple[ServiceType, ...],
+) -> tuple[ServiceType, ...]:
+    """Services a driver actually serves.
+
+    Drivers registered before per-driver services existed keep every service
+    their vehicle allows; new applications persist an explicit subset.
+    """
+
+    if vehicle_type is None:
+        return ()
+    allowed = services_for_vehicle(vehicle_type)
+    chosen = tuple(service for service in allowed if service in driver_services)
+    return chosen or allowed
+
+
+def driver_can_serve(driver: User, service_type: ServiceType) -> bool:
+    """Whether the driver chose to serve rides of that type."""
+
+    return service_type in driver.offered_services
 
 
 @dataclass
@@ -67,8 +104,11 @@ class User:
     social identity); there is no password. ``email`` is informational only
     (filled by Google) and ``provider_id`` keeps the historical provider id.
 
-    Los campos de conductor (``vehicle_type``, ``plate``, ``vehicle_model``,
-    ``rating``, ``is_online``) solo aplican cuando ``role`` es ``DRIVER``.
+    ``role`` is the *active mode* of the account: an approved driver
+    (``driver_status == APPROVED``) switches between ``PASSENGER`` and ``DRIVER``
+    and is never both at once. Driver fields (``vehicle_type``, ``plate``,
+    ``vehicle_model``, ``driver_services``, ``rating``, ``is_online``) belong to
+    the driver application and survive while the account rides as a passenger.
     """
 
     full_name: str
@@ -80,6 +120,8 @@ class User:
     vehicle_type: VehicleType | None = None
     plate: str | None = None
     vehicle_model: str | None = None
+    driver_services: tuple[ServiceType, ...] = ()
+    driver_status: DriverStatus | None = None
     rating: float | None = None
     is_online: bool = False
     id: uuid.UUID = field(default_factory=uuid.uuid4)
@@ -93,7 +135,17 @@ class User:
 
     @property
     def is_driver(self) -> bool:
+        """The account is currently in driver mode."""
+
         return self.role is UserRole.DRIVER
+
+    @property
+    def is_approved_driver(self) -> bool:
+        return self.driver_status is DriverStatus.APPROVED and self.vehicle_type is not None
+
+    @property
+    def offered_services(self) -> tuple[ServiceType, ...]:
+        return offered_services(self.vehicle_type, self.driver_services)
 
 
 class PaymentMethod(enum.StrEnum):

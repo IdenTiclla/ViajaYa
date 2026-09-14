@@ -22,10 +22,9 @@ from app.application.interfaces import RealtimeSnapshotReader
 from app.domain.entities import (
     OfferStatus,
     RideStatus,
+    ServiceType,
     UserRole,
-    VehicleType,
-    services_for_vehicle,
-    vehicle_can_serve,
+    driver_can_serve,
 )
 from app.domain.repositories import OpenRideDetail, RiderSummary
 from app.domain.ride_policy import is_offer_active
@@ -139,16 +138,17 @@ class SqlAlchemyRealtimeSnapshotReader(RealtimeSnapshotReader):
                 return None
 
             expected_streams = {
-                f"pool:{driver.vehicle_type.value}",
-                "pool:delivery",
+                *(f"pool:{service.value}" for service in driver.offered_services),
                 f"driver:{driver.id}",
             }
-            if len(requested_streams) != 3 or set(requested_streams) != expected_streams:
+            if len(requested_streams) != len(expected_streams) or (
+                set(requested_streams) != expected_streams
+            ):
                 raise ValueError("Los streams no coinciden con el conductor capturado.")
 
             if driver.is_online:
-                candidates = await rides.list_open_with_rider_for_vehicle(
-                    driver.vehicle_type,
+                candidates = await rides.list_open_with_rider_for_services(
+                    driver.offered_services,
                     driver_id=driver.id,
                     limit=_OPEN_RIDES_LIMIT + 1,
                 )
@@ -159,7 +159,7 @@ class SqlAlchemyRealtimeSnapshotReader(RealtimeSnapshotReader):
             paused_rides = await self._read_paused_rides(
                 session,
                 driver.id,
-                driver.vehicle_type,
+                driver.offered_services,
             )
 
             offer_details = [
@@ -169,9 +169,9 @@ class SqlAlchemyRealtimeSnapshotReader(RealtimeSnapshotReader):
             ]
 
             active_detail = await ride_reads.get_active_for_driver(driver.id)
-            if active_detail is not None and not vehicle_can_serve(
+            if active_detail is not None and not driver_can_serve(
+                driver,
                 active_detail.ride.service_type,
-                driver.vehicle_type,
             ):
                 raise ValueError(
                     "El viaje activo no pertenece a los pools del conductor capturado."
@@ -266,7 +266,7 @@ class SqlAlchemyRealtimeSnapshotReader(RealtimeSnapshotReader):
         self,
         session: AsyncSession,
         driver_id: uuid.UUID,
-        vehicle_type: VehicleType,
+        services: tuple[ServiceType, ...],
     ) -> list[OpenRideDetail]:
         """Carga rides pausados y resumen del pasajero sin consultas por fila."""
         trips_completed = (
@@ -290,7 +290,7 @@ class SqlAlchemyRealtimeSnapshotReader(RealtimeSnapshotReader):
                 .join(UserModel, UserModel.id == RideRequestModel.rider_id)
                 .where(
                     offered_by_driver,
-                    RideRequestModel.service_type.in_(services_for_vehicle(vehicle_type)),
+                    RideRequestModel.service_type.in_(services),
                     RideRequestModel.status == RideStatus.SEARCHING,
                     RideRequestModel.paused.is_(True),
                 )

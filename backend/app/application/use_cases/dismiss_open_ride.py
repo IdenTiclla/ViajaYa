@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 
-from app.domain.entities import RideStatus, User, vehicle_can_serve
+from app.domain.entities import RideStatus, User, driver_can_serve
 from app.domain.exceptions import NotAuthorizedActionError, RideNotFoundError
 from app.domain.repositories import RideRequestRepository
 
@@ -24,11 +24,9 @@ class DismissOpenRide:
             ride is None
             or ride.status is not RideStatus.SEARCHING
             or ride.paused
-            or not vehicle_can_serve(ride.service_type, driver.vehicle_type)
+            or not driver_can_serve(driver, ride.service_type)
         ):
             # No revelamos ni permitimos descartar algo que no esté en su pool.
             raise RideNotFoundError("La solicitud abierta no existe.")
 
-        await self._rides.dismiss_open_ride_for_driver(
-            driver.id, ride.id, ride.pool_version
-        )
+        await self._rides.dismiss_open_ride_for_driver(driver.id, ride.id, ride.pool_version)

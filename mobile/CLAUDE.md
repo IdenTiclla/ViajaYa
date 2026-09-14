@@ -28,15 +28,17 @@ src/
 │   ├── (app)/             # Grupo pasajero (guard: authenticated && !driver)
 │   │   ├── _layout.tsx      # Monta <PassengerToaster/> sobre el stack
 │   │   ├── (tabs)/          # Viaje · Historial · Billetera · Perfil  (PillTabBar)
-│   │   └── booking/         # destination, configure, offers, trip, rating,
-│   │                        #   pick-on-map, saved-places, edit-place
+│   │   ├── booking/         # destination, configure, offers, trip, rating,
+│   │   │                    #   pick-on-map, saved-places, edit-place
+│   │   └── conductor/registro.tsx  # alta/edición del registro de conductor (desde Perfil)
 │   └── (driver)/          # Grupo conductor (guard: role === 'driver')
 │       ├── _layout.tsx      # Monta useDriverPoolSocket() + <DriverToaster/>
 │       ├── oferta-enviada.tsx
 │       └── (tabs)/          # Solicitudes · Historial · Ganancias · Perfil  (PillTabBar)
 │                            #   (index oculto vía tabBarButton: () => null → redirect a Solicitudes)
 ├── features/            # Una carpeta por feature, en capas (Clean Architecture).
-│   ├── auth/              # domain/ · data/ · application/ (phoneAccessController + useAuthController)
+│   ├── auth/              # domain/ (types + vehicleCatalog: VEHICLE_META, SERVICES_FOR_VEHICLE) · data/
+│   │                      #   · application/ (phoneAccessController + useAuthController)
 │   │                      # presentation/: PhoneEntryScreen · PhoneCodeForm · AccountSecurityPanel
 │   │                      #   entry/ = bloques de la vista de acceso (AuthScaffold, PhoneInput, SocialButtons, TermsCheckbox…)
 │   ├── booking/           # 4 capas completas (flujo de reserva)
@@ -47,9 +49,11 @@ src/
 │   │   ├── application/     # useRides · useRideMutations · useCloseFlow · useNegotiationSocket
 │   │   └── presentation/    # FareKeypad · OfferLifeTimer · RideHistoryScreen · RideRatingCard · …
 │   ├── profile/           # presentación del perfil de pasajero y selector de tema compartido
-│   └── driver/            # application/ + presentation/ únicamente (reusa data/domain de rides)
-│       ├── application/     # useDriverRequests (zustand) · useDriverToasts
-│       └── presentation/    # SolicitudesEntrantesScreen · DriverTopBar · RequestCard · DriverSearchMap · …
+│   └── driver/            # reusa data/domain de rides para el pool; data/ propio solo para la cuenta
+│       ├── data/            # driverAccountRepository (POST /drivers/me/application · /me/mode)
+│       ├── application/     # useDriverRequests (zustand) · useDriverToasts · useDriverAccount
+│       └── presentation/    # SolicitudesEntrantesScreen · DriverTopBar · RequestCard · DriverSearchMap
+│                            #   · RegistroConductorScreen · DriverAccountCard · PerfilConductorScreen · …
 ├── core/               # Infra transversal
 │   ├── components/       # PillTabBar (bottom bar Stitch: tab activo con pill amarillo)
 │   ├── config/env.ts     # Config tipada desde Constants.expoConfig.extra
@@ -89,6 +93,15 @@ src/
   El controlador (`useAuthController()`) conserva el flujo de recuperación aunque hoy no tiene UI.
 - pasajero → `/(app)/(tabs)` (tab inicial: Viaje)
 - conductor → `/(driver)/(tabs)/solicitudes` (cae directo en Solicitudes, no en Inicio)
+
+**Una cuenta, dos modos.** `user.role` es el modo activo que devuelve el backend. Un pasajero se
+registra como conductor en Perfil → `DriverAccountCard` → `RegistroConductorScreen` (vehículo
+taxi/moto/camioneta, servicios que ofrece, placa y modelo). `user.driverStatus`
+(`pending|approved|rejected|null`) decide qué muestra la tarjeta; con `approved`, "Cambiar a
+modo conductor" llama a `useSwitchAccountMode()` (`POST /drivers/me/mode`), que vacía React
+Query (`removeQueries`), reemplaza `user` en `authStore` (`setUser`) y hace `router.replace('/')`
+para que los guards reenruten. El conductor vuelve a modo pasajero desde su Perfil (solo
+desconectado). No dupliques ese flujo: la navegación por rol ya existente hace el resto.
 
 **Bottom bar Stitch** (`core/components/PillTabBar.tsx`, compartida por pasajero y conductor):
 el icono activo lleva un pill de fondo amarillo (`colors.accent` = `#F5C518`).
@@ -150,7 +163,9 @@ Eventos que escuchan los hooks (WS → mutación de caché React Query + estado 
 
 - **Pasajero** (`/ws/rides/{rideId}`): `offers_snapshot`, `offer_created`, `offer_withdrawn`
   (salvo `reason==='superseded'`), `offer_expired`, `ride_status`.
-- **Conductor** (`/ws/driver`): `open_rides_snapshot`, `driver_offers_snapshot` (rehidrata
+- **Conductor** (`/ws/driver`): los streams requeridos del snapshot v2 son `driver:{id}` más
+  un `pool:{service}` por cada `user.driverServices` (no "vehículo + delivery" fijo).
+  `open_rides_snapshot`, `driver_offers_snapshot` (rehidrata
   ofertas pendientes tras reiniciar), `ride_created`, `ride_closed`, `ride_paused`,
   `offer_accepted`, `offer_expired`, `offer_rejected` (`ride_taken`/`ride_cancelled`/`declined`),
   `offers_withdrawn`, `ride_status`, `driver_active_ride` (snapshot al reconectar).
@@ -330,7 +345,9 @@ aquí.** Mantén ambos lados en sintonía.
 
 ### Enums de dominio (mobile)
 
-`ServiceType = 'taxi' | 'moto' | 'delivery'` · `PaymentMethod = 'qr' | 'cash'` ·
+`ServiceType = 'taxi' | 'moto' | 'delivery' | 'moving'` · `VehicleType = 'taxi' | 'moto' | 'truck'`
+(camioneta; solo atiende `moving`) · `DriverStatus = 'pending' | 'approved' | 'rejected'` ·
+`PaymentMethod = 'qr' | 'cash'` ·
 `RideStatus = 'searching' | 'accepted' | 'arriving' | 'in_progress' | 'completed' | 'cancelled'` ·
 `OfferStatus = 'pending' | 'accepted' | 'rejected' | 'expired'`. Oferta TTL = 30 s. Moneda = Bs (bolivianos).
 

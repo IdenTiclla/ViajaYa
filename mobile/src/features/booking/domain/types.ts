@@ -49,8 +49,8 @@ export type SavedPlace = {
   place: Place;
 };
 
-/** Tipo de servicio solicitado. */
-export type ServiceType = 'taxi' | 'moto' | 'delivery';
+/** Tipo de servicio solicitado (`moving` = mudanza con camioneta). */
+export type ServiceType = 'taxi' | 'moto' | 'delivery' | 'moving';
 
 /** Forma de pago elegida para el viaje. Por ahora: QR o efectivo. */
 export type PaymentMethod = 'qr' | 'cash';

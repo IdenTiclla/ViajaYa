@@ -458,68 +458,58 @@ test('rechaza snapshots con streams repetidos o estado driver incompleto', () =>
   assert.equal(missingActiveRide.success, false);
 });
 
-test('driver_snapshot exige delivery, pool de vehículo y pertenencia al conductor', () => {
-  const missingDelivery = driverRealtimeMessageParser.safeParse({
+test('driver_snapshot exige un pool por servicio ofrecido y pertenencia al conductor', () => {
+  const snapshot = (watermarks, data = {}) => driverRealtimeMessageParser.safeParse({
     schema_version: 2,
     kind: 'snapshot',
     type: 'driver_snapshot',
     snapshot_id: snapshotId,
     captured_at: occurredAt,
-    watermarks: [
-      { stream: 'pool:taxi', stream_version: 4 },
-      { stream: `driver:${driverId}`, stream_version: 0 },
-    ],
+    watermarks,
     data: {
       open_rides: { items: [], next_cursor: null },
       paused_rides: [],
       offers: [],
       active_ride: null,
+      ...data,
     },
   });
-  const foreignDriver = driverRealtimeMessageParser.safeParse({
-    schema_version: 2,
-    kind: 'snapshot',
-    type: 'driver_snapshot',
-    snapshot_id: snapshotId,
-    captured_at: occurredAt,
-    watermarks: [
+  // A taxi that did not choose deliveries only subscribes to its own pool.
+  const taxiOnly = snapshot([
+    { stream: 'pool:taxi', stream_version: 4 },
+    { stream: `driver:${driverId}`, stream_version: 0 },
+  ]);
+  const mover = snapshot([
+    { stream: 'pool:moving', stream_version: 1 },
+    { stream: `driver:${driverId}`, stream_version: 0 },
+  ]);
+  const noPools = snapshot([{ stream: `driver:${driverId}`, stream_version: 0 }]);
+  const unknownStream = snapshot([
+    { stream: 'pool:taxi', stream_version: 4 },
+    { stream: `ride:${rideId}`, stream_version: 1 },
+    { stream: `driver:${driverId}`, stream_version: 0 },
+  ]);
+  const foreignDriver = snapshot(
+    [
       { stream: 'pool:taxi', stream_version: 4 },
       { stream: 'pool:delivery', stream_version: 2 },
-      {
-        stream: 'driver:00000000-0000-4000-8000-000000000099',
-        stream_version: 0,
-      },
+      { stream: 'driver:00000000-0000-4000-8000-000000000099', stream_version: 0 },
     ],
-    data: {
-      open_rides: { items: [], next_cursor: null },
-      paused_rides: [],
-      offers: [offer()],
-      active_ride: null,
-    },
-  });
-  const wrongPool = driverRealtimeMessageParser.safeParse({
-    schema_version: 2,
-    kind: 'snapshot',
-    type: 'driver_snapshot',
-    snapshot_id: snapshotId,
-    captured_at: occurredAt,
-    watermarks: [
+    { offers: [offer()] },
+  );
+  const wrongPool = snapshot(
+    [
       { stream: 'pool:taxi', stream_version: 4 },
       { stream: 'pool:delivery', stream_version: 2 },
       { stream: `driver:${driverId}`, stream_version: 0 },
     ],
-    data: {
-      open_rides: {
-        items: [{ ...openRide(), service_type: 'moto' }],
-        next_cursor: null,
-      },
-      paused_rides: [],
-      offers: [],
-      active_ride: null,
-    },
-  });
+    { open_rides: { items: [{ ...openRide(), service_type: 'moto' }], next_cursor: null } },
+  );
 
-  assert.equal(missingDelivery.success, false);
+  assert.equal(taxiOnly.success, true);
+  assert.equal(mover.success, true);
+  assert.equal(noPools.success, false);
+  assert.equal(unknownStream.success, false);
   assert.equal(foreignDriver.success, false);
   assert.equal(wrongPool.success, false);
 });

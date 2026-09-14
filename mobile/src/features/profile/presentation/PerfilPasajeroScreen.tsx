@@ -5,6 +5,7 @@ import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/
 import { Button } from '@/shared/components';
 import { useAuthStore } from '@/store/authStore';
 import { AccountSecurityPanel } from '@/features/auth/presentation/AccountSecurityPanel';
+import { DriverAccountCard } from '@/features/driver/presentation/DriverAccountCard';
 import { SelectorTema } from './SelectorTema';
 
 export function PerfilPasajeroScreen() {
@@ -23,6 +24,7 @@ export function PerfilPasajeroScreen() {
         {user?.email && <Text style={styles.email}>{user.email}</Text>}
         {user?.phone ? <Text style={styles.detail}>{user.phone}</Text> : null}
 
+        <DriverAccountCard />
         <SelectorTema />
         <AccountSecurityPanel />
         <View style={styles.actions}>

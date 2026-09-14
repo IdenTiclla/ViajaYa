@@ -37,6 +37,7 @@ import { RideRatingCard } from '@/features/rides/presentation/RideRatingCard';
 import { TripRouteMap } from '@/features/rides/presentation/TripRouteMap';
 import type { Ride, RideStatus } from '@/features/rides/domain/types';
 import { ConfirmDialog } from '@/shared/components';
+import { serviceNouns } from '@/features/rides/domain/serviceNouns';
 
 // Siguiente acción según el estado actual del viaje.
 const NEXT: Partial<Record<RideStatus, { label: string; status: RideStatus }>> = {
@@ -61,6 +62,15 @@ function navTarget(ride: Ride): { title: string; place: string } {
       return { title: 'Esperando la encomienda en', place: ride.origin.name };
     }
     return { title: 'Recoger la encomienda en', place: ride.origin.name };
+  }
+  if (ride.service === 'moving') {
+    if (ride.status === 'in_progress') {
+      return { title: 'Llevando la mudanza a', place: ride.destination.name };
+    }
+    if (ride.status === 'arriving') {
+      return { title: 'Esperando para cargar en', place: ride.origin.name };
+    }
+    return { title: 'Cargar la mudanza en', place: ride.origin.name };
   }
   if (ride.status === 'in_progress') {
     return { title: 'Llevando al pasajero a', place: ride.destination.name };
@@ -230,7 +240,7 @@ export function ViajeEnCursoConductorScreen({ ride }: { ride: Ride }) {
               </Text>
               <View style={styles.passengerMeta}>
                 <Text style={styles.passengerRole}>
-                  {ride.service === 'delivery' ? 'Remitente' : 'Pasajero'}
+                  {serviceNouns(ride.service).customerTitle}
                 </Text>
                 {ride.rider.rating !== null && (
                   <>

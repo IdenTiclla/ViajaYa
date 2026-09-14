@@ -8,18 +8,22 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 import { Button } from '@/shared/components';
+import { getApiErrorMessage } from '@/core/errors/apiError';
 import { useAuthStore } from '@/store/authStore';
 import { SelectorTema } from '@/features/profile/presentation/SelectorTema';
 import { AccountSecurityPanel } from '@/features/auth/presentation/AccountSecurityPanel';
-
-const SERVICE_LABELS = { taxi: 'Taxi', moto: 'Moto' } as const;
+import { VEHICLE_META } from '@/features/auth/domain/vehicleCatalog';
+import { SERVICE_META } from '@/features/booking/domain/serviceCatalog';
+import { useSwitchAccountMode } from '@/features/driver/application/useDriverAccount';
 
 export function PerfilConductorScreen() {
   const { colors, styles } = useEstilos(crearEstilos);
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const signOut = useAuthStore((s) => s.signOut);
+  const switchMode = useSwitchAccountMode();
   const initial = (user?.fullName?.trim().charAt(0) ?? 'C').toUpperCase();
+  const services = user?.driverServices.map((s) => SERVICE_META[s].shortLabel).join(' · ');
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -38,12 +42,34 @@ export function PerfilConductorScreen() {
 
         <View style={styles.vehicleCard}>
           <Detail
-            icon={user?.vehicleType === 'moto' ? 'bicycle' : 'car-sport'}
+            icon={user?.vehicleType ? VEHICLE_META[user.vehicleType].icon : 'car-sport'}
             label="Vehículo"
-            value={user?.vehicleType ? SERVICE_LABELS[user.vehicleType] : '—'}
+            value={user?.vehicleType ? VEHICLE_META[user.vehicleType].label : '—'}
           />
           <Detail icon="construct" label="Modelo" value={user?.vehicleModel ?? '—'} />
           <Detail icon="card" label="Placa" value={user?.plate ?? '—'} />
+          <Detail icon="briefcase" label="Servicios" value={services || '—'} />
+        </View>
+
+        <View style={styles.modeCard}>
+          <Text style={styles.modeTitle}>Modo pasajero</Text>
+          <Text style={styles.modeText}>
+            {user?.isOnline
+              ? 'Desconéctate para poder pedir viajes como pasajero.'
+              : 'Tu registro de conductor se conserva; vuelves cuando quieras.'}
+          </Text>
+          {switchMode.isError && (
+            <Text style={styles.modeError} accessibilityRole="alert">
+              {getApiErrorMessage(switchMode.error)}
+            </Text>
+          )}
+          <Button
+            title="Cambiar a modo pasajero"
+            variant="secondary"
+            loading={switchMode.isPending}
+            disabled={!!user?.isOnline}
+            onPress={() => switchMode.mutate('passenger')}
+          />
         </View>
 
         <SelectorTema />
@@ -115,6 +141,18 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   detailFullWidth: { flex: 0, width: '100%' },
   detailLabel: { fontSize: fontSize.sm, color: colors.textSecondary, width: 80 },
   detailValue: { flex: 1, fontSize: fontSize.md, fontWeight: fontWeight.medium, color: colors.text },
+
+  modeCard: {
+    alignSelf: 'stretch',
+    marginTop: spacing.md,
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceMuted,
+  },
+  modeTitle: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.text },
+  modeText: { fontSize: fontSize.sm, color: colors.textSecondary, lineHeight: 20 },
+  modeError: { fontSize: fontSize.sm, color: colors.danger },
 
   actions: { alignSelf: 'stretch', marginTop: spacing.lg, gap: spacing.sm },
 });

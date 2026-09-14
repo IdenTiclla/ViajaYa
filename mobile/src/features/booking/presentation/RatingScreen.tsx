@@ -28,8 +28,8 @@ import {
 import type { Ride } from '@/features/rides/domain/types';
 import { RideRatingCard } from '@/features/rides/presentation/RideRatingCard';
 import { Button } from '@/shared/components';
+import { vehicleLabel } from '@/features/auth/domain/vehicleCatalog';
 
-const SERVICE_LABELS = { taxi: 'Taxi', moto: 'Moto' } as const;
 
 export function RatingScreen() {
   const { colors, styles } = useEstilos(crearEstilos);
@@ -101,7 +101,7 @@ export function RatingScreen() {
 
   const vehicle = ride.driver
     ? [
-        ride.driver.vehicleType ? SERVICE_LABELS[ride.driver.vehicleType] : null,
+        vehicleLabel(ride.driver.vehicleType),
         ride.driver.vehicleModel,
         ride.driver.plate,
       ]

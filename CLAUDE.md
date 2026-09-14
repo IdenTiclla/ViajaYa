@@ -57,8 +57,13 @@ npx expo start                    # dev build en emulador/dispositivo (NO Expo G
 
 - El **pasajero** crea un `RideRequest` (`SEARCHING`) con origen, destino, tipo de servicio
   (`taxi`/`moto`), método de pago (`qr`/`cash`) y una tarifa inicial.
-- Los **conductores** con `vehicle_type` coinciente ven la solicitud y **ofertan**: aceptar al
-  fare del pasajero o contraofertar (precio + ETA). La oferta caduca a los **30 s**.
+- Cualquier usuario puede **registrarse como conductor** desde su perfil eligiendo vehículo
+  (`taxi`/`moto`/`truck`) y los servicios que ofrece: taxi, taxi + encomiendas, moto,
+  moto + encomiendas o **mudanzas** (`moving`, solo camioneta). La solicitud queda `pending`
+  hasta la revisión (F04-A); en desarrollo `DRIVER_AUTO_APPROVE=true` la aprueba al instante.
+  La cuenta tiene **un modo activo** (`role`): pasajero o conductor, conmutable desde el perfil.
+- Los **conductores** cuyos servicios ofrecidos incluyen el de la solicitud la ven y **ofertan**:
+  aceptar al fare del pasajero o contraofertar (precio + ETA). La oferta caduca a los **30 s**.
 - **El pasajero decide**: aceptar una oferta = asignación directa atómica del conductor; o
   **modificar** su solicitud (la pausa del pool sin cancelar); o **aumentar su oferta** (sube el
   fare para atraer más conductores).

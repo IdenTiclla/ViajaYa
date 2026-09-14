@@ -313,6 +313,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/drivers/me/application": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply As Driver
+         * @description Register (or update) the vehicle and services the account wants to drive with.
+         *
+         *     The account stays in passenger mode; ``driver_status`` tells whether it can
+         *     switch to driver mode (``approved``) or is still under review (``pending``).
+         */
+        post: operations["apply_as_driver_api_v1_drivers_me_application_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/drivers/me/earnings": {
         parameters: {
             query?: never;
@@ -327,6 +350,26 @@ export interface paths {
         get: operations["earnings_api_v1_drivers_me_earnings_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/drivers/me/mode": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Switch Account Mode
+         * @description Switch the account between passenger and driver mode (approved drivers only).
+         */
+        post: operations["switch_account_mode_api_v1_drivers_me_mode_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -860,6 +903,13 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AccountModeRequest
+         * @description Active mode of the account: ``passenger`` or ``driver``.
+         */
+        AccountModeRequest: {
+            mode: components["schemas"]["UserRole"];
+        };
         /** AccountSessionResponse */
         AccountSessionResponse: {
             /**
@@ -919,6 +969,19 @@ export interface components {
             service_type: components["schemas"]["ServiceType"];
         };
         /**
+         * DriverApplicationRequest
+         * @description Vehicle and services a passenger registers to drive with.
+         */
+        DriverApplicationRequest: {
+            /** Plate */
+            plate: string;
+            /** Services */
+            services: components["schemas"]["ServiceType"][];
+            /** Vehicle Model */
+            vehicle_model: string;
+            vehicle_type: components["schemas"]["VehicleType"];
+        };
+        /**
          * DriverEarningsResponse
          * @description Resumen de ganancias del conductor (hoy, histórico y recientes).
          */
@@ -934,6 +997,12 @@ export interface components {
             /** Trips Today */
             trips_today: number;
         };
+        /**
+         * DriverStatus
+         * @description Outcome of a driver application; only ``APPROVED`` can enter driver mode.
+         * @enum {string}
+         */
+        DriverStatus: "pending" | "approved" | "rejected";
         /**
          * EarningsItemResponse
          * @description Una línea del desglose de ganancias.
@@ -1789,10 +1858,10 @@ export interface components {
         };
         /**
          * ServiceType
-         * @description Tipo de servicio solicitado por un pasajero.
+         * @description Service requested by a passenger (``MOVING`` is a house/office move).
          * @enum {string}
          */
-        ServiceType: "taxi" | "moto" | "delivery";
+        ServiceType: "taxi" | "moto" | "delivery" | "moving";
         /** SocialPhoneLinkRequest */
         SocialPhoneLinkRequest: {
             /**
@@ -1891,6 +1960,9 @@ export interface components {
             auth_provider: components["schemas"]["AuthProvider"];
             /** Created At */
             created_at: string | null;
+            /** Driver Services */
+            driver_services: components["schemas"]["ServiceType"][];
+            driver_status: components["schemas"]["DriverStatus"] | null;
             /** Email */
             email: string | null;
             /** Full Name */
@@ -1939,10 +2011,10 @@ export interface components {
         };
         /**
          * VehicleType
-         * @description Tipo fisico de vehiculo registrado por un conductor.
+         * @description Physical vehicle registered by a driver (``TRUCK`` covers vans and trucks).
          * @enum {string}
          */
-        VehicleType: "taxi" | "moto";
+        VehicleType: "taxi" | "moto" | "truck";
     };
     responses: never;
     parameters: never;
@@ -2527,6 +2599,41 @@ export interface operations {
             };
         };
     };
+    apply_as_driver_api_v1_drivers_me_application_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DriverApplicationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     earnings_api_v1_drivers_me_earnings_get: {
         parameters: {
             query?: never;
@@ -2545,6 +2652,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DriverEarningsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    switch_account_mode_api_v1_drivers_me_mode_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountModeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserResponse"];
                 };
             };
             /** @description Validation Error */

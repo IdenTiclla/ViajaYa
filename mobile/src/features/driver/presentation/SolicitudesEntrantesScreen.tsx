@@ -49,6 +49,7 @@ import { useAutoExpireOffers, useDriverRequests } from '@/features/driver/applic
 import { useDriverToasts } from '@/features/driver/application/useDriverToasts';
 import { FeedbackState } from '@/shared/components';
 import { useAuthStore } from '@/store/authStore';
+import type { VehicleType } from '@/features/auth/domain/types';
 
 type ViewMode = 'list' | 'map';
 
@@ -582,7 +583,7 @@ function SearchingState({
   tipoVehiculo,
 }: {
   position: WatchedPosition;
-  tipoVehiculo: 'taxi' | 'moto' | null;
+  tipoVehiculo: VehicleType | null;
 }) {
   const { styles } = useEstilos(crearEstilos);
   return (

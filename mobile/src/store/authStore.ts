@@ -24,6 +24,8 @@ type AuthState = {
   bootstrap: () => Promise<void>;
   signOut: () => Promise<void>;
   acceptPhoneSession: (result: AuthResult) => Promise<void>;
+  /** Replace the session user after a profile mutation (driver application, mode switch). */
+  setUser: (user: User) => void;
 };
 
 export const useAuthStore = create<AuthState>((set) => {
@@ -40,6 +42,9 @@ export const useAuthStore = create<AuthState>((set) => {
     status: 'loading',
     startupError: null,
     acceptPhoneSession: applySession,
+    setUser(user) {
+      set((state) => (state.status === 'authenticated' ? { user } : {}));
+    },
 
     async bootstrap() {
       const generacion = ++generacionSesion;

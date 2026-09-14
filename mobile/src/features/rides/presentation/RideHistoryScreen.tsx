@@ -25,8 +25,8 @@ import { useRideHistory } from '@/features/rides/application/useCloseFlow';
 import { formatBolivianos } from '@/features/rides/domain/money';
 import type { RideHistoryItem, RideStatus } from '@/features/rides/domain/types';
 import { Button, FeedbackState } from '@/shared/components';
+import { vehicleLabel } from '@/features/auth/domain/vehicleCatalog';
 
-const VEHICLE_LABELS = { taxi: 'Taxi', moto: 'Moto' } as const;
 
 const TABS: { key: Extract<RideStatus, 'completed' | 'cancelled'>; label: string }[] = [
   { key: 'completed', label: 'Completados' },
@@ -166,7 +166,7 @@ function HistoryCard({ item }: { item: RideHistoryItem }) {
   const { colors, styles } = useEstilos(crearEstilos);
   const cp = item.counterpart;
   const vehicle = cp
-    ? [cp.vehicleType ? VEHICLE_LABELS[cp.vehicleType] : null, cp.vehicleModel]
+    ? [vehicleLabel(cp.vehicleType), cp.vehicleModel]
         .filter(Boolean)
         .join(' · ')
     : SERVICE_META[item.service].shortLabel;

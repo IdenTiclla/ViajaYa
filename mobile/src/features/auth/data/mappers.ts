@@ -1,5 +1,6 @@
 /** Mapeo entre el contrato HTTP (snake_case) y los tipos del dominio. */
 import type { AuthResult, AuthTokens, User } from '@/features/auth/domain/types';
+import type { ServiceType } from '@/features/booking/domain/types';
 
 type UserDto = {
   id: string;
@@ -12,6 +13,8 @@ type UserDto = {
   vehicle_type: User['vehicleType'];
   plate: string | null;
   vehicle_model: string | null;
+  driver_services?: ServiceType[];
+  driver_status?: User['driverStatus'];
   rating: number | null;
   is_online: boolean;
   created_at: string | null;
@@ -37,6 +40,8 @@ export function toUser(dto: UserDto): User {
     vehicleType: dto.vehicle_type,
     plate: dto.plate,
     vehicleModel: dto.vehicle_model,
+    driverServices: dto.driver_services ?? [],
+    driverStatus: dto.driver_status ?? null,
     rating: dto.rating,
     isOnline: dto.is_online,
     createdAt: dto.created_at,

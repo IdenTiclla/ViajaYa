@@ -31,32 +31,6 @@ test('a verified new phone asks for profile without creating a local session', a
   assert.equal(requests[1].termsVersion, 'testing-v1');
 });
 
-test('a sign-up entry sends the captured profile with the first completion', async () => {
-  const requests = [];
-  const { controller, accepted } = setup({ async complete(payload) {
-    requests.push(payload); return { user: { id: 'new-account' }, tokens: {} };
-  } });
-  await controller.initialize();
-  controller.start('+59171234567', 'sign_in', { fullName: 'Test User', termsVersion: 'testing-v1' });
-  await controller.verified(proof);
-  assert.equal(requests.length, 1);
-  assert.equal(requests[0].fullName, 'Test User');
-  assert.equal(requests[0].termsVersion, 'testing-v1');
-  assert.equal(accepted.length, 1);
-  assert.equal(controller.getSnapshot().step, 'complete');
-});
-
-test('leaving a sign-up entry drops the captured profile from later sign-ins', async () => {
-  const { controller, requests } = setup();
-  await controller.initialize();
-  controller.start('+59171234567', 'sign_in', { fullName: 'Test User', termsVersion: 'testing-v1' });
-  controller.back();
-  controller.start('+59171234567', 'sign_in');
-  await controller.verified(proof);
-  assert.equal(requests[0].fullName, undefined);
-  assert.equal(controller.getSnapshot().step, 'profile');
-});
-
 test('a lost completion response retries with the same proof and request identity', async () => {
   const requests = [];
   const { controller, accepted } = setup({ async complete(payload) {

@@ -23,9 +23,8 @@ src/
 ├── app/                 # Rutas (expo-router, file-based). Solo composición de pantallas.
 │   ├── _layout.tsx        # Raíz: providers (tema, QueryClient, SafeArea, GestureHandler) + gate por sesión/rol
 │   ├── index.tsx          # Redirect por rol → (auth) | (app)/(tabs) | (driver)/(tabs)/solicitudes
-│   ├── (auth)/            # index → PhoneEntryScreen (login: teléfono + OTP, Google/Facebook)
-│   │                      # register → RegisterScreen (nombre + teléfono + términos → OTP)
-│   │                      # recovery → RecoveryScreen (sin acceso al número). Sin correo/contraseña
+│   ├── (auth)/            # index → PhoneEntryScreen: única vista de acceso (teléfono + OTP, Google).
+│   │                      # Un número nuevo completa nombre + términos ahí mismo. Sin correo/contraseña
 │   ├── (app)/             # Grupo pasajero (guard: authenticated && !driver)
 │   │   ├── _layout.tsx      # Monta <PassengerToaster/> sobre el stack
 │   │   ├── (tabs)/          # Viaje · Historial · Billetera · Perfil  (PillTabBar)
@@ -38,8 +37,8 @@ src/
 │                            #   (index oculto vía tabBarButton: () => null → redirect a Solicitudes)
 ├── features/            # Una carpeta por feature, en capas (Clean Architecture).
 │   ├── auth/              # domain/ · data/ · application/ (phoneAccessController + useAuthController)
-│   │                      # presentation/: PhoneEntryScreen · RegisterScreen · RecoveryScreen · PhoneCodeForm
-│   │                      #   entry/ = bloques compartidos (AuthScaffold, PhoneInput, SocialButtons, TermsCheckbox…)
+│   │                      # presentation/: PhoneEntryScreen · PhoneCodeForm · AccountSecurityPanel
+│   │                      #   entry/ = bloques de la vista de acceso (AuthScaffold, PhoneInput, SocialButtons, TermsCheckbox…)
 │   ├── booking/           # 4 capas completas (flujo de reserva)
 │   ├── home/              # domain/ (orientación) · data/ · application/ · presentation/
 │   ├── rides/             # ofertas + ciclo de vida del viaje + hooks de WS del pasajero y conductor
@@ -85,9 +84,9 @@ src/
 `src/app/_layout.tsx` usa `<Stack.Protected guard=...>` con 3 guards mutuamente excluyentes:
 `(app)` (auth && !driver), `(driver)` (driver), `(auth)` (!auth). `src/app/index.tsx` redirige:
 
-- no autenticado → `/(auth)` (`PhoneEntryScreen`, login). Desde ahí se navega a `/(auth)/register`
-  y `/(auth)/recovery`. Las tres pantallas comparten `useAuthController()` (una instancia por pantalla);
-  el registro captura nombre + términos antes del OTP y los envía en el mismo `complete` (sin paso extra).
+- no autenticado → `/(auth)` (`PhoneEntryScreen`: única pantalla de acceso, sin registro ni recuperación
+  aparte). Un número nuevo pasa por `ProfileCompletionForm` (nombre + términos) tras el OTP.
+  El controlador (`useAuthController()`) conserva el flujo de recuperación aunque hoy no tiene UI.
 - pasajero → `/(app)/(tabs)` (tab inicial: Viaje)
 - conductor → `/(driver)/(tabs)/solicitudes` (cae directo en Solicitudes, no en Inicio)
 

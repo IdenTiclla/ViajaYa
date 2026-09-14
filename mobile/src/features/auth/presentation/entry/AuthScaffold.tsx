@@ -6,10 +6,10 @@ import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/
 import { Button } from '@/shared/components';
 import { BrandHeader } from '../BrandHeader';
 
-type Props = { subtitle?: string; children: ReactNode; footer?: ReactNode };
+type Props = { subtitle?: string; children: ReactNode };
 
-/** Shared frame for the auth screens: brand on top, form card in the middle, links below. */
-export function AuthScaffold({ subtitle, children, footer }: Props) {
+/** Frame for the entry screen: brand on top, form card in the middle. */
+export function AuthScaffold({ subtitle, children }: Props) {
   const { styles } = useEstilos(createStyles);
   return (
     <SafeAreaView style={styles.safe}>
@@ -18,7 +18,6 @@ export function AuthScaffold({ subtitle, children, footer }: Props) {
           keyboardDismissMode="on-drag">
           <BrandHeader subtitle={subtitle} />
           <View style={styles.card}>{children}</View>
-          {footer && <View style={styles.footer}>{footer}</View>}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -76,7 +75,6 @@ const createStyles = ({ colors, modo }: Tema) => StyleSheet.create({
     ...(modo === 'light' ? { shadowColor: '#0F2266', shadowOpacity: 0.08, shadowRadius: 16,
       shadowOffset: { width: 0, height: 8 }, elevation: 3 } : {}),
   },
-  footer: { width: '100%', maxWidth: 480, alignSelf: 'center', gap: spacing.xs, alignItems: 'center' },
   heading: { gap: spacing.xs },
   title: { fontSize: fontSize.xl, fontWeight: fontWeight.bold, color: colors.text },
   text: { fontSize: fontSize.md, color: colors.textSecondary, lineHeight: 22 },

@@ -1,10 +1,8 @@
-import { router } from 'expo-router';
 import { useState } from 'react';
 
 import { Button } from '@/shared/components';
 import { useAuthController } from '../application/useAuthController';
 import { useSocialAuth } from '../application/useSocialAuth';
-import { AuthLink } from './entry/AuthLink';
 import { AuthHeading, AuthLoading, AuthNotice, AuthScaffold } from './entry/AuthScaffold';
 import { PhoneInput } from './entry/PhoneInput';
 import { ProfileCompletionForm } from './entry/ProfileCompletionForm';
@@ -12,7 +10,7 @@ import { SessionEntering } from './entry/SessionEntering';
 import { SocialButtons } from './entry/SocialButtons';
 import { PhoneCodeForm } from './PhoneCodeForm';
 
-/** Sign-in: phone + OTP, or Google/Facebook linked to a verified phone. */
+/** Single entry screen: phone + OTP (creates the account when the number is new) or Google linked to a verified phone. */
 export function PhoneEntryScreen() {
   const { controller, state } = useAuthController();
   const [number, setNumber] = useState('');
@@ -29,23 +27,16 @@ export function PhoneEntryScreen() {
   const busy = state.busy || socialBusy;
   const providers = state.capabilities?.socialProviders ?? [];
 
-  const phoneStep = state.step === 'phone';
   return (
-    <AuthScaffold subtitle="Tu ciudad, a un toque de distancia."
-      footer={phoneStep && !state.socialProvider ? <>
-        <AuthLink prompt="¿Aún no tienes cuenta?" label="Regístrate" disabled={busy}
-          onPress={() => router.push('/(auth)/register')} />
-        <AuthLink label="No tengo acceso a mi número" disabled={busy}
-          onPress={() => router.push('/(auth)/recovery')} />
-      </> : undefined}>
+    <AuthScaffold subtitle="Tu ciudad, a un toque de distancia.">
       {state.step === 'loading' && (
         <AuthLoading busy={state.busy} error={state.error} onRetry={() => { void controller.initialize(); }} />
       )}
-      {phoneStep && <>
+      {state.step === 'phone' && <>
         <AuthHeading title={state.socialProvider ? `Vincula ${socialName} a tu número` : 'Bienvenido a ViajaYa'}
           text={state.socialProvider
             ? `Verificamos tu cuenta de ${socialName}. Ahora confirma tu número; después podrás vincular ambos.`
-            : 'Ingresa tu número y te enviaremos un código por SMS.'} />
+            : 'Ingresa tu número y te enviaremos un código por SMS. Si es tu primera vez, crearemos tu cuenta.'} />
         <PhoneInput countries={state.capabilities?.countries ?? []} callingCode={callingCode}
           onChangeCallingCode={setCallingCode} number={number} onChangeNumber={setNumber} editable={!busy} />
         {!enabled && <AuthNotice tone="error">

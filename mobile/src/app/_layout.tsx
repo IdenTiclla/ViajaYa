@@ -60,6 +60,9 @@ function RootNavigator() {
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Protected guard={isAuthenticated}>
+        <Stack.Screen name="elegir-modo" options={{ gestureEnabled: false }} />
+      </Stack.Protected>
       <Stack.Protected guard={isAuthenticated && !isDriver}>
         <Stack.Screen name="(app)" />
       </Stack.Protected>

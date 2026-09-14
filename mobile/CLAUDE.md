@@ -30,7 +30,8 @@ src/
 │   │   ├── (tabs)/          # Viaje · Historial · Billetera · Perfil  (PillTabBar)
 │   │   ├── booking/         # destination, configure, offers, trip, rating,
 │   │   │                    #   pick-on-map, saved-places, edit-place
-│   │   └── conductor/registro.tsx  # alta/edición del registro de conductor (desde Perfil)
+│   │   └── conductor/registro.tsx  # alta/edición de un vehículo (?vehicle=taxi|moto|truck) desde Perfil
+│   ├── elegir-modo.tsx    # tras iniciar sesión un conductor aprobado elige modo y vehículo
 │   └── (driver)/          # Grupo conductor (guard: role === 'driver')
 │       ├── _layout.tsx      # Monta useDriverPoolSocket() + <DriverToaster/>
 │       ├── oferta-enviada.tsx
@@ -50,10 +51,12 @@ src/
 │   │   └── presentation/    # FareKeypad · OfferLifeTimer · RideHistoryScreen · RideRatingCard · …
 │   ├── profile/           # presentación del perfil de pasajero y selector de tema compartido
 │   └── driver/            # reusa data/domain de rides para el pool; data/ propio solo para la cuenta
-│       ├── data/            # driverAccountRepository (POST /drivers/me/application · /me/mode)
+│       ├── domain/          # DriverVehicle (hasta uno por tipo; MAX_DRIVER_VEHICLES)
+│       ├── data/            # driverAccountRepository (/drivers/me/vehicles · /me/mode)
 │       ├── application/     # useDriverRequests (zustand) · useDriverToasts · useDriverAccount
 │       └── presentation/    # SolicitudesEntrantesScreen · DriverTopBar · RequestCard · DriverSearchMap
-│                            #   · RegistroConductorScreen · DriverAccountCard · PerfilConductorScreen · …
+│                            #   · RegistroConductorScreen · DriverAccountCard · SelectorVehiculo
+│                            #   · ElegirModoScreen · PerfilConductorScreen · …
 ├── core/               # Infra transversal
 │   ├── components/       # PillTabBar (bottom bar Stitch: tab activo con pill amarillo)
 │   ├── config/env.ts     # Config tipada desde Constants.expoConfig.extra
@@ -94,14 +97,20 @@ src/
 - pasajero → `/(app)/(tabs)` (tab inicial: Viaje)
 - conductor → `/(driver)/(tabs)/solicitudes` (cae directo en Solicitudes, no en Inicio)
 
-**Una cuenta, dos modos.** `user.role` es el modo activo que devuelve el backend. Un pasajero se
-registra como conductor en Perfil → `DriverAccountCard` → `RegistroConductorScreen` (vehículo
-taxi/moto/camioneta, servicios que ofrece, placa y modelo). `user.driverStatus`
-(`pending|approved|rejected|null`) decide qué muestra la tarjeta; con `approved`, "Cambiar a
-modo conductor" llama a `useSwitchAccountMode()` (`POST /drivers/me/mode`), que vacía React
-Query (`removeQueries`), reemplaza `user` en `authStore` (`setUser`) y hace `router.replace('/')`
-para que los guards reenruten. El conductor vuelve a modo pasajero desde su Perfil (solo
-desconectado). No dupliques ese flujo: la navegación por rol ya existente hace el resto.
+**Una cuenta, dos modos, hasta tres vehículos.** `user.role` es el modo activo que devuelve el
+backend. En Perfil (pasajero) `DriverAccountCard` lista los vehículos (`useDriverVehicles`,
+key `['driver-vehicles']`) con su estado y permite agregar/editar/quitar
+(`RegistroConductorScreen`, `?vehicle=` edita ese tipo; al agregar solo se ofrecen los tipos
+libres). Con vehículos aprobados, `SelectorVehiculo` muestra "Conducir con Taxi · placa" por cada
+uno; elegir llama a `useSwitchAccountMode({mode:'driver', vehicleType})` (`POST /drivers/me/mode`),
+que si el usuario está en línea primero lo desconecta, vacía React Query (`removeQueries`),
+reemplaza `user` (`setUser`) y hace `router.replace('/')` para que los guards reenruten. En modo
+conductor, Perfil permite cambiar de vehículo (otros aprobados) y volver a pasajero.
+
+**Al iniciar sesión** con una cuenta con algún vehículo aprobado, `authStore.modeChoicePending`
+queda en `true` y `index.tsx` redirige a `/elegir-modo` (`ElegirModoScreen`: "Pedir viajes" o
+"Conducir con …" por vehículo). El arranque con sesión guardada (`bootstrap`) no vuelve a
+preguntar. No dupliques ese flujo: la navegación por rol ya existente hace el resto.
 
 **Bottom bar Stitch** (`core/components/PillTabBar.tsx`, compartida por pasajero y conductor):
 el icono activo lleva un pill de fondo amarillo (`colors.accent` = `#F5C518`).

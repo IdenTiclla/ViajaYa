@@ -313,29 +313,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/drivers/me/application": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Apply As Driver
-         * @description Register (or update) the vehicle and services the account wants to drive with.
-         *
-         *     The account stays in passenger mode; ``driver_status`` tells whether it can
-         *     switch to driver mode (``approved``) or is still under review (``pending``).
-         */
-        post: operations["apply_as_driver_api_v1_drivers_me_application_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/drivers/me/earnings": {
         parameters: {
             query?: never;
@@ -367,7 +344,7 @@ export interface paths {
         put?: never;
         /**
          * Switch Account Mode
-         * @description Switch the account between passenger and driver mode (approved drivers only).
+         * @description Switch between passenger and driver mode, choosing the vehicle to drive with.
          */
         post: operations["switch_account_mode_api_v1_drivers_me_mode_post"];
         delete?: never;
@@ -391,6 +368,53 @@ export interface paths {
          */
         post: operations["set_online_api_v1_drivers_me_online_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/drivers/me/vehicles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Vehicles
+         * @description Vehicles the account registered to drive with (taxi, moto and/or truck).
+         */
+        get: operations["list_vehicles_api_v1_drivers_me_vehicles_get"];
+        put?: never;
+        /**
+         * Register Vehicle
+         * @description Register or update the vehicle of that type and the services served with it.
+         *
+         *     The account keeps its mode; ``user.driver_status`` aggregates the vehicles
+         *     (``approved`` as soon as one is) and ``user.vehicle_type`` is the active one.
+         */
+        post: operations["register_vehicle_api_v1_drivers_me_vehicles_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/drivers/me/vehicles/{vehicle_type}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Vehicle
+         * @description Remove a vehicle (not the one in use while in driver mode).
+         */
+        delete: operations["remove_vehicle_api_v1_drivers_me_vehicles__vehicle_type__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -905,10 +929,11 @@ export interface components {
     schemas: {
         /**
          * AccountModeRequest
-         * @description Active mode of the account: ``passenger`` or ``driver``.
+         * @description Active mode of the account; ``vehicle_type`` picks the vehicle to drive with.
          */
         AccountModeRequest: {
             mode: components["schemas"]["UserRole"];
+            vehicle_type?: components["schemas"]["VehicleType"] | null;
         };
         /** AccountSessionResponse */
         AccountSessionResponse: {
@@ -969,19 +994,6 @@ export interface components {
             service_type: components["schemas"]["ServiceType"];
         };
         /**
-         * DriverApplicationRequest
-         * @description Vehicle and services a passenger registers to drive with.
-         */
-        DriverApplicationRequest: {
-            /** Plate */
-            plate: string;
-            /** Services */
-            services: components["schemas"]["ServiceType"][];
-            /** Vehicle Model */
-            vehicle_model: string;
-            vehicle_type: components["schemas"]["VehicleType"];
-        };
-        /**
          * DriverEarningsResponse
          * @description Resumen de ganancias del conductor (hoy, histórico y recientes).
          */
@@ -1003,6 +1015,45 @@ export interface components {
          * @enum {string}
          */
         DriverStatus: "pending" | "approved" | "rejected";
+        /**
+         * DriverVehicleRegistrationResponse
+         * @description The registered vehicle plus the account (aggregate status, active vehicle).
+         */
+        DriverVehicleRegistrationResponse: {
+            user: components["schemas"]["UserResponse"];
+            vehicle: components["schemas"]["DriverVehicleResponse"];
+        };
+        /**
+         * DriverVehicleRequest
+         * @description One vehicle (at most one per type) and the services served with it.
+         */
+        DriverVehicleRequest: {
+            /** Plate */
+            plate: string;
+            /** Services */
+            services: components["schemas"]["ServiceType"][];
+            /** Vehicle Model */
+            vehicle_model: string;
+            vehicle_type: components["schemas"]["VehicleType"];
+        };
+        /** DriverVehicleResponse */
+        DriverVehicleResponse: {
+            /** Created At */
+            created_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Plate */
+            plate: string;
+            /** Services */
+            services: components["schemas"]["ServiceType"][];
+            status: components["schemas"]["DriverStatus"];
+            /** Vehicle Model */
+            vehicle_model: string;
+            vehicle_type: components["schemas"]["VehicleType"];
+        };
         /**
          * EarningsItemResponse
          * @description Una línea del desglose de ganancias.
@@ -2599,41 +2650,6 @@ export interface operations {
             };
         };
     };
-    apply_as_driver_api_v1_drivers_me_application_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DriverApplicationRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UserResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     earnings_api_v1_drivers_me_earnings_get: {
         parameters: {
             query?: never;
@@ -2714,6 +2730,105 @@ export interface operations {
                 "application/json": components["schemas"]["OnlineRequest"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_vehicles_api_v1_drivers_me_vehicles_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriverVehicleResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    register_vehicle_api_v1_drivers_me_vehicles_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DriverVehicleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriverVehicleRegistrationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_vehicle_api_v1_drivers_me_vehicles__vehicle_type__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                vehicle_type: components["schemas"]["VehicleType"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

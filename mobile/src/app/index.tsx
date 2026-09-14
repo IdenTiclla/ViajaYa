@@ -6,9 +6,12 @@ import { useAuthStore } from '@/store/authStore';
 export default function Index() {
   const status = useAuthStore((s) => s.status);
   const user = useAuthStore((s) => s.user);
+  const modeChoicePending = useAuthStore((s) => s.modeChoicePending);
 
   if (status === 'loading') return null;
   if (status !== 'authenticated') return <Redirect href="/(auth)" />;
+  // An approved driver who just signed in picks passenger or driver (and vehicle) first.
+  if (modeChoicePending) return <Redirect href="/elegir-modo" />;
   // El conductor entra viendo las solicitudes/ofertas entrantes; el pasajero, su viaje.
   return (
     <Redirect

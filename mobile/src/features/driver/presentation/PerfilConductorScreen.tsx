@@ -3,6 +3,7 @@
  */
 import { Ionicons, type IoniconsIconName } from '@react-native-vector-icons/ionicons';
 import { useRouter } from 'expo-router';
+import { useState } from 'react';
 import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -12,9 +13,15 @@ import { getApiErrorMessage } from '@/core/errors/apiError';
 import { useAuthStore } from '@/store/authStore';
 import { SelectorTema } from '@/features/profile/presentation/SelectorTema';
 import { AccountSecurityPanel } from '@/features/auth/presentation/AccountSecurityPanel';
+import type { VehicleType } from '@/features/auth/domain/types';
 import { VEHICLE_META } from '@/features/auth/domain/vehicleCatalog';
 import { SERVICE_META } from '@/features/booking/domain/serviceCatalog';
-import { useSwitchAccountMode } from '@/features/driver/application/useDriverAccount';
+import {
+  approvedVehicles,
+  useDriverVehicles,
+  useSwitchAccountMode,
+} from '@/features/driver/application/useDriverAccount';
+import { SelectorVehiculo } from '@/features/driver/presentation/SelectorVehiculo';
 
 export function PerfilConductorScreen() {
   const { colors, styles } = useEstilos(crearEstilos);
@@ -22,6 +29,12 @@ export function PerfilConductorScreen() {
   const user = useAuthStore((s) => s.user);
   const signOut = useAuthStore((s) => s.signOut);
   const switchMode = useSwitchAccountMode();
+  const vehicles = useDriverVehicles();
+  const [pendingVehicle, setPendingVehicle] = useState<VehicleType | null>(null);
+  // Other approved vehicles the driver could switch to (the active one is excluded).
+  const otherVehicles = approvedVehicles(vehicles.data).filter(
+    (vehicle) => vehicle.vehicleType !== user?.vehicleType,
+  );
   const initial = (user?.fullName?.trim().charAt(0) ?? 'C').toUpperCase();
   const services = user?.driverServices.map((s) => SERVICE_META[s].shortLabel).join(' · ');
 
@@ -51,12 +64,34 @@ export function PerfilConductorScreen() {
           <Detail icon="briefcase" label="Servicios" value={services || '—'} />
         </View>
 
+        {otherVehicles.length > 0 && (
+          <View style={styles.modeCard}>
+            <Text style={styles.modeTitle}>Cambiar de vehículo</Text>
+            <Text style={styles.modeText}>
+              {user?.isOnline
+                ? 'Te desconectaremos y volverás a conectarte con el vehículo elegido.'
+                : 'Las solicitudes que verás dependen de los servicios de ese vehículo.'}
+            </Text>
+            <SelectorVehiculo
+              vehicles={otherVehicles}
+              onPick={(vehicleType) => {
+                setPendingVehicle(vehicleType);
+                switchMode.mutate({ mode: 'driver', vehicleType });
+              }}
+              pending={switchMode.isPending ? pendingVehicle : null}
+              disabled={switchMode.isPending}
+              primary={null}
+              titlePrefix="Conducir con"
+            />
+          </View>
+        )}
+
         <View style={styles.modeCard}>
           <Text style={styles.modeTitle}>Modo pasajero</Text>
           <Text style={styles.modeText}>
             {user?.isOnline
-              ? 'Te desconectaremos y volverás a pedir viajes como pasajero. Tu registro de conductor se conserva.'
-              : 'Tu registro de conductor se conserva; vuelves cuando quieras.'}
+              ? 'Te desconectaremos y volverás a pedir viajes como pasajero. Tus vehículos se conservan.'
+              : 'Tus vehículos se conservan; vuelves cuando quieras.'}
           </Text>
           {switchMode.isError && (
             <Text style={styles.modeError} accessibilityRole="alert">
@@ -66,8 +101,12 @@ export function PerfilConductorScreen() {
           <Button
             title="Cambiar a modo pasajero"
             variant="secondary"
-            loading={switchMode.isPending}
-            onPress={() => switchMode.mutate('passenger')}
+            loading={switchMode.isPending && pendingVehicle === null}
+            disabled={switchMode.isPending}
+            onPress={() => {
+              setPendingVehicle(null);
+              switchMode.mutate({ mode: 'passenger' });
+            }}
           />
         </View>
 

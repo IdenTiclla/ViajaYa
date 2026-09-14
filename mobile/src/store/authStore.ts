@@ -24,8 +24,14 @@ type AuthState = {
   bootstrap: () => Promise<void>;
   signOut: () => Promise<void>;
   acceptPhoneSession: (result: AuthResult) => Promise<void>;
-  /** Replace the session user after a profile mutation (driver application, mode switch). */
+  /** Replace the session user after a profile mutation (driver vehicles, mode switch). */
   setUser: (user: User) => void;
+  /**
+   * True right after signing in with an approved driver account: the app asks
+   * whether to enter as passenger or driver (and with which vehicle) before routing.
+   */
+  modeChoicePending: boolean;
+  resolveModeChoice: () => void;
 };
 
 export const useAuthStore = create<AuthState>((set) => {
@@ -34,7 +40,12 @@ export const useAuthStore = create<AuthState>((set) => {
     invalidarSolicitudesSesion();
     await tokenStorage.save(result.tokens);
     if (generation !== generacionSesion) return;
-    set({ user: result.user, status: 'authenticated', startupError: null });
+    set({
+      user: result.user,
+      status: 'authenticated',
+      startupError: null,
+      modeChoicePending: result.user.driverStatus === 'approved',
+    });
   }
 
   return {
@@ -44,6 +55,10 @@ export const useAuthStore = create<AuthState>((set) => {
     acceptPhoneSession: applySession,
     setUser(user) {
       set((state) => (state.status === 'authenticated' ? { user } : {}));
+    },
+    modeChoicePending: false,
+    resolveModeChoice() {
+      set({ modeChoicePending: false });
     },
 
     async bootstrap() {
@@ -58,7 +73,7 @@ export const useAuthStore = create<AuthState>((set) => {
           restaurar(), 30_000, 'La sesión tardó demasiado en cargar. Vuelve a intentar.',
         );
         if (generacion !== generacionSesion) return;
-        set({ user, status: user ? 'authenticated' : 'unauthenticated' });
+        set({ user, status: user ? 'authenticated' : 'unauthenticated', modeChoicePending: false });
       } catch (error) {
         if (generacion !== generacionSesion) return;
         set({
@@ -87,7 +102,7 @@ export const useAuthStore = create<AuthState>((set) => {
         // Un fallo nativo no debe impedir volver al formulario de acceso.
       } finally {
         if (generacion === generacionSesion) {
-          set({ user: null, status: 'unauthenticated', startupError: null });
+          set({ user: null, status: 'unauthenticated', startupError: null, modeChoicePending: false });
         }
       }
     },
@@ -97,5 +112,7 @@ export const useAuthStore = create<AuthState>((set) => {
 // El cliente HTTP ya eliminó las credenciales. No duplicar el borrado nativo.
 setOnSessionExpired(() => {
   generacionSesion += 1;
-  useAuthStore.setState({ user: null, status: 'unauthenticated', startupError: null });
+  useAuthStore.setState({
+    user: null, status: 'unauthenticated', startupError: null, modeChoicePending: false,
+  });
 });

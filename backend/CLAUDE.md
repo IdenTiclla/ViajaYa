@@ -277,11 +277,11 @@ no un valor predeterminado.
   - `POST /offers/{offer_id}/accept` (pasajero: asignación **directa atómica**), `/reject`, `/withdraw`.
   - `PATCH /{id}/status` (conductor: `ACCEPTED→ARRIVING→IN_PROGRESS→COMPLETED`).
   - `PATCH /{id}/fare` (pasajero: subir la oferta en búsqueda), `POST /{id}/pause-edit` + `PATCH /{id}` (modificar solicitud), `POST /{id}/cancel`, `POST /{id}/rating`.
-- **drivers** (`/drivers`): `POST /me/application` (alta/edición del registro de conductor:
-  `vehicle_type`, `plate`, `vehicle_model`, `services`; responde `UserResponse` con
-  `driver_status` y `driver_services`), `POST /me/mode` (`{mode: passenger|driver}` conmuta el
-  modo activo; solo `driver_status=approved`, desconectado y sin viaje activo), `POST /me/online`,
-  `GET /me/active-ride`, `GET /me/earnings`.
+- **drivers** (`/drivers`): `GET /me/vehicles`, `POST /me/vehicles` (alta/edición del vehículo
+  de ese tipo: `vehicle_type`, `plate`, `vehicle_model`, `services`; responde `{user, vehicle}`),
+  `DELETE /me/vehicles/{vehicle_type}`, `POST /me/mode` (`{mode: passenger|driver,
+  vehicle_type?}` conmuta el modo activo y elige el vehículo con el que se conduce),
+  `POST /me/online`, `GET /me/active-ride`, `GET /me/earnings`.
 - **saved-places** (`/saved-places`): `GET ""`, `POST ""`, `PUT /{place_id}`, `DELETE /{place_id}`.
 
 Rutas protegidas: usan `CurrentUserDep` (header `Authorization: Bearer <access_token>`).
@@ -296,7 +296,8 @@ Acceso: `request_phone_code`, `verify_phone_code`, `complete_phone_sign_in`,
 `create_offer`, `list_offers_for_ride`, `accept_offer`, `reject_offer`,
 `withdraw_offer`, `expire_offer`, `update_ride_status`, `update_ride_fare`, `cancel_ride`,
 `cancel_ride_on_disconnect`, `pause_ride_for_edit`, `edit_ride`,
-`rate_ride`, `skip_ride_rating`, `apply_as_driver`, `switch_account_mode`, `set_driver_online`,
+`rate_ride`, `skip_ride_rating`, `register_driver_vehicle`, `list_driver_vehicles`,
+`remove_driver_vehicle`, `switch_account_mode`, `set_driver_online`,
 `get_driver_active_ride`,
 `get_driver_earnings`, `list_saved_places`, `create_saved_place`, `update_saved_place`,
 `delete_saved_place`.
@@ -345,17 +346,22 @@ offers vivas del conductor elegido en **otros rides** (`OfferAcceptance.withdraw
 
 `User.role` es el **modo activo** de la cuenta, nunca "los dos a la vez": todo lo existente que
 decide por rol (historial, calificación pendiente, guards del WS, `create_ride_request`…) sigue
-válido sin cambios. Lo que autoriza el modo conductor es `User.driver_status`:
+válido sin cambios. Un conductor registra **hasta un vehículo por tipo** (`DriverVehicle`, tabla
+`driver_vehicles`: taxi, moto, camioneta), cada uno con sus servicios y su estado de revisión.
+`users.vehicle_type/plate/vehicle_model/driver_services` son el **vehículo activo** (el elegido al
+entrar en modo conductor; es lo que leen pool y ofertas) y `users.driver_status` el agregado
+(`approved` si algún vehículo lo está):
 
-- `POST /drivers/me/application` (`ApplyAsDriver`, solo en modo pasajero) guarda vehículo,
-  placa, modelo y servicios → `driver_status=pending`, o `approved` al instante si
-  `DRIVER_AUTO_APPROVE=true` (desarrollo/pruebas; **prohibido en producción**, `Settings` lo
-  rechaza). Volver a enviar la solicitud reingresa a revisión fuera de auto-aprobación.
+- `POST /drivers/me/vehicles` (`RegisterDriverVehicle`) crea o actualiza el vehículo de ese tipo
+  → `status=pending`, o `approved` al instante si `DRIVER_AUTO_APPROVE=true` (desarrollo/pruebas;
+  **prohibido en producción**, `Settings` lo rechaza). El primer vehículo pasa a ser el activo.
+  En modo conductor no se puede editar ni quitar el vehículo activo (sí los demás).
   La revisión por operador es F04-A (pendiente); mientras tanto, en hospedados sin
-  auto-aprobación hay que aprobar en la base (`driver_status='approved'`).
-- `POST /drivers/me/mode` (`SwitchAccountMode`): a `driver` exige `approved` y sin viaje activo
-  como pasajero; a `passenger` exige estar desconectado y sin viaje en curso como conductor.
-  Los datos del vehículo se conservan en ambos modos.
+  auto-aprobación hay que aprobar en la base (`driver_vehicles.status='approved'`).
+- `POST /drivers/me/mode` (`SwitchAccountMode`): a `driver` exige un vehículo aprobado
+  (`vehicle_type` explícito, el único aprobado, o el activo si sigue aprobado), sin viaje activo
+  como pasajero; cambiar de vehículo en modo conductor exige estar desconectado. A `passenger`
+  exige estar desconectado y sin viaje en curso. Los vehículos se conservan en ambos modos.
 
 ## Tiempo real (WebSocket)
 
@@ -412,10 +418,11 @@ cerrar la app o perder ambos canales durante toda la gracia cancela la búsqueda
 ## Migraciones (Alembic)
 
 - Config: `alembic.ini` + `migrations/env.py` (engine **async** con `async_engine_from_config`).
-- **27 migraciones** en `migrations/versions/` (`0001_create_users` …
-  `0027_driver_applications`). `0025` rechaza el downgrade si hay cuentas solo-teléfono.
+- **28 migraciones** en `migrations/versions/` (`0001_create_users` …
+  `0028_driver_vehicles`). `0025` rechaza el downgrade si hay cuentas solo-teléfono.
   `0027` añade `users.driver_services` (JSON/JSONB) y `driver_status`, y aprueba a los
-  conductores existentes con todos los servicios de su vehículo.
+  conductores existentes con todos los servicios de su vehículo. `0028` crea
+  `driver_vehicles` y copia ahí el vehículo actual de cada conductor.
 - Importante: los enums se persisten por **valor** minúsculo vía `values_callable=_enum_values`
   en `infrastructure/db/models.py` (migración `0006_normalize_enum_values`). No rompas esa convención
   o se caerán columnas existentes.

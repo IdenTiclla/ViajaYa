@@ -1,12 +1,13 @@
 /**
- * "Conviértete en conductor": a passenger registers the vehicle and the services
- * they want to serve (taxi, taxi + encomiendas, moto, moto + encomiendas or
- * mudanzas). The account stays a passenger until it switches mode.
+ * Register or edit one driver vehicle (`?vehicle=taxi|moto|truck` edits that
+ * one) and the services served with it: taxi, taxi + encomiendas, moto,
+ * moto + encomiendas or mudanzas. The account keeps its mode until it switches.
  */
 import { Ionicons } from '@react-native-vector-icons/ionicons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -31,9 +32,13 @@ import {
   SelectableOptionCards,
   type SelectableOption,
 } from '@/features/booking/presentation/SelectableOptionCards';
-import { useApplyAsDriver, useSwitchAccountMode } from '@/features/driver/application/useDriverAccount';
+import {
+  useDriverVehicles,
+  useRegisterDriverVehicle,
+  useSwitchAccountMode,
+} from '@/features/driver/application/useDriverAccount';
+import type { DriverVehicle } from '@/features/driver/domain/types';
 import { Button, TextField } from '@/shared/components';
-import { useAuthStore } from '@/store/authStore';
 
 const VEHICLE_OPTIONS: readonly SelectableOption<VehicleType>[] = VEHICLE_ORDER.map((id) => ({
   id,
@@ -41,6 +46,10 @@ const VEHICLE_OPTIONS: readonly SelectableOption<VehicleType>[] = VEHICLE_ORDER.
   icon: VEHICLE_META[id].icon,
   accessibilityLabel: VEHICLE_META[id].label,
 }));
+
+function isVehicleType(value: unknown): value is VehicleType {
+  return typeof value === 'string' && (VEHICLE_ORDER as readonly string[]).includes(value);
+}
 
 /** What each service means for a driver of that vehicle. */
 const SERVICE_HINTS: Record<ServiceType, string> = {
@@ -53,24 +62,78 @@ const SERVICE_HINTS: Record<ServiceType, string> = {
 export function RegistroConductorScreen() {
   const { colors, styles } = useEstilos(crearEstilos);
   const router = useRouter();
-  const user = useAuthStore((s) => s.user);
-  const apply = useApplyAsDriver();
+  const { vehicle: vehicleParam } = useLocalSearchParams<{ vehicle?: string }>();
+  const editingType = isVehicleType(vehicleParam) ? vehicleParam : null;
+  const vehicles = useDriverVehicles();
+
+  if (vehicles.isPending) {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+        <View style={styles.result}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+  if (vehicles.isError) {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+        <View style={styles.result}>
+          <Text style={styles.error} accessibilityRole="alert">
+            {getApiErrorMessage(vehicles.error)}
+          </Text>
+          <View style={styles.resultActions}>
+            <Button title="Reintentar" onPress={() => vehicles.refetch()} />
+            <Button title="Volver" variant="secondary" onPress={() => router.back()} />
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+  return (
+    <VehicleForm
+      vehicles={vehicles.data}
+      editing={vehicles.data.find((v) => v.vehicleType === editingType) ?? null}
+    />
+  );
+}
+
+function VehicleForm({
+  vehicles,
+  editing,
+}: {
+  vehicles: DriverVehicle[];
+  editing: DriverVehicle | null;
+}) {
+  const { colors, styles } = useEstilos(crearEstilos);
+  const router = useRouter();
+  const register = useRegisterDriverVehicle();
   const switchMode = useSwitchAccountMode();
 
-  const editing = user?.driverStatus != null;
-  const [vehicleType, setVehicleType] = useState<VehicleType>(user?.vehicleType ?? 'taxi');
-  const [services, setServices] = useState<ServiceType[]>(() =>
-    user?.driverServices.length ? user.driverServices : [...SERVICES_FOR_VEHICLE[vehicleType]],
+  const taken = new Set(vehicles.map((v) => v.vehicleType));
+  // When adding, only vehicle types not registered yet can be chosen.
+  const options = editing
+    ? VEHICLE_OPTIONS.filter((o) => o.id === editing.vehicleType)
+    : VEHICLE_OPTIONS.filter((o) => !taken.has(o.id));
+  const [vehicleType, setVehicleType] = useState<VehicleType>(
+    editing?.vehicleType ?? options[0]?.id ?? 'taxi',
   );
-  const [plate, setPlate] = useState(user?.plate ?? '');
-  const [vehicleModel, setVehicleModel] = useState(user?.vehicleModel ?? '');
-  const [submitted, setSubmitted] = useState(false);
+  const [services, setServices] = useState<ServiceType[]>(() =>
+    editing ? editing.services : [...SERVICES_FOR_VEHICLE[vehicleType]],
+  );
+  const [plate, setPlate] = useState(editing?.plate ?? '');
+  const [vehicleModel, setVehicleModel] = useState(editing?.vehicleModel ?? '');
+  const [submitted, setSubmitted] = useState<DriverVehicle | null>(null);
 
   const allowed = SERVICES_FOR_VEHICLE[vehicleType];
   const chosen = allowed.filter((service) => services.includes(service));
-  const busy = apply.isPending || switchMode.isPending;
+  const busy = register.isPending || switchMode.isPending;
   const canSubmit =
-    chosen.length > 0 && plate.trim().length >= 3 && vehicleModel.trim().length >= 2 && !busy;
+    options.length > 0 &&
+    chosen.length > 0 &&
+    plate.trim().length >= 3 &&
+    vehicleModel.trim().length >= 2 &&
+    !busy;
 
   const changeVehicle = (next: VehicleType) => {
     setVehicleType(next);
@@ -82,13 +145,13 @@ export function RegistroConductorScreen() {
       current.includes(service) ? current.filter((s) => s !== service) : [...current, service],
     );
   const submit = () =>
-    apply.mutate(
+    register.mutate(
       { vehicleType, plate: plate.trim(), vehicleModel: vehicleModel.trim(), services: chosen },
-      { onSuccess: () => setSubmitted(true) },
+      { onSuccess: ({ vehicle }) => setSubmitted(vehicle) },
     );
 
-  if (submitted && user?.driverStatus) {
-    const approved = user.driverStatus === 'approved';
+  if (submitted) {
+    const approved = submitted.status === 'approved';
     return (
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
         <View style={styles.result}>
@@ -102,8 +165,8 @@ export function RegistroConductorScreen() {
           </Text>
           <Text style={styles.resultText}>
             {approved
-              ? 'Tu registro está aprobado. Cambia a modo conductor cuando quieras recibir solicitudes.'
-              : 'La revisaremos y te avisaremos cuando esté aprobada. Mientras tanto puedes seguir viajando como pasajero.'}
+              ? `Tu ${VEHICLE_META[submitted.vehicleType].label.toLowerCase()} está aprobado. Cambia a modo conductor cuando quieras recibir solicitudes.`
+              : 'Lo revisaremos y te avisaremos cuando esté aprobado. Mientras tanto puedes seguir viajando como pasajero.'}
           </Text>
           {switchMode.isError && (
             <Text style={styles.error} accessibilityRole="alert">
@@ -113,9 +176,11 @@ export function RegistroConductorScreen() {
           <View style={styles.resultActions}>
             {approved && (
               <Button
-                title="Cambiar a modo conductor"
+                title={`Conducir con ${VEHICLE_META[submitted.vehicleType].label.toLowerCase()}`}
                 loading={switchMode.isPending}
-                onPress={() => switchMode.mutate('driver')}
+                onPress={() =>
+                  switchMode.mutate({ mode: 'driver', vehicleType: submitted.vehicleType })
+                }
               />
             )}
             <Button
@@ -145,7 +210,11 @@ export function RegistroConductorScreen() {
             <Ionicons name="arrow-back" size={24} color={colors.text} />
           </Pressable>
           <Text style={styles.title}>
-            {editing ? 'Tu registro de conductor' : 'Conviértete en conductor'}
+            {editing
+              ? `Tu ${VEHICLE_META[editing.vehicleType].label.toLowerCase()}`
+              : vehicles.length === 0
+                ? 'Conviértete en conductor'
+                : 'Agregar vehículo'}
           </Text>
           <Text style={styles.subtitle}>
             Elige tu vehículo y los servicios que quieres ofrecer. Tu cuenta de pasajero se
@@ -153,11 +222,11 @@ export function RegistroConductorScreen() {
           </Text>
 
           <Text style={styles.sectionLabel}>Vehículo</Text>
-          <SelectableOptionCards
-            options={VEHICLE_OPTIONS}
-            value={vehicleType}
-            onChange={changeVehicle}
-          />
+          {options.length === 0 ? (
+            <Text style={styles.error}>Ya registraste un vehículo de cada tipo.</Text>
+          ) : (
+            <SelectableOptionCards options={options} value={vehicleType} onChange={changeVehicle} />
+          )}
 
           <Text style={styles.sectionLabel}>Servicios que ofreces</Text>
           <View style={styles.services} accessibilityRole="list">
@@ -214,15 +283,15 @@ export function RegistroConductorScreen() {
             placeholder={vehicleType === 'moto' ? 'Honda CB125' : 'Toyota Corolla'}
           />
 
-          {apply.isError && (
+          {register.isError && (
             <Text style={styles.error} accessibilityRole="alert">
-              {getApiErrorMessage(apply.error)}
+              {getApiErrorMessage(register.error)}
             </Text>
           )}
           <View style={styles.actions}>
             <Button
-              title={editing ? 'Guardar cambios' : 'Enviar registro'}
-              loading={apply.isPending}
+              title={editing ? 'Guardar cambios' : 'Registrar vehículo'}
+              loading={register.isPending}
               disabled={!canSubmit}
               onPress={submit}
             />

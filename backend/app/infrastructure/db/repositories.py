@@ -29,11 +29,10 @@ from app.domain.entities import (
     RideRequest,
     RideStatus,
     SavedPlace,
+    ServiceType,
     User,
     UserRole,
-    VehicleType,
-    services_for_vehicle,
-    vehicle_can_serve,
+    offered_services,
 )
 from app.domain.repositories import (
     DriverOfflineTransition,
@@ -110,22 +109,34 @@ def _is_active_rider_unique_violation(exc: IntegrityError) -> bool:
     return False
 
 
+def _row_offered_services(row: UserModel) -> tuple[ServiceType, ...]:
+    """Services the driver row serves, with the legacy "whole vehicle" fallback."""
+
+    return offered_services(
+        row.vehicle_type,
+        tuple(ServiceType(value) for value in row.driver_services),
+    )
+
+
 def _to_entity(row: UserModel) -> User:
     return User(
         id=row.id,
         full_name=row.full_name,
         email=row.email,
         phone=row.phone,
-        hashed_password=row.hashed_password,
         auth_provider=row.auth_provider,
         provider_id=row.provider_id,
         role=row.role,
         vehicle_type=row.vehicle_type,
         plate=row.plate,
         vehicle_model=row.vehicle_model,
+        driver_services=tuple(ServiceType(value) for value in row.driver_services),
+        driver_status=row.driver_status,
         rating=row.rating,
         is_online=row.is_online,
         created_at=row.created_at,
+        phone_verified_at=row.phone_verified_at,
+        is_active=row.is_active,
     )
 
 
@@ -166,13 +177,14 @@ class SqlAlchemyUserRepository(UserRepository):
             full_name=user.full_name,
             email=user.email,
             phone=user.phone,
-            hashed_password=user.hashed_password,
             auth_provider=user.auth_provider,
             provider_id=user.provider_id,
             role=user.role,
             vehicle_type=user.vehicle_type,
             plate=user.plate,
             vehicle_model=user.vehicle_model,
+            driver_services=[service.value for service in user.driver_services],
+            driver_status=user.driver_status,
             rating=user.rating,
             is_online=user.is_online,
         )
@@ -191,6 +203,8 @@ class SqlAlchemyUserRepository(UserRepository):
         row.vehicle_type = user.vehicle_type
         row.plate = user.plate
         row.vehicle_model = user.vehicle_model
+        row.driver_services = [service.value for service in user.driver_services]
+        row.driver_status = user.driver_status
         row.rating = user.rating
         row.is_online = user.is_online
         await self._session.commit()
@@ -437,8 +451,10 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
         await self._session.refresh(row)
         return _ride_to_entity(row)
 
-    async def list_open_for_vehicle(self, vehicle_type: VehicleType) -> list[RideRequest]:
-        compatible_services = services_for_vehicle(vehicle_type)
+    async def list_open_for_services(
+        self, services: tuple[ServiceType, ...]
+    ) -> list[RideRequest]:
+        compatible_services = services
         result = await self._session.execute(
             select(RideRequestModel)
             .where(
@@ -450,9 +466,9 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
         )
         return [_ride_to_entity(row) for row in result.scalars().all()]
 
-    async def list_open_with_rider_for_vehicle(
+    async def list_open_with_rider_for_services(
         self,
-        vehicle_type: VehicleType,
+        services: tuple[ServiceType, ...],
         *,
         driver_id: uuid.UUID | None = None,
         before_created_at: datetime | None = None,
@@ -472,7 +488,7 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
             .correlate(UserModel)
             .scalar_subquery()
         )
-        compatible_services = services_for_vehicle(vehicle_type)
+        compatible_services = services
         statement = (
             select(RideRequestModel, UserModel, trips_completed)
             .join(UserModel, UserModel.id == RideRequestModel.rider_id)
@@ -996,7 +1012,7 @@ class SqlAlchemyOfferRepository(OfferRepository):
             ride_row is None
             or ride_row.status is not RideStatus.SEARCHING
             or ride_row.paused
-            or not vehicle_can_serve(ride_row.service_type, driver_row.vehicle_type)
+            or ride_row.service_type not in _row_offered_services(driver_row)
             or ride_row.fare != expected_ride_fare
         ):
             await self._session.rollback()
@@ -1421,7 +1437,7 @@ class SqlAlchemyOfferRepository(OfferRepository):
             ride_row is None
             or ride_row.status is not RideStatus.SEARCHING
             or ride_row.paused
-            or not vehicle_can_serve(ride_row.service_type, driver_row.vehicle_type)
+            or ride_row.service_type not in _row_offered_services(driver_row)
         ):
             await self._session.rollback()
             return None

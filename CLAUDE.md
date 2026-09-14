@@ -11,6 +11,7 @@ ViajaYa/
 ├── backend/                 # API FastAPI (Python 3.11+, async, PostgreSQL). Ver backend/CLAUDE.md
 ├── mobile/                  # App Expo + React Native + TypeScript. Ver mobile/CLAUDE.md
 ├── docs/implementation-plans/   # Planes de implementación por fases (0001-…)
+├── docs/plans/              # Plan de salida a producción (F01-F10) y su presentación
 ├── docker-compose.yml       # PostgreSQL + Redis para desarrollo
 └── README.md                # Estado del producto y contexto de negocio
 ```
@@ -25,6 +26,7 @@ ViajaYa/
 | API, dominio, DB, auth o WebSockets del servidor | `backend/CLAUDE.md` |
 | Pantallas, navegación, mapas, estado o WS del cliente | `mobile/CLAUDE.md` |
 | Contexto/estado del producto, decisiones de negocio | `README.md` + `docs/implementation-plans/` |
+| Hoja de ruta hasta producción y estado por fase | `docs/plans/plan-salida-produccion.md` |
 | Contrato entre backend y mobile | sección "Contrato backend ↔ mobile" abajo |
 
 ## Arranque rápido
@@ -55,8 +57,14 @@ npx expo start                    # dev build en emulador/dispositivo (NO Expo G
 
 - El **pasajero** crea un `RideRequest` (`SEARCHING`) con origen, destino, tipo de servicio
   (`taxi`/`moto`), método de pago (`qr`/`cash`) y una tarifa inicial.
-- Los **conductores** con `vehicle_type` coinciente ven la solicitud y **ofertan**: aceptar al
-  fare del pasajero o contraofertar (precio + ETA). La oferta caduca a los **30 s**.
+- Cualquier usuario puede **registrarse como conductor** desde su perfil con **hasta un vehículo
+  de cada tipo** (`taxi`/`moto`/`truck`) y los servicios que ofrece con cada uno: taxi,
+  taxi + encomiendas, moto, moto + encomiendas o **mudanzas** (`moving`, solo camioneta). Cada
+  vehículo queda `pending` hasta la revisión (F04-A); en desarrollo `DRIVER_AUTO_APPROVE=true` lo
+  aprueba al instante. La cuenta tiene **un modo activo** (`role`): pasajero o conductor; al
+  entrar en modo conductor (o al iniciar sesión) se elige con qué vehículo se trabaja.
+- Los **conductores** cuyos servicios ofrecidos incluyen el de la solicitud la ven y **ofertan**:
+  aceptar al fare del pasajero o contraofertar (precio + ETA). La oferta caduca a los **30 s**.
 - **El pasajero decide**: aceptar una oferta = asignación directa atómica del conductor; o
   **modificar** su solicitud (la pausa del pool sin cancelar); o **aumentar su oferta** (sube el
   fare para atraer más conductores).
@@ -68,8 +76,10 @@ npx expo start                    # dev build en emulador/dispositivo (NO Expo G
 ## Contrato backend ↔ mobile
 
 - La API vive bajo `/api/v1`. El mobile la consume vía `env.apiUrl` (config en `mobile/app.config.ts`).
-- **Auth:** JWT Bearer. El cliente guarda access/refresh token y refresca ante 401 (interceptor en
-  `mobile/src/core/http/client.ts`); el backend valida en `backend/app/api/deps.py`.
+- **Auth:** solo teléfono + OTP (Google/Facebook opcionales, siempre vinculados a un teléfono
+  verificado); **no existe acceso por correo/contraseña**. JWT Bearer de sesión administrada: el
+  cliente guarda access/refresh y refresca ante 401 (interceptor en `mobile/src/core/http/client.ts`);
+  el backend valida en `backend/app/api/deps.py`.
 - **WebSocket:** token por subprotocolos `viajaya.auth` + access token, nunca en la URL.
   Endpoints: `/ws/driver` (pool + viaje activo del conductor), `/ws/rides/{ride_id}` (ofertas y
   estado al pasajero). Eventos en `backend/app/api/v1/events.py`.
@@ -79,7 +89,7 @@ npx expo start                    # dev build en emulador/dispositivo (NO Expo G
 
 ## Convenciones globales
 
-- **Idioma:** código, comentarios, docs y mensajes de commit en **español**.
+- **Idioma:** código, identificadores, comentarios y docstrings nuevos en **inglés**, por preferencia del usuario del 2026-09-09. Interfaz, comunicación y documentación para el usuario en español. Verifica cada implementación; conserva la compatibilidad al modificar nombres existentes. Ver la preferencia persistente en `AGENTS.md`.
 - **Arquitectura:** ambos proyectos respetan límites de capas (dominio sin dependencias hacia afuera).
   No cruces capas para "ir más rápido"; sigue las reglas del `CLAUDE.md` del subproyecto.
 - **Antes de commitear:** corre lint y type-check del subproyecto tocado

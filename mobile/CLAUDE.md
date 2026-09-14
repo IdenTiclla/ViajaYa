@@ -3,11 +3,12 @@
 # ViajaYa — Mobile (Expo + React Native + TypeScript)
 
 App de taxis y encomiendas. Expo Router (file-based, rutas tipadas), React Query (server state),
-Zustand (auth/cliente), axios, react-native-maps, SSO Google/Facebook, tiempo real por WebSocket.
+Zustand (auth/cliente), axios, react-native-maps, acceso por teléfono + OTP con Google/Facebook
+vinculados a un teléfono verificado (sin correo/contraseña), tiempo real por WebSocket.
 
 Stack: **Expo ~56.0.7** · React Native 0.85.3 · React 19 · TypeScript ~6.0.3 ·
 `expo-router ~56.2.8` · `zustand ^5` · `@tanstack/react-query ^5` · `axios ^1.16` ·
-`react-native-maps 1.27` · `react-hook-form ^7` + `zod ^4`.
+`react-native-maps 1.27` · `zod ^4` (esquemas de WS).
 
 > ⚠️ **Expo 56 cambió mucho.** Lee SIEMPRE los docs versionados antes de escribir código:
 > https://docs.expo.dev/versions/v56.0.0/ (ver `AGENTS.md`).
@@ -21,20 +22,26 @@ El enrutado (`src/app/`) solo monta pantallas; la lógica vive en `src/features/
 src/
 ├── app/                 # Rutas (expo-router, file-based). Solo composición de pantallas.
 │   ├── _layout.tsx        # Raíz: providers (tema, QueryClient, SafeArea, GestureHandler) + gate por sesión/rol
-│   ├── index.tsx          # Redirect por rol → (auth)/login | (app)/(tabs) | (driver)/(tabs)/solicitudes
-│   ├── (auth)/            # login, register
+│   ├── index.tsx          # Redirect por rol → (auth) | (app)/(tabs) | (driver)/(tabs)/solicitudes
+│   ├── (auth)/            # index → PhoneEntryScreen: única vista de acceso (teléfono + OTP, Google).
+│   │                      # Un número nuevo completa nombre + términos ahí mismo. Sin correo/contraseña
 │   ├── (app)/             # Grupo pasajero (guard: authenticated && !driver)
 │   │   ├── _layout.tsx      # Monta <PassengerToaster/> sobre el stack
 │   │   ├── (tabs)/          # Viaje · Historial · Billetera · Perfil  (PillTabBar)
-│   │   └── booking/         # destination, configure, offers, trip, rating,
-│   │                        #   pick-on-map, saved-places, edit-place
+│   │   ├── booking/         # destination, configure, offers, trip, rating,
+│   │   │                    #   pick-on-map, saved-places, edit-place
+│   │   └── conductor/registro.tsx  # alta/edición de un vehículo (?vehicle=taxi|moto|truck) desde Perfil
+│   ├── elegir-modo.tsx    # tras iniciar sesión un conductor aprobado elige modo y vehículo
 │   └── (driver)/          # Grupo conductor (guard: role === 'driver')
 │       ├── _layout.tsx      # Monta useDriverPoolSocket() + <DriverToaster/>
 │       ├── oferta-enviada.tsx
 │       └── (tabs)/          # Solicitudes · Historial · Ganancias · Perfil  (PillTabBar)
 │                            #   (index oculto vía tabBarButton: () => null → redirect a Solicitudes)
 ├── features/            # Una carpeta por feature, en capas (Clean Architecture).
-│   ├── auth/              # domain/ · data/ · application/ · presentation/
+│   ├── auth/              # domain/ (types + vehicleCatalog: VEHICLE_META, SERVICES_FOR_VEHICLE) · data/
+│   │                      #   · application/ (phoneAccessController + useAuthController)
+│   │                      # presentation/: PhoneEntryScreen · PhoneCodeForm · AccountSecurityPanel
+│   │                      #   entry/ = bloques de la vista de acceso (AuthScaffold, PhoneInput, SocialButtons, TermsCheckbox…)
 │   ├── booking/           # 4 capas completas (flujo de reserva)
 │   ├── home/              # domain/ (orientación) · data/ · application/ · presentation/
 │   ├── rides/             # ofertas + ciclo de vida del viaje + hooks de WS del pasajero y conductor
@@ -43,9 +50,13 @@ src/
 │   │   ├── application/     # useRides · useRideMutations · useCloseFlow · useNegotiationSocket
 │   │   └── presentation/    # FareKeypad · OfferLifeTimer · RideHistoryScreen · RideRatingCard · …
 │   ├── profile/           # presentación del perfil de pasajero y selector de tema compartido
-│   └── driver/            # application/ + presentation/ únicamente (reusa data/domain de rides)
-│       ├── application/     # useDriverRequests (zustand) · useDriverToasts
-│       └── presentation/    # SolicitudesEntrantesScreen · DriverTopBar · RequestCard · DriverSearchMap · …
+│   └── driver/            # reusa data/domain de rides para el pool; data/ propio solo para la cuenta
+│       ├── domain/          # DriverVehicle (hasta uno por tipo; MAX_DRIVER_VEHICLES)
+│       ├── data/            # driverAccountRepository (/drivers/me/vehicles · /me/mode)
+│       ├── application/     # useDriverRequests (zustand) · useDriverToasts · useDriverAccount
+│       └── presentation/    # SolicitudesEntrantesScreen · DriverTopBar · RequestCard · DriverSearchMap
+│                            #   · RegistroConductorScreen · DriverAccountCard · SelectorVehiculo
+│                            #   · ElegirModoScreen · PerfilConductorScreen · …
 ├── core/               # Infra transversal
 │   ├── components/       # PillTabBar (bottom bar Stitch: tab activo con pill amarillo)
 │   ├── config/env.ts     # Config tipada desde Constants.expoConfig.extra
@@ -54,8 +65,8 @@ src/
 │   ├── errors/apiError.ts
 │   ├── hooks/            # useCountdown (AppState-aware), …
 │   └── theme/            # paletas, estilos reactivos y preferencia local persistida
-├── shared/components/  # UI reutilizable: Button, TextField, Checkbox, ConfirmDialog, SocialButton, …
-└── store/authStore.ts  # Sesión global (zustand); se auto-logout si el refresh falla
+├── shared/components/  # UI reutilizable: Button, TextField, ConfirmDialog, FeedbackState, mapa/, …
+└── store/authStore.ts  # Sesión global (zustand): bootstrap/`acceptPhoneSession`/signOut; auto-logout si el refresh falla
 ```
 
 ### Reglas al añadir código
@@ -80,9 +91,26 @@ src/
 `src/app/_layout.tsx` usa `<Stack.Protected guard=...>` con 3 guards mutuamente excluyentes:
 `(app)` (auth && !driver), `(driver)` (driver), `(auth)` (!auth). `src/app/index.tsx` redirige:
 
-- no autenticado → `/(auth)/login`
+- no autenticado → `/(auth)` (`PhoneEntryScreen`: única pantalla de acceso, sin registro ni recuperación
+  aparte). Un número nuevo pasa por `ProfileCompletionForm` (nombre + términos) tras el OTP.
+  El controlador (`useAuthController()`) conserva el flujo de recuperación aunque hoy no tiene UI.
 - pasajero → `/(app)/(tabs)` (tab inicial: Viaje)
 - conductor → `/(driver)/(tabs)/solicitudes` (cae directo en Solicitudes, no en Inicio)
+
+**Una cuenta, dos modos, hasta tres vehículos.** `user.role` es el modo activo que devuelve el
+backend. En Perfil (pasajero) `DriverAccountCard` lista los vehículos (`useDriverVehicles`,
+key `['driver-vehicles']`) con su estado y permite agregar/editar/quitar
+(`RegistroConductorScreen`, `?vehicle=` edita ese tipo; al agregar solo se ofrecen los tipos
+libres). Con vehículos aprobados, `SelectorVehiculo` muestra "Conducir con Taxi · placa" por cada
+uno; elegir llama a `useSwitchAccountMode({mode:'driver', vehicleType})` (`POST /drivers/me/mode`),
+que si el usuario está en línea primero lo desconecta, vacía React Query (`removeQueries`),
+reemplaza `user` (`setUser`) y hace `router.replace('/')` para que los guards reenruten. En modo
+conductor, Perfil permite cambiar de vehículo (otros aprobados) y volver a pasajero.
+
+**Al iniciar sesión** con una cuenta con algún vehículo aprobado, `authStore.modeChoicePending`
+queda en `true` y `index.tsx` redirige a `/elegir-modo` (`ElegirModoScreen`: "Pedir viajes" o
+"Conducir con …" por vehículo). El arranque con sesión guardada (`bootstrap`) no vuelve a
+preguntar. No dupliques ese flujo: la navegación por rol ya existente hace el resto.
 
 **Bottom bar Stitch** (`core/components/PillTabBar.tsx`, compartida por pasajero y conductor):
 el icono activo lleva un pill de fondo amarillo (`colors.accent` = `#F5C518`).
@@ -144,7 +172,9 @@ Eventos que escuchan los hooks (WS → mutación de caché React Query + estado 
 
 - **Pasajero** (`/ws/rides/{rideId}`): `offers_snapshot`, `offer_created`, `offer_withdrawn`
   (salvo `reason==='superseded'`), `offer_expired`, `ride_status`.
-- **Conductor** (`/ws/driver`): `open_rides_snapshot`, `driver_offers_snapshot` (rehidrata
+- **Conductor** (`/ws/driver`): los streams requeridos del snapshot v2 son `driver:{id}` más
+  un `pool:{service}` por cada `user.driverServices` (no "vehículo + delivery" fijo).
+  `open_rides_snapshot`, `driver_offers_snapshot` (rehidrata
   ofertas pendientes tras reiniciar), `ride_created`, `ride_closed`, `ride_paused`,
   `offer_accepted`, `offer_expired`, `offer_rejected` (`ride_taken`/`ride_cancelled`/`declined`),
   `offers_withdrawn`, `ride_status`, `driver_active_ride` (snapshot al reconectar).
@@ -277,12 +307,13 @@ Splash/adaptiveIcon conservan el azul de marca `#16308C`.
 - **Request interceptor**: adjunta `Authorization: Bearer <accessToken>` desde `tokenStorage`.
 - **Response interceptor**: ante 401 (si la URL no está en `NO_REFRESH_PATHS` y no es `_retry`),
   dispara `refreshAccessToken()` **compartido** (dedupe de concurrencia) → `POST /auth/refresh` →
-  guarda el nuevo par → reintenta el original. Solo un refresh rechazado con 401
-  (o sin credenciales) ejecuta `tokenStorage.clear()` + `onSessionExpired()`;
+  guarda el nuevo par → reintenta el original. Un refresh rechazado con 401
+  (o sin credenciales), o un segundo 401 con el token renovado, ejecuta
+  `tokenStorage.clear()` + `onSessionExpired()`;
   red, timeout y 5xx conservan la sesión para reintentar. El refresh compartido
   siempre se libera en `finally`, incluso si falla SecureStore.
 - `env.apiUrl` viene de `app.config.ts` → `extra.apiUrl`; `env.wsUrl` se deriva con `toWsUrl()`.
-- Tokens en `expo-secure-store` (`viajaya.accessToken`/`viajaya.refreshToken`), nunca en AsyncStorage plano.
+- Tokens en `expo-secure-store`, valor atómico `viajaya.session.v2` con `refreshRequestId`; las claves antiguas `viajaya.accessToken`/`viajaya.refreshToken` se leen para migración. Las escrituras se serializan, tienen espera acotada y el cierre deja una marca para impedir que claves antiguas restauren la sesión. Nunca usar AsyncStorage plano para credenciales.
 - El refresh también pasa por `api` con `skipAuth: true` y el timeout de 15 s;
   nunca debe quedar una renovación de sesión sin límite de espera.
 - Home verifica activo y después calificación con un límite total de 30 s en
@@ -291,8 +322,11 @@ Splash/adaptiveIcon conservan el azul de marca `#16308C`.
   completa. Una respuesta tardía no autoriza navegación después del timeout.
 - Leer SecureStore tiene un límite de 5 s. El arranque completo tiene 30 s y
   muestra `SessionRecoveryScreen` con Reintentar si falla; conserva credenciales
-  ante errores transitorios. Una generación evita restaurar un arranque anterior
-  después de otro intento o de expirar la sesión.
+  ante errores transitorios. También ofrece Volver a iniciar sesión: el borrado
+  nativo tiene un límite de 5 s y su fallo no bloquea el login. Los endpoints de
+  acceso usan `skipAuth` para no depender de credenciales anteriores. Una
+  generación descarta respuestas de arranque y renovaciones anteriores después
+  de salir, iniciar otra sesión o expirar la actual.
 - Confirmar/omitir calificación libera la mutación al recibir el éxito HTTP;
   las invalidaciones posteriores corren en segundo plano. Una lectura antigua se
   cancela antes de retirar de caché ese cierre, conservando otros pendientes.
@@ -320,7 +354,9 @@ aquí.** Mantén ambos lados en sintonía.
 
 ### Enums de dominio (mobile)
 
-`ServiceType = 'taxi' | 'moto' | 'delivery'` · `PaymentMethod = 'qr' | 'cash'` ·
+`ServiceType = 'taxi' | 'moto' | 'delivery' | 'moving'` · `VehicleType = 'taxi' | 'moto' | 'truck'`
+(camioneta; solo atiende `moving`) · `DriverStatus = 'pending' | 'approved' | 'rejected'` ·
+`PaymentMethod = 'qr' | 'cash'` ·
 `RideStatus = 'searching' | 'accepted' | 'arriving' | 'in_progress' | 'completed' | 'cancelled'` ·
 `OfferStatus = 'pending' | 'accepted' | 'rejected' | 'expired'`. Oferta TTL = 30 s. Moneda = Bs (bolivianos).
 
@@ -347,7 +383,8 @@ npm run lint               # expo lint (eslint-config-expo)
 ## Convenciones
 
 - **TypeScript estricto** (`strict: true`); evita `any`, tipa los datos de la API en `domain/types.ts`.
-- **Formularios:** react-hook-form + zod (`@hookform/resolvers`), esquemas junto al feature.
+- **Formularios:** estado local + `TextField`/`Button` de `shared/components` (react-hook-form fue
+  retirado con el registro por correo); `zod` se reserva para validar frames del WS.
 - **Mapas:** `react-native-maps`; ubicación con `expo-location` (permisos en `app.config.ts`).
   Estilo de mapa compartido: `features/booking/presentation/mapStyle.ts` (`declutteredMapStyle`).
 - **Apariencia de trayectos:** todas las vistas reutilizan `RoutePolyline` y
@@ -369,5 +406,5 @@ npm run lint               # expo lint (eslint-config-expo)
   del servidor de desarrollo que recibe el teléfono.
 - **Hooks AppState-aware** (no se congelan en background): `useCountdown`, `socket.ts` recalculan
   al volver a foreground. Sigue ese patrón al hacer hooks con tiempo/conexión.
-- Comentarios/JSDoc en **español**, alineados con el estilo del repo.
+- Código, identificadores, comentarios y JSDoc nuevos en **inglés**, según la preferencia persistente de `../AGENTS.md`. Conserva la interfaz en español y verifica cada implementación.
 - Antes de tocar APIs de Expo, confirma firmas en los docs de la **v56** (no asumas versiones previas).

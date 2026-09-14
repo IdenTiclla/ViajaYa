@@ -22,15 +22,14 @@ from app.api.v1.schemas.realtime import (
     RealtimeEventEnvelopeV2,
     RideSnapshotMessageV2,
 )
-from app.domain.entities import UserRole, VehicleType
+from app.domain.entities import VehicleType
 from app.infrastructure.config import Settings
-from app.infrastructure.db.repositories import SqlAlchemyUserRepository
 from app.infrastructure.realtime.ws_auth import AUTH_SUBPROTOCOL
 from app.main import create_app
+from tests.e2e.helpers import promote_to_driver, sign_in
 
 _FRAME_TIMEOUT_SECONDS = 5.0
 _OPERATION_TIMEOUT_SECONDS = 20.0
-_PASSWORD = "smoke-local-123"
 
 
 @asynccontextmanager
@@ -76,19 +75,8 @@ async def _serve(app) -> AsyncIterator[str]:
             listener.close()
 
 
-async def _register(client: httpx.AsyncClient, email: str) -> str:
-    response = await client.post(
-        "/api/v1/auth/register",
-        json={
-            "full_name": email.partition("@")[0],
-            "email": email,
-            "password": _PASSWORD,
-        },
-    )
-    assert response.status_code == 201, (
-        f"El registro smoke respondió HTTP {response.status_code}."
-    )
-    return response.json()["tokens"]["access_token"]
+async def _register(client: httpx.AsyncClient, label: str) -> str:
+    return (await sign_in(client, label)).token
 
 
 def _headers(token: str) -> dict[str, str]:
@@ -131,6 +119,7 @@ async def test_live_local_converge_tras_nueva_conexion_tcp_real(pg_test_db) -> N
         _env_file=None,
         database_url=pg_test_db.url,
         jwt_secret="smoke-only-secret-not-for-production",
+        phone_otp_enabled=True,
         realtime_outbox_dispatch_mode="live_local",
         realtime_outbox_recording_enabled=True,
         realtime_outbox_poll_interval_seconds=0.01,
@@ -152,20 +141,10 @@ async def test_live_local_converge_tras_nueva_conexion_tcp_real(pg_test_db) -> N
             ride_id: str | None = None
             primary_error: BaseException | None = None
             try:
-                rider_token = await _register(
-                    client,
-                    f"smoke-rider-{suffix}@example.com",
-                )
-                driver_email = f"smoke-driver-{suffix}@example.com"
-                driver_token = await _register(client, driver_email)
-                async with sessions() as session:
-                    users = SqlAlchemyUserRepository(session)
-                    driver = await users.get_by_email(driver_email)
-                    assert driver is not None
-                    driver.role = UserRole.DRIVER
-                    driver.vehicle_type = VehicleType.TAXI
-                    driver.is_online = True
-                    await users.update(driver)
+                rider_token = await _register(client, f"smoke-rider-{suffix}")
+                driver_label = f"smoke-driver-{suffix}"
+                driver_token = await _register(client, driver_label)
+                await promote_to_driver(sessions, driver_label, VehicleType.TAXI)
 
                 ride_response = await client.post(
                     "/api/v1/rides",

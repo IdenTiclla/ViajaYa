@@ -1,9 +1,10 @@
 import { StyleSheet, View } from 'react-native';
 
 import { useEstilos, type Tema } from '@/core/theme';
+import type { VehicleType } from '@/features/auth/domain/types';
 
 /** Dibujo cenital propio: el frente apunta al norte antes de aplicar el rumbo. */
-export function VehiculoMapa({ tipo }: { tipo: 'taxi' | 'moto' }) {
+export function VehiculoMapa({ tipo }: { tipo: VehicleType }) {
   const { styles } = useEstilos(crearEstilos);
   return (
     <View
@@ -19,6 +20,22 @@ export function VehiculoMapa({ tipo }: { tipo: 'taxi' | 'moto' }) {
           <View style={styles.moto}>
             <View style={styles.faroMoto} />
             <View style={styles.asiento} />
+          </View>
+        </>
+      ) : tipo === 'truck' ? (
+        <>
+          <View style={[styles.ruedas, styles.ruedasCamionDelanteras]} />
+          <View style={[styles.ruedas, styles.ruedasCamionTraseras]} />
+          <View style={styles.cabina}>
+            <View style={[styles.faro, styles.izquierdo]} />
+            <View style={[styles.faro, styles.derecho]} />
+            <View style={styles.parabrisasCabina}>
+              <View style={styles.reflejo} />
+            </View>
+          </View>
+          <View style={styles.caja}>
+            <View style={[styles.piloto, styles.izquierdo]} />
+            <View style={[styles.piloto, styles.derecho]} />
           </View>
         </>
       ) : (
@@ -55,6 +72,21 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   },
   ruedasDelanteras: { top: 10 },
   ruedasTraseras: { bottom: 8 },
+  ruedasCamionDelanteras: { top: 6 },
+  ruedasCamionTraseras: { bottom: 5 },
+  cabina: {
+    position: 'absolute', top: 1, width: 24, height: 14, borderTopLeftRadius: 7,
+    borderTopRightRadius: 7, borderBottomLeftRadius: 2, borderBottomRightRadius: 2,
+    borderWidth: 1.5, borderColor: colors.vehiculoContorno, backgroundColor: colors.accent,
+  },
+  parabrisasCabina: {
+    position: 'absolute', top: 5, left: 2, right: 2, height: 5,
+    borderRadius: 2, backgroundColor: colors.vehiculoContorno, overflow: 'hidden',
+  },
+  caja: {
+    position: 'absolute', top: 16, width: 26, height: 27, borderRadius: 3,
+    borderWidth: 1.5, borderColor: colors.vehiculoContorno, backgroundColor: colors.surface,
+  },
   espejos: {
     position: 'absolute', top: 16, width: 32, height: 3, borderRadius: 2,
     backgroundColor: colors.vehiculoContorno,

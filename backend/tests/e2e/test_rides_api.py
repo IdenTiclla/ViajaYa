@@ -4,18 +4,14 @@ from __future__ import annotations
 
 import pytest
 
-REGISTER = "/api/v1/auth/register"
+from tests.e2e.helpers import sign_in
+
 RIDES = "/api/v1/rides"
 RECENT = "/api/v1/rides/recent-destinations"
 
 
-async def _auth_header(client) -> dict[str, str]:
-    resp = await client.post(
-        REGISTER,
-        json={"full_name": "Alex", "email": "alex@example.com", "password": "secret123"},
-    )
-    access = resp.json()["tokens"]["access_token"]
-    return {"Authorization": f"Bearer {access}"}
+async def _auth_header(client, label: str = "alex") -> dict[str, str]:
+    return (await sign_in(client, label)).headers
 
 
 def _ride_payload(**over):
@@ -159,11 +155,7 @@ async def test_update_fare_rejects_non_owner(client):
     created = await client.post(RIDES, json=_ride_payload(), headers=owner)
     ride_id = created.json()["id"]
 
-    other = await client.post(
-        REGISTER,
-        json={"full_name": "Bob", "email": "bob@example.com", "password": "secret123"},
-    )
-    other_headers = {"Authorization": f"Bearer {other.json()['tokens']['access_token']}"}
+    other_headers = await _auth_header(client, "bob")
 
     resp = await client.patch(
         f"{RIDES}/{ride_id}/fare", json={"fare": "99.00"}, headers=other_headers

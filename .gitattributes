@@ -1,0 +1,2 @@
+# Generated contracts must verify identically on Windows and Linux.
+mobile/src/core/http/generated/openapi.ts text eol=lf

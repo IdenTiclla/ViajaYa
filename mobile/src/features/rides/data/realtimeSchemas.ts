@@ -14,8 +14,8 @@ import type {
 const uuidSchema = z.string().uuid();
 const nullableDateTimeSchema = z.string().datetime({ offset: true }).nullable();
 const ratingSchema = z.number().min(0).max(5).nullable();
-const vehicleTypeSchema = z.enum(['taxi', 'moto']);
-const serviceTypeSchema = z.enum(['taxi', 'moto', 'delivery']);
+const vehicleTypeSchema = z.enum(['taxi', 'moto', 'truck']);
+const serviceTypeSchema = z.enum(['taxi', 'moto', 'delivery', 'moving']);
 const paymentMethodSchema = z.enum(['qr', 'cash']);
 const rideStatusSchema = z.enum([
   'searching',
@@ -277,7 +277,7 @@ export const driverSocketMessageSchema = z.discriminatedUnion('type', [
   rideStatusMessageSchema,
 ]);
 
-const poolStreamSchema = z.enum(['pool:taxi', 'pool:moto', 'pool:delivery']);
+const poolStreamSchema = z.enum(['pool:taxi', 'pool:moto', 'pool:delivery', 'pool:moving']);
 const entityStreamSchema = z.string().refine((value) => {
   const [prefix, rawId, extra] = value.split(':');
   return (
@@ -521,28 +521,26 @@ export const driverVersionedSnapshotSchema = versionedSnapshotMetadataSchema.ext
     active_ride: rideDtoSchema.nullable(),
   }),
 }).superRefine((snapshot, context) => {
+  // One `driver:*` stream plus one `pool:*` stream per service the driver offers
+  // (taxi, taxi+delivery, moto, moto+delivery or moving); nothing else.
   const streams = new Set(snapshot.watermarks.map(({ stream }) => stream));
   const driverStreams = [...streams].filter((stream) => stream.startsWith('driver:'));
-  const vehiclePools = [...streams].filter(
-    (stream) => stream === 'pool:taxi' || stream === 'pool:moto',
-  );
+  const pools = [...streams].filter((stream) => poolStreamSchema.safeParse(stream).success);
   if (
-    streams.size !== 3 ||
     driverStreams.length !== 1 ||
-    vehiclePools.length !== 1 ||
-    !streams.has('pool:delivery')
+    pools.length === 0 ||
+    streams.size !== driverStreams.length + pools.length
   ) {
     context.addIssue({
       code: 'custom',
-      message: 'El snapshot requiere los streams del conductor, delivery y su vehículo.',
+      message: 'El snapshot requiere el stream del conductor y los pools de sus servicios.',
       path: ['watermarks'],
     });
     return;
   }
 
   const driverId = driverStreams[0]?.slice('driver:'.length);
-  const vehicleService = vehiclePools[0]?.slice('pool:'.length);
-  const allowedServices = new Set([vehicleService, 'delivery']);
+  const allowedServices = new Set(pools.map((stream) => stream.slice('pool:'.length)));
   const visibleRides = [
     ...snapshot.data.open_rides.items,
     ...snapshot.data.paused_rides,

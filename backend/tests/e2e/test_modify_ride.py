@@ -2,31 +2,19 @@
 
 from __future__ import annotations
 
-from app.domain.entities import UserRole, VehicleType
-from app.infrastructure.db.repositories import SqlAlchemyUserRepository
+from app.domain.entities import VehicleType
+from tests.e2e.helpers import promote_to_driver, sign_in
 
-REGISTER = "/api/v1/auth/register"
 RIDES = "/api/v1/rides"
 
 
-async def _register(client, email: str) -> tuple[str, str]:
-    resp = await client.post(
-        REGISTER,
-        json={"full_name": email.split("@")[0], "email": email, "password": "secret123"},
-    )
-    body = resp.json()
-    return body["user"]["id"], body["tokens"]["access_token"]
+async def _register(client, label: str) -> tuple[str, str]:
+    account = await sign_in(client, label)
+    return account.user_id, account.token
 
 
-async def _promote_to_driver(session_factory, email: str, vehicle: VehicleType) -> None:
-    async with session_factory() as session:
-        users = SqlAlchemyUserRepository(session)
-        user = await users.get_by_email(email)
-        assert user is not None
-        user.role = UserRole.DRIVER
-        user.vehicle_type = vehicle
-        user.is_online = True
-        await users.update(user)
+async def _promote_to_driver(session_factory, label: str, vehicle: VehicleType) -> None:
+    await promote_to_driver(session_factory, label, vehicle)
 
 
 def _headers(token: str) -> dict[str, str]:
@@ -48,9 +36,9 @@ def _ride_payload(fare: str = "25.00", dest_name: str = "Trabajo") -> dict:
 
 
 async def test_pause_edit_and_republish_ride(client, session_factory):
-    _, rider_token = await _register(client, "rider@example.com")
-    _, drv_token = await _register(client, "driver@example.com")
-    await _promote_to_driver(session_factory, "driver@example.com", VehicleType.TAXI)
+    _, rider_token = await _register(client, "rider")
+    _, drv_token = await _register(client, "driver")
+    await _promote_to_driver(session_factory, "driver", VehicleType.TAXI)
     rider_h, drv_h = _headers(rider_token), _headers(drv_token)
 
     ride_id = (await client.post(RIDES, json=_ride_payload(), headers=rider_h)).json()["id"]
@@ -101,7 +89,7 @@ async def test_pause_edit_and_republish_ride(client, session_factory):
 
 
 async def test_edit_without_pause_rejected(client, session_factory):
-    _, rider_token = await _register(client, "rider2@example.com")
+    _, rider_token = await _register(client, "rider2")
     rider_h = _headers(rider_token)
     ride_id = (await client.post(RIDES, json=_ride_payload(), headers=rider_h)).json()["id"]
 
@@ -117,7 +105,7 @@ async def test_edit_without_pause_rejected(client, session_factory):
 async def test_edit_rejects_destination_outside_bolivia_and_keeps_ride_paused(
     client,
 ):
-    _, rider_token = await _register(client, "border-rider@example.com")
+    _, rider_token = await _register(client, "border-rider")
     rider_h = _headers(rider_token)
     created = await client.post(RIDES, json=_ride_payload(), headers=rider_h)
     ride_id = created.json()["id"]

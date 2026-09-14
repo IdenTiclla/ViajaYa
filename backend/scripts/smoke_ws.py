@@ -1,6 +1,6 @@
 """Prueba de humo del flujo de negociación contra el servidor en vivo.
 
-Simula a un pasajero y un conductor (usuarios del seed) con HTTP + WebSocket:
+Simula a un pasajero y un conductor (números del seed, OTP simulado) con HTTP + WebSocket:
 crea una solicitud, conecta ambos sockets, envía una contraoferta personalizada
 y verifica que el pasajero siga negociando. Al final cancela el viaje para no
 dejar basura. Ejecutar con el backend levantado::
@@ -16,22 +16,17 @@ import json
 import httpx
 import websockets
 
+from scripts.phone_access import sign_in
+
 BASE = "http://localhost:8000/api/v1"
 WS_BASE = "ws://localhost:8000/api/v1"
-PASSWORD = "ViajaYa1234#"
 WS_AUTH_PROTOCOL = "viajaya.auth"
-
-
-async def login(client: httpx.AsyncClient, email: str) -> str:
-    resp = await client.post(f"{BASE}/auth/login", json={"email": email, "password": PASSWORD})
-    resp.raise_for_status()
-    return resp.json()["tokens"]["access_token"]
 
 
 async def main() -> None:
     async with httpx.AsyncClient(timeout=10) as client:
-        rider_token = await login(client, "passenger1@viajaya.com")
-        driver_token = await login(client, "driver.auto1@viajaya.com")
+        rider_token = await sign_in(client, "+59170000001", base=BASE)
+        driver_token = await sign_in(client, "+59170000011", base=BASE)
         rider_h = {"Authorization": f"Bearer {rider_token}"}
         driver_h = {"Authorization": f"Bearer {driver_token}"}
 

@@ -7,7 +7,6 @@ infraestructura concreta con la aplicación.
 
 from __future__ import annotations
 
-from functools import lru_cache
 from typing import Annotated
 
 from fastapi import Depends, Header
@@ -45,12 +44,11 @@ from app.application.interfaces import (
     RepublishRideEventRecorder,
     RideReadRepository,
     SocialIdentityVerifier,
-    TokenService,
 )
+from app.application.managed_sessions import ManagedSessions
+from app.application.social_accounts import SocialAccounts
 from app.application.use_cases.accept_offer import AcceptOffer
 from app.application.use_cases.announce_open_ride import AnnounceOpenRide
-from app.application.use_cases.authenticate_user import AuthenticateUser
-from app.application.use_cases.authenticate_with_oauth import AuthenticateWithOAuth
 from app.application.use_cases.build_driver_realtime_snapshot import (
     BuildDriverRealtimeSnapshot,
 )
@@ -59,6 +57,9 @@ from app.application.use_cases.build_passenger_realtime_snapshot import (
 )
 from app.application.use_cases.cancel_ride import CancelRide
 from app.application.use_cases.cancel_ride_on_disconnect import CancelRideOnDisconnect
+from app.application.use_cases.change_account_phone import ChangeAccountPhone
+from app.application.use_cases.complete_account_recovery import CompleteAccountRecovery
+from app.application.use_cases.complete_phone_sign_in import CompletePhoneSignIn
 from app.application.use_cases.create_offer import CreateOffer
 from app.application.use_cases.create_ride_request import CreateRideRequest
 from app.application.use_cases.create_saved_place import CreateSavedPlace
@@ -89,22 +90,30 @@ from app.application.use_cases.get_ride import GetRide
 from app.application.use_cases.get_scheduled_actions_operational_snapshot import (
     GetScheduledActionsOperationalSnapshot,
 )
+from app.application.use_cases.list_driver_vehicles import ListDriverVehicles
 from app.application.use_cases.list_offers_for_ride import ListOffersForRide
 from app.application.use_cases.list_open_rides import ListOpenRides
 from app.application.use_cases.list_recent_destinations import ListRecentDestinations
 from app.application.use_cases.list_ride_history import ListRideHistory
 from app.application.use_cases.list_saved_places import ListSavedPlaces
+from app.application.use_cases.manage_account_sessions import ManageAccountSessions
 from app.application.use_cases.pause_ride_for_edit import PauseRideForEdit
 from app.application.use_cases.rate_ride import RateRide
-from app.application.use_cases.refresh_token import RefreshToken
-from app.application.use_cases.register_user import RegisterUser
+from app.application.use_cases.refresh_managed_session import RefreshManagedSession
+from app.application.use_cases.register_driver_vehicle import RegisterDriverVehicle
 from app.application.use_cases.reject_offer import RejectOffer
+from app.application.use_cases.remove_driver_vehicle import RemoveDriverVehicle
 from app.application.use_cases.renew_passenger_presence import RenewPassengerPresence
+from app.application.use_cases.request_account_recovery import RequestAccountRecovery
+from app.application.use_cases.request_phone_code import RequestPhoneCode
 from app.application.use_cases.set_driver_online import SetDriverOnline
+from app.application.use_cases.sign_in_with_social import SignInWithSocial
 from app.application.use_cases.skip_ride_rating import SkipRideRating
+from app.application.use_cases.switch_account_mode import SwitchAccountMode
 from app.application.use_cases.update_ride_fare import UpdateRideFare
 from app.application.use_cases.update_ride_status import UpdateRideStatus
 from app.application.use_cases.update_saved_place import UpdateSavedPlace
+from app.application.use_cases.verify_phone_code import VerifyPhoneCode
 from app.application.use_cases.withdraw_offer import WithdrawOffer
 from app.domain.entities import AuthProvider, User
 from app.domain.exceptions import InvalidTokenError
@@ -118,11 +127,18 @@ from app.domain.repositories import (
     UserRepository,
 )
 from app.infrastructure.config import Settings, get_settings
+from app.infrastructure.db.account_access import (
+    SqlAlchemyPhoneAccountRepository,
+    SqlAlchemySessionRepository,
+)
+from app.infrastructure.db.account_recovery import SqlAlchemyRecoveryRepository
 from app.infrastructure.db.clock import database_utc_now
+from app.infrastructure.db.driver_vehicles import SqlAlchemyDriverVehicleRepository
 from app.infrastructure.db.outbox import SqlAlchemyRealtimeOutbox
 from app.infrastructure.db.outbox_observability import (
     SqlAlchemyRealtimeOutboxOperationalReader,
 )
+from app.infrastructure.db.phone_challenges import SqlAlchemyPhoneChallengeStore
 from app.infrastructure.db.realtime_snapshots import SqlAlchemyRealtimeSnapshotReader
 from app.infrastructure.db.repositories import (
     SqlAlchemyOfferRepository,
@@ -141,11 +157,15 @@ from app.infrastructure.db.scheduled_actions_observability import (
     SqlAlchemyScheduledActionsOperationalReader,
 )
 from app.infrastructure.db.session import async_session_factory, get_session
+from app.infrastructure.db.social_identities import SqlAlchemySocialIdentityRepository
 from app.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from app.infrastructure.oauth.facebook_verifier import FacebookIdentityVerifier
 from app.infrastructure.oauth.google_verifier import GoogleIdentityVerifier
-from app.infrastructure.security.bcrypt_hasher import BcryptPasswordHasher
 from app.infrastructure.security.jwt_service import JwtTokenService
+from app.infrastructure.security.phone_verification import (
+    HmacPhoneVerificationSecrets,
+    LibPhoneNumberNormalizer,
+)
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
@@ -284,25 +304,31 @@ RatingSkipRepositoryDep = Annotated[
 ]
 
 
-@lru_cache
-def _hasher() -> BcryptPasswordHasher:
-    return BcryptPasswordHasher()
-
-
-def get_token_service(settings: SettingsDep) -> TokenService:
-    return JwtTokenService(settings)
-
-
-TokenServiceDep = Annotated[TokenService, Depends(get_token_service)]
-
-
 def get_oauth_verifiers(settings: SettingsDep) -> dict[str, SocialIdentityVerifier]:
-    return {
-        AuthProvider.GOOGLE.value: GoogleIdentityVerifier(settings.google_client_id),
-        AuthProvider.FACEBOOK.value: FacebookIdentityVerifier(
+    verifiers: dict[str, SocialIdentityVerifier] = {}
+    if settings.google_client_id:
+        verifiers[AuthProvider.GOOGLE.value] = GoogleIdentityVerifier(settings.google_client_id)
+    if settings.facebook_app_id and settings.facebook_app_secret:
+        verifiers[AuthProvider.FACEBOOK.value] = FacebookIdentityVerifier(
             settings.facebook_app_id, settings.facebook_app_secret
-        ),
-    }
+        )
+    return verifiers
+
+
+def get_social_accounts(
+    session: SessionDep, users: UserRepositoryDep,
+    verifiers: Annotated[dict[str, SocialIdentityVerifier], Depends(get_oauth_verifiers)],
+) -> SocialAccounts:
+    return SocialAccounts(SqlAlchemySocialIdentityRepository(session), users, verifiers)
+
+
+SocialAccountsDep = Annotated[SocialAccounts, Depends(get_social_accounts)]
+
+
+def get_sign_in_with_social(
+    session: SessionDep, access: ManagedSessionsDep, social: SocialAccountsDep,
+) -> SignInWithSocial:
+    return SignInWithSocial(social, access, SqlAlchemyUnitOfWork(session))
 
 
 # --- Casos de uso ---
@@ -320,24 +346,100 @@ def get_build_driver_realtime_snapshot(
     return BuildDriverRealtimeSnapshot(snapshots)
 
 
-def get_register_user(users: UserRepositoryDep, tokens: TokenServiceDep) -> RegisterUser:
-    return RegisterUser(users, _hasher(), tokens)
+def get_request_phone_code(session: SessionDep, settings: SettingsDep) -> RequestPhoneCode:
+    return RequestPhoneCode(
+        SqlAlchemyPhoneChallengeStore(session),
+        LibPhoneNumberNormalizer(settings.phone_otp_allowed_regions),
+        HmacPhoneVerificationSecrets(settings.jwt_secret, settings.app_env),
+        mock_enabled=(settings.phone_otp_enabled and settings.app_env != "production"
+                      and settings.otp_mode == "mock"),
+        expose_test_code=settings.app_env != "production" and settings.otp_test_autofill,
+        ttl_seconds=settings.phone_otp_ttl_seconds,
+    )
 
 
-def get_authenticate_user(users: UserRepositoryDep, tokens: TokenServiceDep) -> AuthenticateUser:
-    return AuthenticateUser(users, _hasher(), tokens)
+def get_verify_phone_code(session: SessionDep, settings: SettingsDep) -> VerifyPhoneCode:
+    return VerifyPhoneCode(
+        SqlAlchemyPhoneChallengeStore(session),
+        LibPhoneNumberNormalizer(settings.phone_otp_allowed_regions),
+        HmacPhoneVerificationSecrets(settings.jwt_secret, settings.app_env),
+        mock_enabled=(settings.phone_otp_enabled and settings.app_env != "production"
+                      and settings.otp_mode == "mock"),
+    )
 
 
-def get_refresh_token(tokens: TokenServiceDep) -> RefreshToken:
-    return RefreshToken(tokens)
+def build_managed_sessions(session: AsyncSession, settings: Settings) -> ManagedSessions:
+    return ManagedSessions(
+        SqlAlchemySessionRepository(session), SqlAlchemyPhoneAccountRepository(session),
+        SqlAlchemyUserRepository(session), JwtTokenService(settings),
+        access_minutes=settings.access_token_expire_minutes,
+        refresh_days=settings.refresh_token_expire_days,
+    )
 
 
-def get_authenticate_with_oauth(
-    users: UserRepositoryDep,
-    tokens: TokenServiceDep,
-    verifiers: Annotated[dict[str, SocialIdentityVerifier], Depends(get_oauth_verifiers)],
-) -> AuthenticateWithOAuth:
-    return AuthenticateWithOAuth(users, tokens, verifiers)
+def get_managed_sessions(session: SessionDep, settings: SettingsDep) -> ManagedSessions:
+    return build_managed_sessions(session, settings)
+
+
+ManagedSessionsDep = Annotated[ManagedSessions, Depends(get_managed_sessions)]
+
+
+def get_refresh_token(session: SessionDep, access: ManagedSessionsDep) -> RefreshManagedSession:
+    return RefreshManagedSession(access, SqlAlchemyUnitOfWork(session))
+
+
+def get_complete_phone_sign_in(
+    session: SessionDep, settings: SettingsDep, access: ManagedSessionsDep,
+    social: SocialAccountsDep,
+) -> CompletePhoneSignIn:
+    return CompletePhoneSignIn(
+        access, SqlAlchemyPhoneChallengeStore(session),
+        HmacPhoneVerificationSecrets(settings.jwt_secret, settings.app_env),
+        LibPhoneNumberNormalizer(settings.phone_otp_allowed_regions),
+        SqlAlchemyUnitOfWork(session),
+        enabled=(settings.phone_otp_enabled and settings.app_env != "production"
+                 and settings.otp_mode == "mock"),
+        terms_version=settings.phone_terms_version,
+        social=social,
+    )
+
+
+def get_manage_account_sessions(
+    session: SessionDep, access: ManagedSessionsDep,
+) -> ManageAccountSessions:
+    return ManageAccountSessions(access, SqlAlchemyUnitOfWork(session))
+
+
+def get_change_account_phone(
+    session: SessionDep, settings: SettingsDep, access: ManagedSessionsDep,
+) -> ChangeAccountPhone:
+    return ChangeAccountPhone(
+        access, SqlAlchemyPhoneChallengeStore(session),
+        LibPhoneNumberNormalizer(settings.phone_otp_allowed_regions),
+        HmacPhoneVerificationSecrets(settings.jwt_secret, settings.app_env),
+        SqlAlchemyUnitOfWork(session),
+    )
+
+
+def get_request_account_recovery(
+    session: SessionDep, settings: SettingsDep, access: ManagedSessionsDep,
+) -> RequestAccountRecovery:
+    return RequestAccountRecovery(
+        access.accounts, SqlAlchemyRecoveryRepository(session),
+        SqlAlchemyPhoneChallengeStore(session),
+        HmacPhoneVerificationSecrets(settings.jwt_secret, settings.app_env),
+        SqlAlchemyUnitOfWork(session),
+    )
+
+
+def get_complete_account_recovery(
+    session: SessionDep, settings: SettingsDep, access: ManagedSessionsDep,
+) -> CompleteAccountRecovery:
+    return CompleteAccountRecovery(
+        access, SqlAlchemyRecoveryRepository(session), SqlAlchemyPhoneChallengeStore(session),
+        HmacPhoneVerificationSecrets(settings.jwt_secret, settings.app_env),
+        SqlAlchemyUnitOfWork(session),
+    )
 
 
 def get_create_ride_request(
@@ -698,6 +800,35 @@ def get_set_driver_online(
     )
 
 
+def get_register_driver_vehicle(
+    session: SessionDep, settings: SettingsDep
+) -> RegisterDriverVehicle:
+    return RegisterDriverVehicle(
+        SqlAlchemyUserRepository(session),
+        SqlAlchemyDriverVehicleRepository(session),
+        auto_approve=settings.driver_auto_approve,
+    )
+
+
+def get_list_driver_vehicles(session: SessionDep) -> ListDriverVehicles:
+    return ListDriverVehicles(SqlAlchemyDriverVehicleRepository(session))
+
+
+def get_remove_driver_vehicle(session: SessionDep) -> RemoveDriverVehicle:
+    return RemoveDriverVehicle(
+        SqlAlchemyUserRepository(session),
+        SqlAlchemyDriverVehicleRepository(session),
+    )
+
+
+def get_switch_account_mode(session: SessionDep) -> SwitchAccountMode:
+    return SwitchAccountMode(
+        SqlAlchemyUserRepository(session),
+        SqlAlchemyRideRequestRepository(session),
+        SqlAlchemyDriverVehicleRepository(session),
+    )
+
+
 def get_driver_active_ride(
     ride_reads: RideReadRepositoryDep,
 ) -> GetDriverActiveRide:
@@ -772,8 +903,7 @@ def get_delete_saved_place(places: SavedPlaceRepositoryDep) -> DeleteSavedPlace:
 
 
 async def get_current_user(
-    users: UserRepositoryDep,
-    tokens: TokenServiceDep,
+    access: ManagedSessionsDep,
     authorization: Annotated[str | None, Header()] = None,
 ) -> User:
     from app.api.errors import unauthorized
@@ -782,13 +912,10 @@ async def get_current_user(
         raise unauthorized("Falta el token de autorización")
     token = authorization.split(" ", 1)[1].strip()
     try:
-        user_id = tokens.decode_access_token(token)
+        user, _ = await access.authenticate(token)
     except InvalidTokenError as exc:
         raise unauthorized("Token inválido o expirado") from exc
 
-    user = await users.get_by_id(user_id)
-    if user is None:
-        raise unauthorized("Usuario no encontrado")
     return user
 
 

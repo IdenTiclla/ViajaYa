@@ -49,6 +49,7 @@ import { useAutoExpireOffers, useDriverRequests } from '@/features/driver/applic
 import { useDriverToasts } from '@/features/driver/application/useDriverToasts';
 import { FeedbackState } from '@/shared/components';
 import { useAuthStore } from '@/store/authStore';
+import type { VehicleType } from '@/features/auth/domain/types';
 
 type ViewMode = 'list' | 'map';
 
@@ -83,9 +84,12 @@ export function SolicitudesEntrantesScreen() {
       automaticActivationFor.current = null;
       return;
     }
-    if (user.isOnline || automaticActivationFor.current === user.id) return;
+    // Switching vehicle goes offline first and keeps this screen mounted, so the
+    // automatic activation is keyed by user *and* active vehicle.
+    const activationKey = `${user.id}:${user.vehicleType ?? ''}`;
+    if (user.isOnline || automaticActivationFor.current === activationKey) return;
 
-    automaticActivationFor.current = user.id;
+    automaticActivationFor.current = activationKey;
     activateDriver();
   }, [activateDriver, user]);
 
@@ -582,7 +586,7 @@ function SearchingState({
   tipoVehiculo,
 }: {
   position: WatchedPosition;
-  tipoVehiculo: 'taxi' | 'moto' | null;
+  tipoVehiculo: VehicleType | null;
 }) {
   const { styles } = useEstilos(crearEstilos);
   return (

@@ -20,16 +20,15 @@ from app.api.v1.schemas.realtime import (
     RealtimeEventEnvelopeV2,
     RideSnapshotMessageV2,
 )
-from app.domain.entities import UserRole, VehicleType
-from app.infrastructure.db.repositories import SqlAlchemyUserRepository
+from app.domain.entities import VehicleType
 from app.infrastructure.realtime.ws_auth import AUTH_SUBPROTOCOL
+from tests.e2e.helpers import promote_to_driver, sign_in
 from tests.postgresql.redis_realtime_support import (
     run_redis_realtime_server_process,
 )
 
 _JWT_SECRET = "redis-single-worker-gate-only-not-production"
 _OPERATION_TIMEOUT_SECONDS = 30.0
-_PASSWORD = "redis-multiworker-smoke-123"
 
 
 def _listener() -> tuple[socket.socket, str]:
@@ -88,17 +87,8 @@ async def _stop_process(process, shutdown) -> None:
     process.close()
 
 
-async def _register(client: httpx.AsyncClient, email: str) -> str:
-    response = await client.post(
-        "/api/v1/auth/register",
-        json={
-            "full_name": email.partition("@")[0],
-            "email": email,
-            "password": _PASSWORD,
-        },
-    )
-    assert response.status_code == 201, response.text
-    return response.json()["tokens"]["access_token"]
+async def _register(client: httpx.AsyncClient, label: str) -> str:
+    return (await sign_in(client, label)).token
 
 
 def _headers(token: str) -> dict[str, str]:
@@ -238,25 +228,15 @@ async def test_dos_workers_negocian_con_presencia_compartida(
             ) as second_client,
         ):
             suffix = uuid.uuid4().hex
-            rider_token = await _register(
-                first_client,
-                f"redis-rider-{suffix}@example.com",
-            )
-            driver_email = f"redis-driver-{suffix}@example.com"
-            driver_token = await _register(first_client, driver_email)
+            rider_token = await _register(first_client, f"redis-rider-{suffix}")
+            driver_label = f"redis-driver-{suffix}"
+            driver_token = await _register(first_client, driver_label)
             sessions = async_sessionmaker(
                 pg_test_db.engine,
                 class_=AsyncSession,
                 expire_on_commit=False,
             )
-            async with sessions() as session:
-                users = SqlAlchemyUserRepository(session)
-                driver = await users.get_by_email(driver_email)
-                assert driver is not None
-                driver.role = UserRole.DRIVER
-                driver.vehicle_type = VehicleType.TAXI
-                driver.is_online = True
-                await users.update(driver)
+            await promote_to_driver(sessions, driver_label, VehicleType.TAXI)
 
             created = await first_client.post(
                 "/api/v1/rides",

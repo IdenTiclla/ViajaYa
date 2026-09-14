@@ -4,7 +4,7 @@
  */
 
 export interface paths {
-    "/api/v1/auth/login": {
+    "/api/v1/auth/logout": {
         parameters: {
             query?: never;
             header?: never;
@@ -13,8 +13,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Login */
-        post: operations["login_api_v1_auth_login_post"];
+        /** Logout */
+        post: operations["logout_api_v1_auth_logout_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -38,7 +38,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/auth/oauth/{provider}": {
+    "/api/v1/auth/phone/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Capabilities */
+        get: operations["capabilities_api_v1_auth_phone_capabilities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/phone/challenges": {
         parameters: {
             query?: never;
             header?: never;
@@ -47,8 +64,144 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Oauth Login */
-        post: operations["oauth_login_api_v1_auth_oauth__provider__post"];
+        /** Request Code */
+        post: operations["request_code_api_v1_auth_phone_challenges_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/phone/change": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Change Phone */
+        post: operations["change_phone_api_v1_auth_phone_change_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/phone/change/challenges": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Request Change Code */
+        post: operations["request_change_code_api_v1_auth_phone_change_challenges_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/phone/change/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify Change Code */
+        post: operations["verify_change_code_api_v1_auth_phone_change_verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/phone/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Complete Phone */
+        post: operations["complete_phone_api_v1_auth_phone_complete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/phone/link-social": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Link Social */
+        post: operations["link_social_api_v1_auth_phone_link_social_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/phone/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify Code */
+        post: operations["verify_code_api_v1_auth_phone_verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/recovery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Request Recovery */
+        post: operations["request_recovery_api_v1_auth_recovery_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/recovery/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Complete Recovery */
+        post: operations["complete_recovery_api_v1_auth_recovery_complete_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -72,7 +225,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/auth/register": {
+    "/api/v1/auth/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Sessions */
+        get: operations["list_sessions_api_v1_auth_sessions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/sessions/others": {
         parameters: {
             query?: never;
             header?: never;
@@ -81,8 +251,42 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Register */
-        post: operations["register_api_v1_auth_register_post"];
+        post?: never;
+        /** Revoke Other Sessions */
+        delete: operations["revoke_other_sessions_api_v1_auth_sessions_others_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/sessions/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke Session */
+        delete: operations["revoke_session_api_v1_auth_sessions__session_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/social/{provider}/sign-in": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Social Sign In */
+        post: operations["social_sign_in_api_v1_auth_social__provider__sign_in_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -129,6 +333,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/drivers/me/mode": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Switch Account Mode
+         * @description Switch between passenger and driver mode, choosing the vehicle to drive with.
+         */
+        post: operations["switch_account_mode_api_v1_drivers_me_mode_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/drivers/me/online": {
         parameters: {
             query?: never;
@@ -144,6 +368,53 @@ export interface paths {
          */
         post: operations["set_online_api_v1_drivers_me_online_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/drivers/me/vehicles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Vehicles
+         * @description Vehicles the account registered to drive with (taxi, moto and/or truck).
+         */
+        get: operations["list_vehicles_api_v1_drivers_me_vehicles_get"];
+        put?: never;
+        /**
+         * Register Vehicle
+         * @description Register or update the vehicle of that type and the services served with it.
+         *
+         *     The account keeps its mode; ``user.driver_status`` aggregates the vehicles
+         *     (``approved`` as soon as one is) and ``user.vehicle_type`` is the active one.
+         */
+        post: operations["register_vehicle_api_v1_drivers_me_vehicles_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/drivers/me/vehicles/{vehicle_type}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Vehicle
+         * @description Remove a vehicle (not the one in use while in driver mode).
+         */
+        delete: operations["remove_vehicle_api_v1_drivers_me_vehicles__vehicle_type__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -657,6 +928,48 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
+         * AccountModeRequest
+         * @description Active mode of the account; ``vehicle_type`` picks the vehicle to drive with.
+         */
+        AccountModeRequest: {
+            mode: components["schemas"]["UserRole"];
+            vehicle_type?: components["schemas"]["VehicleType"] | null;
+        };
+        /** AccountSessionResponse */
+        AccountSessionResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Current */
+            current: boolean;
+            /** Device Name */
+            device_name: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Last Seen At
+             * Format: date-time
+             */
+            last_seen_at: string;
+        };
+        /** AccountSessionsResponse */
+        AccountSessionsResponse: {
+            /** Managed */
+            managed: boolean;
+            /** Sessions */
+            sessions: components["schemas"]["AccountSessionResponse"][];
+        };
+        /**
          * AuthProvider
          * @description Origen de la identidad del usuario.
          * @enum {string}
@@ -664,7 +977,7 @@ export interface components {
         AuthProvider: "local" | "google" | "facebook";
         /**
          * AuthResponse
-         * @description Respuesta de register / login / oauth: tokens + datos del usuario.
+         * @description Operational session issued after phone or social sign-in: tokens + user.
          */
         AuthResponse: {
             tokens: components["schemas"]["TokenResponse"];
@@ -695,6 +1008,51 @@ export interface components {
             trips_all_time: number;
             /** Trips Today */
             trips_today: number;
+        };
+        /**
+         * DriverStatus
+         * @description Outcome of a driver application; only ``APPROVED`` can enter driver mode.
+         * @enum {string}
+         */
+        DriverStatus: "pending" | "approved" | "rejected";
+        /**
+         * DriverVehicleRegistrationResponse
+         * @description The registered vehicle plus the account (aggregate status, active vehicle).
+         */
+        DriverVehicleRegistrationResponse: {
+            user: components["schemas"]["UserResponse"];
+            vehicle: components["schemas"]["DriverVehicleResponse"];
+        };
+        /**
+         * DriverVehicleRequest
+         * @description One vehicle (at most one per type) and the services served with it.
+         */
+        DriverVehicleRequest: {
+            /** Plate */
+            plate: string;
+            /** Services */
+            services: components["schemas"]["ServiceType"][];
+            /** Vehicle Model */
+            vehicle_model: string;
+            vehicle_type: components["schemas"]["VehicleType"];
+        };
+        /** DriverVehicleResponse */
+        DriverVehicleResponse: {
+            /** Created At */
+            created_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Plate */
+            plate: string;
+            /** Services */
+            services: components["schemas"]["ServiceType"][];
+            status: components["schemas"]["DriverStatus"];
+            /** Vehicle Model */
+            vehicle_model: string;
+            vehicle_type: components["schemas"]["VehicleType"];
         };
         /**
          * EarningsItemResponse
@@ -747,23 +1105,10 @@ export interface components {
             vehicle_model: string | null;
             vehicle_type: components["schemas"]["VehicleType"] | null;
         };
-        /** LoginRequest */
-        LoginRequest: {
-            /**
-             * Email
-             * Format: email
-             */
-            email: string;
-            /** Password */
-            password: string;
-        };
-        /**
-         * OAuthRequest
-         * @description Token emitido por el proveedor (id_token de Google / access_token de Facebook).
-         */
-        OAuthRequest: {
-            /** Token */
-            token: string;
+        /** LogoutRequest */
+        LogoutRequest: {
+            /** Refresh Token */
+            refresh_token: string;
         };
         /**
          * OfferCreate
@@ -902,6 +1247,161 @@ export interface components {
          * @enum {string}
          */
         PaymentMethod: "qr" | "cash";
+        /** PhoneCapabilitiesResponse */
+        PhoneCapabilitiesResponse: {
+            /** Countries */
+            countries: components["schemas"]["PhoneCountry"][];
+            /** Enabled */
+            enabled: boolean;
+            /** Social Providers */
+            social_providers?: ("google" | "facebook")[];
+            /** Terms Text */
+            terms_text: string;
+            /** Terms Version */
+            terms_version: string;
+        };
+        /** PhoneChangeCodeRequest */
+        PhoneChangeCodeRequest: {
+            /**
+             * Device Id
+             * Format: uuid
+             */
+            device_id: string;
+            /** Phone */
+            phone: string;
+            /**
+             * Purpose
+             * @default change_phone
+             * @constant
+             */
+            purpose: "change_phone";
+        };
+        /** PhoneChangeCodeVerifyRequest */
+        PhoneChangeCodeVerifyRequest: {
+            /**
+             * Challenge Id
+             * Format: uuid
+             */
+            challenge_id: string;
+            /** Code */
+            code: string;
+            /**
+             * Device Id
+             * Format: uuid
+             */
+            device_id: string;
+            /** Phone */
+            phone: string;
+            /**
+             * Purpose
+             * @default change_phone
+             * @constant
+             */
+            purpose: "change_phone";
+        };
+        /** PhoneChangeRequest */
+        PhoneChangeRequest: {
+            /**
+             * Device Id
+             * Format: uuid
+             */
+            device_id: string;
+            /** Phone */
+            phone: string;
+            /** Verification Token */
+            verification_token: string;
+        };
+        /** PhoneCodeRequest */
+        PhoneCodeRequest: {
+            /**
+             * Device Id
+             * Format: uuid
+             */
+            device_id: string;
+            /** Phone */
+            phone: string;
+            /**
+             * Purpose
+             * @default sign_in
+             * @enum {string}
+             */
+            purpose: "sign_in" | "recovery";
+        };
+        /** PhoneCodeVerifyRequest */
+        PhoneCodeVerifyRequest: {
+            /**
+             * Challenge Id
+             * Format: uuid
+             */
+            challenge_id: string;
+            /** Code */
+            code: string;
+            /**
+             * Device Id
+             * Format: uuid
+             */
+            device_id: string;
+            /** Phone */
+            phone: string;
+            /**
+             * Purpose
+             * @default sign_in
+             * @enum {string}
+             */
+            purpose: "sign_in" | "recovery";
+        };
+        /** PhoneCompleteRequest */
+        PhoneCompleteRequest: {
+            /**
+             * Device Id
+             * Format: uuid
+             */
+            device_id: string;
+            /**
+             * Device Name
+             * @default Teléfono
+             */
+            device_name: string;
+            /** Full Name */
+            full_name?: string | null;
+            /** Phone */
+            phone: string;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /** Terms Version */
+            terms_version?: string | null;
+            /** Verification Token */
+            verification_token: string;
+        };
+        /** PhoneCompleteResponse */
+        PhoneCompleteResponse: {
+            auth?: components["schemas"]["AuthResponse"] | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "profile_required" | "authenticated";
+        };
+        /** PhoneCountry */
+        PhoneCountry: {
+            /** Calling Code */
+            calling_code: string;
+            /** Region */
+            region: string;
+        };
+        /** PhoneVerificationResponse */
+        PhoneVerificationResponse: {
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Verification Token */
+            verification_token: string;
+        };
         /**
          * PointInputSchema
          * @description Punto entrante: nunca admite una etiqueta provisional como nombre final.
@@ -1096,24 +1596,66 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** RecoveryCaseResponse */
+        RecoveryCaseResponse: {
+            /**
+             * Case Id
+             * Format: uuid
+             */
+            case_id: string;
+            /** Status */
+            status: string;
+        };
+        /** RecoveryCompleteRequest */
+        RecoveryCompleteRequest: {
+            /**
+             * Case Id
+             * Format: uuid
+             */
+            case_id: string;
+            /**
+             * Device Id
+             * Format: uuid
+             */
+            device_id: string;
+            /**
+             * Device Name
+             * @default Teléfono
+             */
+            device_name: string;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /** Verification Token */
+            verification_token: string;
+        };
+        /** RecoverySubmitRequest */
+        RecoverySubmitRequest: {
+            /** Account Hint */
+            account_hint: string;
+            /**
+             * Device Id
+             * Format: uuid
+             */
+            device_id: string;
+            /** Reason */
+            reason: string;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /** Verification Token */
+            verification_token: string;
+        };
         /** RefreshRequest */
         RefreshRequest: {
             /** Refresh Token */
             refresh_token: string;
-        };
-        /** RegisterRequest */
-        RegisterRequest: {
-            /**
-             * Email
-             * Format: email
-             */
-            email: string;
-            /** Full Name */
-            full_name: string;
-            /** Password */
-            password: string;
-            /** Phone */
-            phone?: string | null;
+            /** Request Id */
+            request_id?: string | null;
         };
         /**
          * RideDriverSchema
@@ -1367,10 +1909,91 @@ export interface components {
         };
         /**
          * ServiceType
-         * @description Tipo de servicio solicitado por un pasajero.
+         * @description Service requested by a passenger (``MOVING`` is a house/office move).
          * @enum {string}
          */
-        ServiceType: "taxi" | "moto" | "delivery";
+        ServiceType: "taxi" | "moto" | "delivery" | "moving";
+        /** SocialPhoneLinkRequest */
+        SocialPhoneLinkRequest: {
+            /**
+             * Device Id
+             * Format: uuid
+             */
+            device_id: string;
+            /**
+             * Device Name
+             * @default Teléfono
+             */
+            device_name: string;
+            /** Full Name */
+            full_name?: string | null;
+            /** Phone */
+            phone: string;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /**
+             * Social Provider
+             * @enum {string}
+             */
+            social_provider: "google" | "facebook";
+            /** Social Token */
+            social_token: string;
+            /** Terms Version */
+            terms_version?: string | null;
+            /** Verification Token */
+            verification_token: string;
+        };
+        /** SocialSignInRequest */
+        SocialSignInRequest: {
+            /**
+             * Device Id
+             * Format: uuid
+             */
+            device_id: string;
+            /**
+             * Device Name
+             * @default Teléfono
+             */
+            device_name: string;
+            /** Token */
+            token: string;
+        };
+        /** SocialSignInResponse */
+        SocialSignInResponse: {
+            auth?: components["schemas"]["AuthResponse"] | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "phone_required" | "authenticated";
+        };
+        /** TestPhoneChallengeResponse */
+        TestPhoneChallengeResponse: {
+            /**
+             * Challenge Id
+             * Format: uuid
+             */
+            challenge_id: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Phone */
+            phone: string;
+            /**
+             * Purpose
+             * @enum {string}
+             */
+            purpose: "sign_in" | "recovery" | "change_phone";
+            /** Resend After Seconds */
+            resend_after_seconds: number;
+            /** Test Code */
+            test_code?: string | null;
+        };
         /** TokenResponse */
         TokenResponse: {
             /** Access Token */
@@ -1388,11 +2011,11 @@ export interface components {
             auth_provider: components["schemas"]["AuthProvider"];
             /** Created At */
             created_at: string | null;
-            /**
-             * Email
-             * Format: email
-             */
-            email: string;
+            /** Driver Services */
+            driver_services: components["schemas"]["ServiceType"][];
+            driver_status: components["schemas"]["DriverStatus"] | null;
+            /** Email */
+            email: string | null;
             /** Full Name */
             full_name: string;
             /**
@@ -1404,6 +2027,8 @@ export interface components {
             is_online: boolean;
             /** Phone */
             phone: string | null;
+            /** Phone Verified At */
+            phone_verified_at: string | null;
             /** Plate */
             plate: string | null;
             /** Rating */
@@ -1437,10 +2062,10 @@ export interface components {
         };
         /**
          * VehicleType
-         * @description Tipo fisico de vehiculo registrado por un conductor.
+         * @description Physical vehicle registered by a driver (``TRUCK`` covers vans and trucks).
          * @enum {string}
          */
-        VehicleType: "taxi" | "moto";
+        VehicleType: "taxi" | "moto" | "truck";
     };
     responses: never;
     parameters: never;
@@ -1450,7 +2075,7 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    login_api_v1_auth_login_post: {
+    logout_api_v1_auth_logout_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -1459,18 +2084,16 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["LoginRequest"];
+                "application/json": components["schemas"]["LogoutRequest"];
             };
         };
         responses: {
             /** @description Successful Response */
-            200: {
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["AuthResponse"];
-                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -1514,18 +2137,71 @@ export interface operations {
             };
         };
     };
-    oauth_login_api_v1_auth_oauth__provider__post: {
+    capabilities_api_v1_auth_phone_capabilities_get: {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                provider: string;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PhoneCapabilitiesResponse"];
+                };
             };
+        };
+    };
+    request_code_api_v1_auth_phone_challenges_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["OAuthRequest"];
+                "application/json": components["schemas"]["PhoneCodeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TestPhoneChallengeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    change_phone_api_v1_auth_phone_change_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PhoneChangeRequest"];
             };
         };
         responses: {
@@ -1536,6 +2212,241 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuthResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    request_change_code_api_v1_auth_phone_change_challenges_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PhoneChangeCodeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TestPhoneChallengeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_change_code_api_v1_auth_phone_change_verify_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PhoneChangeCodeVerifyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PhoneVerificationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    complete_phone_api_v1_auth_phone_complete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PhoneCompleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PhoneCompleteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    link_social_api_v1_auth_phone_link_social_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SocialPhoneLinkRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PhoneCompleteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_code_api_v1_auth_phone_verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PhoneCodeVerifyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PhoneVerificationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    request_recovery_api_v1_auth_recovery_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecoverySubmitRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecoveryCaseResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    complete_recovery_api_v1_auth_recovery_complete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecoveryCompleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PhoneCompleteResponse"];
                 };
             };
             /** @description Validation Error */
@@ -1582,26 +2493,119 @@ export interface operations {
             };
         };
     };
-    register_api_v1_auth_register_post: {
+    list_sessions_api_v1_auth_sessions_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RegisterRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
-            201: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AuthResponse"];
+                    "application/json": components["schemas"]["AccountSessionsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_other_sessions_api_v1_auth_sessions_others_delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_session_api_v1_auth_sessions__session_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    social_sign_in_api_v1_auth_social__provider__sign_in_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: "google" | "facebook";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SocialSignInRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SocialSignInResponse"];
                 };
             };
             /** @description Validation Error */
@@ -1677,6 +2681,41 @@ export interface operations {
             };
         };
     };
+    switch_account_mode_api_v1_drivers_me_mode_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountModeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     set_online_api_v1_drivers_me_online_post: {
         parameters: {
             query?: never;
@@ -1691,6 +2730,105 @@ export interface operations {
                 "application/json": components["schemas"]["OnlineRequest"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_vehicles_api_v1_drivers_me_vehicles_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriverVehicleResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    register_vehicle_api_v1_drivers_me_vehicles_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DriverVehicleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriverVehicleRegistrationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_vehicle_api_v1_drivers_me_vehicles__vehicle_type__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                vehicle_type: components["schemas"]["VehicleType"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

@@ -251,6 +251,7 @@ def run_realtime_server_process(
         _env_file=None,
         database_url=database_url,
         jwt_secret=jwt_secret,
+        phone_otp_enabled=True,
         realtime_outbox_dispatch_mode=dispatch_mode,
         realtime_outbox_recording_enabled=True,
         realtime_outbox_poll_interval_seconds=0.01,

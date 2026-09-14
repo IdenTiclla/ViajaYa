@@ -1,0 +1,43 @@
+# Breaking OpenAPI changes accepted on purpose (oasdiff ignore file).
+# Each line must contain the method, the path and the change text, case-insensitive.
+# Add a dated block per accepted rupture; never silence a change you did not intend.
+
+# 2026-09-13 — email/password access removed for good (only phone + OTP remains).
+POST /api/v1/auth/login api path removed without deprecation
+POST /api/v1/auth/oauth/{provider} api path removed without deprecation
+POST /api/v1/auth/register api path removed without deprecation
+
+# 2026-09-10 — accounts may have no email (phone-only sign-up, F02-B); refresh tokens are bounded.
+GET /api/v1/auth/me response property `email` list-of-types was widened by adding types `null` to media type `application/json` of response `200`
+POST /api/v1/drivers/me/online response property `email` list-of-types was widened by adding types `null` to media type `application/json` of response `200`
+POST /api/v1/auth/refresh the `refresh_token` request property's maxLength was set to `4096`
+
+# 2026-09-13 — driver registration: `truck` vehicles and `moving` (mudanzas) service.
+GET /api/v1/auth/me added the new `truck` enum value to the `vehicle_type/anyOf[subschema #1: VehicleType]/` response property for the response status `200`
+GET /api/v1/drivers/me/active-ride added the new `moving` enum value to the `anyOf[subschema #1: RideResponse]/service_type` response property for the response status `200`
+GET /api/v1/drivers/me/active-ride added the new `truck` enum value to the `anyOf[subschema #1: RideResponse]/driver/anyOf[subschema #1: RideDriverSchema]/vehicle_type/anyOf[subschema #1: VehicleType]/` response property for the response status `200`
+GET /api/v1/rides/history added the new `moving` enum value to the `items/items/service_type` response property for the response status `200`
+GET /api/v1/rides/history added the new `truck` enum value to the `items/items/counterpart/anyOf[subschema #1: HistoryCounterpartSchema]/vehicle_type/anyOf[subschema #1: VehicleType]/` response property for the response status `200`
+GET /api/v1/rides/me/active added the new `moving` enum value to the `anyOf[subschema #1: RideResponse]/service_type` response property for the response status `200`
+GET /api/v1/rides/me/active added the new `truck` enum value to the `anyOf[subschema #1: RideResponse]/driver/anyOf[subschema #1: RideDriverSchema]/vehicle_type/anyOf[subschema #1: VehicleType]/` response property for the response status `200`
+GET /api/v1/rides/me/pending-rating added the new `moving` enum value to the `anyOf[subschema #1: RideResponse]/service_type` response property for the response status `200`
+GET /api/v1/rides/me/pending-rating added the new `truck` enum value to the `anyOf[subschema #1: RideResponse]/driver/anyOf[subschema #1: RideDriverSchema]/vehicle_type/anyOf[subschema #1: VehicleType]/` response property for the response status `200`
+GET /api/v1/rides/open added the new `moving` enum value to the `items/items/service_type` response property for the response status `200`
+GET /api/v1/rides/{ride_id} added the new `moving` enum value to the `service_type` response property for the response status `200`
+GET /api/v1/rides/{ride_id} added the new `truck` enum value to the `driver/anyOf[subschema #1: RideDriverSchema]/vehicle_type/anyOf[subschema #1: VehicleType]/` response property for the response status `200`
+GET /api/v1/rides/{ride_id}/offers added the new `truck` enum value to the `items/driver/vehicle_type/anyOf[subschema #1: VehicleType]/` response property for the response status `200`
+PATCH /api/v1/rides/{ride_id} added the new `moving` enum value to the `service_type` response property for the response status `200`
+PATCH /api/v1/rides/{ride_id} added the new `truck` enum value to the `driver/anyOf[subschema #1: RideDriverSchema]/vehicle_type/anyOf[subschema #1: VehicleType]/` response property for the response status `200`
+PATCH /api/v1/rides/{ride_id}/fare added the new `moving` enum value to the `service_type` response property for the response status `200`
+PATCH /api/v1/rides/{ride_id}/fare added the new `truck` enum value to the `driver/anyOf[subschema #1: RideDriverSchema]/vehicle_type/anyOf[subschema #1: VehicleType]/` response property for the response status `200`
+PATCH /api/v1/rides/{ride_id}/status added the new `moving` enum value to the `service_type` response property for the response status `200`
+PATCH /api/v1/rides/{ride_id}/status added the new `truck` enum value to the `driver/anyOf[subschema #1: RideDriverSchema]/vehicle_type/anyOf[subschema #1: VehicleType]/` response property for the response status `200`
+POST /api/v1/drivers/me/online added the new `truck` enum value to the `vehicle_type/anyOf[subschema #1: VehicleType]/` response property for the response status `200`
+POST /api/v1/rides added the new `moving` enum value to the `service_type` response property for the response status `201`
+POST /api/v1/rides/offers/{offer_id}/accept added the new `moving` enum value to the `service_type` response property for the response status `200`
+POST /api/v1/rides/offers/{offer_id}/accept added the new `truck` enum value to the `driver/anyOf[subschema #1: RideDriverSchema]/vehicle_type/anyOf[subschema #1: VehicleType]/` response property for the response status `200`
+POST /api/v1/rides/{ride_id}/cancel added the new `moving` enum value to the `service_type` response property for the response status `200`
+POST /api/v1/rides/{ride_id}/cancel added the new `truck` enum value to the `driver/anyOf[subschema #1: RideDriverSchema]/vehicle_type/anyOf[subschema #1: VehicleType]/` response property for the response status `200`
+POST /api/v1/rides/{ride_id}/offers added the new `truck` enum value to the `driver/vehicle_type/anyOf[subschema #1: VehicleType]/` response property for the response status `201`
+POST /api/v1/rides/{ride_id}/pause-edit added the new `moving` enum value to the `service_type` response property for the response status `200`
+POST /api/v1/rides/{ride_id}/pause-edit added the new `truck` enum value to the `driver/anyOf[subschema #1: RideDriverSchema]/vehicle_type/anyOf[subschema #1: VehicleType]/` response property for the response status `200`

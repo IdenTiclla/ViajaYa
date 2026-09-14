@@ -325,7 +325,7 @@ def test_settings_define_rollout_independiente_y_seguro() -> None:
         Settings(_env_file=None, scheduled_actions_mode="shadow").scheduled_actions_mode
         == "shadow"
     )
-    with pytest.raises(ValidationError, match="requiere outbox recording"):
+    with pytest.raises(ValidationError, match="requires outbox recording"):
         Settings(_env_file=None, scheduled_actions_mode="live")
     live = Settings(
         _env_file=None,
@@ -334,7 +334,7 @@ def test_settings_define_rollout_independiente_y_seguro() -> None:
         scheduled_actions_mode="live",
     )
     assert live.scheduled_actions_mode == "live"
-    with pytest.raises(ValidationError, match="requiere live_redis"):
+    with pytest.raises(ValidationError, match="requires live_redis"):
         Settings(
             _env_file=None,
             realtime_shared_presence_enabled=True,
@@ -347,13 +347,13 @@ def test_settings_define_rollout_independiente_y_seguro() -> None:
         realtime_shared_presence_enabled=True,
     )
     assert shared.realtime_shared_presence_enabled is True
-    with pytest.raises(ValidationError, match="antes de vencer"):
+    with pytest.raises(ValidationError, match="before its lease expires"):
         Settings(
             _env_file=None,
             realtime_presence_lease_seconds=10,
             realtime_presence_renew_interval_seconds=10,
         )
-    with pytest.raises(ValidationError, match="menor al lease"):
+    with pytest.raises(ValidationError, match="shorter than the scheduled actions lease"):
         Settings(
             _env_file=None,
             scheduled_actions_handler_timeout_seconds=30,

@@ -1,0 +1,32 @@
+# Deployment definition only; provisioning and public release belong to F09/F10.
+name: viajaya-${VIAJAYA_DEPLOYMENT_ENV:?Set testing or production}
+
+x-api: &api
+  image: ${VIAJAYA_API_IMAGE:?Set the certified registry image by sha256 digest}
+  env_file:
+    - ${VIAJAYA_BACKEND_ENV_FILE:?Set the absolute path to this environment's secrets}
+  environment:
+    APP_ENV: ${VIAJAYA_DEPLOYMENT_ENV:?Set testing or production}
+  read_only: true
+  tmpfs:
+    - /tmp
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+
+services:
+  api:
+    <<: *api
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${VIAJAYA_API_PORT:?Set a distinct local reverse-proxy port}:8000"
+    # A managed proxy terminates TLS. Database, Redis, and storage remain external.
+
+  migrate:
+    <<: *api
+    profiles: ["migration"]
+    restart: "no"
+    healthcheck:
+      disable: true
+    command: ["python", "-m", "alembic", "upgrade", "head"]

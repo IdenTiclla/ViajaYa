@@ -17,6 +17,8 @@ type Props = TextInputProps & {
   leadingIcon?: IoniconsIconName;
   /** Activa el toggle de mostrar/ocultar contraseña. */
   password?: boolean;
+  /** Texto fijo antes del valor (p. ej. el código de país "+591"). */
+  prefix?: string;
   error?: string;
 };
 
@@ -25,6 +27,7 @@ export const TextField = forwardRef<TextInput, Props>(function TextField(
     label,
     leadingIcon,
     password = false,
+    prefix,
     error,
     style,
     onFocus,
@@ -56,6 +59,7 @@ export const TextField = forwardRef<TextInput, Props>(function TextField(
         {leadingIcon && (
           <Ionicons accessible={false} name={leadingIcon} size={20} color={iconColor} style={styles.lead} />
         )}
+        {prefix && <Text accessible={false} style={styles.prefix}>{prefix}</Text>}
         <TextInput
           ref={ref}
           accessibilityLabel={accessibilityLabel ?? label ?? placeholder}
@@ -120,6 +124,7 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   fieldError: { borderColor: colors.danger },
   fieldDisabled: { backgroundColor: colors.fondoDeshabilitado },
   lead: { marginRight: spacing.sm },
+  prefix: { marginRight: spacing.sm, fontSize: fontSize.md, color: colors.text, fontWeight: '500' },
   input: { flex: 1, minWidth: 0, minHeight: controles.altoMinimo - 2, paddingVertical: spacing.sm, fontSize: fontSize.md, color: colors.text },
   passwordButton: {
     width: controles.altoMinimo,

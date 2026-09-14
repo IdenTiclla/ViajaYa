@@ -31,8 +31,8 @@ from app.api.v1.schemas.realtime import (
     RideStatusMessage,
     parse_negotiation_message,
 )
-from app.domain.entities import OfferStatus, UserRole, VehicleType
-from app.infrastructure.config import Settings
+from app.domain.entities import OfferStatus, VehicleType
+from app.infrastructure.db.account_access import SqlAlchemyPhoneAccountRepository
 from app.infrastructure.db.base import Base
 from app.infrastructure.db.models import OfferModel
 from app.infrastructure.db.repositories import (
@@ -42,8 +42,8 @@ from app.infrastructure.db.repositories import (
 from app.infrastructure.db.session import get_session
 from app.infrastructure.realtime.ws_auth import AUTH_SUBPROTOCOL
 from app.main import create_app
+from tests.e2e.helpers import phone_for, promote_to_driver, sign_in_sync, test_settings
 
-REGISTER = "/api/v1/auth/register"
 RIDES = "/api/v1/rides"
 
 
@@ -61,13 +61,8 @@ def _ride_payload(service_type: str = "taxi") -> dict:
     }
 
 
-def _register(client: TestClient, email: str) -> str:
-    resp = client.post(
-        REGISTER,
-        json={"full_name": email.split("@")[0], "email": email, "password": "secret123"},
-    )
-    assert resp.status_code == 201, resp.text
-    return resp.json()["tokens"]["access_token"]
+def _register(client: TestClient, label: str) -> str:
+    return sign_in_sync(client, label).token
 
 
 def _headers(token: str) -> dict[str, str]:
@@ -113,7 +108,7 @@ def ws_client(tmp_path):
             await conn.run_sync(Base.metadata.create_all)
 
     asyncio.run(create_tables())
-    app = create_app(session_factory=factory)
+    app = create_app(settings=test_settings(), session_factory=factory)
     app.dependency_overrides[get_session] = override_get_session
     app.dependency_overrides[get_session_factory] = lambda: factory
 
@@ -133,8 +128,7 @@ def ws_client_v2(tmp_path):
         future=True,
     )
     factory = async_sessionmaker(engine, expire_on_commit=False)
-    settings = Settings(
-        _env_file=None,
+    settings = test_settings(
         realtime_outbox_dispatch_mode="live_local",
         realtime_outbox_recording_enabled=True,
         realtime_outbox_poll_interval_seconds=0.01,
@@ -180,20 +174,12 @@ def _reset_presence(ws_client: TestClient):
 
 def _promote_driver(
     client: TestClient,
-    email: str,
+    label: str,
     vehicle: VehicleType = VehicleType.TAXI,
 ) -> None:
-    async def promote() -> None:
-        async with client.factory() as session:  # type: ignore[attr-defined]
-            users = SqlAlchemyUserRepository(session)
-            user = await users.get_by_email(email)
-            assert user is not None
-            user.role = UserRole.DRIVER
-            user.vehicle_type = vehicle
-            user.is_online = True
-            await users.update(user)
-
-    client.portal.call(promote)
+    client.portal.call(
+        promote_to_driver, client.factory, label, vehicle,  # type: ignore[attr-defined]
+    )
 
 
 def _wait_for_ride_status(
@@ -228,9 +214,9 @@ def _wait_for_ride_status(
 
 
 def test_passenger_receives_snapshot_and_live_offer(ws_client: TestClient):
-    rider_token = _register(ws_client, "rider@x.com")
-    driver_token = _register(ws_client, "driver@x.com")
-    _promote_driver(ws_client, "driver@x.com")
+    rider_token = _register(ws_client, "rider")
+    driver_token = _register(ws_client, "driver")
+    _promote_driver(ws_client, "driver")
 
     ride = ws_client.post(RIDES, json=_ride_payload(), headers=_headers(rider_token)).json()
     ride_id = ride["id"]
@@ -268,9 +254,9 @@ def test_passenger_receives_snapshot_and_live_offer(ws_client: TestClient):
 def test_live_local_sends_single_v2_snapshot_and_durable_delta(
     ws_client_v2: TestClient,
 ) -> None:
-    rider_token = _register(ws_client_v2, "rider-v2@x.com")
-    driver_token = _register(ws_client_v2, "driver-v2@x.com")
-    _promote_driver(ws_client_v2, "driver-v2@x.com")
+    rider_token = _register(ws_client_v2, "rider-v2")
+    driver_token = _register(ws_client_v2, "driver-v2")
+    _promote_driver(ws_client_v2, "driver-v2")
     ride = ws_client_v2.post(
         RIDES,
         json=_ride_payload(),
@@ -323,9 +309,9 @@ def test_live_local_sends_single_v2_snapshot_and_durable_delta(
 def test_status_progression_reaches_both_participants_with_exact_http_payload(
     ws_client: TestClient,
 ) -> None:
-    rider_token = _register(ws_client, "rider-status-ws@x.com")
-    driver_token = _register(ws_client, "driver-status-ws@x.com")
-    _promote_driver(ws_client, "driver-status-ws@x.com")
+    rider_token = _register(ws_client, "rider-status-ws")
+    driver_token = _register(ws_client, "driver-status-ws")
+    _promote_driver(ws_client, "driver-status-ws")
 
     with _websocket_connect(ws_client, "/api/v1/ws/driver?token=" + driver_token) as driver_ws:
         _receive_driver_handshake(driver_ws)
@@ -378,7 +364,7 @@ def test_status_progression_reaches_both_participants_with_exact_http_payload(
 
 
 def test_invalid_token_closes_socket(ws_client: TestClient):
-    rider_token = _register(ws_client, "rider@x.com")
+    rider_token = _register(ws_client, "rider")
     ride = ws_client.post(RIDES, json=_ride_payload(), headers=_headers(rider_token)).json()
 
     url = f"/api/v1/ws/rides/{ride['id']}?token=basura"
@@ -388,8 +374,8 @@ def test_invalid_token_closes_socket(ws_client: TestClient):
 
 
 def test_foreign_user_cannot_subscribe_to_ride(ws_client: TestClient):
-    rider_token = _register(ws_client, "rider@x.com")
-    intruder_token = _register(ws_client, "intruder@x.com")
+    rider_token = _register(ws_client, "rider")
+    intruder_token = _register(ws_client, "intruder")
     ride = ws_client.post(RIDES, json=_ride_payload(), headers=_headers(rider_token)).json()
 
     url = f"/api/v1/ws/rides/{ride['id']}?token={intruder_token}"
@@ -399,9 +385,9 @@ def test_foreign_user_cannot_subscribe_to_ride(ws_client: TestClient):
 
 
 def test_driver_notified_when_passenger_rejects_offer(ws_client: TestClient):
-    rider_token = _register(ws_client, "rider@x.com")
-    driver_token = _register(ws_client, "driver@x.com")
-    _promote_driver(ws_client, "driver@x.com")
+    rider_token = _register(ws_client, "rider")
+    driver_token = _register(ws_client, "driver")
+    _promote_driver(ws_client, "driver")
 
     ride = ws_client.post(RIDES, json=_ride_payload(), headers=_headers(rider_token)).json()
     offer = ws_client.post(
@@ -425,10 +411,10 @@ def test_driver_notified_when_passenger_rejects_offer(ws_client: TestClient):
 
 
 def test_driver_offer_snapshot_contains_only_live_pending_offers(ws_client: TestClient):
-    rider_a_token = _register(ws_client, "rider-a@x.com")
-    rider_b_token = _register(ws_client, "rider-b@x.com")
-    driver_token = _register(ws_client, "driver@x.com")
-    _promote_driver(ws_client, "driver@x.com")
+    rider_a_token = _register(ws_client, "rider-a")
+    rider_b_token = _register(ws_client, "rider-b")
+    driver_token = _register(ws_client, "driver")
+    _promote_driver(ws_client, "driver")
     ride_a = ws_client.post(
         RIDES, json=_ride_payload(), headers=_headers(rider_a_token)
     ).json()
@@ -479,9 +465,9 @@ def test_driver_offer_snapshot_contains_only_live_pending_offers(ws_client: Test
 
 def test_driver_receives_offer_accepted_on_passenger_accept(ws_client: TestClient):
     """Al aceptar el pasajero, el conductor recibe offer_accepted (va a navegar)."""
-    rider_token = _register(ws_client, "rider@x.com")
-    driver_token = _register(ws_client, "driver@x.com")
-    _promote_driver(ws_client, "driver@x.com")
+    rider_token = _register(ws_client, "rider")
+    driver_token = _register(ws_client, "driver")
+    _promote_driver(ws_client, "driver")
 
     ride = ws_client.post(RIDES, json=_ride_payload(), headers=_headers(rider_token)).json()
     offer = ws_client.post(
@@ -520,9 +506,9 @@ def test_driver_receives_offer_accepted_on_passenger_accept(ws_client: TestClien
 
 def test_passenger_sees_improved_offer_replace_old_one(ws_client: TestClient):
     """Cuando el conductor mejora su oferta, la vieja se retira y llega la nueva."""
-    rider_token = _register(ws_client, "rider@x.com")
-    driver_token = _register(ws_client, "driver@x.com")
-    _promote_driver(ws_client, "driver@x.com")
+    rider_token = _register(ws_client, "rider")
+    driver_token = _register(ws_client, "driver")
+    _promote_driver(ws_client, "driver")
 
     ride = ws_client.post(RIDES, json=_ride_payload(), headers=_headers(rider_token)).json()
 
@@ -561,9 +547,9 @@ def test_live_passenger_ws_keeps_custom_offer_negotiation_active_past_grace(
     from app.api.v1 import presence
 
     monkeypatch.setattr(presence, "PRESENCE_GRACE_SECONDS", 0.03)
-    rider_token = _register(ws_client, "rider@x.com")
-    driver_token = _register(ws_client, "driver@x.com")
-    _promote_driver(ws_client, "driver@x.com")
+    rider_token = _register(ws_client, "rider")
+    driver_token = _register(ws_client, "driver")
+    _promote_driver(ws_client, "driver")
 
     ride = ws_client.post(RIDES, json=_ride_payload(), headers=_headers(rider_token)).json()
     ride_id = ride["id"]
@@ -599,9 +585,9 @@ def test_live_passenger_ws_keeps_custom_offer_negotiation_active_past_grace(
 def test_driver_going_offline_withdraws_offer_and_prevents_accept(
     ws_client: TestClient,
 ):
-    rider_token = _register(ws_client, "rider@x.com")
-    driver_token = _register(ws_client, "driver@x.com")
-    _promote_driver(ws_client, "driver@x.com")
+    rider_token = _register(ws_client, "rider")
+    driver_token = _register(ws_client, "driver")
+    _promote_driver(ws_client, "driver")
     ride = ws_client.post(RIDES, json=_ride_payload(), headers=_headers(rider_token)).json()
     ride_id = ride["id"]
 
@@ -660,9 +646,9 @@ def test_driver_going_offline_withdraws_offer_and_prevents_accept(
 
 def test_accept_revalidates_driver_offline_in_database(ws_client: TestClient):
     """La defensa atómica no depende de que la limpieza offline haya terminado."""
-    rider_token = _register(ws_client, "rider@x.com")
-    driver_token = _register(ws_client, "driver@x.com")
-    _promote_driver(ws_client, "driver@x.com")
+    rider_token = _register(ws_client, "rider")
+    driver_token = _register(ws_client, "driver")
+    _promote_driver(ws_client, "driver")
     ride = ws_client.post(RIDES, json=_ride_payload(), headers=_headers(rider_token)).json()
     offer = ws_client.post(
         f"{RIDES}/{ride['id']}/offers",
@@ -674,7 +660,9 @@ def test_accept_revalidates_driver_offline_in_database(ws_client: TestClient):
     async def mark_offline_without_offer_cleanup() -> None:
         async with ws_client.factory() as session:  # type: ignore[attr-defined]
             users = SqlAlchemyUserRepository(session)
-            driver = await users.get_by_email("driver@x.com")
+            driver = await SqlAlchemyPhoneAccountRepository(session).find_by_phone(
+                phone_for("driver")
+            )
             assert driver is not None
             await users.set_online(driver.id, False)
 
@@ -690,9 +678,9 @@ def test_accept_revalidates_driver_offline_in_database(ws_client: TestClient):
 
 
 def test_driver_cannot_go_offline_during_active_ride(ws_client: TestClient):
-    rider_token = _register(ws_client, "rider@x.com")
-    driver_token = _register(ws_client, "driver@x.com")
-    _promote_driver(ws_client, "driver@x.com")
+    rider_token = _register(ws_client, "rider")
+    driver_token = _register(ws_client, "driver")
+    _promote_driver(ws_client, "driver")
     ride = ws_client.post(RIDES, json=_ride_payload(), headers=_headers(rider_token)).json()
     offer = ws_client.post(
         f"{RIDES}/{ride['id']}/offers",
@@ -717,9 +705,9 @@ def test_driver_cannot_go_offline_during_active_ride(ws_client: TestClient):
 
 
 def test_passenger_notified_when_driver_withdraws_offer(ws_client: TestClient):
-    rider_token = _register(ws_client, "rider@x.com")
-    driver_token = _register(ws_client, "driver@x.com")
-    _promote_driver(ws_client, "driver@x.com")
+    rider_token = _register(ws_client, "rider")
+    driver_token = _register(ws_client, "driver")
+    _promote_driver(ws_client, "driver")
 
     ride = ws_client.post(RIDES, json=_ride_payload(), headers=_headers(rider_token)).json()
     offer = ws_client.post(
@@ -742,9 +730,9 @@ def test_passenger_notified_when_driver_withdraws_offer(ws_client: TestClient):
 
 
 def test_driver_receives_open_ride_event_when_passenger_connects(ws_client: TestClient):
-    rider_token = _register(ws_client, "rider@x.com")
-    driver_token = _register(ws_client, "driver@x.com")
-    _promote_driver(ws_client, "driver@x.com")
+    rider_token = _register(ws_client, "rider")
+    driver_token = _register(ws_client, "driver")
+    _promote_driver(ws_client, "driver")
 
     with _websocket_connect(ws_client, f"/api/v1/ws/driver?token={driver_token}") as ws:
         snapshot, _ = _receive_driver_handshake(ws)
@@ -767,9 +755,9 @@ def test_driver_receives_open_ride_event_when_passenger_connects(ws_client: Test
 def test_fare_update_republishes_canonical_payload_to_both_roles(
     ws_client: TestClient,
 ):
-    rider_token = _register(ws_client, "rider@x.com")
-    driver_token = _register(ws_client, "driver@x.com")
-    _promote_driver(ws_client, "driver@x.com")
+    rider_token = _register(ws_client, "rider")
+    driver_token = _register(ws_client, "driver")
+    _promote_driver(ws_client, "driver")
 
     with _websocket_connect(
         ws_client,
@@ -805,9 +793,9 @@ def test_fare_update_republishes_canonical_payload_to_both_roles(
 
 
 def test_edit_reopens_ride_in_new_service_pool(ws_client: TestClient):
-    rider_token = _register(ws_client, "rider@x.com")
-    driver_token = _register(ws_client, "driver@x.com")
-    _promote_driver(ws_client, "driver@x.com")
+    rider_token = _register(ws_client, "rider")
+    driver_token = _register(ws_client, "driver")
+    _promote_driver(ws_client, "driver")
 
     with _websocket_connect(
         ws_client,
@@ -862,8 +850,8 @@ def test_taxi_and_moto_driver_sockets_receive_delivery_pool(
     ws_client: TestClient,
     vehicle: VehicleType,
 ):
-    rider_token = _register(ws_client, f"delivery-rider-{vehicle.value}@x.com")
-    driver_email = f"delivery-driver-{vehicle.value}@x.com"
+    rider_token = _register(ws_client, f"delivery-rider-{vehicle.value}")
+    driver_email = f"delivery-driver-{vehicle.value}"
     driver_token = _register(ws_client, driver_email)
     _promote_driver(ws_client, driver_email, vehicle)
 
@@ -890,9 +878,9 @@ def test_taxi_and_moto_driver_sockets_receive_delivery_pool(
 
 def test_open_rides_endpoint_includes_rider(ws_client: TestClient):
     """GET /rides/open trae los datos del pasajero cuando este está presente."""
-    rider_token = _register(ws_client, "rider@x.com")
-    driver_token = _register(ws_client, "driver@x.com")
-    _promote_driver(ws_client, "driver@x.com")
+    rider_token = _register(ws_client, "rider")
+    driver_token = _register(ws_client, "driver")
+    _promote_driver(ws_client, "driver")
 
     ride = ws_client.post(RIDES, json=_ride_payload(), headers=_headers(rider_token)).json()
 
@@ -914,9 +902,9 @@ def test_open_rides_endpoint_includes_rider(ws_client: TestClient):
 def test_open_ride_visible_during_grace_after_disconnect(ws_client: TestClient):
     # Tras desconectarse (minimizar), la solicitud sigue presente durante la
     # ventana de gracia: un conductor que entra todavía la ve.
-    rider_token = _register(ws_client, "rider@x.com")
-    driver_token = _register(ws_client, "driver@x.com")
-    _promote_driver(ws_client, "driver@x.com")
+    rider_token = _register(ws_client, "rider")
+    driver_token = _register(ws_client, "driver")
+    _promote_driver(ws_client, "driver")
 
     ride = ws_client.post(RIDES, json=_ride_payload(), headers=_headers(rider_token)).json()
 
@@ -937,9 +925,9 @@ def test_open_ride_hidden_after_grace_when_passenger_gone(ws_client: TestClient,
 
     monkeypatch.setattr(presence, "PRESENCE_GRACE_SECONDS", 0.0)
 
-    rider_token = _register(ws_client, "rider@x.com")
-    driver_token = _register(ws_client, "driver@x.com")
-    _promote_driver(ws_client, "driver@x.com")
+    rider_token = _register(ws_client, "rider")
+    driver_token = _register(ws_client, "driver")
+    _promote_driver(ws_client, "driver")
 
     ride = ws_client.post(RIDES, json=_ride_payload(), headers=_headers(rider_token)).json()
 
@@ -960,7 +948,7 @@ def test_ride_cancelled_after_grace_when_passenger_gone(ws_client: TestClient, m
     from app.api.v1 import presence
 
     monkeypatch.setattr(presence, "PRESENCE_GRACE_SECONDS", 0.01)
-    rider_token = _register(ws_client, "rider@x.com")
+    rider_token = _register(ws_client, "rider")
     ride = ws_client.post(RIDES, json=_ride_payload(), headers=_headers(rider_token)).json()
 
     with _websocket_connect(
@@ -978,7 +966,7 @@ def test_ride_not_cancelled_if_passenger_reconnects_within_grace(
     from app.api.v1 import presence
 
     monkeypatch.setattr(presence, "PRESENCE_GRACE_SECONDS", 0.05)
-    rider_token = _register(ws_client, "rider@x.com")
+    rider_token = _register(ws_client, "rider")
     ride = ws_client.post(RIDES, json=_ride_payload(), headers=_headers(rider_token)).json()
     url = f"/api/v1/ws/rides/{ride['id']}?token={rider_token}"
 
@@ -1000,7 +988,7 @@ def test_active_ride_polling_renews_presence_when_websocket_is_reconnecting(
     from app.api.v1 import presence
 
     monkeypatch.setattr(presence, "PRESENCE_GRACE_SECONDS", 0.08)
-    rider_token = _register(ws_client, "rider@x.com")
+    rider_token = _register(ws_client, "rider")
     headers = _headers(rider_token)
     ride = ws_client.post(RIDES, json=_ride_payload(), headers=headers).json()
 
@@ -1038,7 +1026,7 @@ def test_disconnect_revalidates_ride_unpaused_after_paused_handshake(
     from app.api.v1 import presence
 
     monkeypatch.setattr(presence, "PRESENCE_GRACE_SECONDS", 0.01)
-    rider_token = _register(ws_client, "rider@x.com")
+    rider_token = _register(ws_client, "rider")
     headers = _headers(rider_token)
     ride = ws_client.post(RIDES, json=_ride_payload(), headers=headers).json()
     paused = ws_client.post(f"{RIDES}/{ride['id']}/pause-edit", headers=headers)
@@ -1067,9 +1055,9 @@ def test_auto_cancel_rejects_all_pending_offers_in_same_close(
     from app.api.v1 import presence
 
     monkeypatch.setattr(presence, "PRESENCE_GRACE_SECONDS", 0.01)
-    rider_token = _register(ws_client, "rider@x.com")
-    driver_token = _register(ws_client, "driver@x.com")
-    _promote_driver(ws_client, "driver@x.com")
+    rider_token = _register(ws_client, "rider")
+    driver_token = _register(ws_client, "driver")
+    _promote_driver(ws_client, "driver")
     ride = ws_client.post(
         RIDES,
         json=_ride_payload(),
@@ -1108,9 +1096,9 @@ def test_auto_cancel_does_not_touch_accepted_ride(ws_client: TestClient, monkeyp
     from app.api.v1 import presence
 
     monkeypatch.setattr(presence, "PRESENCE_GRACE_SECONDS", 0.2)
-    rider_token = _register(ws_client, "rider@x.com")
-    driver_token = _register(ws_client, "driver@x.com")
-    _promote_driver(ws_client, "driver@x.com")
+    rider_token = _register(ws_client, "rider")
+    driver_token = _register(ws_client, "driver")
+    _promote_driver(ws_client, "driver")
     ride = ws_client.post(RIDES, json=_ride_payload(), headers=_headers(rider_token)).json()
     offer = ws_client.post(
         f"{RIDES}/{ride['id']}/offers",
@@ -1136,7 +1124,7 @@ def test_auto_cancel_does_not_touch_paused_ride(ws_client: TestClient, monkeypat
     from app.api.v1 import presence
 
     monkeypatch.setattr(presence, "PRESENCE_GRACE_SECONDS", 0.01)
-    rider_token = _register(ws_client, "rider@x.com")
+    rider_token = _register(ws_client, "rider")
     ride = ws_client.post(RIDES, json=_ride_payload(), headers=_headers(rider_token)).json()
 
     with _websocket_connect(
@@ -1155,9 +1143,9 @@ def test_auto_cancel_does_not_touch_paused_ride(ws_client: TestClient, monkeypat
 
 
 def test_open_rides_snapshot_excludes_absent_passenger(ws_client: TestClient):
-    rider_token = _register(ws_client, "rider@x.com")
-    driver_token = _register(ws_client, "driver@x.com")
-    _promote_driver(ws_client, "driver@x.com")
+    rider_token = _register(ws_client, "rider")
+    driver_token = _register(ws_client, "driver")
+    _promote_driver(ws_client, "driver")
 
     # Solicitud creada pero el pasajero NO está conectado: no debe aparecer.
     ws_client.post(RIDES, json=_ride_payload(), headers=_headers(rider_token))
@@ -1171,9 +1159,9 @@ def test_open_rides_snapshot_excludes_absent_passenger(ws_client: TestClient):
 def test_driver_notified_when_passenger_cancels(ws_client: TestClient):
     """Al cancelar el pasajero, el conductor con oferta viva recibe offer_rejected
     con razón ``ride_cancelled`` (no ``ride_taken`` ni desaparición muda)."""
-    rider_token = _register(ws_client, "rider@x.com")
-    driver_token = _register(ws_client, "driver@x.com")
-    _promote_driver(ws_client, "driver@x.com")
+    rider_token = _register(ws_client, "rider")
+    driver_token = _register(ws_client, "driver")
+    _promote_driver(ws_client, "driver")
 
     ride = ws_client.post(RIDES, json=_ride_payload(), headers=_headers(rider_token)).json()
 
@@ -1223,9 +1211,9 @@ def test_driver_receives_ride_paused_on_pause_edit(ws_client: TestClient):
     "modificando" durante la edición) — en vez del viejo ``offer_rejected(ride_paused)``
     que, sumado al ``ride_closed`` del pool, hacía desaparecer la tarjeta (bug de
     timing: el banner aparecía tras guardar, no durante)."""
-    rider_token = _register(ws_client, "rider@x.com")
-    driver_token = _register(ws_client, "driver@x.com")
-    _promote_driver(ws_client, "driver@x.com")
+    rider_token = _register(ws_client, "rider")
+    driver_token = _register(ws_client, "driver")
+    _promote_driver(ws_client, "driver")
 
     ride = ws_client.post(RIDES, json=_ride_payload(), headers=_headers(rider_token)).json()
 
@@ -1279,9 +1267,9 @@ def test_driver_receives_ride_paused_on_pause_edit(ws_client: TestClient):
 def test_driver_recovers_active_ride_on_reconnect(ws_client: TestClient):
     """Si el WS del conductor estaba caído cuando lo eligieron, al reconectar
     recupera el viaje activo (snapshot ``driver_active_ride``)."""
-    rider_token = _register(ws_client, "rider@x.com")
-    driver_token = _register(ws_client, "driver@x.com")
-    _promote_driver(ws_client, "driver@x.com")
+    rider_token = _register(ws_client, "rider")
+    driver_token = _register(ws_client, "driver")
+    _promote_driver(ws_client, "driver")
 
     ride = ws_client.post(RIDES, json=_ride_payload(), headers=_headers(rider_token)).json()
     offer = ws_client.post(
@@ -1321,9 +1309,9 @@ def test_passenger_receives_offer_expired(ws_client: TestClient, monkeypatch):
     # Forzamos la expiración sin esperar los 30 s reales.
     monkeypatch.setattr(ride_policy, "OFFER_TTL", timedelta(seconds=0))
 
-    rider_token = _register(ws_client, "rider@x.com")
-    driver_token = _register(ws_client, "driver@x.com")
-    _promote_driver(ws_client, "driver@x.com")
+    rider_token = _register(ws_client, "rider")
+    driver_token = _register(ws_client, "driver")
+    _promote_driver(ws_client, "driver")
 
     ride = ws_client.post(RIDES, json=_ride_payload(), headers=_headers(rider_token)).json()
 

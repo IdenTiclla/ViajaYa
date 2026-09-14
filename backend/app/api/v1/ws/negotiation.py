@@ -24,6 +24,7 @@ from app.api.deps import (
     SessionFactoryDep,
     SettingsDep,
     build_expire_offer_and_complete_scheduled_action,
+    build_managed_sessions,
     get_build_driver_realtime_snapshot,
     get_build_passenger_realtime_snapshot,
 )
@@ -43,6 +44,7 @@ from app.api.v1.schemas.realtime import (
     dump_negotiation_message,
 )
 from app.api.v1.schemas.rides import OpenRidePageResponse, OpenRideResponse, RideResponse
+from app.api.v1.ws.session_guard import guard_session
 from app.application.dto import OfferDetail, Page
 from app.application.interfaces import PassengerPresenceLeaseStore
 from app.application.use_cases.build_driver_realtime_snapshot import (
@@ -54,7 +56,8 @@ from app.application.use_cases.build_passenger_realtime_snapshot import (
 from app.application.use_cases.get_driver_active_ride import GetDriverActiveRide
 from app.application.use_cases.list_offers_for_ride import ListOffersForRide
 from app.application.use_cases.list_open_rides import ListOpenRides
-from app.domain.entities import UserRole, services_for_vehicle
+from app.domain.entities import UserRole
+from app.domain.exceptions import InvalidTokenError
 from app.domain.ride_policy import is_offer_expired
 from app.infrastructure.db.repositories import (
     SqlAlchemyOfferRepository,
@@ -70,10 +73,8 @@ from app.infrastructure.realtime.hub import (
 )
 from app.infrastructure.realtime.ws_auth import (
     AUTH_SUBPROTOCOL,
-    authenticate_ws,
     token_from_subprotocol,
 )
-from app.infrastructure.security.jwt_service import JwtTokenService
 
 router = APIRouter(tags=["ws"])
 logger = logging.getLogger(__name__)
@@ -126,13 +127,29 @@ async def _drain_passenger_with_shared_presence(
 
     drain_task = asyncio.create_task(_drain(websocket))
     renew_task = asyncio.create_task(renew())
-    _done, pending = await asyncio.wait(
-        {drain_task, renew_task},
-        return_when=asyncio.FIRST_COMPLETED,
-    )
-    for task in pending:
-        task.cancel()
-    await asyncio.gather(drain_task, renew_task, return_exceptions=True)
+    try:
+        await asyncio.wait({drain_task, renew_task}, return_when=asyncio.FIRST_COMPLETED)
+    finally:
+        for task in (drain_task, renew_task):
+            task.cancel()
+        await asyncio.gather(drain_task, renew_task, return_exceptions=True)
+
+
+async def _authenticate_session(token, session, settings):
+    if not token:
+        return None
+    try:
+        user, _ = await build_managed_sessions(session, settings).authenticate(token)
+        return user
+    except InvalidTokenError:
+        return None
+
+
+async def _guarded_drain(websocket, receive, token, session_factory, settings):
+    async def validate() -> None:
+        async with session_factory() as session:
+            await build_managed_sessions(session, settings).authenticate(token)
+    await guard_session(websocket, receive, validate)
 
 
 @router.websocket("/ws/rides/{ride_id}")
@@ -158,9 +175,7 @@ async def passenger_ws(
             users = SqlAlchemyUserRepository(session)
             rides = SqlAlchemyRideRequestRepository(session)
             offers = SqlAlchemyOfferRepository(session)
-            tokens = JwtTokenService(settings)
-
-            user = await authenticate_ws(token, users, tokens)
+            user = await _authenticate_session(token, session, settings)
             if user is None:
                 await websocket.close(code=_POLICY_VIOLATION)
                 return
@@ -214,17 +229,17 @@ async def passenger_ws(
                 )
                 await websocket.close(code=1012)
                 return
-            await _drain_passenger_with_shared_presence(
+            await _guarded_drain(websocket, _drain_passenger_with_shared_presence(
                 websocket,
                 ride_id,
                 connection_id,
                 session_factory,
                 passenger_presence,
                 settings.realtime_presence_renew_interval_seconds,
-            )
+            ), token, session_factory, settings)
         else:
             await presence.on_passenger_connect(ride_id, session_factory, settings)
-            await _drain(websocket)
+            await _guarded_drain(websocket, _drain(websocket), token, session_factory, settings)
     finally:
         if subscribed:
             hub.unsubscribe(topic, websocket)
@@ -259,19 +274,16 @@ async def driver_ws(
     topics: list[str] = []
     try:
         async with session_factory() as session:
-            users = SqlAlchemyUserRepository(session)
             rides = SqlAlchemyRideRequestRepository(session)
             ride_reads = SqlAlchemyRideReadRepository(session)
             offers = SqlAlchemyOfferRepository(session)
-            tokens = JwtTokenService(settings)
-
-            user = await authenticate_ws(token, users, tokens)
+            user = await _authenticate_session(token, session, settings)
             if user is None or user.role is not UserRole.DRIVER or user.vehicle_type is None:
                 await websocket.close(code=_POLICY_VIOLATION)
                 return
 
             topics = [
-                *(pool_topic(service.value) for service in services_for_vehicle(user.vehicle_type)),
+                *(pool_topic(service.value) for service in user.offered_services),
                 driver_topic(user.id),
             ]
             # Suscribir dentro de la barrera cierra la ventana entre leer el estado
@@ -367,7 +379,7 @@ async def driver_ws(
         # Se difunde tras el handshake; el mismo socket ya está suscrito.
         for offer in expired_offers:
             await events.publish_offer_expired(offer)
-        await _drain(websocket)
+        await _guarded_drain(websocket, _drain(websocket), token, session_factory, settings)
     finally:
         for topic in topics:
             hub.unsubscribe(topic, websocket)

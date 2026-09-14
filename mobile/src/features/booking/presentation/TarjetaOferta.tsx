@@ -7,6 +7,7 @@ import type { OfferTag } from '@/features/rides/domain/offerTags';
 import type { Offer } from '@/features/rides/domain/types';
 import { OfferLifeTimer } from '@/features/rides/presentation/OfferLifeTimer';
 import { Button } from '@/shared/components';
+import { vehicleLabel } from '@/features/auth/domain/vehicleCatalog';
 
 type Props = {
   offer: Offer;
@@ -18,7 +19,6 @@ type Props = {
   onReject: () => void;
 };
 
-const VEHICULOS = { taxi: 'Taxi', moto: 'Moto' } as const;
 
 /** Separa identidad, precio, llegada y vencimiento para comparar las ofertas. */
 export function TarjetaOferta({
@@ -35,7 +35,7 @@ export function TarjetaOferta({
   const bloqueada = decisionsLocked || vencida;
   const enColumna = fontScale > 1.3;
   const vehiculo = [
-    driver.vehicleType && VEHICULOS[driver.vehicleType], driver.vehicleModel, driver.plate,
+    vehicleLabel(driver.vehicleType), driver.vehicleModel, driver.plate,
   ].filter(Boolean).join(' · ');
 
   return (

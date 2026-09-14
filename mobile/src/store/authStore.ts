@@ -2,22 +2,16 @@
  * Estado global de sesión (zustand).
  *
  * Orquesta el repositorio de auth y la persistencia de tokens (SecureStore).
- * El login local y el SSO (Fase 6) terminan en el mismo `setSession`.
+ * El acceso por teléfono y el social terminan en el mismo `acceptPhoneSession`.
  */
 import { create } from 'zustand';
 
 import { conTiempoLimite } from '@/core/async/conTiempoLimite';
 import { getApiErrorMessage } from '@/core/errors/apiError';
-import { setOnSessionExpired } from '@/core/http/client';
+import { api, invalidarSolicitudesSesion, setOnSessionExpired } from '@/core/http/client';
 import { tokenStorage } from '@/core/http/tokenStorage';
 import { authRepository } from '@/features/auth/data/authRepository';
-import type {
-  AuthProvider,
-  AuthResult,
-  LoginPayload,
-  RegisterPayload,
-  User,
-} from '@/features/auth/domain/types';
+import type { AuthResult, User } from '@/features/auth/domain/types';
 
 type Status = 'loading' | 'error' | 'authenticated' | 'unauthenticated';
 
@@ -28,23 +22,44 @@ type AuthState = {
   status: Status;
   startupError: string | null;
   bootstrap: () => Promise<void>;
-  signIn: (payload: LoginPayload) => Promise<void>;
-  signUp: (payload: RegisterPayload) => Promise<void>;
-  signInWithOAuth: (provider: Exclude<AuthProvider, 'local'>, token: string) => Promise<void>;
   signOut: () => Promise<void>;
+  acceptPhoneSession: (result: AuthResult) => Promise<void>;
+  /** Replace the session user after a profile mutation (driver vehicles, mode switch). */
+  setUser: (user: User) => void;
+  /**
+   * True right after signing in with an approved driver account: the app asks
+   * whether to enter as passenger or driver (and with which vehicle) before routing.
+   */
+  modeChoicePending: boolean;
+  resolveModeChoice: () => void;
 };
 
 export const useAuthStore = create<AuthState>((set) => {
   async function applySession(result: AuthResult): Promise<void> {
-    generacionSesion += 1;
+    const generation = ++generacionSesion;
+    invalidarSolicitudesSesion();
     await tokenStorage.save(result.tokens);
-    set({ user: result.user, status: 'authenticated', startupError: null });
+    if (generation !== generacionSesion) return;
+    set({
+      user: result.user,
+      status: 'authenticated',
+      startupError: null,
+      modeChoicePending: result.user.driverStatus === 'approved',
+    });
   }
 
   return {
     user: null,
     status: 'loading',
     startupError: null,
+    acceptPhoneSession: applySession,
+    setUser(user) {
+      set((state) => (state.status === 'authenticated' ? { user } : {}));
+    },
+    modeChoicePending: false,
+    resolveModeChoice() {
+      set({ modeChoicePending: false });
+    },
 
     async bootstrap() {
       const generacion = ++generacionSesion;
@@ -58,7 +73,7 @@ export const useAuthStore = create<AuthState>((set) => {
           restaurar(), 30_000, 'La sesión tardó demasiado en cargar. Vuelve a intentar.',
         );
         if (generacion !== generacionSesion) return;
-        set({ user, status: user ? 'authenticated' : 'unauthenticated' });
+        set({ user, status: user ? 'authenticated' : 'unauthenticated', modeChoicePending: false });
       } catch (error) {
         if (generacion !== generacionSesion) return;
         set({
@@ -70,22 +85,26 @@ export const useAuthStore = create<AuthState>((set) => {
       }
     },
 
-    async signIn(payload) {
-      await applySession(await authRepository.login(payload));
-    },
-
-    async signUp(payload) {
-      await applySession(await authRepository.register(payload));
-    },
-
-    async signInWithOAuth(provider, token) {
-      await applySession(await authRepository.oauth(provider, token));
-    },
-
     async signOut() {
-      generacionSesion += 1;
-      await tokenStorage.clear();
-      set({ user: null, status: 'unauthenticated', startupError: null });
+      const generacion = ++generacionSesion;
+      invalidarSolicitudesSesion();
+      try {
+        const tokens = await tokenStorage.get().catch(() => null);
+        if (tokens?.refreshToken) {
+          // Logging out locally remains available when the API is unreachable.
+          await api.post('/auth/logout', { refresh_token: tokens.refreshToken }, {
+            skipAuth: true, timeout: 5_000,
+          }).catch(() => {});
+        }
+        if (generacion !== generacionSesion) return;
+        await tokenStorage.clear();
+      } catch {
+        // Un fallo nativo no debe impedir volver al formulario de acceso.
+      } finally {
+        if (generacion === generacionSesion) {
+          set({ user: null, status: 'unauthenticated', startupError: null, modeChoicePending: false });
+        }
+      }
     },
   };
 });
@@ -93,5 +112,7 @@ export const useAuthStore = create<AuthState>((set) => {
 // El cliente HTTP ya eliminó las credenciales. No duplicar el borrado nativo.
 setOnSessionExpired(() => {
   generacionSesion += 1;
-  useAuthStore.setState({ user: null, status: 'unauthenticated', startupError: null });
+  useAuthStore.setState({
+    user: null, status: 'unauthenticated', startupError: null, modeChoicePending: false,
+  });
 });

@@ -25,10 +25,9 @@ from app.api.v1.schemas.realtime import (
     RealtimeEventEnvelopeV2,
     RideSnapshotMessageV2,
 )
-from app.domain.entities import UserRole, VehicleType
+from app.domain.entities import VehicleType
 from app.infrastructure.config import Settings
 from app.infrastructure.db.models import RealtimeOutboxModel
-from app.infrastructure.db.repositories import SqlAlchemyUserRepository
 from app.infrastructure.realtime.hub import hub
 from app.infrastructure.realtime.ws_auth import AUTH_SUBPROTOCOL
 from app.main import create_app
@@ -39,6 +38,7 @@ from scripts.realtime_faults import (
     RealtimeFaultController,
     RealtimeFaultPlan,
 )
+from tests.e2e.helpers import promote_to_driver
 from tests.postgresql import test_pg_realtime_network_smoke as network_support
 
 _FRAME_TIMEOUT_SECONDS = 5.0
@@ -115,6 +115,7 @@ def _fault_app(pg_test_db):
         _env_file=None,
         database_url=pg_test_db.url,
         jwt_secret="fault-smoke-only-secret-not-for-production",
+        phone_otp_enabled=True,
         realtime_outbox_dispatch_mode="live_local",
         realtime_outbox_recording_enabled=True,
         realtime_outbox_poll_interval_seconds=0.01,
@@ -149,20 +150,10 @@ async def _scenario(app, sessions) -> AsyncIterator[_FaultScenario]:
         ) as client:
             ready = await client.get("/health/ready")
             assert ready.status_code == 200, ready.text
-            rider_token = await network_support._register(
-                client,
-                f"fault-rider-{suffix}@example.com",
-            )
-            driver_email = f"fault-driver-{suffix}@example.com"
-            driver_token = await network_support._register(client, driver_email)
-            async with sessions() as session:
-                users = SqlAlchemyUserRepository(session)
-                driver = await users.get_by_email(driver_email)
-                assert driver is not None
-                driver.role = UserRole.DRIVER
-                driver.vehicle_type = VehicleType.TAXI
-                driver.is_online = True
-                await users.update(driver)
+            rider_token = await network_support._register(client, f"fault-rider-{suffix}")
+            driver_label = f"fault-driver-{suffix}"
+            driver_token = await network_support._register(client, driver_label)
+            await promote_to_driver(sessions, driver_label, VehicleType.TAXI)
 
             scenario = _FaultScenario(
                 client=client,

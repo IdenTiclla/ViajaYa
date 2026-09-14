@@ -29,14 +29,12 @@ from app.application.interfaces import (
     CreateOfferEventRecorder,
     DriverAvailabilityEventRecorder,
     ExpireOfferEventRecorder,
-    PasswordHasher,
     PauseRideEventRecorder,
     RejectOfferEventRecorder,
     RepublishRideEventRecorder,
     RideReadRepository,
     ScheduledActionScheduler,
     SocialIdentityVerifier,
-    TokenService,
     UnitOfWork,
     UpdateRideStatusEventRecorder,
     WithdrawOfferEventRecorder,
@@ -57,6 +55,7 @@ from app.application.use_cases.withdraw_offer import WithdrawOffer
 from app.domain.entities import (
     ACTIVE_OFFER_STATUSES,
     AuthProvider,
+    DriverVehicle,
     Location,
     Offer,
     OfferStatus,
@@ -65,15 +64,16 @@ from app.domain.entities import (
     RideRequest,
     RideStatus,
     SavedPlace,
+    ServiceType,
     User,
     UserRole,
     VehicleType,
-    services_for_vehicle,
-    vehicle_can_serve,
+    driver_can_serve,
 )
 from app.domain.exceptions import InvalidTokenError
 from app.domain.repositories import (
     DriverOfflineTransition,
+    DriverVehicleRepository,
     OfferAcceptance,
     OfferCreation,
     OfferRepository,
@@ -150,6 +150,34 @@ class InMemoryUserRepository(UserRepository):
         updated = replace(user, is_online=is_online)
         self.users[user_id] = updated
         return updated
+
+
+class InMemoryDriverVehicleRepository(DriverVehicleRepository):
+    def __init__(self) -> None:
+        self.vehicles: dict[uuid.UUID, DriverVehicle] = {}
+
+    async def list_by_user(self, user_id: uuid.UUID) -> list[DriverVehicle]:
+        return sorted(
+            (v for v in self.vehicles.values() if v.user_id == user_id),
+            key=lambda v: list(VehicleType).index(v.vehicle_type),
+        )
+
+    async def get(self, user_id: uuid.UUID, vehicle_type: VehicleType) -> DriverVehicle | None:
+        return next(
+            (
+                v
+                for v in self.vehicles.values()
+                if v.user_id == user_id and v.vehicle_type is vehicle_type
+            ),
+            None,
+        )
+
+    async def save(self, vehicle: DriverVehicle) -> DriverVehicle:
+        self.vehicles[vehicle.id] = vehicle
+        return vehicle
+
+    async def delete(self, vehicle: DriverVehicle) -> None:
+        self.vehicles.pop(vehicle.id, None)
 
 
 class InMemoryRideRequestRepository(RideRequestRepository):
@@ -242,18 +270,20 @@ class InMemoryRideRequestRepository(RideRequestRepository):
             return updated
         return None
 
-    async def list_open_for_vehicle(self, vehicle_type: VehicleType) -> list[RideRequest]:
+    async def list_open_for_services(
+        self, services: tuple[ServiceType, ...]
+    ) -> list[RideRequest]:
         return [
             r
             for r in reversed(self.rides)
-            if r.service_type in services_for_vehicle(vehicle_type)
+            if r.service_type in services
             and r.status is RideStatus.SEARCHING
             and not r.paused
         ]
 
-    async def list_open_with_rider_for_vehicle(
+    async def list_open_with_rider_for_services(
         self,
-        vehicle_type: VehicleType,
+        services: tuple[ServiceType, ...],
         *,
         driver_id: uuid.UUID | None = None,
         before_created_at: datetime | None = None,
@@ -271,7 +301,7 @@ class InMemoryRideRequestRepository(RideRequestRepository):
             (
                 r
                 for r in self.rides
-                if r.service_type in services_for_vehicle(vehicle_type)
+                if r.service_type in services
                 and r.status is RideStatus.SEARCHING
                 and not r.paused
                 and (
@@ -429,7 +459,7 @@ class InMemoryOfferRepository(OfferRepository):
                 or not driver.is_online
                 or (
                     self._rides is not None
-                    and not vehicle_can_serve(ride.service_type, driver.vehicle_type)
+                    and not driver_can_serve(driver, ride.service_type)
                 )
             ):
                 return None
@@ -657,7 +687,7 @@ class InMemoryOfferRepository(OfferRepository):
             ride is None
             or ride.status is not RideStatus.SEARCHING
             or ride.paused
-            or not vehicle_can_serve(ride.service_type, driver.vehicle_type)
+            or not driver_can_serve(driver, ride.service_type)
         ):
             return None
         if is_offer_expired(offer):
@@ -1415,37 +1445,6 @@ class InMemorySavedPlaceRepository(SavedPlaceRepository):
 
     async def delete(self, place: SavedPlace) -> None:
         self.places = [p for p in self.places if p.id != place.id]
-
-
-class FakePasswordHasher(PasswordHasher):
-    """Hash trivial reversible: solo para tests."""
-
-    def hash(self, plain: str) -> str:
-        return f"hashed::{plain}"
-
-    def verify(self, plain: str, hashed: str) -> bool:
-        return hashed == f"hashed::{plain}"
-
-
-class FakeTokenService(TokenService):
-    def create_access_token(self, user_id: uuid.UUID) -> str:
-        return f"access::{user_id}"
-
-    def create_refresh_token(self, user_id: uuid.UUID) -> str:
-        return f"refresh::{user_id}"
-
-    def decode_access_token(self, token: str) -> uuid.UUID:
-        return self._decode(token, "access")
-
-    def decode_refresh_token(self, token: str) -> uuid.UUID:
-        return self._decode(token, "refresh")
-
-    @staticmethod
-    def _decode(token: str, kind: str) -> uuid.UUID:
-        prefix = f"{kind}::"
-        if not token.startswith(prefix):
-            raise InvalidTokenError("token de prueba inválido")
-        return uuid.UUID(token[len(prefix) :])
 
 
 class FakeVerifier(SocialIdentityVerifier):

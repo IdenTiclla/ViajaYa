@@ -14,6 +14,7 @@ from decimal import Decimal
 
 from app.domain.entities import (
     AuthProvider,
+    DriverVehicle,
     Location,
     Offer,
     RideRating,
@@ -21,6 +22,7 @@ from app.domain.entities import (
     RideRequest,
     RideStatus,
     SavedPlace,
+    ServiceType,
     User,
     UserRole,
     VehicleType,
@@ -183,13 +185,13 @@ class RideRequestRepository(ABC):
         """Cancela atómicamente solo un ride ``SEARCHING`` y no pausado."""
 
     @abstractmethod
-    async def list_open_for_vehicle(self, vehicle_type: VehicleType) -> list[RideRequest]:
+    async def list_open_for_services(self, services: tuple[ServiceType, ...]) -> list[RideRequest]:
         """Solicitudes compatibles con el vehiculo, de la mas nueva a la mas vieja."""
 
     @abstractmethod
-    async def list_open_with_rider_for_vehicle(
+    async def list_open_with_rider_for_services(
         self,
-        vehicle_type: VehicleType,
+        services: tuple[ServiceType, ...],
         *,
         driver_id: uuid.UUID | None = None,
         before_created_at: datetime | None = None,
@@ -209,9 +211,7 @@ class RideRequestRepository(ABC):
         """Guarda que el conductor ocultó esta versión de la solicitud."""
 
     @abstractmethod
-    async def list_paused_with_rider_for_driver(
-        self, driver_id: uuid.UUID
-    ) -> list[OpenRideDetail]:
+    async def list_paused_with_rider_for_driver(self, driver_id: uuid.UUID) -> list[OpenRideDetail]:
         """Solicitudes pausadas sobre las que el conductor ya había ofertado."""
 
     @abstractmethod
@@ -427,6 +427,24 @@ class RatingSkipRepository(ABC):
     @abstractmethod
     async def add_if_absent(self, skip: RideRatingSkip) -> RideRatingSkip:
         """Persiste la omisión o devuelve la existente de forma idempotente."""
+
+
+class DriverVehicleRepository(ABC):
+    @abstractmethod
+    async def list_by_user(self, user_id: uuid.UUID) -> list[DriverVehicle]:
+        """Vehicles of the driver in ``VehicleType`` order (taxi, moto, truck)."""
+
+    @abstractmethod
+    async def get(self, user_id: uuid.UUID, vehicle_type: VehicleType) -> DriverVehicle | None:
+        """The driver's vehicle of that type, or ``None``."""
+
+    @abstractmethod
+    async def save(self, vehicle: DriverVehicle) -> DriverVehicle:
+        """Inserts or updates the vehicle (unique per user and type) and returns it."""
+
+    @abstractmethod
+    async def delete(self, vehicle: DriverVehicle) -> None:
+        """Removes the vehicle."""
 
 
 class SavedPlaceRepository(ABC):

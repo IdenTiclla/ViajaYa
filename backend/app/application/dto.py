@@ -14,6 +14,7 @@ from typing import Generic, Literal, TypeAlias, TypeVar
 
 from app.domain.entities import (
     AuthProvider,
+    DriverVehicle,
     Offer,
     PaymentMethod,
     RideRequest,
@@ -21,6 +22,7 @@ from app.domain.entities import (
     SavedPlaceCategory,
     ServiceType,
     User,
+    VehicleType,
 )
 from app.domain.repositories import OpenRideDetail, WithdrawnOfferReference
 
@@ -298,26 +300,6 @@ class Page(Generic[T]):
 
 
 @dataclass(frozen=True)
-class RegisterInput:
-    full_name: str
-    email: str
-    password: str
-    phone: str | None = None
-
-
-@dataclass(frozen=True)
-class LoginInput:
-    email: str
-    password: str
-
-
-@dataclass(frozen=True)
-class OAuthLoginInput:
-    provider: AuthProvider
-    token: str
-
-
-@dataclass(frozen=True)
 class SocialProfile:
     """Perfil normalizado devuelto por un proveedor OAuth tras verificar el token."""
 
@@ -542,3 +524,26 @@ class DriverEarnings:
     total_all_time: Decimal
     trips_all_time: int
     recent: list[EarningsItem]
+
+
+@dataclass(frozen=True)
+class DriverVehicleInput:
+    """What a user fills in to register (or update) one of their driver vehicles.
+
+    ``services`` must be a non-empty subset of what ``vehicle_type`` allows
+    (see ``services_for_vehicle``): a taxi may serve ``taxi`` and/or
+    ``delivery``, a moto ``moto`` and/or ``delivery``, a truck only ``moving``.
+    """
+
+    vehicle_type: VehicleType
+    plate: str
+    vehicle_model: str
+    services: tuple[ServiceType, ...]
+
+
+@dataclass(frozen=True)
+class DriverVehicleRegistration:
+    """Result of registering a vehicle: the vehicle and the account it updated."""
+
+    user: User
+    vehicle: DriverVehicle

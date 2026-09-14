@@ -10,29 +10,20 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
-from app.domain.entities import AuthProvider, User, UserRole, VehicleType
-
-
-class RegisterRequest(BaseModel):
-    full_name: str = Field(min_length=1, max_length=255)
-    email: EmailStr
-    password: str = Field(min_length=8, max_length=128)
-    phone: str | None = Field(default=None, max_length=32)
-
-
-class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str
+from app.application.dto import TokenPair
+from app.domain.entities import (
+    AuthProvider,
+    DriverStatus,
+    ServiceType,
+    User,
+    UserRole,
+    VehicleType,
+)
 
 
 class RefreshRequest(BaseModel):
-    refresh_token: str
-
-
-class OAuthRequest(BaseModel):
-    """Token emitido por el proveedor (id_token de Google / access_token de Facebook)."""
-
-    token: str
+    refresh_token: str = Field(max_length=4096, repr=False)
+    request_id: uuid.UUID | None = None
 
 
 class TokenResponse(BaseModel):
@@ -46,24 +37,39 @@ class UserResponse(BaseModel):
 
     id: uuid.UUID
     full_name: str
-    email: EmailStr
+    email: EmailStr | None
     phone: str | None
+    phone_verified_at: datetime | None
     auth_provider: AuthProvider
     role: UserRole
     vehicle_type: VehicleType | None
     plate: str | None
     vehicle_model: str | None
+    driver_services: list[ServiceType]
+    driver_status: DriverStatus | None
     rating: float | None
     is_online: bool
     created_at: datetime | None
 
     @classmethod
     def from_entity(cls, user: User) -> UserResponse:
-        return cls.model_validate(user)
+        # Expose the effective services so legacy drivers (empty choice) read the same.
+        return cls.model_validate(user).model_copy(
+            update={"driver_services": list(user.offered_services)}
+        )
 
 
 class AuthResponse(BaseModel):
-    """Respuesta de register / login / oauth: tokens + datos del usuario."""
+    """Operational session issued after phone or social sign-in: tokens + user."""
 
     user: UserResponse
     tokens: TokenResponse
+
+    @classmethod
+    def from_session(cls, user: User, tokens: TokenPair) -> AuthResponse:
+        return cls(
+            user=UserResponse.from_entity(user),
+            tokens=TokenResponse(
+                access_token=tokens.access_token, refresh_token=tokens.refresh_token,
+            ),
+        )

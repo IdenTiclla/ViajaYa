@@ -1,7 +1,8 @@
 # ViajaYa — Backend (FastAPI + Clean Architecture)
 
 API de taxis y encomiendas. Python 3.11+, FastAPI async, SQLAlchemy 2.0 async sobre
-PostgreSQL, autenticación JWT y SSO (Google/Facebook), tiempo real por WebSocket.
+PostgreSQL, acceso por teléfono + OTP (con Google/Facebook opcionales vinculados a un
+teléfono verificado), sesiones administradas JWT y tiempo real por WebSocket.
 
 ## Arquitectura (Clean Architecture)
 
@@ -12,21 +13,20 @@ La infraestructura implementa interfaces del dominio/aplicación y se cablea en 
 app/
 ├── domain/                  # Núcleo. SIN dependencias de framework.
 │   ├── entities.py            # User, RideRequest, Offer, RideRating, SavedPlace + enums
-│   │                          #   (AuthProvider, UserRole, VehicleType, ServiceType, PaymentMethod,
-│   │                          #    RideStatus, OfferStatus, SavedPlaceCategory)
-│   ├── value_objects.py       # Email, RawPassword, GeoPoint, FareOffer (frozen, slots)
+│   │                          #   (AuthProvider, UserRole, VehicleType, ServiceType, DriverStatus,
+│   │                          #    PaymentMethod, RideStatus, OfferStatus, SavedPlaceCategory)
+│   ├── value_objects.py       # Email, GeoPoint, FareOffer (frozen, slots)
 │   ├── repositories.py        # Interfaces (puertos): User, RideRequest, Offer, Rating, SavedPlace
 │   ├── ride_policy.py         # OFFER_TTL=30s + offer_expires_at / is_offer_expired / is_offer_active
-│   └── exceptions.py          # DomainError + 16 excepciones específicas
+│   └── exceptions.py          # DomainError + 18 excepciones específicas
 ├── application/             # Casos de uso. Orquestan el dominio.
-│   ├── use_cases/             # UN caso de uso por archivo · 36 UC (lista abajo)
+│   ├── use_cases/             # UN caso de uso por archivo (lista abajo)
 │   ├── interfaces.py          # Puertos técnicos y proyecciones de lectura de aplicación
 │   ├── dto.py                 # @dataclass(frozen=True) de entrada/salida entre capas
-│   └── token_issuer.py        # Helper issue_token_pair(tokens, user_id)  (NO es una clase)
 ├── infrastructure/          # Adaptadores concretos.
 │   ├── config.py              # Settings (pydantic-settings). ÚNICA fuente de verdad de config.
 │   ├── db/                    # SQLAlchemy: models, repos, UnitOfWork y outbox durable
-│   ├── security/              # bcrypt_hasher, jwt_service
+│   ├── security/              # jwt_service, phone_verification (HMAC de comprobantes)
 │   ├── oauth/                 # google_verifier, facebook_verifier
 │   └── realtime/              # hub local, dispatcher y coordinación de transporte
 └── api/                     # Capa HTTP (FastAPI).
@@ -120,6 +120,7 @@ JWT_SECRET, JWT_ALGORITHM (HS256),
 ACCESS_TOKEN_EXPIRE_MINUTES (30), REFRESH_TOKEN_EXPIRE_DAYS (14),
 CORS_ORIGINS (lista separada por comas; helper .cors_origins_list),
 GOOGLE_CLIENT_ID, FACEBOOK_APP_ID, FACEBOOK_APP_SECRET,
+DRIVER_AUTO_APPROVE (false; aprueba altas de conductor al instante, solo fuera de producción),
 OPENMETRICS_ENABLED (false por defecto; publica `/metrics` solo con opt-in),
 REALTIME_OUTBOX_DISPATCH_MODE (off|shadow|live_local|live_redis; off por defecto),
 REALTIME_OUTBOX_RECORDING_ENABLED (false por defecto),
@@ -253,30 +254,51 @@ no un valor predeterminado.
 
 ## API (v1, prefijo `/api/v1`)
 
-- **auth** (`/auth`): `POST /register`, `POST /login`, `POST /refresh`, `POST /oauth/{provider}`, `GET /me`.
+- **auth** (`/auth`): **no existe acceso por correo/contraseña** (retirado el 2026-09-13;
+  `/register`, `/login`, `/oauth/{provider}` y `/phone/link-legacy` responden 404 y la
+  migración `0026` eliminó `hashed_password`/`legacy_auth_disabled`). Todo token debe
+  pertenecer a una sesión administrada; un JWT sin `session_id` recibe 401 en HTTP, WS y refresh.
+  - Sesión: `POST /refresh` (rotación + detección de reuso), `GET /me`, `GET /sessions`,
+    `POST /logout`, `POST /phone/change`.
+  - Teléfono (`PHONE_OTP_ENABLED`; simulado con `test_code` fuera de producción):
+    `GET /phone/capabilities` (países, condiciones y `social_providers` configurados),
+    `POST /phone/challenges`, `POST /phone/verify`, `POST /phone/complete`
+    (`profile_required` → repetir con `full_name` + `terms_version`).
+  - Social: `POST /social/{provider}/sign-in` (`phone_required` si la identidad no está
+    vinculada) y `POST /phone/link-social` (OTP + token del proveedor en una transacción).
+  - Recuperación: `POST /recovery`, `POST /recovery/complete` (revisión de operador en F03-B).
+  Ver `docs/implementation-plans/0010-phone-identity-and-otp.md`.
 - **rides** (`/rides`):
   - `POST ""` (crear solicitud), `GET /recent-destinations`, `GET /history`, `GET /{id}`.
     `GET /history` pagina con cursor opaco y responde `{items, next_cursor}`.
-  - `GET /open` (conductor: solicitudes `SEARCHING` de su `vehicle_type`, **filtradas por presencia**),
+  - `GET /open` (conductor: solicitudes `SEARCHING` de sus servicios ofrecidos, **filtradas por presencia**),
     paginado con la misma forma `{items, next_cursor}`.
   - `GET /{id}/offers`, `POST /{id}/offers` (conductor crea oferta: `accept_at_fare=True` usa el fare, o contraoferta con `price`+`eta_min`).
   - `POST /offers/{offer_id}/accept` (pasajero: asignación **directa atómica**), `/reject`, `/withdraw`.
   - `PATCH /{id}/status` (conductor: `ACCEPTED→ARRIVING→IN_PROGRESS→COMPLETED`).
   - `PATCH /{id}/fare` (pasajero: subir la oferta en búsqueda), `POST /{id}/pause-edit` + `PATCH /{id}` (modificar solicitud), `POST /{id}/cancel`, `POST /{id}/rating`.
-- **drivers** (`/drivers`): `POST /me/online`, `GET /me/active-ride`, `GET /me/earnings`.
+- **drivers** (`/drivers`): `GET /me/vehicles`, `POST /me/vehicles` (alta/edición del vehículo
+  de ese tipo: `vehicle_type`, `plate`, `vehicle_model`, `services`; responde `{user, vehicle}`),
+  `DELETE /me/vehicles/{vehicle_type}`, `POST /me/mode` (`{mode: passenger|driver,
+  vehicle_type?}` conmuta el modo activo y elige el vehículo con el que se conduce),
+  `POST /me/online`, `GET /me/active-ride`, `GET /me/earnings`.
 - **saved-places** (`/saved-places`): `GET ""`, `POST ""`, `PUT /{place_id}`, `DELETE /{place_id}`.
 
 Rutas protegidas: usan `CurrentUserDep` (header `Authorization: Bearer <access_token>`).
 
-### Casos de uso (36)
+### Casos de uso
 
-`register_user`, `authenticate_user`, `authenticate_with_oauth`, `refresh_token`,
-`create_ride_request`, `announce_open_ride`, `list_recent_destinations`, `list_open_rides`, `dismiss_open_ride`,
+Acceso: `request_phone_code`, `verify_phone_code`, `complete_phone_sign_in`,
+`sign_in_with_social`, `refresh_managed_session`, `manage_account_sessions`,
+`change_account_phone`, `request_account_recovery`, `review_account_recovery`,
+`complete_account_recovery`. Viajes: `create_ride_request`, `announce_open_ride`, `list_recent_destinations`, `list_open_rides`, `dismiss_open_ride`,
 `get_ride`, `get_passenger_active_ride`, `get_pending_rating_ride`, `list_ride_history`,
 `create_offer`, `list_offers_for_ride`, `accept_offer`, `reject_offer`,
 `withdraw_offer`, `expire_offer`, `update_ride_status`, `update_ride_fare`, `cancel_ride`,
 `cancel_ride_on_disconnect`, `pause_ride_for_edit`, `edit_ride`,
-`rate_ride`, `skip_ride_rating`, `set_driver_online`, `get_driver_active_ride`,
+`rate_ride`, `skip_ride_rating`, `register_driver_vehicle`, `list_driver_vehicles`,
+`remove_driver_vehicle`, `switch_account_mode`, `set_driver_online`,
+`get_driver_active_ride`,
 `get_driver_earnings`, `list_saved_places`, `create_saved_place`, `update_saved_place`,
 `delete_saved_place`.
 
@@ -286,8 +308,12 @@ Operación de outbox: `get_realtime_outbox_operational_snapshot` y
 ## Modelo de negociación (el pasajero decide)
 
 El pasajero crea un `RideRequest` (`SEARCHING`). `VehicleType` representa solo el vehículo
-físico (`taxi`/`moto`) y `ServiceType` el servicio (`taxi`/`moto`/`delivery`): los viajes
-personales exigen coincidencia y ambos vehículos pueden atender encomiendas. Los conductores
+físico (`taxi`/`moto`/`truck`) y `ServiceType` el servicio (`taxi`/`moto`/`delivery`/`moving`).
+`services_for_vehicle` dice qué **puede** ofrecer cada vehículo (taxi→taxi+delivery,
+moto→moto+delivery, truck→moving) y cada conductor **elige** un subconjunto en su alta
+(`User.driver_services`; vacío = todos los del vehículo, para conductores anteriores a 0027).
+`User.offered_services` / `driver_can_serve` son la única fuente de verdad para el pool
+(`/rides/open`, topics `pool:{service}`, snapshots) y para ofertar. Los conductores
 compatibles ofertan (`Offer` `PENDING`). **El pasajero decide**: `POST /offers/{id}/accept` =
 **asignación directa** — `OfferRepository.accept_atomically` usa `SELECT … FOR UPDATE` en
 Postgres: fija `driver_id`/`accepted_offer_id`, rechaza las demás offers del viaje y retira las
@@ -316,6 +342,27 @@ offers vivas del conductor elegido en **otros rides** (`OfferAcceptance.withdraw
 - **Calificación**: `POST /{id}/rating` crea `RideRating` (score 1–5, único por `(ride_id, rater_id)`)
   y recalcula el `rating` promedio del `User` calificado.
 
+## Cuenta con dos modos (pasajero ↔ conductor)
+
+`User.role` es el **modo activo** de la cuenta, nunca "los dos a la vez": todo lo existente que
+decide por rol (historial, calificación pendiente, guards del WS, `create_ride_request`…) sigue
+válido sin cambios. Un conductor registra **hasta un vehículo por tipo** (`DriverVehicle`, tabla
+`driver_vehicles`: taxi, moto, camioneta), cada uno con sus servicios y su estado de revisión.
+`users.vehicle_type/plate/vehicle_model/driver_services` son el **vehículo activo** (el elegido al
+entrar en modo conductor; es lo que leen pool y ofertas) y `users.driver_status` el agregado
+(`approved` si algún vehículo lo está):
+
+- `POST /drivers/me/vehicles` (`RegisterDriverVehicle`) crea o actualiza el vehículo de ese tipo
+  → `status=pending`, o `approved` al instante si `DRIVER_AUTO_APPROVE=true` (desarrollo/pruebas;
+  **prohibido en producción**, `Settings` lo rechaza). El primer vehículo pasa a ser el activo.
+  En modo conductor no se puede editar ni quitar el vehículo activo (sí los demás).
+  La revisión por operador es F04-A (pendiente); mientras tanto, en hospedados sin
+  auto-aprobación hay que aprobar en la base (`driver_vehicles.status='approved'`).
+- `POST /drivers/me/mode` (`SwitchAccountMode`): a `driver` exige un vehículo aprobado
+  (`vehicle_type` explícito, el único aprobado, o el activo si sigue aprobado), sin viaje activo
+  como pasajero; cambiar de vehículo en modo conductor exige estar desconectado. A `passenger`
+  exige estar desconectado y sin viaje en curso. Los vehículos se conservan en ambos modos.
+
 ## Tiempo real (WebSocket)
 
 Endpoints en `api/v1/ws/negotiation.py` (auth: subprotocolos `viajaya.auth` + access token,
@@ -324,8 +371,8 @@ fuera de la URL y los access logs; cierre 1008 si es inválido):
 - **`WS /ws/rides/{ride_id}`** — pasajero dueño. Snapshot inicial `offers_snapshot` + eventos del `ride_topic`.
 - **`WS /ws/driver`** — conductor en línea. Handshake ordenado `open_rides_snapshot` →
   `driver_offers_snapshot` → `driver_active_ride` (si existe); excluye ofertas vencidas y recupera
-  ofertas pendientes/viaje activo al reiniciar. Después recibe eventos de su
-  `pool:{vehicle_type}`, de `pool:delivery` y de `driver:{id}`. Una barrera de entrega evita la
+  ofertas pendientes/viaje activo al reiniciar. Después recibe eventos de un
+  `pool:{service}` por cada servicio que ofrece (`offered_services`) y de `driver:{id}`. Una barrera de entrega evita la
   ventana ciega entre snapshot y suscripción. `open_rides_snapshot.data` usa
   `{items, next_cursor}`; `paused_rides_snapshot.data` conserva su lista.
 
@@ -371,8 +418,11 @@ cerrar la app o perder ambos canales durante toda la gracia cancela la búsqueda
 ## Migraciones (Alembic)
 
 - Config: `alembic.ini` + `migrations/env.py` (engine **async** con `async_engine_from_config`).
-- **23 migraciones** en `migrations/versions/` (`0001_create_users` …
-  `0023_outbox_correlation_id`).
+- **28 migraciones** en `migrations/versions/` (`0001_create_users` …
+  `0028_driver_vehicles`). `0025` rechaza el downgrade si hay cuentas solo-teléfono.
+  `0027` añade `users.driver_services` (JSON/JSONB) y `driver_status`, y aprueba a los
+  conductores existentes con todos los servicios de su vehículo. `0028` crea
+  `driver_vehicles` y copia ahí el vehículo actual de cada conductor.
 - Importante: los enums se persisten por **valor** minúsculo vía `values_callable=_enum_values`
   en `infrastructure/db/models.py` (migración `0006_normalize_enum_values`). No rompas esa convención
   o se caerán columnas existentes.
@@ -386,15 +436,18 @@ python -m scripts.seed        # idempotente; requiere DB levantada + alembic upg
 python -m scripts.smoke_ws    # prueba de humo del flujo WS contra servidor en vivo (passenger + driver simulados)
 ```
 
-`scripts/` es un namespace package (`__init__.py`). El seed crea 2 usuarios por rol (contraseña
-común `ViajaYa1234#`): `passenger1/2@viajaya.com`, `driver.auto1/2@viajaya.com` (taxi) y
-`driver.moto1/2@viajaya.com` (moto).
+`scripts/` es un namespace package (`__init__.py`). El seed crea 2 usuarios por rol con teléfono
+verificado; se entra con el OTP simulado: pasajeros `+59170000001/2`, taxis `+59170000011/12`,
+motos `+59170000021/22`, camioneta de mudanzas `+59170000031`. `scripts/phone_access.py` expone `sign_in(client, phone)` para los smokes.
 
 ## Tests
 
 - `tests/unit/` — UC con dobles (`tests/fakes.py`), sin DB real.
 - `tests/e2e/` — API completa contra SQLite async (`aiosqlite`); fixtures en `conftest.py`
-  (override de `get_session` y `get_oauth_verifiers` con `FakeVerifier`).
+  (override de `get_session` y `get_oauth_verifiers` con `FakeVerifier`; settings sintéticos con
+  OTP simulado, nunca el `.env`; `@pytest.mark.settings(**overrides)` ajusta esos settings
+  por test, p. ej. `driver_auto_approve=True`). `tests/e2e/helpers.py` autentica por teléfono:
+  `sign_in(client, label)` / `sign_in_sync` y `promote_to_driver(session_factory, label, vehicle)`.
 - `tests/e2e/test_negotiation_ws.py` — flujo WS de negociación passenger↔driver.
 - `tests/postgresql/` — certificación destructiva opt-in contra una base exclusivamente
   desechable indicada por `VIAJAYA_TEST_DATABASE_URL`; hace skip si la variable no existe.
@@ -402,7 +455,10 @@ común `ViajaYa1234#`): `passenger1/2@viajaya.com`, `driver.auto1/2@viajaya.com`
   reclamen batches completos y disjuntos con `SKIP LOCKED`;
   `test_pg_outbox_0020.py` certifica la cuarentena y su downgrade protegido.
 - `.github/workflows/ci.yml` ejecuta en paralelo la suite rápida, la certificación
-  PostgreSQL 16 y las comprobaciones TypeScript/ESLint de mobile.
+  PostgreSQL 16 y las comprobaciones TypeScript/ESLint de mobile. El gate de OpenAPI
+  (`oasdiff breaking` contra la base del PR) rechaza rupturas de contrato; una ruptura
+  intencional se registra con fecha en `openapi-breaking-accepted.txt` (método, ruta y
+  texto del cambio), nunca se silencia una que no se pretendía.
 - `asyncio_mode = "auto"` (pytest-asyncio): no hace falta `@pytest.mark.asyncio`.
 - Al añadir un UC o endpoint, acompáñalo de su test unitario y/o e2e.
 
@@ -410,6 +466,6 @@ común `ViajaYa1234#`): `passenger1/2@viajaya.com`, `driver.auto1/2@viajaya.com`
 
 - Todo async de punta a punta (FastAPI, SQLAlchemy async, repos `async def`).
 - `from __future__ import annotations` al inicio de cada módulo; type hints en todo.
-- Docstrings y comentarios en **español** (sigue el estilo del repo).
+- Código, identificadores, docstrings y comentarios nuevos en **inglés**, según la preferencia persistente de `../AGENTS.md`. Verifica cada implementación antes de entregarla.
 - Ruff con `line-length = 100`, `target-version = "py311"`, reglas `E,F,I,UP,B,C4`.
 - Imports ordenados por isort (regla `I`).

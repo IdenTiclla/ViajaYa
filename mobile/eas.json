@@ -8,6 +8,8 @@
       "developmentClient": true,
       "distribution": "internal",
       "environment": "development",
+      "channel": "development",
+      "env": { "APP_ENV": "development" },
       "android": {
         "buildType": "apk"
       }
@@ -15,13 +17,17 @@
     "preview": {
       "distribution": "internal",
       "environment": "preview",
+      "channel": "testing",
+      "env": { "APP_ENV": "testing" },
       "android": {
         "buildType": "apk"
       }
     },
     "production": {
       "autoIncrement": true,
-      "environment": "production"
+      "environment": "production",
+      "channel": "production",
+      "env": { "APP_ENV": "production" }
     }
   },
   "submit": {

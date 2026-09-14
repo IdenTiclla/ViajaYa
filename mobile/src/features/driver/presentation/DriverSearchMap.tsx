@@ -10,6 +10,7 @@ import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 
 import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 import { useEstiloMapa } from '@/features/booking/presentation/mapStyle';
+import type { VehicleType } from '@/features/auth/domain/types';
 import type { Coordinates } from '@/core/domain/geo';
 import type { WatchStatus } from '@/features/home/application/useWatchPosition';
 import { MarcadorVehiculo } from './MarcadorVehiculo';
@@ -20,7 +21,7 @@ const FOLLOW_DELTA = 0.012;
 type Props = {
   coordinates: Coordinates | null;
   heading: number | null;
-  tipoVehiculo: 'taxi' | 'moto' | null;
+  tipoVehiculo: VehicleType | null;
   status: WatchStatus;
   retry: () => void;
   interactivo?: boolean;

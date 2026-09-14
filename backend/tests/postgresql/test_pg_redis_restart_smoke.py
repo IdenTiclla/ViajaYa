@@ -25,12 +25,12 @@ from app.api.v1.schemas.realtime import (
     RealtimeEventEnvelopeV2,
     RideSnapshotMessageV2,
 )
-from app.domain.entities import UserRole, VehicleType
+from app.domain.entities import VehicleType
 from app.infrastructure.config import Settings
 from app.infrastructure.db.models import RealtimeOutboxModel
-from app.infrastructure.db.repositories import SqlAlchemyUserRepository
 from app.infrastructure.realtime.ws_auth import AUTH_SUBPROTOCOL
 from app.main import create_app
+from tests.e2e.helpers import promote_to_driver
 from tests.postgresql import test_pg_realtime_network_smoke as network_support
 from tests.postgresql.redis_realtime_support import (
     run_redis_restart_server_process,
@@ -146,6 +146,7 @@ async def _bootstrap_ride(pg_test_db) -> _Bootstrap:
             _env_file=None,
             database_url=pg_test_db.url,
             jwt_secret=_JWT_SECRET,
+            phone_otp_enabled=True,
         ),
         session_factory=sessions,
     )
@@ -156,20 +157,10 @@ async def _bootstrap_ride(pg_test_db) -> _Bootstrap:
             timeout=_OPERATION_TIMEOUT_SECONDS,
             trust_env=False,
         ) as client:
-            rider_token = await network_support._register(
-                client,
-                f"redis-restart-rider-{suffix}@example.com",
-            )
-            driver_email = f"redis-restart-driver-{suffix}@example.com"
-            driver_token = await network_support._register(client, driver_email)
-            async with sessions() as session:
-                users = SqlAlchemyUserRepository(session)
-                driver = await users.get_by_email(driver_email)
-                assert driver is not None
-                driver.role = UserRole.DRIVER
-                driver.vehicle_type = VehicleType.TAXI
-                driver.is_online = True
-                await users.update(driver)
+            rider_token = await network_support._register(client, f"redis-restart-rider-{suffix}")
+            driver_label = f"redis-restart-driver-{suffix}"
+            driver_token = await network_support._register(client, driver_label)
+            await promote_to_driver(sessions, driver_label, VehicleType.TAXI)
 
             response = await client.post(
                 "/api/v1/rides",

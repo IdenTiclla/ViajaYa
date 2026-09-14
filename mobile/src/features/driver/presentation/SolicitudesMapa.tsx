@@ -39,6 +39,8 @@ import { RoutePolyline } from '@/features/rides/presentation/RoutePolyline';
 import type { OpenRide } from '@/features/rides/domain/types';
 import Animated, { SlideInDown } from 'react-native-reanimated';
 
+import { serviceNouns } from '@/features/rides/domain/serviceNouns';
+
 const PAYMENT_LABELS = { qr: 'QR', cash: 'Efectivo' } as const;
 const QUICK_DELTAS = [1, 2, 5] as const;
 
@@ -374,8 +376,7 @@ function MapCard({
   const displayPrice = offered && offerPrice != null ? offerPrice : ride.fare;
   const perKm = pricePerKm(displayPrice, tripKm);
   const { rider } = ride;
-  const customerNoun = ride.service === 'delivery' ? 'remitente' : 'pasajero';
-  const requestNoun = ride.service === 'delivery' ? 'entrega' : 'viaje';
+  const { customer: customerNoun, request: requestNoun } = serviceNouns(ride.service);
   const initial = rider.fullName.trim().charAt(0).toUpperCase() || '?';
   const meta = [
     SERVICE_META[ride.service].shortLabel,

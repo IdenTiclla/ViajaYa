@@ -1,23 +1,31 @@
 /** Tipos del dominio de autenticación (independientes del transporte HTTP). */
+import type { ServiceType } from '@/features/booking/domain/types';
 
 export type AuthProvider = 'local' | 'google' | 'facebook';
 
+/** Active mode of the account; an approved driver switches between both. */
 export type UserRole = 'passenger' | 'driver';
 
 /** Vehiculo fisico del conductor; un mismo vehiculo puede atender varios servicios. */
-export type VehicleType = 'taxi' | 'moto';
+export type VehicleType = 'taxi' | 'moto' | 'truck';
+
+/** Outcome of the driver application; only `approved` may enter driver mode. */
+export type DriverStatus = 'pending' | 'approved' | 'rejected';
 
 export type User = {
   id: string;
   fullName: string;
-  email: string;
+  email: string | null;
   phone: string | null;
+  phoneVerifiedAt: string | null;
   authProvider: AuthProvider;
   role: UserRole;
-  /** Solo conductores: tipo de vehículo y datos del mismo. */
+  /** Driver application: vehicle, chosen services and review status (null = never applied). */
   vehicleType: VehicleType | null;
   plate: string | null;
   vehicleModel: string | null;
+  driverServices: ServiceType[];
+  driverStatus: DriverStatus | null;
   rating: number | null;
   isOnline: boolean;
   createdAt: string | null;
@@ -33,22 +41,7 @@ export type AuthResult = {
   tokens: AuthTokens;
 };
 
-export type RegisterPayload = {
-  fullName: string;
-  email: string;
-  password: string;
-  phone?: string;
-};
-
-export type LoginPayload = {
-  email: string;
-  password: string;
-};
-
-/** Puerto de datos de auth. La implementación HTTP vive en `data/`. */
+/** Session data port; sign-in itself lives in `PhoneAccessRepository`. */
 export interface AuthRepository {
-  register(payload: RegisterPayload): Promise<AuthResult>;
-  login(payload: LoginPayload): Promise<AuthResult>;
-  oauth(provider: Exclude<AuthProvider, 'local'>, token: string): Promise<AuthResult>;
   me(): Promise<User>;
 }

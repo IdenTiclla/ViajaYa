@@ -21,6 +21,8 @@ from app.api.v1.realtime_outbox import (
 )
 from app.api.v1.redis_realtime import RedisRealtimeBridge
 from app.api.v1.routers import auth, drivers, rides, saved_places
+from app.api.v1.routers.account_access import router as account_access_router
+from app.api.v1.routers.phone_verification import create_phone_verification_router
 from app.api.v1.scheduled_actions import (
     ApplicationScheduledActionExecutor,
     shutdown_shadow_scheduled_action_publications,
@@ -44,6 +46,10 @@ from app.infrastructure.db.scheduled_actions_reconciliation import (
 )
 from app.infrastructure.db.session import async_session_factory, get_session
 from app.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
+from app.infrastructure.environment_boundary import (
+    ENVIRONMENT_HEADER,
+    EnvironmentBoundaryMiddleware,
+)
 from app.infrastructure.realtime.hub import hub
 from app.infrastructure.realtime.outbox_dispatcher import (
     LocalRealtimeOutboxDispatcher,
@@ -484,18 +490,23 @@ def create_app(
     app.dependency_overrides[get_session_factory] = lambda: resolved_session_factory
     app.dependency_overrides[get_session] = resolved_get_session
 
+    app.add_middleware(EnvironmentBoundaryMiddleware, environment=resolved_settings.app_env)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=resolved_settings.cors_origins_list,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
-        expose_headers=[REQUEST_ID_HEADER],
+        expose_headers=[REQUEST_ID_HEADER, ENVIRONMENT_HEADER],
     )
     app.add_middleware(CorrelationIdMiddleware)
 
     register_exception_handlers(app)
     app.include_router(auth.router, prefix="/api/v1")
+    app.include_router(account_access_router, prefix="/api/v1")
+    app.include_router(create_phone_verification_router(
+        include_test_code=resolved_settings.app_env != "production",
+    ), prefix="/api/v1")
     app.include_router(rides.router, prefix="/api/v1")
     app.include_router(drivers.router, prefix="/api/v1")
     app.include_router(saved_places.router, prefix="/api/v1")

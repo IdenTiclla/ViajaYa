@@ -2,17 +2,13 @@
 
 from __future__ import annotations
 
-REGISTER = "/api/v1/auth/register"
+from tests.e2e.helpers import sign_in
+
 SAVED_PLACES = "/api/v1/saved-places"
 
 
-async def _auth_header(client, email: str = "alex@example.com") -> dict[str, str]:
-    resp = await client.post(
-        REGISTER,
-        json={"full_name": "Alex", "email": email, "password": "secret123"},
-    )
-    access = resp.json()["tokens"]["access_token"]
-    return {"Authorization": f"Bearer {access}"}
+async def _auth_header(client, label: str = "alex") -> dict[str, str]:
+    return (await sign_in(client, label)).headers
 
 
 def _payload(**over):
@@ -93,8 +89,8 @@ async def test_delete_saved_place(client):
 
 
 async def test_saved_places_isolated_between_users(client):
-    alice = await _auth_header(client, email="alice@example.com")
-    bob = await _auth_header(client, email="bob@example.com")
+    alice = await _auth_header(client, "alice")
+    bob = await _auth_header(client, "bob")
 
     created = await client.post(SAVED_PLACES, json=_payload(), headers=alice)
     place_id = created.json()["id"]

@@ -33,8 +33,8 @@ import {
 import { TripRouteMap } from '@/features/rides/presentation/TripRouteMap';
 import type { Ride, RideStatus } from '@/features/rides/domain/types';
 import { Button, ConfirmDialog, FeedbackState } from '@/shared/components';
+import { vehicleLabel } from '@/features/auth/domain/vehicleCatalog';
 
-const SERVICE_LABELS = { taxi: 'Taxi', moto: 'Moto' } as const;
 
 type Banner = { icon: IoniconsIconName; title: string; hint: string; accent?: boolean };
 
@@ -238,7 +238,7 @@ function DriverCard({ ride }: { ride: Ride }) {
   const { colors, styles } = useEstilos(crearEstilos);
   const driver = ride.driver!;
   const vehicle = [
-    driver.vehicleType ? SERVICE_LABELS[driver.vehicleType] : null,
+    vehicleLabel(driver.vehicleType),
     driver.vehicleModel,
   ]
     .filter(Boolean)

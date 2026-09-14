@@ -5,6 +5,7 @@ import { useReducedMotion } from 'react-native-reanimated';
 
 import type { Coordinates } from '@/core/domain/geo';
 import { useEstilos, type Tema } from '@/core/theme';
+import type { VehicleType } from '@/features/auth/domain/types';
 import { VehiculoMapa } from '@/shared/components/mapa/VehiculoMapa';
 import { programarRedibujadoMarcador } from '@/features/rides/presentation/routeTooltipLayout';
 import { calcularRotacionVehiculo, esRumboValido } from './rumboVehiculo';
@@ -12,7 +13,7 @@ import { calcularRotacionVehiculo, esRumboValido } from './rumboVehiculo';
 type Props = {
   coordinates: Coordinates;
   heading: number | null;
-  tipoVehiculo: 'taxi' | 'moto' | null;
+  tipoVehiculo: VehicleType | null;
 };
 
 /** La posición y la rotación pertenecen al mapa nativo, no a un overlay de pantalla. */

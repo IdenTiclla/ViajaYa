@@ -62,6 +62,7 @@ import {
   type DriverRealtimeMessage,
   type PassengerRealtimeMessage,
 } from '@/features/rides/data/realtimeSchemas';
+import type { ServiceType } from '@/features/booking/domain/types';
 import type { Offer, OpenRide, Ride } from '@/features/rides/domain/types';
 import { useAuthStore } from '@/store/authStore';
 
@@ -372,17 +373,23 @@ export function useNegotiationSocket(rideId: string | null, enabled = true): voi
   }, [enabled, rideId, queryClient]);
 }
 
+const EMPTY_SERVICES: readonly ServiceType[] = [];
+
 /** Conductor: recibe en vivo las solicitudes del pool y el aviso de ser elegido. */
 export function useDriverPoolSocket(enabled = true): void {
   const queryClient = useQueryClient();
   const driverId = useAuthStore((state) => state.user?.id ?? null);
   const vehicleType = useAuthStore((state) => state.user?.vehicleType ?? null);
+  const driverServices = useAuthStore((state) => state.user?.driverServices ?? EMPTY_SERVICES);
+  // A new array each render would reopen the socket; key the effect by content.
+  const servicesKey = driverServices.join(',');
   const realtimeResyncSequence = useDriverRequests(
     (state) => state.realtimeResyncSequence,
   );
 
   useEffect(() => {
-    if (!enabled || !driverId || !vehicleType) return;
+    if (!enabled || !driverId || !vehicleType || servicesKey === '') return;
+    const driverServices = servicesKey.split(',') as ServiceType[];
 
     const applyMessage = async (
       msg: DriverRealtimeMessage,
@@ -745,8 +752,7 @@ export function useDriverPoolSocket(enabled = true): void {
               kind: 'snapshot',
               checkpoints: toReplayStreamCheckpoints(message),
               requiredStreams: [
-                `pool:${vehicleType}`,
-                'pool:delivery',
+                ...driverServices.map((service) => `pool:${service}`),
                 `driver:${driverId}`,
               ],
             }
@@ -868,6 +874,7 @@ export function useDriverPoolSocket(enabled = true): void {
     enabled,
     queryClient,
     realtimeResyncSequence,
+    servicesKey,
     vehicleType,
   ]);
 }

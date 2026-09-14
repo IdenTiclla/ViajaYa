@@ -537,7 +537,7 @@ def test_settings_keep_shadow_dispatcher_disabled_by_default() -> None:
 
 
 def test_settings_reject_recording_without_shadow_dispatcher() -> None:
-    with pytest.raises(ValidationError, match="requiere"):
+    with pytest.raises(ValidationError, match="requires"):
         Settings(
             _env_file=None,
             realtime_outbox_dispatch_mode="off",
@@ -557,7 +557,7 @@ def test_settings_accept_shadow_rollout_with_recording_enabled() -> None:
 
 
 def test_settings_reject_live_local_without_recording() -> None:
-    with pytest.raises(ValidationError, match="live_local requiere"):
+    with pytest.raises(ValidationError, match="live_local requires"):
         Settings(
             _env_file=None,
             realtime_outbox_dispatch_mode="live_local",
@@ -577,7 +577,7 @@ def test_settings_accept_live_local_only_with_recording() -> None:
 
 
 def test_settings_accept_live_redis_only_with_recording() -> None:
-    with pytest.raises(ValidationError, match="live_redis requiere"):
+    with pytest.raises(ValidationError, match="live_redis requires"):
         Settings(
             _env_file=None,
             realtime_outbox_dispatch_mode="live_redis",

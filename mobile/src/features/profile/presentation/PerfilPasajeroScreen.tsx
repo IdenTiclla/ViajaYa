@@ -4,6 +4,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 import { Button } from '@/shared/components';
 import { useAuthStore } from '@/store/authStore';
+import { AccountSecurityPanel } from '@/features/auth/presentation/AccountSecurityPanel';
+import { DriverAccountCard } from '@/features/driver/presentation/DriverAccountCard';
 import { SelectorTema } from './SelectorTema';
 
 export function PerfilPasajeroScreen() {
@@ -19,10 +21,12 @@ export function PerfilPasajeroScreen() {
           <Text style={styles.avatarText}>{initial}</Text>
         </View>
         <Text style={styles.name}>{user?.fullName ?? 'Viajero'}</Text>
-        <Text style={styles.email}>{user?.email}</Text>
+        {user?.email && <Text style={styles.email}>{user.email}</Text>}
         {user?.phone ? <Text style={styles.detail}>{user.phone}</Text> : null}
 
+        <DriverAccountCard />
         <SelectorTema />
+        <AccountSecurityPanel />
         <View style={styles.actions}>
           <Button title="Cerrar sesión" variant="secondary" onPress={() => void signOut()} />
         </View>

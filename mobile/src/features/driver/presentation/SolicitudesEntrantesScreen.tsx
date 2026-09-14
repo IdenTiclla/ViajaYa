@@ -84,9 +84,12 @@ export function SolicitudesEntrantesScreen() {
       automaticActivationFor.current = null;
       return;
     }
-    if (user.isOnline || automaticActivationFor.current === user.id) return;
+    // Switching vehicle goes offline first and keeps this screen mounted, so the
+    // automatic activation is keyed by user *and* active vehicle.
+    const activationKey = `${user.id}:${user.vehicleType ?? ''}`;
+    if (user.isOnline || automaticActivationFor.current === activationKey) return;
 
-    automaticActivationFor.current = user.id;
+    automaticActivationFor.current = activationKey;
     activateDriver();
   }, [activateDriver, user]);
 

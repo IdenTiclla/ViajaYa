@@ -455,7 +455,10 @@ motos `+59170000021/22`, camioneta de mudanzas `+59170000031`. `scripts/phone_ac
   reclamen batches completos y disjuntos con `SKIP LOCKED`;
   `test_pg_outbox_0020.py` certifica la cuarentena y su downgrade protegido.
 - `.github/workflows/ci.yml` ejecuta en paralelo la suite rápida, la certificación
-  PostgreSQL 16 y las comprobaciones TypeScript/ESLint de mobile.
+  PostgreSQL 16 y las comprobaciones TypeScript/ESLint de mobile. El gate de OpenAPI
+  (`oasdiff breaking` contra la base del PR) rechaza rupturas de contrato; una ruptura
+  intencional se registra con fecha en `openapi-breaking-accepted.txt` (método, ruta y
+  texto del cambio), nunca se silencia una que no se pretendía.
 - `asyncio_mode = "auto"` (pytest-asyncio): no hace falta `@pytest.mark.asyncio`.
 - Al añadir un UC o endpoint, acompáñalo de su test unitario y/o e2e.
 

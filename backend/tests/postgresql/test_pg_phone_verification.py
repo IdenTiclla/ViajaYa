@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import delete, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -142,9 +145,10 @@ async def test_concurrent_verification_and_consumption_have_single_winners(pg_te
     assert sum(item is True for item in claims) == 1
     assert sum(isinstance(item, InvalidPhoneCodeError) for item in claims) == 7
     async with factory() as session:
-        assert await session.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0026_drop_password_access"
-        )
+        # The disposable database must sit at the current head, whatever it is.
+        alembic_ini = Path(__file__).resolve().parents[2] / "alembic.ini"
+        head = ScriptDirectory.from_config(Config(str(alembic_ini))).get_current_head()
+        assert await session.scalar(text("SELECT version_num FROM alembic_version")) == head
 
 
 async def test_waiting_for_a_row_lock_cannot_extend_code_validity(pg_test_db):

@@ -68,8 +68,10 @@ jobs:
           docker run --rm
           -v "/tmp/viajaya-openapi-base.json:/specs/base.json:ro"
           -v "${{ github.workspace }}/backend/openapi.json:/specs/revision.json:ro"
+          -v "${{ github.workspace }}/backend/openapi-breaking-accepted.txt:/specs/accepted.txt:ro"
           tufin/oasdiff:v1.17.0
           breaking --fail-on WARN --format githubactions
+          --err-ignore /specs/accepted.txt --warn-ignore /specs/accepted.txt
           /specs/base.json /specs/revision.json
 
       - name: Check the mobile realtime contract
@@ -230,7 +232,7 @@ jobs:
           uv sync --locked --extra dev
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Verify configuration and real JWT boundaries
-        run: uv run --locked --no-sync python -m pytest tests/unit/test_environment.py tests/unit/test_environment_boundary.py tests/e2e/test_auth_api.py -q
+        run: uv run --locked --no-sync python -m pytest tests/unit/test_environment.py tests/unit/test_environment_boundary.py tests/e2e/test_phone_accounts.py -q
 
   runtime_image:
     name: Runtime image and disposable database smoke

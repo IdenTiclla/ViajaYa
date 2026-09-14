@@ -1,171 +1,93 @@
-import * as Crypto from 'expo-crypto';
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
+import { useState } from 'react';
 
-import { getApiErrorMessage } from '@/core/errors/apiError';
-import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
-import { Button, TextField } from '@/shared/components';
-import { useAuthStore } from '@/store/authStore';
-import { createPhoneAccessController, type EntryMode } from '../application/phoneAccessController';
+import { Button } from '@/shared/components';
+import { useAuthController } from '../application/useAuthController';
 import { useSocialAuth } from '../application/useSocialAuth';
-import { getInstallationId } from '../data/installationId';
-import { phoneAccessRepository } from '../data/phoneAccessRepository';
-import { BrandHeader } from './BrandHeader';
+import { AuthLink } from './entry/AuthLink';
+import { AuthHeading, AuthLoading, AuthNotice, AuthScaffold } from './entry/AuthScaffold';
+import { PhoneInput } from './entry/PhoneInput';
+import { ProfileCompletionForm } from './entry/ProfileCompletionForm';
+import { SessionEntering } from './entry/SessionEntering';
+import { SocialButtons } from './entry/SocialButtons';
 import { PhoneCodeForm } from './PhoneCodeForm';
 
+/** Sign-in: phone + OTP, or Google/Facebook linked to a verified phone. */
 export function PhoneEntryScreen() {
-  const { styles, estiloFoco } = useEstilos(createStyles);
-  const controller = useMemo(() => createPhoneAccessController({
-    repository: phoneAccessRepository, installationId: getInstallationId,
-    randomId: Crypto.randomUUID, deviceName: Platform.OS === 'ios' ? 'iPhone' : 'Android',
-    acceptSession: (result) => useAuthStore.getState().acceptPhoneSession(result),
-    errorMessage: (error) => getApiErrorMessage(error,
-      error instanceof Error ? error.message : 'No pudimos continuar. Vuelve a intentar.'),
-  }), []);
-  const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
+  const { controller, state } = useAuthController();
   const [number, setNumber] = useState('');
   const [callingCode, setCallingCode] = useState('+591');
-  const [fullName, setFullName] = useState('');
-  const [accepted, setAccepted] = useState(false);
-  const [termsFocused, setTermsFocused] = useState(false);
-  const [hint, setHint] = useState('');
-  const [reason, setReason] = useState('');
-  const [caseId, setCaseId] = useState('');
-  const [mode, setMode] = useState<EntryMode>('sign_in');
   const [socialError, setSocialError] = useState<string | null>(null);
   const social = useSocialAuth({
     onCredential: (credential) => controller.signInSocial(credential),
     onError: setSocialError,
   });
-  useEffect(() => {
-    void controller.initialize();
-    return () => controller.dispose();
-  }, [controller]);
-  const recovering = mode === 'recovery' || mode === 'recovery_complete';
   const back = () => { setSocialError(null); controller.back(); };
+  const enabled = !!state.capabilities?.enabled;
   const socialName = state.socialProvider === 'google' ? 'Google' : 'Facebook';
   const socialBusy = social.googleLoading || social.facebookLoading;
+  const busy = state.busy || socialBusy;
+  const providers = state.capabilities?.socialProviders ?? [];
+
+  const phoneStep = state.step === 'phone';
   return (
-    <SafeAreaView style={styles.safe}>
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <BrandHeader subtitle="Tu ciudad, a un toque de distancia." />
-          <View style={styles.form}>
-            {state.step === 'loading' && <>
-              <Text style={styles.title}>Preparamos tu acceso</Text>
-              <Button title="Reintentar conexión" loading={state.busy}
-                onPress={() => { void controller.initialize(); }} />
-            </>}
-            {state.step === 'phone' && <>
-              <Text accessibilityRole="header" style={styles.title}>
-                {recovering ? 'Recupera tu cuenta' : 'Entra con tu número'}
-              </Text>
-              <Text style={styles.text}>{recovering
-                ? 'Verifica un número al que tengas acceso. La recuperación requiere revisar tu identidad.'
-                : 'Usa tu teléfono para iniciar sesión o crear tu cuenta.'}</Text>
-              {state.socialProvider && <Text style={styles.text}>
-                Verificamos tu cuenta de {socialName}. Ahora verifica tu número; después podrás confirmar la vinculación.
-              </Text>}
-              {state.capabilities?.countries.map((country) => (
-                <Button key={country.region} title={`${country.region === 'BO' ? 'Bolivia' : country.region} (${country.callingCode})${callingCode === country.callingCode ? ' ✓' : ''}`}
-                  variant="secondary" onPress={() => setCallingCode(country.callingCode)} />
-              ))}
-              <TextField label={recovering ? 'Número de contacto' : 'Número de teléfono'}
-                value={number} onChangeText={(value) => setNumber(value.replace(/[^0-9]/g, ''))}
-                keyboardType="phone-pad" autoComplete="tel-national" maxLength={15}
-                placeholder="71234567" />
-              {!state.capabilities?.enabled && <Text accessibilityRole="alert" style={styles.text}>
-                El acceso por teléfono aún no está disponible en este servidor. Vuelve a intentar en unos momentos.
-              </Text>}
-              {!state.capabilities?.enabled && <Button title="Reintentar conexión" variant="secondary"
-                loading={state.busy} onPress={() => { void controller.initialize(); }} />}
-              <Button title="Continuar" disabled={!state.capabilities?.enabled || number.length < 6 || state.busy || socialBusy}
-                onPress={() => controller.start(`${callingCode}${number}`, state.socialProvider ? 'social' : mode)} />
-              {mode === 'sign_in' && !state.socialProvider && <>
-                <Button title="Continuar con Google" variant="secondary" loading={social.googleLoading}
-                  disabled={state.busy || social.googleDisabled || !state.capabilities?.socialProviders.includes('google')}
-                  onPress={() => { setSocialError(null); social.signInWithGoogle(); }} />
-                <Button title="Continuar con Facebook" variant="secondary" loading={social.facebookLoading}
-                  disabled={state.busy || social.facebookDisabled || !state.capabilities?.socialProviders.includes('facebook')}
-                  onPress={() => { setSocialError(null); social.signInWithFacebook(); }} />
-              </>}
-              {state.socialProvider && <Button title="Usar solo mi teléfono" variant="secondary" disabled={state.busy || socialBusy}
-                onPress={back} />}
-              <Button title={recovering ? 'Volver al acceso por teléfono' : 'No tengo acceso a mi número'}
-                variant="secondary" disabled={state.busy || socialBusy}
-                onPress={() => { back(); setMode(recovering ? 'sign_in' : 'recovery'); }} />
-              {recovering && <Button title={mode === 'recovery_complete' ? 'Solicitar una revisión' : 'Ya tengo una recuperación aprobada'}
-                variant="secondary" onPress={() => setMode(mode === 'recovery_complete' ? 'recovery' : 'recovery_complete')} />}
-            </>}
-            {state.step === 'code' && <PhoneCodeForm phone={state.phone} deviceId={state.deviceId}
-              autoRequest purpose={state.mode.startsWith('recovery') ? 'recovery' : 'sign_in'}
-              onVerified={(proof) => { void controller.verified(proof); }} onChangePhone={back} />}
-            {state.step === 'social_confirmation' && <>
-              <Text accessibilityRole="header" style={styles.title}>Confirma tu acceso con {socialName}</Text>
-              <Text style={styles.text}>Vincularemos tu cuenta de {socialName} con el número verificado {state.phone}.
-                Si ya tenías una cuenta con esa identidad, conservaremos tus viajes y tu rol.</Text>
-              <Button title={`Vincular ${socialName} y continuar`} loading={state.busy}
-                onPress={() => { void controller.complete(); }} />
-            </>}
-            {state.step === 'profile' && <>
-              <Text accessibilityRole="header" style={styles.title}>Completa tu cuenta</Text>
-              <Text style={styles.text}>{state.phone} · verificado</Text>
-              <TextField label="Tu nombre" value={fullName} onChangeText={setFullName}
-                autoComplete="name" maxLength={100} editable={!state.busy} />
-              <Text style={styles.text}>{state.capabilities?.termsText}</Text>
-              <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: accepted, disabled: state.busy }}
-                disabled={state.busy} onPress={() => setAccepted(!accepted)}
-                onFocus={() => setTermsFocused(true)} onBlur={() => setTermsFocused(false)}
-                aria-checked={accepted} style={[styles.checkbox, termsFocused && estiloFoco]}>
-                <Text style={styles.text}>{accepted ? '☑' : '☐'} He leído y acepto estas condiciones.</Text>
-              </Pressable>
-              <Button title="Crear cuenta" loading={state.busy} disabled={!accepted || fullName.trim().length < 2}
-                onPress={() => { void controller.complete({ fullName, termsVersion: state.capabilities?.termsVersion }); }} />
-            </>}
-            {state.step === 'recovery' && (state.mode === 'recovery_complete' ? <>
-              <Text style={styles.title}>Completa la recuperación</Text>
-              <TextField label="Código de caso aprobado" value={caseId} onChangeText={setCaseId}
-                autoCapitalize="none" editable={!state.busy} />
-              <Button title="Recuperar mi cuenta" loading={state.busy} disabled={caseId.trim().length !== 36}
-                onPress={() => { void controller.completeRecovery(caseId.trim()); }} />
-            </> : <>
-              <Text style={styles.title}>Solicita una revisión</Text>
-              <TextField label="Número anterior de la cuenta" value={hint} onChangeText={setHint}
-                maxLength={255} editable={!state.busy} />
-              <TextField label="Cuéntanos qué ocurrió" value={reason} onChangeText={setReason}
-                multiline maxLength={1000} editable={!state.busy} />
-              <Text style={styles.text}>No incluyas contraseñas ni documentos. Esta solicitud no cambia tu cuenta automáticamente.</Text>
-              <Button title="Registrar solicitud" loading={state.busy} disabled={hint.trim().length < 3 || reason.trim().length < 10}
-                onPress={() => { void controller.requestRecovery(hint, reason); }} />
-            </>)}
-            {state.step === 'case' && <>
-              <Text style={styles.title}>Solicitud registrada</Text>
-              <Text style={styles.text}>Guarda este código de caso:</Text>
-              <Text selectable style={styles.text}>{state.caseId}</Text>
-              <Text style={styles.text}>Tu cuenta conserva sus datos. La revisión de solicitudes se habilitará con el soporte de ViajaYa; en esta etapa de pruebas no hay un plazo de respuesta.</Text>
-            </>}
-            {state.error && <Text accessibilityRole="alert" style={styles.error}>{state.error}</Text>}
-            {socialError && <Text accessibilityRole="alert" style={styles.error}>{socialError}</Text>}
-            {state.step === 'complete' && <Button title="Reintentar acceso" loading={state.busy}
-              onPress={() => { void controller.complete(); }} />}
-            {!['phone', 'code', 'loading'].includes(state.step) && <Button title="Volver al inicio"
-              variant="secondary" disabled={state.busy} onPress={back} />}
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+    <AuthScaffold subtitle="Tu ciudad, a un toque de distancia."
+      footer={phoneStep && !state.socialProvider ? <>
+        <AuthLink prompt="¿Aún no tienes cuenta?" label="Regístrate" disabled={busy}
+          onPress={() => router.push('/(auth)/register')} />
+        <AuthLink label="No tengo acceso a mi número" disabled={busy}
+          onPress={() => router.push('/(auth)/recovery')} />
+      </> : undefined}>
+      {state.step === 'loading' && (
+        <AuthLoading busy={state.busy} error={state.error} onRetry={() => { void controller.initialize(); }} />
+      )}
+      {phoneStep && <>
+        <AuthHeading title={state.socialProvider ? `Vincula ${socialName} a tu número` : 'Bienvenido a ViajaYa'}
+          text={state.socialProvider
+            ? `Verificamos tu cuenta de ${socialName}. Ahora confirma tu número; después podrás vincular ambos.`
+            : 'Ingresa tu número y te enviaremos un código por SMS.'} />
+        <PhoneInput countries={state.capabilities?.countries ?? []} callingCode={callingCode}
+          onChangeCallingCode={setCallingCode} number={number} onChangeNumber={setNumber} editable={!busy} />
+        {!enabled && <AuthNotice tone="error">
+          El acceso por teléfono aún no está disponible en este servidor. Vuelve a intentar en unos momentos.
+        </AuthNotice>}
+        {!enabled && <Button title="Reintentar conexión" variant="secondary" loading={state.busy}
+          onPress={() => { void controller.initialize(); }} />}
+        <Button title="Continuar" trailingIcon="arrow-forward" disabled={!enabled || number.length < 6 || busy}
+          onPress={() => controller.start(`${callingCode}${number}`, state.socialProvider ? 'social' : 'sign_in')} />
+        {state.socialProvider
+          ? <Button title="Usar solo mi teléfono" variant="secondary" disabled={busy} onPress={back} />
+          : <SocialButtons providers={providers}
+            google={{ loading: social.googleLoading, disabled: state.busy || social.googleDisabled,
+              onPress: () => { setSocialError(null); social.signInWithGoogle(); } }}
+            facebook={{ loading: social.facebookLoading, disabled: state.busy || social.facebookDisabled,
+              onPress: () => { setSocialError(null); social.signInWithFacebook(); } }} />}
+      </>}
+      {state.step === 'code' && (
+        <PhoneCodeForm phone={state.phone} deviceId={state.deviceId} autoRequest purpose="sign_in"
+          onVerified={(proof) => { void controller.verified(proof); }} onChangePhone={back} />
+      )}
+      {state.step === 'social_confirmation' && <>
+        <AuthHeading title={`Confirma tu acceso con ${socialName}`}
+          text={`Vincularemos tu cuenta de ${socialName} con el número verificado ${state.phone}. `
+            + 'Si ya tenías una cuenta con esa identidad, conservaremos tus viajes y tu rol.'} />
+        <Button title={`Vincular ${socialName} y continuar`} loading={state.busy}
+          onPress={() => { void controller.complete(); }} />
+        <Button title="Cancelar" variant="secondary" disabled={state.busy} onPress={back} />
+      </>}
+      {state.step === 'profile' && <>
+        <ProfileCompletionForm phone={state.phone} capabilities={state.capabilities} busy={state.busy}
+          onSubmit={(profile) => { void controller.complete(profile); }} />
+        <Button title="Cambiar número" variant="secondary" disabled={state.busy} onPress={back} />
+      </>}
+      {state.step === 'complete' && (
+        <SessionEntering busy={state.busy} error={state.error}
+          onRetry={() => { void controller.complete(); }} onBack={back} />
+      )}
+      {state.step !== 'complete' && state.step !== 'loading' && state.error && (
+        <AuthNotice tone="error">{state.error}</AuthNotice>
+      )}
+      {socialError && <AuthNotice tone="error">{socialError}</AuthNotice>}
+    </AuthScaffold>
   );
 }
-
-const createStyles = ({ colors }: Tema) => StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.background },
-  flex: { flex: 1 },
-  content: { flexGrow: 1, padding: spacing.lg, gap: spacing.xl, justifyContent: 'center' },
-  form: { width: '100%', maxWidth: 480, alignSelf: 'center', gap: spacing.md },
-  title: { fontSize: fontSize.xl, fontWeight: fontWeight.bold, color: colors.text },
-  text: { fontSize: fontSize.md, color: colors.textSecondary },
-  error: { fontSize: fontSize.md, color: colors.danger },
-  checkbox: { minHeight: 48, justifyContent: 'center', padding: spacing.sm,
-    borderWidth: 1, borderColor: colors.bordeControl, borderRadius: radius.sm },
-});

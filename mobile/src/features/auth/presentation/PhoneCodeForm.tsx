@@ -6,6 +6,7 @@ import { Button } from '@/shared/components/Button';
 import { TextField } from '@/shared/components/TextField';
 import { usePhoneVerification } from '../application/usePhoneVerification';
 import type { PhoneChallenge, PhoneVerificationProof } from '../domain/phoneVerification';
+import { AuthHeading, AuthNotice } from './entry/AuthScaffold';
 
 type Props = {
   phone: string;
@@ -53,27 +54,24 @@ export function PhoneCodeForm({ phone, deviceId, onVerified, onChangePhone,
   const verifySeconds = Math.max(0, Math.ceil((state.verifyAt - now) / 1000));
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Verifica tu número</Text>
-      <Text style={styles.text}>{phone}</Text>
-      {controller.simulated && <Text style={styles.text}>OTP de prueba · sin SMS</Text>}
-      {state.phase === 'waiting' && <Text accessibilityRole="text" accessibilityLiveRegion="polite" style={styles.text}>
-        Ya solicitaste un código hace poco. Pediremos uno nuevo cuando termine la espera.
-      </Text>}
+      <AuthHeading title="Verifica tu número" text={`Enviamos un código de seis dígitos al ${phone}.`} />
+      {controller.simulated && <Text style={styles.hint}>OTP de prueba · sin SMS</Text>}
+      {state.phase === 'waiting' && <View accessibilityLiveRegion="polite">
+        <AuthNotice>Ya solicitaste un código hace poco. Pediremos uno nuevo cuando termine la espera.</AuthNotice>
+      </View>}
       {state.challenge && (
         <>
-          <TextField label="Código de seis dígitos" value={state.code}
+          <TextField label="Código de seis dígitos" value={state.code} leadingIcon="shield-checkmark-outline"
             onChangeText={controller.setCode} keyboardType="number-pad" maxLength={6}
             editable={!busy} autoComplete="one-time-code" textContentType="oneTimeCode"
-            error={state.error ?? undefined} />
+            placeholder="123456" style={styles.code} error={state.error ?? undefined} />
           <Button title={verifySeconds ? `Continuar en ${verifySeconds} s` : 'Continuar'}
             loading={state.phase === 'verifying'}
             disabled={busy || state.code.length !== 6 || verifySeconds > 0}
             onPress={() => { void controller.verify(deviceId); }} />
         </>
       )}
-      {!state.challenge && state.error && (
-        <Text accessibilityRole="alert" style={styles.error}>{state.error}</Text>
-      )}
+      {!state.challenge && state.error && <AuthNotice tone="error">{state.error}</AuthNotice>}
       {state.phase !== 'verified' && (
         <Button title={retrySeconds ? `Solicitar código en ${retrySeconds} s` : 'Solicitar código'}
           variant="secondary" loading={state.phase === 'requesting'}
@@ -90,7 +88,6 @@ export function PhoneCodeForm({ phone, deviceId, onVerified, onChangePhone,
 
 const createStyles = ({ colors }: Tema) => StyleSheet.create({
   container: { gap: spacing.md },
-  title: { fontSize: fontSize.xl, color: colors.text },
-  text: { fontSize: fontSize.md, color: colors.textSecondary },
-  error: { fontSize: fontSize.sm, color: colors.danger },
+  hint: { fontSize: fontSize.sm, color: colors.aviso },
+  code: { fontSize: fontSize.lg, letterSpacing: 6 },
 });

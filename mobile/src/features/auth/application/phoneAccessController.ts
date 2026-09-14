@@ -4,6 +4,8 @@ import type { PhoneVerificationProof } from '../domain/phoneVerification';
 import type { AuthResult } from '../domain/types';
 
 export type EntryMode = 'sign_in' | 'social' | 'recovery' | 'recovery_complete';
+/** Profile captured before verification (sign-up screen) so completion needs no extra step. */
+export type EntryProfile = { fullName: string; termsVersion: string };
 type State = {
   step: 'loading' | 'phone' | 'code' | 'profile' | 'recovery' | 'case' | 'complete' | 'social_confirmation';
   socialProvider: SocialProvider | null;
@@ -31,6 +33,7 @@ export function createPhoneAccessController(dependencies: {
   let pending: AbortController | null = null;
   let completion: PhoneCompletion | null = null;
   let social: SocialCredential | null = null;
+  let profile: EntryProfile | null = null;
   const publish = (values: Partial<State>) => {
     state = { ...state, ...values };
     listeners.forEach((listener) => listener());
@@ -64,7 +67,7 @@ export function createPhoneAccessController(dependencies: {
   return {
     getSnapshot: () => state,
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
-    dispose() { cancel(); completion = null; social = null; publish({ busy: false, socialProvider: null }); },
+    dispose() { cancel(); completion = null; social = null; profile = null; publish({ busy: false, socialProvider: null }); },
     async initialize() {
       await run(async (signal, current) => {
         const [capabilities, deviceId] = await Promise.all([
@@ -73,14 +76,14 @@ export function createPhoneAccessController(dependencies: {
         if (current()) publish({ step: 'phone', capabilities, deviceId });
       });
     },
-    start(phone: string, mode: EntryMode) {
-      cancel(); completion = null;
+    start(phone: string, mode: EntryMode, entryProfile: EntryProfile | null = null) {
+      cancel(); completion = null; profile = entryProfile;
       if (mode !== 'social') social = null;
       publish({ phone, mode, step: 'code', busy: false, error: null, caseId: null,
         socialProvider: social?.provider ?? null });
     },
     back() {
-      cancel(); completion = null; social = null;
+      cancel(); completion = null; social = null; profile = null;
       publish({ step: 'phone', mode: 'sign_in', busy: false, error: null, socialProvider: null });
     },
     async signInSocial(credential: SocialCredential) {
@@ -103,7 +106,7 @@ export function createPhoneAccessController(dependencies: {
     async verified(proof: PhoneVerificationProof) {
       completion = { phone: state.phone, verificationToken: proof.verificationToken,
         deviceId: state.deviceId, deviceName: dependencies.deviceName, requestId: dependencies.randomId(),
-        ...(social ? { social } : {}) };
+        ...(social ? { social } : {}), ...(profile ?? {}) };
       if (social) { publish({ step: 'social_confirmation' }); return; }
       if (state.mode.startsWith('recovery')) { publish({ step: 'recovery' }); return; }
       publish({ step: 'complete' });

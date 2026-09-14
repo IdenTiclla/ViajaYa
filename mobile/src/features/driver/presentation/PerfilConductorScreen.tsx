@@ -55,7 +55,7 @@ export function PerfilConductorScreen() {
           <Text style={styles.modeTitle}>Modo pasajero</Text>
           <Text style={styles.modeText}>
             {user?.isOnline
-              ? 'Desconéctate para poder pedir viajes como pasajero.'
+              ? 'Te desconectaremos y volverás a pedir viajes como pasajero. Tu registro de conductor se conserva.'
               : 'Tu registro de conductor se conserva; vuelves cuando quieras.'}
           </Text>
           {switchMode.isError && (
@@ -67,7 +67,6 @@ export function PerfilConductorScreen() {
             title="Cambiar a modo pasajero"
             variant="secondary"
             loading={switchMode.isPending}
-            disabled={!!user?.isOnline}
             onPress={() => switchMode.mutate('passenger')}
           />
         </View>

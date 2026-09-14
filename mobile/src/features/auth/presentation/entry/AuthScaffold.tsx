@@ -8,7 +8,7 @@ import { BrandHeader } from '../BrandHeader';
 
 type Props = { subtitle?: string; children: ReactNode };
 
-/** Frame for the entry screen: brand on top, form card in the middle. */
+/** Frame for the entry screen: brand on top, form below, flat on the screen background. */
 export function AuthScaffold({ subtitle, children }: Props) {
   const { styles } = useEstilos(createStyles);
   return (
@@ -63,18 +63,12 @@ export function AuthLoading({ busy, error, onRetry }: LoadingProps) {
   );
 }
 
-const createStyles = ({ colors, modo }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Tema) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
   content: { flexGrow: 1, paddingHorizontal: spacing.lg, paddingVertical: spacing.xl,
     gap: spacing.xl, justifyContent: 'center' },
-  card: {
-    width: '100%', maxWidth: 480, alignSelf: 'center', gap: spacing.md,
-    padding: spacing.lg, borderRadius: radius.lg,
-    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
-    ...(modo === 'light' ? { shadowColor: '#0F2266', shadowOpacity: 0.08, shadowRadius: 16,
-      shadowOffset: { width: 0, height: 8 }, elevation: 3 } : {}),
-  },
+  card: { width: '100%', maxWidth: 480, alignSelf: 'center', gap: spacing.md },
   heading: { gap: spacing.xs },
   title: { fontSize: fontSize.xl, fontWeight: fontWeight.bold, color: colors.text },
   text: { fontSize: fontSize.md, color: colors.textSecondary, lineHeight: 22 },

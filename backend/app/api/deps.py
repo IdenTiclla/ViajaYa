@@ -49,7 +49,6 @@ from app.application.managed_sessions import ManagedSessions
 from app.application.social_accounts import SocialAccounts
 from app.application.use_cases.accept_offer import AcceptOffer
 from app.application.use_cases.announce_open_ride import AnnounceOpenRide
-from app.application.use_cases.apply_as_driver import ApplyAsDriver
 from app.application.use_cases.build_driver_realtime_snapshot import (
     BuildDriverRealtimeSnapshot,
 )
@@ -91,6 +90,7 @@ from app.application.use_cases.get_ride import GetRide
 from app.application.use_cases.get_scheduled_actions_operational_snapshot import (
     GetScheduledActionsOperationalSnapshot,
 )
+from app.application.use_cases.list_driver_vehicles import ListDriverVehicles
 from app.application.use_cases.list_offers_for_ride import ListOffersForRide
 from app.application.use_cases.list_open_rides import ListOpenRides
 from app.application.use_cases.list_recent_destinations import ListRecentDestinations
@@ -100,7 +100,9 @@ from app.application.use_cases.manage_account_sessions import ManageAccountSessi
 from app.application.use_cases.pause_ride_for_edit import PauseRideForEdit
 from app.application.use_cases.rate_ride import RateRide
 from app.application.use_cases.refresh_managed_session import RefreshManagedSession
+from app.application.use_cases.register_driver_vehicle import RegisterDriverVehicle
 from app.application.use_cases.reject_offer import RejectOffer
+from app.application.use_cases.remove_driver_vehicle import RemoveDriverVehicle
 from app.application.use_cases.renew_passenger_presence import RenewPassengerPresence
 from app.application.use_cases.request_account_recovery import RequestAccountRecovery
 from app.application.use_cases.request_phone_code import RequestPhoneCode
@@ -131,6 +133,7 @@ from app.infrastructure.db.account_access import (
 )
 from app.infrastructure.db.account_recovery import SqlAlchemyRecoveryRepository
 from app.infrastructure.db.clock import database_utc_now
+from app.infrastructure.db.driver_vehicles import SqlAlchemyDriverVehicleRepository
 from app.infrastructure.db.outbox import SqlAlchemyRealtimeOutbox
 from app.infrastructure.db.outbox_observability import (
     SqlAlchemyRealtimeOutboxOperationalReader,
@@ -797,10 +800,24 @@ def get_set_driver_online(
     )
 
 
-def get_apply_as_driver(session: SessionDep, settings: SettingsDep) -> ApplyAsDriver:
-    return ApplyAsDriver(
+def get_register_driver_vehicle(
+    session: SessionDep, settings: SettingsDep
+) -> RegisterDriverVehicle:
+    return RegisterDriverVehicle(
         SqlAlchemyUserRepository(session),
+        SqlAlchemyDriverVehicleRepository(session),
         auto_approve=settings.driver_auto_approve,
+    )
+
+
+def get_list_driver_vehicles(session: SessionDep) -> ListDriverVehicles:
+    return ListDriverVehicles(SqlAlchemyDriverVehicleRepository(session))
+
+
+def get_remove_driver_vehicle(session: SessionDep) -> RemoveDriverVehicle:
+    return RemoveDriverVehicle(
+        SqlAlchemyUserRepository(session),
+        SqlAlchemyDriverVehicleRepository(session),
     )
 
 
@@ -808,6 +825,7 @@ def get_switch_account_mode(session: SessionDep) -> SwitchAccountMode:
     return SwitchAccountMode(
         SqlAlchemyUserRepository(session),
         SqlAlchemyRideRequestRepository(session),
+        SqlAlchemyDriverVehicleRepository(session),
     )
 
 

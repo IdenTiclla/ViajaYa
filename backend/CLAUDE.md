@@ -18,7 +18,7 @@ app/
 │   ├── value_objects.py       # Email, GeoPoint, FareOffer (frozen, slots)
 │   ├── repositories.py        # Interfaces (puertos): User, RideRequest, Offer, Rating, SavedPlace
 │   ├── ride_policy.py         # OFFER_TTL=30s + offer_expires_at / is_offer_expired / is_offer_active
-│   └── exceptions.py          # DomainError + 17 excepciones específicas
+│   └── exceptions.py          # DomainError + 18 excepciones específicas
 ├── application/             # Casos de uso. Orquestan el dominio.
 │   ├── use_cases/             # UN caso de uso por archivo (lista abajo)
 │   ├── interfaces.py          # Puertos técnicos y proyecciones de lectura de aplicación

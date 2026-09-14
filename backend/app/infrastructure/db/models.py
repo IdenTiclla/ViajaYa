@@ -872,3 +872,48 @@ class ScheduledActionModel(Base):
         onupdate=func.now(),
         nullable=False,
     )
+
+
+class DriverVehicleModel(Base):
+    __tablename__ = "driver_vehicles"
+    __table_args__ = (
+        UniqueConstraint("user_id", "vehicle_type", name="uq_driver_vehicles_user_type"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    vehicle_type: Mapped[VehicleType] = mapped_column(
+        Enum(
+            VehicleType,
+            name="vehicle_type",
+            native_enum=False,
+            length=20,
+            values_callable=_enum_values,
+        ),
+        nullable=False,
+    )
+    plate: Mapped[str] = mapped_column(String(20), nullable=False)
+    vehicle_model: Mapped[str] = mapped_column(String(120), nullable=False)
+    # JSON list of ServiceType values the driver serves with this vehicle.
+    services: Mapped[list[str]] = mapped_column(
+        _OUTBOX_PAYLOAD_TYPE, default=list, server_default="[]", nullable=False
+    )
+    status: Mapped[DriverStatus] = mapped_column(
+        Enum(
+            DriverStatus,
+            name="driver_status",
+            native_enum=False,
+            length=20,
+            values_callable=_enum_values,
+        ),
+        default=DriverStatus.PENDING,
+        server_default=DriverStatus.PENDING.value,
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

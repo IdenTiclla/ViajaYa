@@ -2,10 +2,20 @@
   "components": {
     "schemas": {
       "AccountModeRequest": {
-        "description": "Active mode of the account: ``passenger`` or ``driver``.",
+        "description": "Active mode of the account; ``vehicle_type`` picks the vehicle to drive with.",
         "properties": {
           "mode": {
             "$ref": "#/components/schemas/UserRole"
+          },
+          "vehicle_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VehicleType"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -142,43 +152,6 @@
         "title": "CreateRideRequestRequest",
         "type": "object"
       },
-      "DriverApplicationRequest": {
-        "description": "Vehicle and services a passenger registers to drive with.",
-        "properties": {
-          "plate": {
-            "maxLength": 20,
-            "minLength": 3,
-            "title": "Plate",
-            "type": "string"
-          },
-          "services": {
-            "items": {
-              "$ref": "#/components/schemas/ServiceType"
-            },
-            "maxItems": 4,
-            "minItems": 1,
-            "title": "Services",
-            "type": "array"
-          },
-          "vehicle_model": {
-            "maxLength": 120,
-            "minLength": 2,
-            "title": "Vehicle Model",
-            "type": "string"
-          },
-          "vehicle_type": {
-            "$ref": "#/components/schemas/VehicleType"
-          }
-        },
-        "required": [
-          "vehicle_type",
-          "plate",
-          "vehicle_model",
-          "services"
-        ],
-        "title": "DriverApplicationRequest",
-        "type": "object"
-      },
       "DriverEarningsResponse": {
         "description": "Resumen de ganancias del conductor (hoy, histórico y recientes).",
         "properties": {
@@ -227,6 +200,113 @@
         ],
         "title": "DriverStatus",
         "type": "string"
+      },
+      "DriverVehicleRegistrationResponse": {
+        "description": "The registered vehicle plus the account (aggregate status, active vehicle).",
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/UserResponse"
+          },
+          "vehicle": {
+            "$ref": "#/components/schemas/DriverVehicleResponse"
+          }
+        },
+        "required": [
+          "user",
+          "vehicle"
+        ],
+        "title": "DriverVehicleRegistrationResponse",
+        "type": "object"
+      },
+      "DriverVehicleRequest": {
+        "description": "One vehicle (at most one per type) and the services served with it.",
+        "properties": {
+          "plate": {
+            "maxLength": 20,
+            "minLength": 3,
+            "title": "Plate",
+            "type": "string"
+          },
+          "services": {
+            "items": {
+              "$ref": "#/components/schemas/ServiceType"
+            },
+            "maxItems": 4,
+            "minItems": 1,
+            "title": "Services",
+            "type": "array"
+          },
+          "vehicle_model": {
+            "maxLength": 120,
+            "minLength": 2,
+            "title": "Vehicle Model",
+            "type": "string"
+          },
+          "vehicle_type": {
+            "$ref": "#/components/schemas/VehicleType"
+          }
+        },
+        "required": [
+          "vehicle_type",
+          "plate",
+          "vehicle_model",
+          "services"
+        ],
+        "title": "DriverVehicleRequest",
+        "type": "object"
+      },
+      "DriverVehicleResponse": {
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "plate": {
+            "title": "Plate",
+            "type": "string"
+          },
+          "services": {
+            "items": {
+              "$ref": "#/components/schemas/ServiceType"
+            },
+            "title": "Services",
+            "type": "array"
+          },
+          "status": {
+            "$ref": "#/components/schemas/DriverStatus"
+          },
+          "vehicle_model": {
+            "title": "Vehicle Model",
+            "type": "string"
+          },
+          "vehicle_type": {
+            "$ref": "#/components/schemas/VehicleType"
+          }
+        },
+        "required": [
+          "id",
+          "vehicle_type",
+          "plate",
+          "vehicle_model",
+          "services",
+          "status",
+          "created_at"
+        ],
+        "title": "DriverVehicleResponse",
+        "type": "object"
       },
       "EarningsItemResponse": {
         "description": "Una línea del desglose de ganancias.",
@@ -3878,66 +3958,6 @@
         ]
       }
     },
-    "/api/v1/drivers/me/application": {
-      "post": {
-        "description": "Register (or update) the vehicle and services the account wants to drive with.\n\nThe account stays in passenger mode; ``driver_status`` tells whether it can\nswitch to driver mode (``approved``) or is still under review (``pending``).",
-        "operationId": "apply_as_driver_api_v1_drivers_me_application_post",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DriverApplicationRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UserResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Apply As Driver",
-        "tags": [
-          "drivers"
-        ]
-      }
-    },
     "/api/v1/drivers/me/earnings": {
       "get": {
         "description": "Resumen de ganancias del conductor (hoy, histórico y viajes recientes).",
@@ -3990,7 +4010,7 @@
     },
     "/api/v1/drivers/me/mode": {
       "post": {
-        "description": "Switch the account between passenger and driver mode (approved drivers only).",
+        "description": "Switch between passenger and driver mode, choosing the vehicle to drive with.",
         "operationId": "switch_account_mode_api_v1_drivers_me_mode_post",
         "parameters": [
           {
@@ -4103,6 +4123,176 @@
           }
         },
         "summary": "Set Online",
+        "tags": [
+          "drivers"
+        ]
+      }
+    },
+    "/api/v1/drivers/me/vehicles": {
+      "get": {
+        "description": "Vehicles the account registered to drive with (taxi, moto and/or truck).",
+        "operationId": "list_vehicles_api_v1_drivers_me_vehicles_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DriverVehicleResponse"
+                  },
+                  "title": "Response List Vehicles Api V1 Drivers Me Vehicles Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Vehicles",
+        "tags": [
+          "drivers"
+        ]
+      },
+      "post": {
+        "description": "Register or update the vehicle of that type and the services served with it.\n\nThe account keeps its mode; ``user.driver_status`` aggregates the vehicles\n(``approved`` as soon as one is) and ``user.vehicle_type`` is the active one.",
+        "operationId": "register_vehicle_api_v1_drivers_me_vehicles_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DriverVehicleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriverVehicleRegistrationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Register Vehicle",
+        "tags": [
+          "drivers"
+        ]
+      }
+    },
+    "/api/v1/drivers/me/vehicles/{vehicle_type}": {
+      "delete": {
+        "description": "Remove a vehicle (not the one in use while in driver mode).",
+        "operationId": "remove_vehicle_api_v1_drivers_me_vehicles__vehicle_type__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vehicle_type",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/VehicleType"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Vehicle",
         "tags": [
           "drivers"
         ]

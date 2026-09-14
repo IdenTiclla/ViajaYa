@@ -14,6 +14,7 @@ from decimal import Decimal
 
 from app.domain.entities import (
     AuthProvider,
+    DriverVehicle,
     Location,
     Offer,
     RideRating,
@@ -24,6 +25,7 @@ from app.domain.entities import (
     ServiceType,
     User,
     UserRole,
+    VehicleType,
 )
 
 
@@ -425,6 +427,24 @@ class RatingSkipRepository(ABC):
     @abstractmethod
     async def add_if_absent(self, skip: RideRatingSkip) -> RideRatingSkip:
         """Persiste la omisión o devuelve la existente de forma idempotente."""
+
+
+class DriverVehicleRepository(ABC):
+    @abstractmethod
+    async def list_by_user(self, user_id: uuid.UUID) -> list[DriverVehicle]:
+        """Vehicles of the driver in ``VehicleType`` order (taxi, moto, truck)."""
+
+    @abstractmethod
+    async def get(self, user_id: uuid.UUID, vehicle_type: VehicleType) -> DriverVehicle | None:
+        """The driver's vehicle of that type, or ``None``."""
+
+    @abstractmethod
+    async def save(self, vehicle: DriverVehicle) -> DriverVehicle:
+        """Inserts or updates the vehicle (unique per user and type) and returns it."""
+
+    @abstractmethod
+    async def delete(self, vehicle: DriverVehicle) -> None:
+        """Removes the vehicle."""
 
 
 class SavedPlaceRepository(ABC):

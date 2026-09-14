@@ -14,6 +14,7 @@ from typing import Generic, Literal, TypeAlias, TypeVar
 
 from app.domain.entities import (
     AuthProvider,
+    DriverVehicle,
     Offer,
     PaymentMethod,
     RideRequest,
@@ -526,8 +527,8 @@ class DriverEarnings:
 
 
 @dataclass(frozen=True)
-class DriverApplicationInput:
-    """What a passenger fills in to register as a driver.
+class DriverVehicleInput:
+    """What a user fills in to register (or update) one of their driver vehicles.
 
     ``services`` must be a non-empty subset of what ``vehicle_type`` allows
     (see ``services_for_vehicle``): a taxi may serve ``taxi`` and/or
@@ -538,3 +539,11 @@ class DriverApplicationInput:
     plate: str
     vehicle_model: str
     services: tuple[ServiceType, ...]
+
+
+@dataclass(frozen=True)
+class DriverVehicleRegistration:
+    """Result of registering a vehicle: the vehicle and the account it updated."""
+
+    user: User
+    vehicle: DriverVehicle

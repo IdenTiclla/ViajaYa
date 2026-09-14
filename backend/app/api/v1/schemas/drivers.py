@@ -8,8 +8,9 @@ from decimal import Decimal
 
 from pydantic import BaseModel, Field
 
-from app.application.dto import DriverApplicationInput, DriverEarnings
-from app.domain.entities import ServiceType, UserRole, VehicleType
+from app.api.v1.schemas.auth import UserResponse
+from app.application.dto import DriverEarnings, DriverVehicleInput, DriverVehicleRegistration
+from app.domain.entities import DriverStatus, DriverVehicle, ServiceType, UserRole, VehicleType
 
 
 class OnlineRequest(BaseModel):
@@ -18,16 +19,16 @@ class OnlineRequest(BaseModel):
     is_online: bool
 
 
-class DriverApplicationRequest(BaseModel):
-    """Vehicle and services a passenger registers to drive with."""
+class DriverVehicleRequest(BaseModel):
+    """One vehicle (at most one per type) and the services served with it."""
 
     vehicle_type: VehicleType
     plate: str = Field(min_length=3, max_length=20)
     vehicle_model: str = Field(min_length=2, max_length=120)
     services: list[ServiceType] = Field(min_length=1, max_length=4)
 
-    def to_input(self) -> DriverApplicationInput:
-        return DriverApplicationInput(
+    def to_input(self) -> DriverVehicleInput:
+        return DriverVehicleInput(
             vehicle_type=self.vehicle_type,
             plate=self.plate,
             vehicle_model=self.vehicle_model,
@@ -35,10 +36,47 @@ class DriverApplicationRequest(BaseModel):
         )
 
 
+class DriverVehicleResponse(BaseModel):
+    id: uuid.UUID
+    vehicle_type: VehicleType
+    plate: str
+    vehicle_model: str
+    services: list[ServiceType]
+    status: DriverStatus
+    created_at: datetime | None
+
+    @classmethod
+    def from_entity(cls, vehicle: DriverVehicle) -> DriverVehicleResponse:
+        return cls(
+            id=vehicle.id,
+            vehicle_type=vehicle.vehicle_type,
+            plate=vehicle.plate,
+            vehicle_model=vehicle.vehicle_model,
+            services=list(vehicle.services),
+            status=vehicle.status,
+            created_at=vehicle.created_at,
+        )
+
+
+class DriverVehicleRegistrationResponse(BaseModel):
+    """The registered vehicle plus the account (aggregate status, active vehicle)."""
+
+    user: UserResponse
+    vehicle: DriverVehicleResponse
+
+    @classmethod
+    def from_dto(cls, result: DriverVehicleRegistration) -> DriverVehicleRegistrationResponse:
+        return cls(
+            user=UserResponse.from_entity(result.user),
+            vehicle=DriverVehicleResponse.from_entity(result.vehicle),
+        )
+
+
 class AccountModeRequest(BaseModel):
-    """Active mode of the account: ``passenger`` or ``driver``."""
+    """Active mode of the account; ``vehicle_type`` picks the vehicle to drive with."""
 
     mode: UserRole
+    vehicle_type: VehicleType | None = None
 
 
 class EarningsItemResponse(BaseModel):

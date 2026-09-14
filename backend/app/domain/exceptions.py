@@ -79,3 +79,7 @@ class InvalidRatingError(DomainError):
 
 class InvalidDriverApplicationError(DomainError):
     """The driver application is inconsistent (services outside the vehicle, bad plate…)."""
+
+
+class DriverVehicleNotFoundError(DomainError):
+    """The user has no registered vehicle of that type."""

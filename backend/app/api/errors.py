@@ -14,6 +14,7 @@ from app.domain.exceptions import (
     AlreadyRatedError,
     DomainError,
     DriverUnavailableError,
+    DriverVehicleNotFoundError,
     InvalidCredentialsError,
     InvalidDriverApplicationError,
     InvalidEmailError,
@@ -62,6 +63,7 @@ _STATUS_MAP: dict[type[DomainError], int] = {
     AlreadyRatedError: status.HTTP_409_CONFLICT,
     InvalidRatingError: 422,
     InvalidDriverApplicationError: 422,
+    DriverVehicleNotFoundError: status.HTTP_404_NOT_FOUND,
     UnsupportedProviderError: status.HTTP_400_BAD_REQUEST,
 }
 

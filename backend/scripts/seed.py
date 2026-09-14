@@ -14,9 +14,17 @@ import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from app.domain.entities import DriverStatus, User, UserRole, VehicleType, services_for_vehicle
+from app.domain.entities import (
+    DriverStatus,
+    DriverVehicle,
+    User,
+    UserRole,
+    VehicleType,
+    services_for_vehicle,
+)
 from app.infrastructure.config import get_settings
 from app.infrastructure.db.account_access import SqlAlchemyPhoneAccountRepository
+from app.infrastructure.db.driver_vehicles import SqlAlchemyDriverVehicleRepository
 from app.infrastructure.db.session import async_session_factory
 
 
@@ -116,6 +124,17 @@ async def seed() -> None:
             )
             await accounts.set_verified_phone(user.id, seed_user.phone, now)
             await accounts.accept_terms(user.id, terms_version, now)
+            if seed_user.vehicle_type is not None:
+                await SqlAlchemyDriverVehicleRepository(session).save(
+                    DriverVehicle(
+                        user_id=user.id,
+                        vehicle_type=seed_user.vehicle_type,
+                        plate=seed_user.plate or "",
+                        vehicle_model=seed_user.vehicle_model or "",
+                        services=services_for_vehicle(seed_user.vehicle_type),
+                        status=DriverStatus.APPROVED,
+                    )
+                )
             created += 1
             print(f"+ creado: {seed_user.phone} ({seed_user.role.value})")
         await session.commit()

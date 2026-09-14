@@ -6,9 +6,16 @@ import hashlib
 import uuid
 from dataclasses import dataclass
 
-from app.domain.entities import DriverStatus, UserRole, VehicleType, services_for_vehicle
+from app.domain.entities import (
+    DriverStatus,
+    DriverVehicle,
+    UserRole,
+    VehicleType,
+    services_for_vehicle,
+)
 from app.infrastructure.config import Settings
 from app.infrastructure.db.account_access import SqlAlchemyPhoneAccountRepository
+from app.infrastructure.db.driver_vehicles import SqlAlchemyDriverVehicleRepository
 from app.infrastructure.db.repositories import SqlAlchemyUserRepository
 from tests.unit.test_environment import environment_values
 
@@ -118,3 +125,13 @@ async def promote_to_driver(
         user.driver_status = DriverStatus.APPROVED
         user.is_online = online
         await users.update(user)
+        await SqlAlchemyDriverVehicleRepository(session).save(
+            DriverVehicle(
+                user_id=user.id,
+                vehicle_type=vehicle,
+                plate="TEST-1",
+                vehicle_model="Test",
+                services=services_for_vehicle(vehicle),
+                status=DriverStatus.APPROVED,
+            )
+        )

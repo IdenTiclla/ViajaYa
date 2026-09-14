@@ -55,6 +55,7 @@ from app.application.use_cases.withdraw_offer import WithdrawOffer
 from app.domain.entities import (
     ACTIVE_OFFER_STATUSES,
     AuthProvider,
+    DriverVehicle,
     Location,
     Offer,
     OfferStatus,
@@ -66,11 +67,13 @@ from app.domain.entities import (
     ServiceType,
     User,
     UserRole,
+    VehicleType,
     driver_can_serve,
 )
 from app.domain.exceptions import InvalidTokenError
 from app.domain.repositories import (
     DriverOfflineTransition,
+    DriverVehicleRepository,
     OfferAcceptance,
     OfferCreation,
     OfferRepository,
@@ -147,6 +150,34 @@ class InMemoryUserRepository(UserRepository):
         updated = replace(user, is_online=is_online)
         self.users[user_id] = updated
         return updated
+
+
+class InMemoryDriverVehicleRepository(DriverVehicleRepository):
+    def __init__(self) -> None:
+        self.vehicles: dict[uuid.UUID, DriverVehicle] = {}
+
+    async def list_by_user(self, user_id: uuid.UUID) -> list[DriverVehicle]:
+        return sorted(
+            (v for v in self.vehicles.values() if v.user_id == user_id),
+            key=lambda v: list(VehicleType).index(v.vehicle_type),
+        )
+
+    async def get(self, user_id: uuid.UUID, vehicle_type: VehicleType) -> DriverVehicle | None:
+        return next(
+            (
+                v
+                for v in self.vehicles.values()
+                if v.user_id == user_id and v.vehicle_type is vehicle_type
+            ),
+            None,
+        )
+
+    async def save(self, vehicle: DriverVehicle) -> DriverVehicle:
+        self.vehicles[vehicle.id] = vehicle
+        return vehicle
+
+    async def delete(self, vehicle: DriverVehicle) -> None:
+        self.vehicles.pop(vehicle.id, None)
 
 
 class InMemoryRideRequestRepository(RideRequestRepository):

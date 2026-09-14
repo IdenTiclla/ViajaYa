@@ -8,9 +8,11 @@ from fastapi import APIRouter, Depends
 
 from app.api.deps import (
     CurrentUserDep,
-    get_apply_as_driver,
     get_driver_active_ride,
     get_get_driver_earnings,
+    get_list_driver_vehicles,
+    get_register_driver_vehicle,
+    get_remove_driver_vehicle,
     get_set_driver_online,
     get_switch_account_mode,
 )
@@ -18,32 +20,58 @@ from app.api.v1 import events
 from app.api.v1.schemas.auth import UserResponse
 from app.api.v1.schemas.drivers import (
     AccountModeRequest,
-    DriverApplicationRequest,
     DriverEarningsResponse,
+    DriverVehicleRegistrationResponse,
+    DriverVehicleRequest,
+    DriverVehicleResponse,
     OnlineRequest,
 )
 from app.api.v1.schemas.rides import RideResponse
-from app.application.use_cases.apply_as_driver import ApplyAsDriver
 from app.application.use_cases.get_driver_active_ride import GetDriverActiveRide
 from app.application.use_cases.get_driver_earnings import GetDriverEarnings
+from app.application.use_cases.list_driver_vehicles import ListDriverVehicles
+from app.application.use_cases.register_driver_vehicle import RegisterDriverVehicle
+from app.application.use_cases.remove_driver_vehicle import RemoveDriverVehicle
 from app.application.use_cases.set_driver_online import SetDriverOnline
 from app.application.use_cases.switch_account_mode import SwitchAccountMode
+from app.domain.entities import VehicleType
 
 router = APIRouter(prefix="/drivers", tags=["drivers"])
 
 
-@router.post("/me/application", response_model=UserResponse)
-async def apply_as_driver(
-    body: DriverApplicationRequest,
+@router.get("/me/vehicles", response_model=list[DriverVehicleResponse])
+async def list_vehicles(
     current_user: CurrentUserDep,
-    use_case: Annotated[ApplyAsDriver, Depends(get_apply_as_driver)],
-) -> UserResponse:
-    """Register (or update) the vehicle and services the account wants to drive with.
+    use_case: Annotated[ListDriverVehicles, Depends(get_list_driver_vehicles)],
+) -> list[DriverVehicleResponse]:
+    """Vehicles the account registered to drive with (taxi, moto and/or truck)."""
+    vehicles = await use_case.execute(current_user)
+    return [DriverVehicleResponse.from_entity(vehicle) for vehicle in vehicles]
 
-    The account stays in passenger mode; ``driver_status`` tells whether it can
-    switch to driver mode (``approved``) or is still under review (``pending``).
+
+@router.post("/me/vehicles", response_model=DriverVehicleRegistrationResponse)
+async def register_vehicle(
+    body: DriverVehicleRequest,
+    current_user: CurrentUserDep,
+    use_case: Annotated[RegisterDriverVehicle, Depends(get_register_driver_vehicle)],
+) -> DriverVehicleRegistrationResponse:
+    """Register or update the vehicle of that type and the services served with it.
+
+    The account keeps its mode; ``user.driver_status`` aggregates the vehicles
+    (``approved`` as soon as one is) and ``user.vehicle_type`` is the active one.
     """
-    user = await use_case.execute(current_user, body.to_input())
+    result = await use_case.execute(current_user, body.to_input())
+    return DriverVehicleRegistrationResponse.from_dto(result)
+
+
+@router.delete("/me/vehicles/{vehicle_type}", response_model=UserResponse)
+async def remove_vehicle(
+    vehicle_type: VehicleType,
+    current_user: CurrentUserDep,
+    use_case: Annotated[RemoveDriverVehicle, Depends(get_remove_driver_vehicle)],
+) -> UserResponse:
+    """Remove a vehicle (not the one in use while in driver mode)."""
+    user = await use_case.execute(current_user, vehicle_type)
     return UserResponse.from_entity(user)
 
 
@@ -53,8 +81,8 @@ async def switch_account_mode(
     current_user: CurrentUserDep,
     use_case: Annotated[SwitchAccountMode, Depends(get_switch_account_mode)],
 ) -> UserResponse:
-    """Switch the account between passenger and driver mode (approved drivers only)."""
-    user = await use_case.execute(current_user, body.mode)
+    """Switch between passenger and driver mode, choosing the vehicle to drive with."""
+    user = await use_case.execute(current_user, body.mode, body.vehicle_type)
     return UserResponse.from_entity(user)
 
 

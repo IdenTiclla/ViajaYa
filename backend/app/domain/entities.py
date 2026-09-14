@@ -97,6 +97,39 @@ def driver_can_serve(driver: User, service_type: ServiceType) -> bool:
 
 
 @dataclass
+class DriverVehicle:
+    """One vehicle a driver registered; a driver has at most one per ``VehicleType``.
+
+    ``services`` is the non-empty subset of ``services_for_vehicle`` the driver
+    serves with it and ``status`` its own review outcome. The vehicle chosen when
+    entering driver mode is copied onto ``User`` as the *active* vehicle.
+    """
+
+    user_id: uuid.UUID
+    vehicle_type: VehicleType
+    plate: str
+    vehicle_model: str
+    services: tuple[ServiceType, ...]
+    status: DriverStatus = DriverStatus.PENDING
+    id: uuid.UUID = field(default_factory=uuid.uuid4)
+    created_at: datetime | None = None
+
+    @property
+    def is_approved(self) -> bool:
+        return self.status is DriverStatus.APPROVED
+
+
+def aggregate_driver_status(vehicles: list[DriverVehicle]) -> DriverStatus | None:
+    """Account-level status: approved if any vehicle is, else pending if any is, else rejected."""
+
+    statuses = {vehicle.status for vehicle in vehicles}
+    for status in (DriverStatus.APPROVED, DriverStatus.PENDING, DriverStatus.REJECTED):
+        if status in statuses:
+            return status
+    return None
+
+
+@dataclass
 class User:
     """Usuario de la plataforma.
 
@@ -105,10 +138,11 @@ class User:
     (filled by Google) and ``provider_id`` keeps the historical provider id.
 
     ``role`` is the *active mode* of the account: an approved driver
-    (``driver_status == APPROVED``) switches between ``PASSENGER`` and ``DRIVER``
-    and is never both at once. Driver fields (``vehicle_type``, ``plate``,
-    ``vehicle_model``, ``driver_services``, ``rating``, ``is_online``) belong to
-    the driver application and survive while the account rides as a passenger.
+    (``driver_status == APPROVED``, aggregated over its ``DriverVehicle``s)
+    switches between ``PASSENGER`` and ``DRIVER`` and is never both at once.
+    ``vehicle_type``/``plate``/``vehicle_model``/``driver_services`` describe the
+    **active vehicle** (the one chosen when entering driver mode) and survive
+    while the account rides as a passenger.
     """
 
     full_name: str
@@ -146,6 +180,14 @@ class User:
     @property
     def offered_services(self) -> tuple[ServiceType, ...]:
         return offered_services(self.vehicle_type, self.driver_services)
+
+    def activate_vehicle(self, vehicle: DriverVehicle | None) -> None:
+        """Copy the vehicle onto the account (the pool and offers read it from here)."""
+
+        self.vehicle_type = vehicle.vehicle_type if vehicle else None
+        self.plate = vehicle.plate if vehicle else None
+        self.vehicle_model = vehicle.vehicle_model if vehicle else None
+        self.driver_services = vehicle.services if vehicle else ()
 
 
 class PaymentMethod(enum.StrEnum):

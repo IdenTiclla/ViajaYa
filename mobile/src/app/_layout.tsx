@@ -24,6 +24,7 @@ function RootNavigator() {
   const { colors, styles } = useThemedStyles(createStyles);
   const status = useAuthStore((s) => s.status);
   const user = useAuthStore((s) => s.user);
+  const modeChoicePending = useAuthStore((s) => s.modeChoicePending);
   const bootstrap = useAuthStore((s) => s.bootstrap);
   const identity = user?.id ?? null;
   const [readyIdentity, setReadyIdentity] = useState<string | null | undefined>(undefined);
@@ -60,7 +61,10 @@ function RootNavigator() {
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Protected guard={isAuthenticated}>
+      {/* Guard it on the pending choice: when a protected group closes, the stack
+          falls back to the first allowed screen, and this one must not catch
+          plain passengers. */}
+      <Stack.Protected guard={isAuthenticated && modeChoicePending}>
         <Stack.Screen name="elegir-modo" options={{ gestureEnabled: false }} />
       </Stack.Protected>
       <Stack.Protected guard={isAuthenticated && !isDriver}>

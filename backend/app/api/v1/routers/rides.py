@@ -28,11 +28,13 @@ from app.api.deps import (
     get_list_open_rides,
     get_list_recent_destinations,
     get_list_ride_history,
+    get_mark_rider_on_the_way,
     get_passenger_active_ride,
     get_pause_ride_for_edit,
     get_pending_rating_ride,
     get_rate_ride,
     get_reject_offer,
+    get_ride_rating,
     get_skip_ride_rating,
     get_update_ride_fare,
     get_update_ride_status,
@@ -68,10 +70,12 @@ from app.application.use_cases.edit_ride import EditRide
 from app.application.use_cases.get_passenger_active_ride import GetPassengerActiveRide
 from app.application.use_cases.get_pending_rating_ride import GetPendingRatingRide
 from app.application.use_cases.get_ride import GetRide
+from app.application.use_cases.get_ride_rating import GetRideRating
 from app.application.use_cases.list_offers_for_ride import ListOffersForRide
 from app.application.use_cases.list_open_rides import ListOpenRides
 from app.application.use_cases.list_recent_destinations import ListRecentDestinations
 from app.application.use_cases.list_ride_history import ListRideHistory
+from app.application.use_cases.mark_rider_on_the_way import MarkRiderOnTheWay
 from app.application.use_cases.pause_ride_for_edit import PauseRideForEdit
 from app.application.use_cases.rate_ride import RateRide
 from app.application.use_cases.reject_offer import RejectOffer
@@ -310,6 +314,16 @@ async def get_ride(
     return RideResponse.from_detail(detail)
 
 
+@router.get("/{ride_id}/rating", response_model=RatingResponse | None)
+async def get_ride_rating_response(
+    ride_id: uuid.UUID,
+    current_user: CurrentUserDep,
+    use_case: Annotated[GetRideRating, Depends(get_ride_rating)],
+) -> RatingResponse | None:
+    rating = await use_case.execute(current_user, ride_id)
+    return RatingResponse.from_entity(rating) if rating is not None else None
+
+
 @router.post(
     "/{ride_id}/rating",
     response_model=RatingResponse,
@@ -369,6 +383,7 @@ async def create_offer(
             accept_at_fare=body.accept_at_fare,
             price=body.price,
             eta_min=body.eta_min,
+            expected_pool_version=body.expected_pool_version,
         ),
     )
     if result.superseded_offer_id is not None:
@@ -389,6 +404,18 @@ async def create_offer(
         _EXPIRY_TASKS.add(task)
         task.add_done_callback(_EXPIRY_TASKS.discard)
     return OfferResponse.from_detail(result.detail)
+
+
+@router.post("/{ride_id}/rider-on-the-way", response_model=RideResponse)
+async def mark_rider_on_the_way(
+    ride_id: uuid.UUID,
+    current_user: CurrentUserDep,
+    use_case: Annotated[MarkRiderOnTheWay, Depends(get_mark_rider_on_the_way)],
+) -> RideResponse:
+    """Persist a passenger's pickup notice and deliver it to both participants."""
+    detail = await use_case.execute(current_user, ride_id)
+    await events.publish_ride_status(detail)
+    return RideResponse.from_detail(detail)
 
 
 @router.patch("/{ride_id}/status", response_model=RideResponse)

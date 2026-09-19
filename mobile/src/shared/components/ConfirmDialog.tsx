@@ -1,6 +1,7 @@
 import { Ionicons, type IoniconsIconName } from '@react-native-vector-icons/ionicons';
 import { useRef } from 'react';
 import { AccessibilityInfo, findNodeHandle, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 import { Button } from './Button';
@@ -38,7 +39,9 @@ export function ConfirmDialog({
   const accent = destructive ? colors.danger : colors.primary;
   const tituloRef = useRef<Text>(null);
   const { width, fontScale } = useWindowDimensions();
-  const accionesEnColumna = width < 380 || fontScale > 1.2;
+  const insets = useSafeAreaInsets();
+  const mobileLayout = width < 600;
+  const accionesEnColumna = mobileLayout || fontScale > 1.2;
 
   return (
     <Modal
@@ -54,27 +57,30 @@ export function ConfirmDialog({
       }}
       onRequestClose={onCancel}>
       {/* Fondo: tocar fuera cancela. */}
-      <Pressable style={styles.backdrop} onPress={onCancel} accessible={false}>
+      <Pressable style={[styles.backdrop, mobileLayout && styles.mobileBackdrop,
+        { paddingTop: Math.max(insets.top, spacing.md), paddingBottom: Math.max(insets.bottom, spacing.md) }]}
+        onPress={onCancel} accessible={false}>
         {/* Tarjeta: detiene la propagación para no cancelar al tocarla. */}
         <Pressable
           style={styles.card}
-          onPress={() => {}}
+          onPress={event => event.stopPropagation()}
           accessible={false}
           onAccessibilityEscape={onCancel}
           accessibilityViewIsModal>
           <ScrollView style={styles.scroll} contentContainerStyle={styles.contenido} bounces={false}>
           {icon && (
-            <View style={[styles.iconWrap, { backgroundColor: `${accent}1A` }]}>
+            <View style={[styles.iconWrap, { backgroundColor: destructive ? colors.peligroSuave : colors.primarioSuave }]}>
               <Ionicons name={icon} size={26} color={accent} />
             </View>
           )}
           <Text ref={tituloRef} style={styles.title} accessibilityRole="header">{title}</Text>
           {message ? <Text style={styles.message}>{message}</Text> : null}
 
+          </ScrollView>
           <View style={[styles.actions, accionesEnColumna && styles.actionsColumn]}>
             <Button
               title={cancelText}
-              variant="secondary"
+              variant="text"
               style={!accionesEnColumna && styles.button}
               onPress={onCancel}
             />
@@ -85,7 +91,6 @@ export function ConfirmDialog({
               onPress={onConfirm}
             />
           </View>
-          </ScrollView>
         </Pressable>
       </Pressable>
     </Modal>
@@ -95,14 +100,15 @@ export function ConfirmDialog({
 const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: 'rgba(0,0,0,0.55)',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: spacing.lg,
+    paddingHorizontal: spacing.md,
   },
+  mobileBackdrop: { justifyContent: 'flex-end' },
   card: {
     width: '100%',
-    maxWidth: 360,
+    maxWidth: 440,
     maxHeight: '90%',
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
@@ -113,11 +119,11 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     elevation: 12,
   },
   scroll: { flexShrink: 1 },
-  contenido: { padding: spacing.lg, alignItems: 'center', gap: spacing.sm },
+  contenido: { padding: spacing.lg, alignItems: 'flex-start', gap: spacing.sm },
   iconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: radius.pill,
+    width: 52,
+    height: 52,
+    borderRadius: radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.xs,
@@ -126,20 +132,22 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     fontSize: fontSize.lg,
     fontWeight: fontWeight.bold,
     color: colors.text,
-    textAlign: 'center',
+    textAlign: 'left',
   },
   message: {
     fontSize: fontSize.sm,
     color: colors.textSecondary,
-    textAlign: 'center',
+    textAlign: 'left',
     lineHeight: 20,
   },
   actions: {
     flexDirection: 'row',
     gap: spacing.sm,
-    marginTop: spacing.md,
+    padding: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
     alignSelf: 'stretch',
   },
-  actionsColumn: { flexDirection: 'column' },
+  actionsColumn: { flexDirection: 'column-reverse' },
   button: { flex: 1 },
 });

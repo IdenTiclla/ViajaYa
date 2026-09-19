@@ -353,6 +353,7 @@ class CreateOfferInput:
     accept_at_fare: bool = True
     price: Decimal | None = None
     eta_min: int | None = None
+    expected_pool_version: int | None = None
 
 
 @dataclass(frozen=True)

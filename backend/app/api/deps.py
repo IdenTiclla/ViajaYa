@@ -87,6 +87,7 @@ from app.application.use_cases.get_realtime_outbox_operational_snapshot import (
     GetRealtimeOutboxOperationalSnapshot,
 )
 from app.application.use_cases.get_ride import GetRide
+from app.application.use_cases.get_ride_rating import GetRideRating
 from app.application.use_cases.get_scheduled_actions_operational_snapshot import (
     GetScheduledActionsOperationalSnapshot,
 )
@@ -97,6 +98,7 @@ from app.application.use_cases.list_recent_destinations import ListRecentDestina
 from app.application.use_cases.list_ride_history import ListRideHistory
 from app.application.use_cases.list_saved_places import ListSavedPlaces
 from app.application.use_cases.manage_account_sessions import ManageAccountSessions
+from app.application.use_cases.mark_rider_on_the_way import MarkRiderOnTheWay
 from app.application.use_cases.pause_ride_for_edit import PauseRideForEdit
 from app.application.use_cases.rate_ride import RateRide
 from app.application.use_cases.refresh_managed_session import RefreshManagedSession
@@ -657,6 +659,24 @@ def build_disconnect_passenger_presence(
     )
 
 
+def get_mark_rider_on_the_way(
+    session: SessionDep,
+    settings: SettingsDep,
+) -> MarkRiderOnTheWay:
+    recorder = (
+        OutboxUpdateRideStatusEventRecorder(SqlAlchemyRealtimeOutbox(session))
+        if settings.realtime_outbox_recording_enabled
+        else DisabledUpdateRideStatusEventRecorder()
+    )
+    return MarkRiderOnTheWay(
+        SqlAlchemyRideRequestRepository(session, commit_update_if_state=False),
+        SqlAlchemyOfferRepository(session),
+        SqlAlchemyUserRepository(session),
+        SqlAlchemyUnitOfWork(session),
+        recorder,
+    )
+
+
 def get_update_ride_status(
     session: SessionDep,
     settings: SettingsDep,
@@ -857,6 +877,13 @@ def get_get_ride(
     users: UserRepositoryDep,
 ) -> GetRide:
     return GetRide(rides, offers, users)
+
+
+def get_ride_rating(
+    rides: RideRequestRepositoryDep,
+    ratings: RatingRepositoryDep,
+) -> GetRideRating:
+    return GetRideRating(rides, ratings)
 
 
 def get_rate_ride(

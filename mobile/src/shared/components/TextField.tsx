@@ -9,7 +9,7 @@ import {
   View,
 } from 'react-native';
 
-import { controles, fontSize, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { controles, fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 
 type Props = TextInputProps & {
   label?: string;
@@ -20,6 +20,10 @@ type Props = TextInputProps & {
   /** Texto fijo antes del valor (p. ej. el código de país "+591"). */
   prefix?: string;
   error?: string;
+  /** Visible guidance below the field; an error takes precedence. */
+  helperText?: string;
+  /** For controlled fields with maxLength, display the character count. */
+  showCharacterCount?: boolean;
 };
 
 export const TextField = forwardRef<TextInput, Props>(function TextField(
@@ -29,6 +33,11 @@ export const TextField = forwardRef<TextInput, Props>(function TextField(
     password = false,
     prefix,
     error,
+    helperText,
+    showCharacterCount = false,
+    maxLength,
+    value,
+    multiline,
     style,
     onFocus,
     onBlur,
@@ -41,9 +50,10 @@ export const TextField = forwardRef<TextInput, Props>(function TextField(
   },
   ref,
 ) {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles, estiloFoco } = useEstilos(crearEstilos);
   const [hidden, setHidden] = useState(password);
   const [focused, setFocused] = useState(false);
+  const [passwordFocused, setPasswordFocused] = useState(false);
   const iconColor = error ? colors.danger : focused ? colors.primary : colors.placeholder;
 
   return (
@@ -52,7 +62,8 @@ export const TextField = forwardRef<TextInput, Props>(function TextField(
       <View
         style={[
           styles.field,
-          focused && styles.fieldFocused,
+          multiline && styles.multilineField,
+          focused && [styles.fieldFocused, estiloFoco],
           error && styles.fieldError,
           !editable && styles.fieldDisabled,
         ]}>
@@ -63,13 +74,17 @@ export const TextField = forwardRef<TextInput, Props>(function TextField(
         <TextInput
           ref={ref}
           accessibilityLabel={accessibilityLabel ?? label ?? placeholder}
-          accessibilityHint={[error, accessibilityHint].filter(Boolean).join('. ') || undefined}
+          accessibilityHint={[error || helperText, accessibilityHint].filter(Boolean).join('. ') || undefined}
           accessibilityState={{ ...accessibilityState, disabled: !editable }}
           aria-disabled={!editable}
+          aria-invalid={!!error}
           placeholderTextColor={colors.placeholder}
           placeholder={placeholder}
           secureTextEntry={hidden}
           editable={editable}
+          value={value}
+          maxLength={maxLength}
+          multiline={multiline}
           onFocus={(event) => {
             setFocused(true);
             onFocus?.(event);
@@ -78,7 +93,7 @@ export const TextField = forwardRef<TextInput, Props>(function TextField(
             setFocused(false);
             onBlur?.(event);
           }}
-          style={[styles.input, style]}
+          style={[styles.input, multiline && styles.multilineInput, !editable && styles.disabledText, style]}
           {...rest}
         />
         {password && (
@@ -88,7 +103,8 @@ export const TextField = forwardRef<TextInput, Props>(function TextField(
             accessibilityState={{ disabled: !editable }}
             disabled={!editable}
             onPress={() => setHidden((v) => !v)}
-            style={styles.passwordButton}>
+            onFocus={() => setPasswordFocused(true)} onBlur={() => setPasswordFocused(false)}
+            style={[styles.passwordButton, passwordFocused && estiloFoco]}>
             <Ionicons
               name={hidden ? 'eye-outline' : 'eye-off-outline'}
               size={20}
@@ -97,10 +113,16 @@ export const TextField = forwardRef<TextInput, Props>(function TextField(
           </TouchableOpacity>
         )}
       </View>
-      {error && (
-        <View style={styles.errorRow} accessibilityLiveRegion="polite">
-          <Ionicons name="alert-circle" size={14} color={colors.danger} />
-          <Text style={styles.error}>{error}</Text>
+      {(error || helperText || (showCharacterCount && maxLength != null)) && (
+        <View style={styles.supportRow}>
+          <View style={styles.helper} accessibilityLiveRegion={error ? 'polite' : undefined}>
+            {!!error && <Ionicons accessible={false} name="alert-circle" size={16} color={colors.danger} />}
+            {!!(error || helperText) && <Text style={[styles.helperText, !!error && styles.error]}>{error || helperText}</Text>}
+          </View>
+          {showCharacterCount && maxLength != null && <Text style={styles.counter}
+            accessibilityLabel={`${value?.length ?? 0} de ${maxLength} caracteres`}>
+            {value?.length ?? 0}/{maxLength}
+          </Text>}
         </View>
       )}
     </View>
@@ -108,13 +130,13 @@ export const TextField = forwardRef<TextInput, Props>(function TextField(
 });
 
 const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
-  wrapper: { gap: spacing.xs },
-  label: { fontSize: fontSize.sm, color: colors.textSecondary, fontWeight: '500' },
+  wrapper: { gap: spacing.sm },
+  label: { fontSize: fontSize.sm, color: colors.text, fontWeight: fontWeight.semibold },
   field: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.surfaceMuted,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.bordeControl,
     paddingHorizontal: spacing.sm + spacing.xs,
@@ -123,6 +145,9 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   fieldFocused: { borderColor: colors.primary, backgroundColor: colors.surface },
   fieldError: { borderColor: colors.danger },
   fieldDisabled: { backgroundColor: colors.fondoDeshabilitado },
+  disabledText: { color: colors.textoDeshabilitado },
+  multilineField: { alignItems: 'flex-start' },
+  multilineInput: { minHeight: 96, textAlignVertical: 'top' },
   lead: { marginRight: spacing.sm },
   prefix: { marginRight: spacing.sm, fontSize: fontSize.md, color: colors.text, fontWeight: '500' },
   input: { flex: 1, minWidth: 0, minHeight: controles.altoMinimo - 2, paddingVertical: spacing.sm, fontSize: fontSize.md, color: colors.text },
@@ -132,6 +157,9 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  errorRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.xs },
-  error: { flexShrink: 1, fontSize: fontSize.sm, color: colors.danger },
+  supportRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', gap: spacing.sm },
+  helper: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'flex-start', gap: spacing.xs },
+  helperText: { flexShrink: 1, fontSize: fontSize.sm, color: colors.textSecondary, lineHeight: 20 },
+  error: { color: colors.danger },
+  counter: { fontSize: fontSize.xs, color: colors.textSecondary, marginLeft: 'auto' },
 });

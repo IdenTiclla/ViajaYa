@@ -1,10 +1,9 @@
 /**
- * Mapa del conductor "buscando solicitudes": se abre al recibir su ubicación
- * con un marcador anclado al GPS. La cámara sigue al conductor hasta que
- * desplaza el mapa; puede volver a activar el seguimiento con un botón.
+ * Driver request map: the camera follows GPS with gestures locked. The radar
+ * shares the vehicle's native screen projection.
  */
 import { Ionicons } from '@react-native-vector-icons/ionicons';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { ActivityIndicator, Linking, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 
@@ -14,6 +13,8 @@ import type { VehicleType } from '@/features/auth/domain/types';
 import type { Coordinates } from '@/core/domain/geo';
 import type { WatchStatus } from '@/features/home/application/useWatchPosition';
 import { MarcadorVehiculo } from './MarcadorVehiculo';
+import { RadarPulse } from './RadarPulse';
+import { useDriverMapCamera } from './useDriverMapCamera';
 
 // Zoom de navegación urbano: muestra unas manzanas alrededor del conductor.
 const FOLLOW_DELTA = 0.012;
@@ -24,7 +25,7 @@ type Props = {
   tipoVehiculo: VehicleType | null;
   status: WatchStatus;
   retry: () => void;
-  interactivo?: boolean;
+  showRadar?: boolean;
 };
 
 export function DriverSearchMap(props: Props) {
@@ -68,16 +69,14 @@ export function DriverSearchMap(props: Props) {
   );
 }
 
-function MapaUbicado({ coordinates, heading, tipoVehiculo, interactivo = false }: Props & { coordinates: Coordinates }) {
-  const { colors, styles } = useEstilos(crearEstilos);
+function MapaUbicado({ coordinates, heading, tipoVehiculo, showRadar = false }: Props & { coordinates: Coordinates }) {
+  const { styles } = useEstilos(crearEstilos);
   const mapRef = useRef<MapView>(null);
   const { estiloMapa, modoMapa } = useEstiloMapa(true);
   const [listo, setListo] = useState(false);
-  const [seguir, setSeguir] = useState(true);
-  const [solicitudCentrado, setSolicitudCentrado] = useState(0);
   const [layout, setLayout] = useState({ width: 0, height: 0 });
-  const centrado = useRef(false);
-  const ultimaSolicitudCentrado = useRef(0);
+  const { radarPoint, updateRadarPosition } = useDriverMapCamera(mapRef, coordinates, listo, layout.width, layout.height);
+  const radarSize = Math.min(365, layout.width, layout.height);
 
   const region: Region = {
     latitude: coordinates.latitude,
@@ -85,25 +84,6 @@ function MapaUbicado({ coordinates, heading, tipoVehiculo, interactivo = false }
     latitudeDelta: FOLLOW_DELTA,
     longitudeDelta: FOLLOW_DELTA,
   };
-
-  // Espera al mapa y su layout: la primera posición puede llegar antes que ambos.
-  useEffect(() => {
-    if (!listo || !seguir || !layout.width || !layout.height) return;
-    const frame = requestAnimationFrame(() => {
-      const mapa = mapRef.current;
-      if (!mapa) return;
-      if (!centrado.current || ultimaSolicitudCentrado.current !== solicitudCentrado) {
-        // Centrado inicial y explícito sin animación: evita el desplazamiento
-        // incorrecto de animateCamera durante el montaje de las pestañas nativas.
-        mapa.setCamera({ center: coordinates, ...(!centrado.current ? { zoom: 16, heading: 0, pitch: 0 } : {}) });
-      } else {
-        mapa.animateCamera({ center: coordinates }, { duration: 500 });
-      }
-      centrado.current = true;
-      ultimaSolicitudCentrado.current = solicitudCentrado;
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [coordinates, listo, seguir, layout, solicitudCentrado]);
 
   return (
     <View
@@ -115,49 +95,38 @@ function MapaUbicado({ coordinates, heading, tipoVehiculo, interactivo = false }
       <MapView
         ref={mapRef}
         provider={PROVIDER_GOOGLE}
+        showsBuildings={false}
+        showsIndoors={false}
+        showsIndoorLevelPicker={false}
         style={StyleSheet.absoluteFill}
         initialRegion={region}
         customMapStyle={estiloMapa}
         userInterfaceStyle={modoMapa}
-        scrollEnabled={interactivo}
-        zoomEnabled={interactivo}
-        rotateEnabled={interactivo}
+        scrollEnabled={false}
+        zoomEnabled={false}
+        rotateEnabled={false}
+        zoomTapEnabled={false}
+        toolbarEnabled={false}
+        moveOnMarkerPress={false}
         pitchEnabled={false}
         showsMyLocationButton={false}
-        showsCompass={interactivo}
+        showsCompass={false}
         showsScale={false}
         onMapReady={() => setListo(true)}
-        onPanDrag={() => { if (interactivo) setSeguir(false); }}
-        onRegionChangeComplete={(_, detalles) => {
-          if (interactivo && detalles?.isGesture) setSeguir(false);
-        }}>
+        onRegionChangeComplete={updateRadarPosition}>
         <MarcadorVehiculo coordinates={coordinates} heading={heading} tipoVehiculo={tipoVehiculo} />
       </MapView>
 
-      {interactivo && (
-        <TouchableOpacity
-          style={styles.seguir}
-          onPress={() => { setSeguir(true); setSolicitudCentrado((solicitud) => solicitud + 1); }}
-          accessibilityRole="button"
-          accessibilityLabel="Volver a seguir mi ubicación">
-          <Ionicons name="locate" size={20} color={colors.primary} />
-          <Text style={styles.seguirTexto}>{seguir ? 'Mi ubicación' : 'Seguir mi ubicación'}</Text>
-        </TouchableOpacity>
-      )}
+      {showRadar && radarPoint && <View testID="driver-location-radar" pointerEvents="none" style={{ position: 'absolute',
+        left: radarPoint.x - radarSize / 2, top: radarPoint.y - radarSize / 2 }}>
+        <RadarPulse size={radarSize} />
+      </View>}
     </View>
   );
 }
 
 const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   container: { flex: 1, overflow: 'hidden', backgroundColor: colors.surfaceMuted },
-  seguir: {
-    position: 'absolute', right: spacing.md, bottom: spacing.md,
-    minHeight: 48, maxWidth: '90%', paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
-    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
-    borderRadius: radius.pill, backgroundColor: colors.surface,
-    borderWidth: 1, borderColor: colors.bordeControl,
-  },
-  seguirTexto: { color: colors.text, fontSize: fontSize.sm, fontWeight: fontWeight.semibold, flexShrink: 1 },
   permissionOverlay: {
     position: 'absolute',
     top: 0,

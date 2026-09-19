@@ -243,6 +243,7 @@ class RideResponse(BaseModel):
     driver: RideDriverSchema | None
     accepted_price: Decimal | None
     accepted_eta_min: int | None
+    rider_on_the_way_at: UtcAwareDatetime | None = None
     created_at: UtcAwareDatetime | None
     completed_at: UtcAwareDatetime | None
     cancelled_at: UtcAwareDatetime | None
@@ -262,14 +263,15 @@ class RideResponse(BaseModel):
         driver_schema = None
         if detail.driver is not None:
             d = detail.driver
+            snapshot = ride.vehicle_snapshot
             driver_schema = RideDriverSchema(
                 id=d.id,
                 full_name=d.full_name,
                 phone=d.phone,
                 rating=d.rating,
-                vehicle_type=d.vehicle_type,
-                plate=d.plate,
-                vehicle_model=d.vehicle_model,
+                vehicle_type=snapshot.vehicle_type if snapshot else None,
+                plate=snapshot.plate if snapshot else None,
+                vehicle_model=snapshot.vehicle_model if snapshot else None,
             )
         offer = detail.accepted_offer
         return cls(
@@ -286,6 +288,7 @@ class RideResponse(BaseModel):
             driver=driver_schema,
             accepted_price=offer.price if offer else None,
             accepted_eta_min=offer.eta_min if offer else None,
+            rider_on_the_way_at=ride.rider_on_the_way_at,
             created_at=ride.created_at,
             completed_at=ride.completed_at,
             cancelled_at=ride.cancelled_at,
@@ -341,6 +344,7 @@ class RideHistoryItemResponse(BaseModel):
     def from_item(cls, item: RideHistoryItem) -> RideHistoryItemResponse:
         ride = item.ride
         cp = item.counterpart
+        snapshot = ride.vehicle_snapshot if cp and cp.id == ride.driver_id else None
         return cls(
             id=ride.id,
             status=ride.status,
@@ -355,9 +359,9 @@ class RideHistoryItemResponse(BaseModel):
                     id=cp.id,
                     full_name=cp.full_name,
                     rating=cp.rating,
-                    vehicle_type=cp.vehicle_type,
-                    vehicle_model=cp.vehicle_model,
-                    plate=cp.plate,
+                    vehicle_type=snapshot.vehicle_type if snapshot else None,
+                    vehicle_model=snapshot.vehicle_model if snapshot else None,
+                    plate=snapshot.plate if snapshot else None,
                 )
                 if cp
                 else None

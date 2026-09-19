@@ -53,7 +53,9 @@ marcada explícitamente como test mediante `VIAJAYA_TEST_DATABASE_URL`.
 
 ## Estado
 
-- [x] Autenticación local y SSO Google/Facebook.
+- [x] Acceso por teléfono/OTP simulado, sesiones revocables y vinculación social.
+  Google probado en Desarrollo; SMS real y certificación de Pruebas pendientes.
+  Facebook permanece aplazado. No existe acceso por correo/contraseña.
 - [x] Solicitudes de taxi, moto y encomienda con rutas en mapa.
 - [x] Pool de conductores y negociación de ofertas con vencimiento a 30 s.
 - [x] Ciclo de vida del viaje, historial, ganancias y calificaciones.
@@ -61,6 +63,15 @@ marcada explícitamente como test mediante `VIAJAYA_TEST_DATABASE_URL`.
 - [x] CI con PostgreSQL real, contratos OpenAPI/WS y tipos mobile generados.
 - [x] Tiempo real durable y soporte multiworker mediante outbox, Redis y
   presencia compartida (activación operativa todavía detrás de flags).
+- [x] Registro desde Perfil, varios vehículos por conductor y cambio de modo/vehículo.
+  Documentos, revisión administrativa, suspensión y operación aún pendientes.
+
+**Salida a producción — revisión 19/09/2026:** F01 completada localmente; F02 en
+curso y F04 parcialmente implementada. F03 está planificada; seguimiento GPS,
+navegación integrada, cobros/comisiones, encomiendas completas, certificación
+alojada y Google Play siguen pendientes. Seleccionar QR todavía no procesa un
+pago. Ver el [plan vigente](docs/plans/plan-salida-produccion.md) y la
+[evidencia de revisión](docs/plans/production-readiness-2026-09-19.md).
 
 Las reglas vigentes y el endurecimiento pendiente viven en
 `docs/implementation-plans/0007-cancela-busqueda-pasajero-ausente.md` y

@@ -1,3 +1,4 @@
+import { useOfferComposer } from './useOfferComposer';
 /**
  * Solicitudes entrantes (conductor) — diseño Material-You.
  *
@@ -27,13 +28,11 @@ import { getApiErrorMessage } from '@/core/errors/apiError';
 import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 import { DriverSearchMap } from '@/features/driver/presentation/DriverSearchMap';
 import { OfferSentOverlay } from '@/features/driver/presentation/OfferSentOverlay';
-import { RadarPulse } from '@/features/driver/presentation/RadarPulse';
 import { RequestCard } from '@/features/driver/presentation/RequestCard';
 import { SolicitudesMapa } from '@/features/driver/presentation/SolicitudesMapa';
 import { ViajeEnCursoConductorScreen } from '@/features/driver/presentation/ViajeEnCursoConductorScreen';
 import { useWatchPosition, type WatchedPosition } from '@/features/home/application/useWatchPosition';
 import {
-  useCreateOffer,
   useDismissOpenRide,
   useSetOnline,
   useWithdrawOffer,
@@ -62,6 +61,7 @@ export function SolicitudesEntrantesScreen() {
   const { mutate: setDriverOnline, isPending: isSettingOnline } = useSetOnline();
   const automaticActivationFor = useRef<string | null>(null);
   const [availabilityError, setAvailabilityError] = useState<string | null>(null);
+  const [mapHeaderHeight, setMapHeaderHeight] = useState(140);
   const activateDriver = useCallback(() => {
     if (!user) return;
     setAvailabilityError(null);
@@ -110,7 +110,7 @@ export function SolicitudesEntrantesScreen() {
     !pendingRatingRide;
   const openRidesQuery = useOpenRides(openRidesEnabled);
   const rides = openRidesQuery.rides;
-  const createOffer = useCreateOffer();
+  const createOffer = useOfferComposer();
   // Ubicación continua (navegación): el mapa sigue al conductor centrado en el
   // estado de búsqueda y detrás de la lista de solicitudes.
   const position = useWatchPosition(enfocada && !activeRide && !pendingRatingRide);
@@ -163,16 +163,15 @@ export function SolicitudesEntrantesScreen() {
     }
   }, [loadMoreOpenRides, openRidesEnabled, visibleRides.length]);
 
-  // Ride cuya oferta está en curso (para el "Enviando…" de su tarjeta).
-  // Gate por isPending: `createOffer.variables` persiste tras el onSuccess (React
-  // Query no lo limpia), así que sin este gate el botón quedaría en spinner fijo.
-  const pendingRideId = createOffer.isPending ? createOffer.variables?.rideId ?? null : null;
+  // Only the request being submitted is busy; other passengers remain available.
+  const pendingRideIds = createOffer.pendingRideIds;
 
   // Ofertar NO saca al conductor de la lista: la tarjeta pasa a "Oferta enviada".
   const acceptAtFare = (ride: OpenRide) => {
+    if (createOffer.isRidePending(ride.id)) return;
     const attemptToken = beginOfferAttempt(ride.id);
     createOffer.mutate(
-      { rideId: ride.id, input: { acceptAtFare: true } },
+      { rideId: ride.id, riderName: ride.rider.fullName, poolVersion: ride.poolVersion, pickup: ride.origin.coordinates, service: ride.service, input: { acceptAtFare: true } },
       {
         onSuccess: (offer) => {
           if (markOffered(ride.id, offer, ride.fare, attemptToken)) {
@@ -193,10 +192,11 @@ export function SolicitudesEntrantesScreen() {
 
   // Contraoferta rápida (+Bs): envía al instante precio = oferta del pasajero + delta.
   const quickAdd = (ride: OpenRide, delta: number) => {
+    if (createOffer.isRidePending(ride.id)) return;
     const price = Math.round((ride.fare + delta) * 100) / 100;
     const attemptToken = beginOfferAttempt(ride.id);
     createOffer.mutate(
-      { rideId: ride.id, input: { acceptAtFare: false, price } },
+      { rideId: ride.id, riderName: ride.rider.fullName, poolVersion: ride.poolVersion, pickup: ride.origin.coordinates, service: ride.service, input: { acceptAtFare: false, price } },
       {
         onSuccess: (offer) => {
           if (markOffered(ride.id, offer, ride.fare, attemptToken)) {
@@ -216,20 +216,22 @@ export function SolicitudesEntrantesScreen() {
   };
 
   const openPriceInput = (ride: OpenRide) => {
-    createOffer.reset();
+    if (createOffer.isRidePending(ride.id)) return;
     setCustomPrice(formatBolivianosInput(ride.fare));
     setPriceInputFor(ride);
   };
 
+  const priceBusy = priceInputFor != null && pendingRideIds.has(priceInputFor.id);
   const parsedCustomPrice = Number(customPrice.replace(',', '.'));
   const customPriceIsValid = Number.isFinite(parsedCustomPrice) && parsedCustomPrice > 0;
 
   const submitCustomPrice = () => {
-    if (!priceInputFor || !customPriceIsValid || createOffer.isPending) return;
+    if (!priceInputFor || !customPriceIsValid || createOffer.isRidePending(priceInputFor.id)) return;
     const ride = priceInputFor;
+    setPriceInputFor(null);
     const attemptToken = beginOfferAttempt(ride.id);
     createOffer.mutate(
-      { rideId: ride.id, input: { acceptAtFare: false, price: parsedCustomPrice } },
+      { rideId: ride.id, riderName: ride.rider.fullName, poolVersion: ride.poolVersion, pickup: ride.origin.coordinates, service: ride.service, input: { acceptAtFare: false, price: parsedCustomPrice } },
       {
         onSuccess: (offer) => {
           const applied = markOffered(
@@ -351,6 +353,8 @@ export function SolicitudesEntrantesScreen() {
   const requestsHeader = (
     <RequestsHeader
       count={visibleRides.length}
+      pendingOffers={Object.keys(offeredMap).length}
+      sendingOffers={pendingRideIds.size}
       mode={mode}
       onChangeMode={setMode}
     />
@@ -374,9 +378,10 @@ export function SolicitudesEntrantesScreen() {
           <SolicitudesMapa
             key={selectedForMap ?? 'default'}
             rides={visibleRides}
-            disabled={createOffer.isPending || withdrawOffer.isPending || dismissOpenRide.isPending}
+            topOverlayHeight={mapHeaderHeight}
+            disabled={withdrawOffer.isPending || dismissOpenRide.isPending}
             isOffered={isOffered}
-            pendingRideId={pendingRideId}
+            pendingRideIds={pendingRideIds}
             offeredMap={offeredMap}
             rejected={rejected}
             expired={expired}
@@ -393,9 +398,11 @@ export function SolicitudesEntrantesScreen() {
             onOpenPriceInput={openPriceInput}
             onWithdraw={withdraw}
           />
-          <View pointerEvents="box-none" style={styles.mapHeader}>
+          <View pointerEvents="box-none" style={styles.mapHeader}
+            onLayout={(event) => setMapHeaderHeight(event.nativeEvent.layout.height)}>
             {requestsHeader}
             {requestsWarning}
+            {createOffer.offerFeedback}
           </View>
         </View>
       ) : (
@@ -410,9 +417,7 @@ export function SolicitudesEntrantesScreen() {
           <View style={styles.scrim} pointerEvents="box-none">
             {requestsHeader}
             {requestsWarning}
-            {createOffer.isError && (
-              <Text style={styles.error}>{getApiErrorMessage(createOffer.error)}</Text>
-            )}
+            {createOffer.offerFeedback}
             <FlatList
               style={styles.list}
               data={visibleRides}
@@ -427,11 +432,12 @@ export function SolicitudesEntrantesScreen() {
                   expired={expired.has(item.id)}
                   paused={paused.has(item.id)}
                   taken={taken.has(item.id)}
-                  disabled={createOffer.isPending || withdrawOffer.isPending || dismissOpenRide.isPending}
-                  pendingAccept={pendingRideId === item.id}
+                  disabled={pendingRideIds.has(item.id) || withdrawOffer.isPending || dismissOpenRide.isPending}
+                  pendingAccept={pendingRideIds.has(item.id)}
                   offerExpiresAt={offeredMap[item.id]?.expiresAt ?? null}
                   offerPrice={offeredMap[item.id]?.price ?? null}
                   onPress={() => openInMap(item)}
+                  onViewOffer={() => openStatus(item)}
                   onAccept={() => acceptAtFare(item)}
                   onDismiss={() => dismissRide(item)}
                   onQuickAdd={(delta) => quickAdd(item, delta)}
@@ -484,14 +490,11 @@ export function SolicitudesEntrantesScreen() {
                 onSubmitEditing={submitCustomPrice}
               />
             </View>
-            {createOffer.isError && (
-              <Text style={styles.priceModalError}>{getApiErrorMessage(createOffer.error)}</Text>
-            )}
             <View style={styles.priceModalActions}>
               <TouchableOpacity
                 style={styles.priceModalCancel}
                 onPress={() => setPriceInputFor(null)}
-                disabled={createOffer.isPending}
+                disabled={priceBusy}
                 accessibilityRole="button"
                 accessibilityLabel="Cancelar contraoferta">
                 <Text style={styles.priceModalCancelText}>Cancelar</Text>
@@ -499,13 +502,13 @@ export function SolicitudesEntrantesScreen() {
               <TouchableOpacity
                 style={[
                   styles.priceModalSubmit,
-                  (!customPriceIsValid || createOffer.isPending) && styles.disabled,
+                  (!customPriceIsValid || priceBusy) && styles.disabled,
                 ]}
                 onPress={submitCustomPrice}
-                disabled={!customPriceIsValid || createOffer.isPending}
+                disabled={!customPriceIsValid || priceBusy}
                 accessibilityRole="button"
                 accessibilityLabel="Enviar contraoferta">
-                {createOffer.isPending ? (
+                {priceBusy ? (
                   <ActivityIndicator color={colors.textOnPrimary} />
                 ) : (
                   <Text style={styles.priceModalSubmitText}>Enviar</Text>
@@ -593,17 +596,10 @@ function SearchingState({
     <View style={styles.root}>
       <DriverSearchMap
         coordinates={position.coordinates} heading={position.heading} tipoVehiculo={tipoVehiculo}
-        status={position.status} retry={position.retry} interactivo
+        status={position.status} retry={position.retry} showRadar
       />
       <View style={styles.scrim} pointerEvents="box-none">
         <RequestsHeader count={0} />
-
-        {/* El barrido es decorativo; el vehículo pertenece al mapa nativo. */}
-        {position.coordinates && (
-          <View style={styles.radarLayer} pointerEvents="none">
-            <RadarPulse />
-          </View>
-        )}
       </View>
     </View>
   );
@@ -611,10 +607,14 @@ function SearchingState({
 
 function RequestsHeader({
   count,
+  pendingOffers = 0,
+  sendingOffers = 0,
   mode,
   onChangeMode,
 }: {
   count: number;
+  pendingOffers?: number;
+  sendingOffers?: number;
   mode?: ViewMode;
   onChangeMode?: (mode: ViewMode) => void;
 }) {
@@ -636,6 +636,13 @@ function RequestsHeader({
           </View>
           {hasModeSwitch && <ViewModeToggle mode={mode} onChange={onChangeMode} />}
         </View>
+        {count > 0 && (
+          <Text style={styles.requestsSubtitle} accessibilityLiveRegion="polite">
+            {pendingOffers > 0 ? `${pendingOffers} ${pendingOffers === 1 ? 'oferta en espera' : 'ofertas en espera'}. ` : ''}
+            {sendingOffers > 0 ? `Enviando ${sendingOffers}… ` : ''}
+            Puedes ofertar a varios pasajeros.
+          </Text>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -843,14 +850,5 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   toggleText: { fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: colors.textSecondary },
   toggleTextActive: { color: colors.primary },
 
-  radarLayer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
 
 });

@@ -474,6 +474,18 @@
             ],
             "title": "Eta Min"
           },
+          "expected_pool_version": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Pool Version"
+          },
           "price": {
             "anyOf": [
               {
@@ -2256,6 +2268,18 @@
             "format": "uuid",
             "title": "Rider Id",
             "type": "string"
+          },
+          "rider_on_the_way_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rider On The Way At"
           },
           "service_type": {
             "$ref": "#/components/schemas/ServiceType"
@@ -5370,6 +5394,71 @@
       }
     },
     "/api/v1/rides/{ride_id}/rating": {
+      "get": {
+        "operationId": "get_ride_rating_response_api_v1_rides__ride_id__rating_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ride_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Ride Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/RatingResponse"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Get Ride Rating Response Api V1 Rides  Ride Id  Rating Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Ride Rating Response",
+        "tags": [
+          "rides"
+        ]
+      },
       "post": {
         "description": "Califica al otro participante tras completarse el viaje.",
         "operationId": "rate_ride_api_v1_rides__ride_id__rating_post",
@@ -5487,6 +5576,66 @@
           }
         },
         "summary": "Skip Ride Rating",
+        "tags": [
+          "rides"
+        ]
+      }
+    },
+    "/api/v1/rides/{ride_id}/rider-on-the-way": {
+      "post": {
+        "description": "Persist a passenger's pickup notice and deliver it to both participants.",
+        "operationId": "mark_rider_on_the_way_api_v1_rides__ride_id__rider_on_the_way_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ride_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Ride Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RideResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mark Rider On The Way",
         "tags": [
           "rides"
         ]

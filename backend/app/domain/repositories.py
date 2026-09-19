@@ -181,6 +181,12 @@ class RideRequestRepository(ABC):
         """
 
     @abstractmethod
+    async def mark_rider_on_the_way_if_arriving(
+        self, ride_id: uuid.UUID, rider_id: uuid.UUID,
+    ) -> tuple[RideRequest, bool] | None:
+        """Lock the ride and set the pickup notice once; return (ride, changed)."""
+
+    @abstractmethod
     async def cancel_if_searching(self, ride_id: uuid.UUID) -> RideRequest | None:
         """Cancela atómicamente solo un ride ``SEARCHING`` y no pausado."""
 
@@ -271,7 +277,8 @@ class OfferRepository(ABC):
 
     @abstractmethod
     async def create_or_supersede_atomically(
-        self, offer: Offer, *, expected_ride_fare: Decimal
+        self, offer: Offer, *, expected_ride_fare: Decimal,
+        expected_pool_version: int | None = None,
     ) -> OfferCreation | None:
         """Crea la oferta y reemplaza la previa bajo una sola transacción.
 

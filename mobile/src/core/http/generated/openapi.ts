@@ -734,7 +734,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Get Ride Rating Response */
+        get: operations["get_ride_rating_response_api_v1_rides__ride_id__rating_get"];
         put?: never;
         /**
          * Rate Ride
@@ -761,6 +762,26 @@ export interface paths {
          * @description Cierra la calificación pendiente sin alterar la reputación.
          */
         post: operations["skip_ride_rating_api_v1_rides__ride_id__rating_skip_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/rides/{ride_id}/rider-on-the-way": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark Rider On The Way
+         * @description Persist a passenger's pickup notice and deliver it to both participants.
+         */
+        post: operations["mark_rider_on_the_way_api_v1_rides__ride_id__rider_on_the_way_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1125,6 +1146,8 @@ export interface components {
             accept_at_fare: boolean;
             /** Eta Min */
             eta_min?: number | null;
+            /** Expected Pool Version */
+            expected_pool_version?: number | null;
             /** Price */
             price?: number | string | null;
         };
@@ -1784,6 +1807,8 @@ export interface components {
              * Format: uuid
              */
             rider_id: string;
+            /** Rider On The Way At */
+            rider_on_the_way_at?: string | null;
             service_type: components["schemas"]["ServiceType"];
             status: components["schemas"]["RideStatus"];
         };
@@ -3416,6 +3441,39 @@ export interface operations {
             };
         };
     };
+    get_ride_rating_response_api_v1_rides__ride_id__rating_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                ride_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RatingResponse"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     rate_ride_api_v1_rides__ride_id__rating_post: {
         parameters: {
             query?: never;
@@ -3472,6 +3530,39 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_rider_on_the_way_api_v1_rides__ride_id__rider_on_the_way_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                ride_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RideResponse"];
+                };
             };
             /** @description Validation Error */
             422: {

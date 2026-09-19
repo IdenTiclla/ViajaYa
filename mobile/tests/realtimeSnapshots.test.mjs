@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { registerHooks } from 'node:module';
 import test from 'node:test';
 
 import { QueryClient } from '@tanstack/react-query';
@@ -6,10 +7,16 @@ import { QueryClient } from '@tanstack/react-query';
 import { createReplayGate } from '../src/core/realtime/replayGate.ts';
 import { useDriverRequests } from '../src/features/driver/application/useDriverRequests.ts';
 import { createRealtimeReplayConsumer } from '../src/features/rides/application/realtimeReplayConsumer.ts';
-import {
+const hooks = registerHooks({
+  resolve(specifier, context, nextResolve) {
+    return nextResolve(specifier === './rideStatusReducer' ? './rideStatusReducer.ts' : specifier, context);
+  },
+});
+const {
   applyDriverRealtimeSnapshot,
   applyPassengerRealtimeSnapshot,
-} from '../src/features/rides/application/realtimeSnapshots.ts';
+} = await import('../src/features/rides/application/realtimeSnapshots.ts');
+hooks.deregister();
 
 function place(name) {
   return {
@@ -432,3 +439,31 @@ test('snapshot y delta v2 duplicado actualizan una caché real una sola vez', as
   assert.deepEqual(resyncs, []);
   queryClient.clear();
 });
+
+for (const role of ['passenger', 'driver']) {
+  for (const status of ['arriving', 'in_progress']) {
+    test(`${role} snapshot in flight cannot erase a confirmed pickup notice or regress departure (${status})`, async () => {
+      const queryClient = new QueryClient();
+      const activeKey = [`${role}-active-ride`];
+      const captured = { ...ride('pickup', 'arriving'), riderOnTheWayAt: null };
+      const confirmed = { ...captured, status, riderOnTheWayAt: '2026-09-19T16:00:00Z' };
+      const release = deferred();
+      queryClient.cancelQueries = () => release.promise;
+      const store = useDriverRequests.getState();
+      store.reset();
+      const applying = role === 'passenger'
+        ? applyPassengerRealtimeSnapshot(queryClient, activeKey, { ride: captured, offers: [] })
+        : applyDriverRealtimeSnapshot(queryClient, activeKey, store, {
+            openRides: { items: [], nextCursor: null }, pausedRides: [], offers: [], activeRide: captured,
+          });
+      queryClient.setQueryData(['ride', 'pickup'], confirmed);
+      queryClient.setQueryData(activeKey, confirmed);
+      release.resolve();
+      await applying;
+      assert.deepEqual(queryClient.getQueryData(['ride', 'pickup']), confirmed);
+      assert.deepEqual(queryClient.getQueryData(activeKey), confirmed);
+      store.reset();
+      queryClient.clear();
+    });
+  }
+}

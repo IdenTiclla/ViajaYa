@@ -21,12 +21,17 @@ export function useEstiloMapa(ocultarLugares = true) {
   const { colors, modo } = useTema();
   const estiloMapa = useMemo<MapStyleElement[]>(() => [
     { elementType: 'geometry', stylers: [{ color: colors.mapaTierra }] },
+    // Hide zoom-dependent footprints and relief instead of only tinting them.
+    // Place names remain independent from these geometry layers.
+    { featureType: 'landscape.man_made', elementType: 'geometry', stylers: [{ visibility: 'off' }] },
+    { featureType: 'landscape.natural.terrain', elementType: 'geometry', stylers: [{ visibility: 'off' }] },
+    { featureType: 'poi', elementType: 'geometry', stylers: [{ visibility: 'off' }] },
     { elementType: 'labels.text.fill', stylers: [{ color: colors.mapaEtiqueta }] },
     { elementType: 'labels.text.stroke', stylers: [{ color: colors.mapaContorno }] },
     { featureType: 'road', elementType: 'geometry', stylers: [{ color: colors.mapaCalle }] },
     { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: colors.mapaPrincipal }] },
     { featureType: 'water', elementType: 'geometry', stylers: [{ color: colors.mapaAgua }] },
-    { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: colors.mapaParque }] },
+    { featureType: 'poi.park', elementType: 'geometry', stylers: [{ visibility: 'on' }, { color: colors.mapaParque }] },
     ...(ocultarLugares ? declutteredMapStyle : []),
   ], [colors, ocultarLugares]);
   return { estiloMapa, modoMapa: modo };

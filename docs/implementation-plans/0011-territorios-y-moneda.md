@@ -1,8 +1,14 @@
 # F03-A — País, zona, moneda y horario
 
-Fecha inicial: 2026-09-13. Fase pendiente. Alcance acordado el 2026-09-13: solo F03-A;
+Fecha inicial: 2026-09-13. Actualización de planificación: 2026-09-19. Fase pendiente de implementación. Alcance acordado el 2026-09-13: solo F03-A;
 el panel administrativo (F03-B) y las feature flags (F03-C) se posponen. Sin panel, el
 catálogo se administra por migración/seed y no se activa comercialmente ningún país nuevo.
+
+La revisión del 19/09 confirma que el código conserva Bolivia/BOB y `America/La_Paz`
+como supuestos fijos. F03-B/C siguen pendientes antes de la apertura. La cabecera actual
+es `0028_driver_vehicles`: `0026` retiró contraseñas y `0027` añadió solicitudes de
+conductor. Las revisiones `0029`/`0030` propuestas abajo son nombres de planificación;
+comprobar la cabecera al implementarlas y no reutilizar IDs existentes.
 
 ## Objetivo
 
@@ -25,7 +31,7 @@ el comportamiento actual para el usuario.
 ## Entregas en orden
 
 - [ ] A1 · Dominio: `Country`, `Zone`, `Money`; puerto `TerritoryRepository`; `ServiceAreaPoint` valida contra la zona resuelta.
-- [ ] A2 · Persistencia: migraciones `0026_countries_zones` (catálogo + seed `BO`) y `0027_ride_currency_zone` (`currency`, `zone_id` en rides y `currency` en offers, backfill `BOB`).
+- [ ] A2 · Persistencia: revisiones posteriores a `0028`, propuestas `0029_countries_zones` (catálogo + seed `BO`) y `0030_ride_currency_zone` (`currency`, `zone_id` en rides y `currency` en offers, backfill `BOB`). Confirmar numeración al iniciar.
 - [ ] A3 · Casos de uso: resolución de zona al crear/editar viajes; ganancias con la zona horaria del conductor; OTP con las regiones del catálogo.
 - [ ] A4 · API: `GET /api/v1/territory` (país, zonas activas, moneda, prefijo, servicios); `currency` en las respuestas de viaje y oferta. OpenAPI y tipos mobile regenerados.
 - [ ] A5 · Mobile: `features/territory` que carga y cachea el catálogo; formateo de importes por moneda; prefijo del selector de país desde la API; sin cambio visual para Bolivia.
@@ -43,8 +49,8 @@ el comportamiento actual para el usuario.
 
 **Persistencia**
 
-- Tablas `countries` y `zones` (boundary como JSONB GeoJSON, `enabled`, `services` como array de enum por valor, según la convención de `_enum_values`). Seed en la propia migración `0026`: `BO`/`BOB`/`+591`/`America/La_Paz` y la zona `BO-ALL` con el polígono versionado.
-- `0027`: `ride_requests.currency CHAR(3) NOT NULL DEFAULT 'BOB'`, `ride_requests.zone_id FK`, `offers.currency CHAR(3) NOT NULL DEFAULT 'BOB'`; backfill de `zone_id` a `BO-ALL`. Constraint: la moneda de una oferta debe coincidir con la del viaje (se valida en `CreateOffer`, y la certificación PostgreSQL comprueba el `CHECK`/trigger elegido).
+- Tablas `countries` y `zones` (boundary como JSONB GeoJSON, `enabled`, `services` como array de enum por valor, según la convención de `_enum_values`). Seed en la revisión de catálogo (propuesta `0029`): `BO`/`BOB`/`+591`/`America/La_Paz` y la zona `BO-ALL` con el polígono versionado.
+- Revisión de moneda/zona (propuesta `0030`): `ride_requests.currency CHAR(3) NOT NULL DEFAULT 'BOB'`, `ride_requests.zone_id FK`, `offers.currency CHAR(3) NOT NULL DEFAULT 'BOB'`; backfill de `zone_id` a `BO-ALL`. Constraint: la moneda de una oferta debe coincidir con la del viaje (se valida en `CreateOffer`, y la certificación PostgreSQL comprueba el `CHECK`/trigger elegido).
 - Los `DEFAULT 'BOB'` se retiran en una migración posterior, cuando todos los productores envíen la moneda.
 
 **Aplicación**
@@ -64,6 +70,10 @@ el comportamiento actual para el usuario.
 
 Panel y CRUD de países (F03-B), flags por zona (F03-C), conversión de monedas y viajes
 internacionales, PostGIS, y cualquier apertura comercial fuera de Bolivia.
+
+`BO-ALL` preserva el comportamiento de desarrollo/pruebas; antes de la apertura se
+configuran las ciudades/zonas realmente operables. El catálogo no autoriza por sí solo
+activar toda Bolivia ni el servicio `moving`, cuya inclusión comercial sigue por decidir.
 
 ## Criterio de cierre
 

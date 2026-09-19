@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Button } from '@/shared/components';
 import { useAuthController } from '../application/useAuthController';
 import { useSocialAuth } from '../application/useSocialAuth';
+import { getPhoneInputError, resolveCallingCode } from '../domain/phoneNumberInput';
 import { AuthHeading, AuthLoading, AuthNotice, AuthScaffold } from './entry/AuthScaffold';
 import { PhoneInput } from './entry/PhoneInput';
 import { ProfileCompletionForm } from './entry/ProfileCompletionForm';
@@ -14,7 +15,7 @@ import { PhoneCodeForm } from './PhoneCodeForm';
 export function PhoneEntryScreen() {
   const { controller, state } = useAuthController();
   const [number, setNumber] = useState('');
-  const [callingCode, setCallingCode] = useState('+591');
+  const [selectedCallingCode, setCallingCode] = useState('+591');
   const [socialError, setSocialError] = useState<string | null>(null);
   const social = useSocialAuth({
     onCredential: (credential) => controller.signInSocial(credential),
@@ -26,6 +27,9 @@ export function PhoneEntryScreen() {
   const socialBusy = social.googleLoading || social.facebookLoading;
   const busy = state.busy || socialBusy;
   const providers = state.capabilities?.socialProviders ?? [];
+  const countries = state.capabilities?.countries ?? [];
+  const callingCode = resolveCallingCode(selectedCallingCode, countries);
+  const phoneError = getPhoneInputError(number, callingCode);
 
   return (
     <AuthScaffold subtitle="Tu ciudad, a un toque de distancia.">
@@ -37,14 +41,15 @@ export function PhoneEntryScreen() {
           text={state.socialProvider
             ? `Verificamos tu cuenta de ${socialName}. Ahora confirma tu número; después podrás vincular ambos.`
             : 'Ingresa tu número y te enviaremos un código por SMS. Si es tu primera vez, crearemos tu cuenta.'} />
-        <PhoneInput countries={state.capabilities?.countries ?? []} callingCode={callingCode}
+        <PhoneInput countries={countries} callingCode={callingCode}
           onChangeCallingCode={setCallingCode} number={number} onChangeNumber={setNumber} editable={!busy} />
         {!enabled && <AuthNotice tone="error">
           El acceso por teléfono aún no está disponible en este servidor. Vuelve a intentar en unos momentos.
         </AuthNotice>}
         {!enabled && <Button title="Reintentar conexión" variant="secondary" loading={state.busy}
           onPress={() => { void controller.initialize(); }} />}
-        <Button title="Continuar" trailingIcon="arrow-forward" disabled={!enabled || number.length < 6 || busy}
+        <Button title="Continuar" trailingIcon="arrow-forward"
+          disabled={!enabled || !countries.length || !number || !!phoneError || busy}
           onPress={() => controller.start(`${callingCode}${number}`, state.socialProvider ? 'social' : 'sign_in')} />
         {state.socialProvider
           ? <Button title="Usar solo mi teléfono" variant="secondary" disabled={busy} onPress={back} />

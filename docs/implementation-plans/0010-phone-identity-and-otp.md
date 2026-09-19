@@ -1,6 +1,8 @@
 # F02 — Identidad por teléfono y OTP
 
-Fecha inicial: 2026-09-10. Actualización: 2026-09-13. Fase en curso. **Google certificado en Desarrollo** (emulador y teléfono físico) el 2026-09-13; Facebook aplazado por la verificación de negocio de Meta. **F02-A/B están implementados y ambas API están activadas y verificadas localmente**. Desarrollo responde por la LAN; Pruebas tiene HTTPS mediante ngrok y un APK de F02-B descargado y verificado. Esta continuación corrige el OTP y añade el acceso/vinculación social de F02-C. Las credenciales sociales, el nuevo APK con adaptadores nativos y el recorrido manual siguen pendientes. Se conserva la rama `codex/phase-01-environments`, sin commits ni publicación nuevos.
+Fecha inicial: 2026-09-10. Actualización de estado: **2026-09-19**. Fase en curso; código A/B/C integrado en `main` mediante el PR #15 (`986dd79`, 14/09). **Google fue certificado en Desarrollo** (emulador y teléfono físico) el 13/09; Facebook sigue aplazado según la decisión registrada. Existe evidencia histórica de ambas API locales, HTTPS mediante ngrok y APK inicial de Pruebas F02-B. No se revalidó su disponibilidad actual. Falta actualizar y recorrer Pruebas con el candidato vigente, implementar el adaptador SMS real y volver accesible la recuperación desde la pantalla de entrada.
+
+La revisión del 19/09 obtuvo 700 pruebas backend y 275 móviles aprobadas, Ruff, TypeScript, lint y contratos vigentes. No repitió PostgreSQL/Redis, builds ni recorridos en teléfonos. [Evidencia y límites](../plans/production-readiness-2026-09-19.md).
 
 ## Alcance del bloque A
 
@@ -13,6 +15,7 @@ Fecha inicial: 2026-09-10. Actualización: 2026-09-13. Fase en curso. **Google c
 - [x] F02-B (API): respaldos, migraciones y acceso OTP/sesiones verificados contra Desarrollo y Pruebas locales.
 - [x] F02-B (distribución inicial): HTTPS público recuperado con ngrok y APK de Pruebas de F02-B verificado.
 - [ ] F02-B (certificación): actualizar Pruebas con las correcciones de entrada/OTP y completar el recorrido manual en ambas variantes.
+- [ ] F02-B (recuperación): exponer la solicitud en la pantalla de acceso actual y recorrerla; `phoneAccessController` conserva la lógica, pero `PhoneEntryScreen` no muestra esa entrada. La aprobación por operador depende de F03-B.
 - [x] F02-C (código): acceso social, vinculación explícita y migración de cuentas Google/Facebook con pruebas HTTP y PostgreSQL.
 - [x] F02-C (certificación Google, Desarrollo): cliente web + cliente Android en Google Cloud, dev build con SDK nativo y recorrido Google → teléfono → OTP → vinculación en emulador y en un Xiaomi físico (2026-09-13).
 - [ ] F02-C (certificación Google, Pruebas): SHA-1 del keystore de EAS registrado, `TESTING_GOOGLE_OAUTH_CLIENT_ID_WEB` en EAS, `GOOGLE_CLIENT_ID` en la API de Pruebas y APK `preview` recorrido en teléfono.
@@ -48,9 +51,11 @@ La migración `0024_phone_verification` añade `user_identities`, `phone_challen
 
 `PHONE_OTP_ENABLED=false` por defecto permite preparar el código sin habilitar el acceso. F02-B necesita `0025_managed_accounts`. Desarrollo y Pruebas ya tienen ambas migraciones y el acceso habilitado, con respaldos previos. Activación, respaldos e informe de pruebas reales: `local-files/phase02/`.
 
-Producción responde 503 al acceso por teléfono hasta conectar el adaptador real de F02-C. Nunca cae al simulador como respaldo. No se enviaron SMS ni se contrató un proveedor. Las sesiones emitidas en la certificación de F02-B usaron cuentas y bases de prueba aisladas. La certificación de Google/Facebook y el adaptador SMS real siguen pendientes; soporte y su panel se completan en F03.
+El código productivo rechaza la solicitud OTP con 503 hasta conectar el adaptador real de F02-C; esto se desprende del código, no de un despliegue productivo probado. Nunca cae al simulador como respaldo. No consta envío SMS ni proveedor contratado. Las sesiones emitidas en la certificación de F02-B usaron cuentas y bases de prueba aisladas. Google conserva la certificación histórica de Desarrollo; Pruebas/producción, Facebook y el adaptador SMS real siguen pendientes; soporte y su panel se completan en F03.
 
 ## F02-B: cuentas y sesiones
+
+Esta sección conserva la evolución de F02-B. Los párrafos sobre `/auth/phone/link-legacy`, contraseñas y JWT sin sesión describen el puente anterior, **retirado el 13/09** en la sección «Retiro del acceso por correo y contraseña». No forman parte del contrato vigente.
 
 - `GET /auth/phone/capabilities` declara países y prefijos permitidos, disponibilidad y versión/texto de las condiciones. Las condiciones actuales son exclusivamente de pruebas; no sustituyen los términos legales de producción.
 - `POST /auth/phone/complete` recibe número, comprobante, UUID de instalación, nombre del dispositivo y `request_id`. Devuelve `profile_required` o `authenticated` con usuario y tokens. Un usuario nuevo completa nombre y condiciones; no necesita correo y nace como pasajero. Repetir la misma operación recupera la misma sesión mientras el comprobante sigue vigente y su refresh no se utilizó.

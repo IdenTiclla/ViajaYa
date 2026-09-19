@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { controles, fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 import { TextField } from '@/shared/components';
 import type { PhoneCapabilities } from '../../domain/phoneAccess';
+import { getPhoneInputError, normalizePhoneInput } from '../../domain/phoneNumberInput';
 
 type Country = PhoneCapabilities['countries'][number];
 
@@ -30,6 +31,8 @@ export function PhoneInput({ countries, callingCode, onChangeCallingCode, number
   label = 'Número de teléfono', editable = true }: Props) {
   const { styles, estiloFoco } = useEstilos(createStyles);
   const [focusedRegion, setFocusedRegion] = useState<string | null>(null);
+  const [touched, setTouched] = useState(false);
+  const error = getPhoneInputError(number, callingCode);
   return (
     <View style={styles.wrapper}>
       {countries.length > 1 && (
@@ -40,9 +43,11 @@ export function PhoneInput({ countries, callingCode, onChangeCallingCode, number
               <Pressable key={country.region} accessibilityRole="radio"
                 accessibilityLabel={`${COUNTRY_NAMES[country.region] ?? country.region} ${country.callingCode}`}
                 accessibilityState={{ selected, checked: selected, disabled: !editable }} disabled={!editable}
+                aria-checked={selected}
                 onPress={() => onChangeCallingCode(country.callingCode)}
                 onFocus={() => setFocusedRegion(country.region)} onBlur={() => setFocusedRegion(null)}
-                style={[styles.chip, selected && styles.chipSelected, focusedRegion === country.region && estiloFoco]}>
+                style={[styles.chip, selected && styles.chipSelected, !editable && styles.disabled,
+                  focusedRegion === country.region && estiloFoco]}>
                 <Text style={styles.chipFlag}>{flag(country.region)}</Text>
                 <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
                   {COUNTRY_NAMES[country.region] ?? country.region} · {country.callingCode}
@@ -53,9 +58,14 @@ export function PhoneInput({ countries, callingCode, onChangeCallingCode, number
         </View>
       )}
       <TextField label={label} prefix={callingCode} leadingIcon="call-outline"
-        value={number} onChangeText={(value) => onChangeNumber(value.replace(/[^0-9]/g, ''))}
+        value={number} onChangeText={(value) => {
+          const next = normalizePhoneInput(value, callingCode, countries);
+          onChangeCallingCode(next.callingCode);
+          onChangeNumber(next.number);
+        }}
+        onBlur={() => setTouched(true)} error={touched || number.startsWith('+') ? error : undefined}
         keyboardType="phone-pad" autoComplete="tel-national" textContentType="telephoneNumber"
-        maxLength={15} placeholder="71234567" editable={editable}
+        placeholder="Tu número sin prefijo" editable={editable}
         accessibilityHint={`Código de país ${callingCode}`} />
     </View>
   );
@@ -65,12 +75,13 @@ const createStyles = ({ colors }: Tema) => StyleSheet.create({
   wrapper: { gap: spacing.sm },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   chip: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.xs, minHeight: 40,
-    paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1,
+    flexDirection: 'row', alignItems: 'center', gap: spacing.xs, minHeight: controles.altoMinimo,
+    maxWidth: '100%', paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.pill, borderWidth: 1,
     borderColor: colors.bordeControl, backgroundColor: colors.surfaceMuted,
   },
   chipSelected: { borderColor: colors.primary, backgroundColor: colors.primarioSuave },
   chipFlag: { fontSize: fontSize.md },
-  chipText: { fontSize: fontSize.sm, color: colors.textSecondary },
+  chipText: { flexShrink: 1, fontSize: fontSize.sm, color: colors.textSecondary },
+  disabled: { opacity: 0.6 },
   chipTextSelected: { color: colors.primary, fontWeight: fontWeight.semibold },
 });

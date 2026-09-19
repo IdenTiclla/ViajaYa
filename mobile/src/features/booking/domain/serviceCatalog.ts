@@ -9,7 +9,7 @@ type ServiceMeta = {
 /** Presentacion exhaustiva de cada servicio ofrecido por ViajaYa. */
 export const SERVICE_META = {
   taxi: { label: 'Taxi', shortLabel: 'Taxi', icon: 'car-sport' },
-  moto: { label: 'Moto', shortLabel: 'Moto', icon: 'bicycle' },
+  moto: { label: 'Mototaxi', shortLabel: 'Mototaxi', icon: 'bicycle' },
   delivery: {
     label: 'Cargas y encomiendas',
     shortLabel: 'Encomiendas',

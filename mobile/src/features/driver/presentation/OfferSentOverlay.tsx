@@ -38,49 +38,25 @@ export function OfferSentOverlay({
         exiting={FadeOut.duration(160)}
         style={styles.card}>
         <View style={styles.iconCircle}>
-          <Ionicons name="checkmark-circle" size={48} color={colors.success} />
+          <Ionicons name="checkmark-circle" size={24} color={colors.success} />
         </View>
-        <Text style={styles.title}>Oferta enviada</Text>
-        <Text style={styles.hint}>Esperando al pasajero…</Text>
+        <View style={styles.copy}>
+          <Text style={styles.title}>Oferta enviada</Text>
+          <Text style={styles.hint}>Puedes seguir ofertando a otros pasajeros</Text>
+        </View>
       </Animated.View>
     </View>
   );
 }
 
 const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
-  overlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 90,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.18)',
-  },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    padding: spacing.xl,
-    alignItems: 'center',
-    gap: spacing.xs,
-    width: 260,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 16,
-  },
-  iconCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: radius.pill,
-    backgroundColor: colors.exitoSuave,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.xs,
-  },
-  title: { fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.text },
-  hint: { fontSize: fontSize.sm, color: colors.textSecondary, textAlign: 'center' },
+  overlay: { position: 'absolute', left: spacing.md, right: spacing.md, bottom: spacing.md, zIndex: 90, alignItems: 'center' },
+  card: { backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1,
+    borderColor: colors.success, padding: spacing.sm, flexDirection: 'row', alignItems: 'center',
+    gap: spacing.sm, width: '100%', maxWidth: 400, elevation: 6 },
+  iconCircle: { width: 36, height: 36, borderRadius: radius.pill, backgroundColor: colors.exitoSuave,
+    alignItems: 'center', justifyContent: 'center' },
+  copy: { flex: 1 },
+  title: { fontSize: fontSize.sm, fontWeight: fontWeight.bold, color: colors.text },
+  hint: { fontSize: fontSize.xs, color: colors.textSecondary },
 });

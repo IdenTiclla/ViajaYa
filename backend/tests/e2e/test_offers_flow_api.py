@@ -6,6 +6,8 @@ import uuid
 from decimal import Decimal
 from unittest.mock import AsyncMock
 
+import pytest
+
 from app.domain.entities import Location, RideRequest, ServiceType, VehicleType
 from app.infrastructure.db.repositories import SqlAlchemyRideRequestRepository
 from app.infrastructure.realtime.hub import hub, ride_topic
@@ -169,8 +171,10 @@ async def test_pagination_rejects_invalid_cursor_and_limits(client, session_fact
         ).status_code == 422
 
 
-async def _complete_ride(client, rider_h: dict[str, str], driver_h: dict[str, str]) -> str:
-    created = await client.post(RIDES, json=_ride_payload(), headers=rider_h)
+async def _complete_ride(
+    client, rider_h: dict[str, str], driver_h: dict[str, str], service_type: str = "taxi"
+) -> str:
+    created = await client.post(RIDES, json=_ride_payload(service_type), headers=rider_h)
     assert created.status_code == 201, created.text
     ride_id = created.json()["id"]
     offer = await client.post(
@@ -194,20 +198,21 @@ async def _complete_ride(client, rider_h: dict[str, str], driver_h: dict[str, st
     return ride_id
 
 
-async def test_full_ride_flow(client, session_factory):
+@pytest.mark.parametrize("service_type", ["taxi", "moto"])
+async def test_full_ride_flow(client, session_factory, service_type):
     # --- usuarios ---
     _, rider_token = await _register(client, "rider")
     _, d1_token = await _register(client, "driver1")
     _, d2_token = await _register(client, "driver2")
-    await _promote_to_driver(session_factory, "driver1", VehicleType.TAXI)
-    await _promote_to_driver(session_factory, "driver2", VehicleType.TAXI)
+    await _promote_to_driver(session_factory, "driver1", VehicleType(service_type))
+    await _promote_to_driver(session_factory, "driver2", VehicleType(service_type))
 
     rider_h = _headers(rider_token)
     d1_h = _headers(d1_token)
     d2_h = _headers(d2_token)
 
     # --- pasajero crea el viaje ---
-    resp = await client.post(RIDES, json=_ride_payload(), headers=rider_h)
+    resp = await client.post(RIDES, json=_ride_payload(service_type), headers=rider_h)
     assert resp.status_code == 201
     ride_id = resp.json()["id"]
     # El pasajero "abre" su pantalla (presencia): la solicitud entra al pool.
@@ -248,6 +253,17 @@ async def test_full_ride_flow(client, session_factory):
     assert body["status"] == "accepted"
     assert body["driver"]["full_name"] == "driver1"
     assert body["accepted_price"] == "25.00"
+    assert body["service_type"] == service_type
+    assert body["driver"]["vehicle_type"] == service_type
+
+    premature_start = await client.patch(
+        f"{RIDES}/{ride_id}/status", json={"status": "in_progress"}, headers=d1_h
+    )
+    assert premature_start.status_code == 409, premature_start.text
+    passenger_start = await client.patch(
+        f"{RIDES}/{ride_id}/status", json={"status": "arriving"}, headers=rider_h
+    )
+    assert passenger_start.status_code == 403, passenger_start.text
 
     # aceptar otra oferta ya no es posible: el viaje dejó de buscar (409)
     offer2_id = o2.json()["id"]
@@ -265,6 +281,23 @@ async def test_full_ride_flow(client, session_factory):
         )
         assert patch.status_code == 200
         assert patch.json()["status"] == new_status
+
+        repeated = await client.patch(
+            f"{RIDES}/{ride_id}/status", json={"status": new_status}, headers=d1_h
+        )
+        assert repeated.status_code == 409, repeated.text
+        if new_status != "completed":
+            for endpoint, headers in (
+                (f"{RIDES}/me/active", rider_h),
+                ("/api/v1/drivers/me/active-ride", d1_h),
+            ):
+                recovered = await client.get(endpoint, headers=headers)
+                assert recovered.json()["id"] == ride_id
+                assert recovered.json()["status"] == new_status
+        if new_status == "in_progress":
+            for headers in (rider_h, d1_h):
+                cancellation = await client.post(f"{RIDES}/{ride_id}/cancel", headers=headers)
+                assert cancellation.status_code == 409, cancellation.text
 
     # --- el pasajero ve el viaje completado por polling ---
     final = await client.get(f"{RIDES}/{ride_id}", headers=rider_h)
@@ -467,14 +500,16 @@ async def test_database_constraint_rejects_raced_second_active_ride(
     assert active.json()["id"] == created.json()["id"]
 
 
-async def test_close_flow_rating_history_earnings(client, session_factory):
+@pytest.mark.parametrize("service_type", ["taxi", "moto"])
+async def test_close_flow_rating_history_earnings(client, session_factory, service_type):
     _, rider_token = await _register(client, "rider3")
     _, drv_token = await _register(client, "driver3")
-    await _promote_to_driver(session_factory, "driver3", VehicleType.TAXI)
+    await _promote_to_driver(session_factory, "driver3", VehicleType(service_type))
     rider_h, drv_h = _headers(rider_token), _headers(drv_token)
 
     # viaje completo: crear → ofertar → aceptar → confirmar → avanzar a completado
-    ride_id = (await client.post(RIDES, json=_ride_payload(), headers=rider_h)).json()["id"]
+    created = await client.post(RIDES, json=_ride_payload(service_type), headers=rider_h)
+    ride_id = created.json()["id"]
     offer = await client.post(
         f"{RIDES}/{ride_id}/offers", json={"accept_at_fare": True}, headers=drv_h
     )
@@ -533,18 +568,20 @@ async def test_close_flow_rating_history_earnings(client, session_factory):
     assert float(earn.json()["total_all_time"]) == 25.0
 
     # no se puede calificar un viaje que no está completado
-    other = (await client.post(RIDES, json=_ride_payload(), headers=rider_h)).json()["id"]
+    other_response = await client.post(RIDES, json=_ride_payload(service_type), headers=rider_h)
+    other = other_response.json()["id"]
     bad = await client.post(f"{RIDES}/{other}/rating", json={"score": 5}, headers=rider_h)
     assert bad.status_code == 409
 
 
+@pytest.mark.parametrize("service_type", ["taxi", "moto"])
 async def test_pending_rating_recovers_latest_completed_for_both_roles(
-    client, session_factory
+    client, session_factory, service_type
 ):
     _, rider_token = await _register(client, "pending-rider")
     _, driver_token = await _register(client, "pending-driver")
     await _promote_to_driver(
-        session_factory, "pending-driver", VehicleType.TAXI
+        session_factory, "pending-driver", VehicleType(service_type)
     )
     rider_h, driver_h = _headers(rider_token), _headers(driver_token)
     endpoint = f"{RIDES}/me/pending-rating"
@@ -552,8 +589,8 @@ async def test_pending_rating_recovers_latest_completed_for_both_roles(
     assert (await client.get(endpoint, headers=rider_h)).json() is None
     assert (await client.get(endpoint, headers=driver_h)).json() is None
 
-    first_id = await _complete_ride(client, rider_h, driver_h)
-    second_id = await _complete_ride(client, rider_h, driver_h)
+    first_id = await _complete_ride(client, rider_h, driver_h, service_type)
+    second_id = await _complete_ride(client, rider_h, driver_h, service_type)
 
     complete_history = (
         await client.get(f"{RIDES}/history", params={"limit": 100}, headers=rider_h)
@@ -620,18 +657,19 @@ async def test_pending_rating_recovers_latest_completed_for_both_roles(
         assert pending.json() is None
 
 
-async def test_skip_rating_is_persistent_for_both_roles(client, session_factory):
+@pytest.mark.parametrize("service_type", ["taxi", "moto"])
+async def test_skip_rating_is_persistent_for_both_roles(client, session_factory, service_type):
     _, rider_token = await _register(client, "skip-rider")
     _, driver_token = await _register(client, "skip-driver")
     _, stranger_token = await _register(client, "skip-stranger")
-    await _promote_to_driver(session_factory, "skip-driver", VehicleType.TAXI)
+    await _promote_to_driver(session_factory, "skip-driver", VehicleType(service_type))
     rider_h = _headers(rider_token)
     driver_h = _headers(driver_token)
     stranger_h = _headers(stranger_token)
     pending_endpoint = f"{RIDES}/me/pending-rating"
 
-    first_id = await _complete_ride(client, rider_h, driver_h)
-    second_id = await _complete_ride(client, rider_h, driver_h)
+    first_id = await _complete_ride(client, rider_h, driver_h, service_type)
+    second_id = await _complete_ride(client, rider_h, driver_h, service_type)
     assert (await client.get(pending_endpoint, headers=rider_h)).json()["id"] == second_id
     assert (await client.get(pending_endpoint, headers=driver_h)).json()["id"] == second_id
 
@@ -668,10 +706,96 @@ async def test_skip_rating_is_persistent_for_both_roles(client, session_factory)
         assert skipped.status_code == 204, skipped.text
         assert (await client.get(pending_endpoint, headers=headers)).json() is None
 
-    searching = await client.post(RIDES, json=_ride_payload(), headers=rider_h)
+    searching = await client.post(RIDES, json=_ride_payload(service_type), headers=rider_h)
     assert searching.status_code == 201, searching.text
     uncompleted = await client.post(
         f"{RIDES}/{searching.json()['id']}/rating/skip",
         headers=rider_h,
     )
     assert uncompleted.status_code == 409, uncompleted.text
+
+
+@pytest.mark.parametrize("service_type", ["taxi", "moto"])
+@pytest.mark.parametrize("stage", ["accepted", "arriving"])
+@pytest.mark.parametrize("actor", ["passenger", "driver"])
+async def test_assigned_trip_cancellation_releases_both_participants(
+    client, session_factory, service_type, stage, actor
+):
+    _, rider_token = await _register(client, "cancel-trip-rider")
+    _, driver_token = await _register(client, "cancel-trip-driver")
+    await _promote_to_driver(session_factory, "cancel-trip-driver", VehicleType(service_type))
+    rider_h, driver_h = _headers(rider_token), _headers(driver_token)
+    created = await client.post(RIDES, json=_ride_payload(service_type), headers=rider_h)
+    assert created.status_code == 201, created.text
+    ride_id = created.json()["id"]
+    offer = await client.post(
+        f"{RIDES}/{ride_id}/offers", json={"accept_at_fare": True}, headers=driver_h
+    )
+    assert offer.status_code == 201, offer.text
+    accepted = await client.post(f"{RIDES}/offers/{offer.json()['id']}/accept", headers=rider_h)
+    assert accepted.status_code == 200, accepted.text
+    if stage == "arriving":
+        arrived = await client.patch(
+            f"{RIDES}/{ride_id}/status", json={"status": stage}, headers=driver_h
+        )
+        assert arrived.status_code == 200, arrived.text
+
+    cancelled = await client.post(
+        f"{RIDES}/{ride_id}/cancel", headers=rider_h if actor == "passenger" else driver_h
+    )
+    assert cancelled.status_code == 200, cancelled.text
+    assert cancelled.json()["status"] == "cancelled"
+    assert cancelled.json()["cancelled_at"] is not None
+    for endpoint, headers in (
+        (f"{RIDES}/me/active", rider_h),
+        ("/api/v1/drivers/me/active-ride", driver_h),
+    ):
+        assert (await client.get(endpoint, headers=headers)).json() is None
+        assert (await client.get(f"{RIDES}/me/pending-rating", headers=headers)).json() is None
+        history = await client.get(
+            f"{RIDES}/history", params={"status": "cancelled"}, headers=headers
+        )
+        assert history.status_code == 200, history.text
+        assert any(item["id"] == ride_id for item in history.json()["items"])
+    next_ride = await client.post(RIDES, json=_ride_payload(service_type), headers=rider_h)
+    assert next_ride.status_code == 201, next_ride.text
+
+
+@pytest.mark.parametrize("service_type", ["taxi", "moto"])
+async def test_offer_rejects_request_edited_during_pickup_calculation(
+    client, session_factory, service_type,
+):
+    _, passenger = await _register(client, "edited-pickup-passenger")
+    _, driver = await _register(client, "edited-pickup-driver")
+    await _promote_to_driver(session_factory, "edited-pickup-driver", VehicleType(service_type))
+    passenger_headers, driver_headers = _headers(passenger), _headers(driver)
+    payload = _ride_payload(service_type)
+    ride = (await client.post(RIDES, json=payload, headers=passenger_headers)).json()
+    present = _mark_present(ride["id"])
+    try:
+        pool = (await client.get(f"{RIDES}/open", headers=driver_headers)).json()["items"]
+        original_version = next(item for item in pool if item["id"] == ride["id"])["pool_version"]
+        paused = await client.post(f"{RIDES}/{ride['id']}/pause-edit", headers=passenger_headers)
+        assert paused.status_code == 200, paused.text
+        updated_payload = {**payload, "origin": {**payload["origin"], "latitude": -16.55}}
+        edited = await client.patch(
+            f"{RIDES}/{ride['id']}", json=updated_payload, headers=passenger_headers,
+        )
+        assert edited.status_code == 200, edited.text
+        stale = await client.post(
+            f"{RIDES}/{ride['id']}/offers", headers=driver_headers,
+            json={"accept_at_fare": True, "eta_min": 3, "expected_pool_version": original_version},
+        )
+        assert stale.status_code == 409, stale.text
+        assert (await client.get(
+            f"{RIDES}/{ride['id']}/offers", headers=passenger_headers,
+        )).json() == []
+        refreshed = (await client.get(f"{RIDES}/open", headers=driver_headers)).json()["items"]
+        version = next(item for item in refreshed if item["id"] == ride["id"])["pool_version"]
+        current = await client.post(
+            f"{RIDES}/{ride['id']}/offers", headers=driver_headers,
+            json={"accept_at_fare": True, "eta_min": 12, "expected_pool_version": version},
+        )
+        assert current.status_code == 201, current.text
+    finally:
+        hub.unsubscribe(ride_topic(uuid.UUID(ride["id"])), present)

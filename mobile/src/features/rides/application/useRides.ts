@@ -134,7 +134,11 @@ export function useDriverActiveRide(
 ) {
   const query = useQuery({
     queryKey: DRIVER_ACTIVE_RIDE_KEY,
-    queryFn: ({ signal }) => ridesRepository.getActiveRide(signal),
+    // Resolve the closing stage before exposing the requests pool. A lost
+    // completion reply can make the active endpoint return null immediately.
+    queryFn: async ({ signal }) =>
+      (await ridesRepository.getActiveRide(signal))
+      ?? (await ridesRepository.getPendingRatingRide(signal)),
     enabled,
     refetchInterval: (q) =>
       enabled && !isTerminal(q.state.data?.status) ? POLL_ACTIVE_MS : false,

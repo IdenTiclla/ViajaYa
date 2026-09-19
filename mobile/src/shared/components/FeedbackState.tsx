@@ -1,7 +1,7 @@
 import { Ionicons, type IoniconsIconName } from '@react-native-vector-icons/ionicons';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
-import { fontSize, fontWeight, spacing, useEstilos, type Tema } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 import { Button } from '@/shared/components/Button';
 
 type Props = {
@@ -27,23 +27,25 @@ export function FeedbackState({
   const { colors, styles } = useEstilos(crearEstilos);
   return (
     <View
-      style={[styles.root, compact && styles.compact]}
+      style={[styles.root, compact ? styles.compact : styles.expanded]}
       accessibilityLiveRegion="polite"
+      accessibilityState={{ busy: loading }}
       accessibilityRole={loading ? 'progressbar' : undefined}>
+      <View style={styles.iconWrap} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
       {loading ? (
         <ActivityIndicator size="large" color={colors.primary} />
       ) : (
-        <View style={styles.iconWrap}>
           <Ionicons name={icon} size={30} color={colors.primary} />
-        </View>
       )}
-      <Text style={styles.title}>{title}</Text>
+      </View>
+      <Text style={styles.title} accessibilityRole="header">{title}</Text>
       {message ? <Text style={styles.message}>{message}</Text> : null}
       {actionLabel && onAction ? (
         <Button
           title={actionLabel}
           variant="secondary"
           leadingIcon="refresh"
+          disabled={loading}
           onPress={onAction}
           style={styles.action}
         />
@@ -54,27 +56,29 @@ export function FeedbackState({
 
 const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   root: {
-    flex: 1,
     minHeight: 260,
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
     padding: spacing.xl,
   },
-  compact: { minHeight: 180, flex: 0 },
+  expanded: { flex: 1 },
+  compact: { minHeight: 180, flexShrink: 0 },
   iconWrap: {
-    width: 56,
-    height: 56,
+    width: 64,
+    height: 64,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 28,
-    backgroundColor: `${colors.primary}12`,
+    borderRadius: radius.lg,
+    backgroundColor: colors.primarioSuave,
+    borderWidth: 1,
+    borderColor: colors.border,
     marginBottom: spacing.xs,
   },
   title: {
     color: colors.text,
-    fontSize: fontSize.md,
-    fontWeight: fontWeight.semibold,
+    fontSize: fontSize.lg,
+    fontWeight: fontWeight.bold,
     textAlign: 'center',
   },
   message: {

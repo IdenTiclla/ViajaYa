@@ -94,6 +94,13 @@ class CreateOffer:
             raise InvalidRideTransitionError("La solicitud ya no admite ofertas.")
         if ride.paused:
             raise InvalidRideTransitionError("La solicitud está siendo modificada.")
+        if (
+            data.expected_pool_version is not None
+            and data.expected_pool_version != ride.pool_version
+        ):
+            raise InvalidRideTransitionError(
+                "El pasajero cambió la solicitud. Revisa los nuevos datos antes de ofertar."
+            )
         if not driver_can_serve(driver, ride.service_type):
             raise NotAuthorizedActionError("Tu vehículo no coincide con el servicio solicitado.")
 
@@ -122,6 +129,7 @@ class CreateOffer:
         creation = await self._offers.create_or_supersede_atomically(
             offer,
             expected_ride_fare=ride.fare,
+            expected_pool_version=ride.pool_version,
         )
         if creation is None:
             raise DriverUnavailableError(

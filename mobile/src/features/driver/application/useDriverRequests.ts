@@ -723,11 +723,12 @@ export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
         offered,
         rejected: new Set(s.rejected).add(rideId),
         settledOfferIds,
-        ...advanceOfferAttempt(
+        // Exact offer events cannot invalidate another offer already in flight.
+        ...(offerId ? {} : advanceOfferAttempt(
           s.offerAttemptSequence,
           s.offerAttemptTokens,
           rideId,
-        ),
+        )),
       };
     });
     return applied;
@@ -839,11 +840,8 @@ export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
         expired: new Set(s.expired).add(rideId),
         expiredFares,
         settledOfferIds,
-        ...advanceOfferAttempt(
-          s.offerAttemptSequence,
-          s.offerAttemptTokens,
-          rideId,
-        ),
+        // The exact tombstone rejects this offer's late HTTP reply, while a
+        // replacement with a different ID keeps its own valid attempt token.
       };
     });
     return applied;

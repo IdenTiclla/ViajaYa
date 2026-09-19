@@ -8,6 +8,7 @@ import {
 
 import type { CursorPage } from '../data/ridesRepository';
 import type { Offer, OpenRide, Ride } from '../domain/types';
+import { reduceRideMutationResult } from './rideStatusReducer';
 
 type OfferSnapshotCut = {
   attemptSequence: number;
@@ -50,6 +51,14 @@ type RealtimeSnapshotGuard = () => boolean;
 
 const ALWAYS_CURRENT: RealtimeSnapshotGuard = () => true;
 
+/** HTTP may confirm a later stage while a reconnect snapshot is in flight. */
+function reconcileSnapshotRide(queryClient: QueryClient, activeKey: QueryKey, incoming: Ride): Ride {
+  const detail = queryClient.getQueryData<Ride>(['ride', incoming.id]);
+  const active = queryClient.getQueryData<Ride | null>(activeKey);
+  const reconciled = reduceRideMutationResult(detail, incoming).ride;
+  return reduceRideMutationResult(active, reconciled).ride;
+}
+
 export async function applyPassengerRealtimeSnapshot(
   queryClient: QueryClient,
   activeRideKey: QueryKey,
@@ -66,14 +75,15 @@ export async function applyPassengerRealtimeSnapshot(
   if (!isCurrent()) return;
 
   notifyManager.batch(() => {
-    queryClient.setQueryData(rideKey, snapshot.ride);
+    const ride = reconcileSnapshotRide(queryClient, activeRideKey, snapshot.ride);
+    queryClient.setQueryData(rideKey, ride);
     queryClient.setQueryData(offersKey, snapshot.offers);
     queryClient.setQueryData(
       activeRideKey,
-      snapshot.ride.status === 'completed' ||
-        snapshot.ride.status === 'cancelled'
+      ride.status === 'completed' ||
+        ride.status === 'cancelled'
         ? null
-        : snapshot.ride,
+        : ride,
     );
   });
 }
@@ -147,18 +157,20 @@ export async function applyDriverRealtimeSnapshot(
   // Query observers se notifican al salir del batch; la única transición de
   // Zustand ocurre cuando todas las cachés ya contienen la misma fotografía.
   notifyManager.batch(() => {
+    const activeRide = snapshot.activeRide == null ? null
+      : reconcileSnapshotRide(queryClient, activeRideKey, snapshot.activeRide);
     queryClient.setQueryData(['open-rides'], openAndPaused);
-    queryClient.setQueryData(activeRideKey, snapshot.activeRide);
-    if (snapshot.activeRide != null) {
+    queryClient.setQueryData(activeRideKey, activeRide);
+    if (activeRide != null) {
       queryClient.setQueryData(
-        ['ride', snapshot.activeRide.id],
-        snapshot.activeRide,
+        ['ride', activeRide.id],
+        activeRide,
       );
     }
     driverRequests.reconcileRealtimeSnapshot({
       rides: poolRides,
       offers,
-      activeRideId: snapshot.activeRide?.id ?? null,
+      activeRideId: activeRide?.id ?? null,
       offerCut,
     });
   });

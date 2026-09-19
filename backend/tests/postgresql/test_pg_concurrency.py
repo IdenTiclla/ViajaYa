@@ -187,6 +187,55 @@ async def test_dos_aceptaciones_del_mismo_ride_solo_tienen_un_ganador(pg_test_db
     assert dict(offer_statuses) == {"accepted": 1, "rejected": 1}
 
 
+@pytest.mark.parametrize("service", ["taxi", "moto"])
+async def test_crossed_negotiations_can_assign_two_independent_trips(pg_test_db, service) -> None:
+    """Two drivers bidding for both riders can each win one trip concurrently."""
+    riders = [uuid.uuid4(), uuid.uuid4()]
+    drivers = [uuid.uuid4(), uuid.uuid4()]
+    rides = [uuid.uuid4(), uuid.uuid4()]
+    offers = [[uuid.uuid4(), uuid.uuid4()], [uuid.uuid4(), uuid.uuid4()]]
+    async with pg_test_db.engine.begin() as connection:
+        for index in range(2):
+            await _insert_user(connection, riders[index])
+            await _insert_user(connection, drivers[index], role="driver")
+            await _insert_ride(connection, rides[index], riders[index])
+            await connection.execute(
+                sa.text("UPDATE users SET vehicle_type = :service WHERE id = :id"),
+                {"service": service, "id": drivers[index]},
+            )
+            await connection.execute(
+                sa.text("UPDATE ride_requests SET service_type = :service WHERE id = :id"),
+                {"service": service, "id": rides[index]},
+            )
+        for driver_index, driver in enumerate(drivers):
+            for ride_index, ride in enumerate(rides):
+                await _insert_offer(connection, offers[driver_index][ride_index], ride, driver)
+
+    sessions = async_sessionmaker(pg_test_db.engine, expire_on_commit=False)
+    async with sessions() as session_a, sessions() as session_b:
+        result_a, result_b = await _race(
+            lambda: SqlAlchemyOfferRepository(session_a).accept_atomically(offers[0][0]),
+            lambda: SqlAlchemyOfferRepository(session_b).accept_atomically(offers[1][1]),
+        )
+    assert result_a is not None
+    assert result_b is not None
+    async with pg_test_db.engine.connect() as connection:
+        for index, ride_id in enumerate(rides):
+            saved = (await connection.execute(
+                sa.text(
+                    "SELECT driver_id, accepted_offer_id, status FROM ride_requests WHERE id=:id"
+                ),
+                {"id": ride_id},
+            )).one()
+            assert tuple(saved) == (drivers[index], offers[index][index], "accepted")
+            statuses = (await connection.execute(
+                sa.text("SELECT id, status FROM offers WHERE ride_id=:id"), {"id": ride_id},
+            )).all()
+            assert dict(statuses) == {
+                offers[index][index]: "accepted", offers[1 - index][index]: "rejected",
+            }
+
+
 @pytest.mark.parametrize("cancellation", ["manual", "absence"])
 async def test_aceptacion_compite_con_cancelacion(pg_test_db, cancellation: str) -> None:
     rider_id = uuid.uuid4()
@@ -372,3 +421,46 @@ async def test_ratings_concurrentes_del_mismo_autor_persisten_una_fila(pg_test_d
 
     assert tuple(rating_rows) == (1, 5, 5)
     assert cached_rating == pytest.approx(5.0)
+
+
+@pytest.mark.parametrize("service", ["taxi", "moto"])
+async def test_offer_version_rechecked_after_waiting_for_concurrent_edit(pg_test_db, service):
+    driver_id, rider_id, ride_id, previous_id = (uuid.uuid4() for _ in range(4))
+    async with pg_test_db.engine.begin() as connection:
+        await _insert_user(connection, rider_id)
+        await _insert_user(connection, driver_id, role="driver")
+        await _insert_ride(connection, ride_id, rider_id)
+        await _insert_offer(connection, previous_id, ride_id, driver_id)
+        await connection.execute(
+            sa.text("UPDATE users SET vehicle_type=:service WHERE id=:id"),
+            {"service": service, "id": driver_id},
+        )
+        await connection.execute(
+            sa.text("UPDATE ride_requests SET service_type=:service WHERE id=:id"),
+            {"service": service, "id": ride_id},
+        )
+    sessions = async_sessionmaker(pg_test_db.engine, expire_on_commit=False)
+    async with sessions() as editor, sessions() as bidder:
+        await editor.execute(
+            sa.text("UPDATE ride_requests SET pool_version=2, origin_latitude=-17.5 WHERE id=:id"),
+            {"id": ride_id},
+        )
+        repository = SqlAlchemyOfferRepository(bidder)
+        pending = asyncio.create_task(repository.create_or_supersede_atomically(
+            Offer(ride_id=ride_id, driver_id=driver_id, price=Decimal("22"), eta_min=3),
+            expected_ride_fare=Decimal("20"), expected_pool_version=1,
+        ))
+        try:
+            with pytest.raises(TimeoutError):
+                await asyncio.wait_for(asyncio.shield(pending), timeout=0.1)
+            await editor.commit()
+            assert await asyncio.wait_for(pending, timeout=5) is None
+        finally:
+            await editor.rollback()
+            if not pending.done():
+                pending.cancel()
+                await asyncio.gather(pending, return_exceptions=True)
+        rows = (await bidder.execute(
+            sa.text("SELECT id, status FROM offers WHERE ride_id=:id"), {"id": ride_id},
+        )).all()
+        assert rows == [(previous_id, "pending")]

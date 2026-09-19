@@ -103,6 +103,8 @@ export type Ride = {
   driver: RideDriver | null;
   acceptedPrice: number | null;
   acceptedEtaMin: number | null;
+  /** Passenger pickup acknowledgement, preserved across reconnects. */
+  riderOnTheWayAt: string | null;
 };
 
 /** Calificación que una parte deja a la otra al terminar el viaje. */
@@ -155,6 +157,7 @@ export type DriverEarnings = {
 /** Oferta del conductor: aceptar al precio del pasajero o contraofertar. */
 export type CreateOfferInput = {
   acceptAtFare: boolean;
+  expectedPoolVersion?: number;
   price?: number;
   etaMin?: number;
 };

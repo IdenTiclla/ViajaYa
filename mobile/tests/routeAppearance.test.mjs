@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { registerHooks } from 'node:module';
 import test from 'node:test';
 import { createElement } from 'react';
@@ -91,7 +91,14 @@ test('mapa y trayecto siguen el tema elegido sin cambiar la visibilidad de lugar
       assert.equal(estilo.modoMapa, modo);
       assert.equal(estilo.estiloMapa[0].stylers[0].color, tema.colors.mapaTierra);
       assert.deepEqual(lineas.map((linea) => linea.strokeColor), [tema.colors.surface, tema.colors.primary]);
-      assert.equal(estilo.estiloMapa.some((regla) => regla.stylers.some((valor) => valor.visibility === 'off')), ocultar);
+      assert.equal(estilo.estiloMapa.some((regla) => regla.featureType === 'poi' && regla.elementType === 'labels'
+        && regla.stylers.some((valor) => valor.visibility === 'off')), ocultar);
+      for (const feature of ['landscape.man_made', 'landscape.natural.terrain', 'poi']) {
+        assert.deepEqual(estilo.estiloMapa.find(rule => rule.featureType === feature
+          && rule.elementType === 'geometry').stylers, [{ visibility: 'off' }]);
+      }
+      assert.deepEqual(estilo.estiloMapa.find(rule => rule.featureType === 'poi.park'
+        && rule.elementType === 'geometry').stylers, [{ visibility: 'on' }, { color: tema.colors.mapaParque }]);
       assert.deepEqual(lineas.map((linea) => linea.strokeWidth), [5, 3]);
     }
   }
@@ -168,4 +175,37 @@ test('sin espacio para el tooltip conserva el pin, el título nativo y la acció
   assert.equal(marcadores[0].title, 'Origen: Calle de prueba');
   assert.equal(marcadores[0].onPress, editar);
   assert.ok(vistas.some((vista) => vista.style.width === 16 && vista.style.height === 16));
+});
+
+// Inventory all native map sites so new screens cannot silently restore
+// zoom-dependent building or indoor layers in either theme.
+test('every native map uses the shared style and disables buildings, interiors and tilt', () => {
+  const files = [];
+  function visitDirectory(directory) {
+    for (const item of readdirSync(directory, { withFileTypes: true })) {
+      const path = new URL(item.name + (item.isDirectory() ? '/' : ''), directory);
+      if (item.isDirectory()) visitDirectory(path);
+      else if (item.name.endsWith('.tsx')) files.push(path);
+    }
+  }
+  visitDirectory(new URL('../src/', import.meta.url));
+  let count = 0;
+  for (const file of files) {
+    const source = ts.createSourceFile(file.href, readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    function visit(node) {
+      if ((ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)) && node.tagName.getText(source) === 'MapView') {
+        count++;
+        const attributes = new Map(node.attributes.properties.filter(ts.isJsxAttribute).map(attribute => [attribute.name.getText(source), attribute.initializer]));
+        for (const prop of ['showsBuildings', 'showsIndoors', 'showsIndoorLevelPicker', 'pitchEnabled']) {
+          const value = attributes.get(prop);
+          assert.ok(value && ts.isJsxExpression(value) && value.expression?.kind === ts.SyntaxKind.FalseKeyword, file.pathname + ': ' + prop);
+        }
+        assert.equal(attributes.get('customMapStyle')?.getText(source), '{estiloMapa}', file.pathname);
+        assert.equal(attributes.get('userInterfaceStyle')?.getText(source), '{modoMapa}', file.pathname);
+      }
+      ts.forEachChild(node, visit);
+    }
+    visit(source);
+  }
+  assert.ok(count >= 7, 'All passenger and driver map screens are checked');
 });

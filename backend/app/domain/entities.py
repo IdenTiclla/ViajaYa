@@ -253,6 +253,16 @@ class SavedPlace:
     updated_at: datetime | None = None
 
 
+@dataclass(frozen=True)
+class RideVehicleSnapshot:
+    """Vehicle identity fixed at assignment, independent of later profile changes."""
+
+    vehicle_id: uuid.UUID | None
+    vehicle_type: VehicleType | None
+    plate: str | None
+    vehicle_model: str | None
+
+
 @dataclass
 class RideRequest:
     """Solicitud de viaje creada por un pasajero.
@@ -275,6 +285,8 @@ class RideRequest:
     status: RideStatus = RideStatus.SEARCHING
     driver_id: uuid.UUID | None = None
     accepted_offer_id: uuid.UUID | None = None
+    vehicle_snapshot: RideVehicleSnapshot | None = None
+    rider_on_the_way_at: datetime | None = None
     paused: bool = False
     # Generación de la publicación que el conductor evalúa antes de ofertar.
     # Avanza al cambiar la propuesta y en cada reapertura tras una pausa.

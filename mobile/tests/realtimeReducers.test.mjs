@@ -863,6 +863,7 @@ test('los guards históricos mantienen una retención acotada', () => {
   const store = useDriverRequests.getState();
   store.reset();
   for (let index = 0; index < 520; index += 1) {
+    store.beginOfferAttempt(`ride-${index}`);
     store.markRejected(`ride-${index}`, `offer-${index}`);
   }
   for (let index = 0; index < 270; index += 1) {
@@ -1118,3 +1119,31 @@ test('la proyección del pool conserva una retención acotada y reiniciable', ()
   store.reset();
   assert.equal(useDriverRequests.getState().poolProjection.size, 0);
 });
+
+for (const outcome of ['markExpired', 'markRejected']) {
+  for (const hasPrevious of [true, false]) {
+    test(`${outcome} for an older offer preserves a replacement in flight (visible=${hasPrevious})`, () => {
+      const store = useDriverRequests.getState();
+      store.reset();
+      if (hasPrevious) applySentOffer(store, 'ride-1', sentOffer('older'));
+      const attempt = store.beginOfferAttempt('ride-1');
+      store[outcome]('ride-1', 'older');
+      assert.equal(store.markOffered('ride-1', sentOffer('replacement'), 25, attempt), true);
+      assert.equal(useDriverRequests.getState().offered['ride-1'].offerId, 'replacement');
+      assert.equal(useDriverRequests.getState().settledOfferIds.has('older'), true);
+      store.reset();
+    });
+  }
+}
+
+for (const role of ['driver', 'passenger']) {
+  test(`a late mutation from a previous trip cannot overwrite the ${role}'s new active trip`, () => {
+    const client = new QueryClient();
+    const key = [role + '-active-ride'];
+    const current = ride('new-trip', 'accepted');
+    client.setQueryData(key, current);
+    assert.equal(applyRideMutationResult(client, ride('old-trip', 'completed'), key), false);
+    assert.equal(client.getQueryData(key), current);
+    client.clear();
+  });
+}

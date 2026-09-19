@@ -28,10 +28,12 @@ from app.domain.entities import (
     RideRatingSkip,
     RideRequest,
     RideStatus,
+    RideVehicleSnapshot,
     SavedPlace,
     ServiceType,
     User,
     UserRole,
+    VehicleType,
     offered_services,
 )
 from app.domain.repositories import (
@@ -55,6 +57,7 @@ from app.domain.ride_policy import is_offer_expired
 from app.infrastructure.db.clock import DatabaseClock, database_utc_now
 from app.infrastructure.db.models import (
     DriverRideDismissalModel,
+    DriverVehicleModel,
     OfferModel,
     RideRatingModel,
     RideRatingSkipModel,
@@ -232,7 +235,16 @@ class SqlAlchemyUserRepository(UserRepository):
 
 
 def _ride_to_entity(row: RideRequestModel) -> RideRequest:
+    snapshot = row.vehicle_snapshot
     return RideRequest(
+        vehicle_snapshot=RideVehicleSnapshot(
+            vehicle_id=uuid.UUID(snapshot["vehicle_id"]) if snapshot.get("vehicle_id") else None,
+            vehicle_type=(
+                VehicleType(snapshot["vehicle_type"]) if snapshot.get("vehicle_type") else None
+            ),
+            plate=snapshot.get("plate"),
+            vehicle_model=snapshot.get("vehicle_model"),
+        ) if snapshot else None,
         id=row.id,
         rider_id=row.rider_id,
         origin=Location(
@@ -253,6 +265,7 @@ def _ride_to_entity(row: RideRequestModel) -> RideRequest:
         status=row.status,
         driver_id=row.driver_id,
         accepted_offer_id=row.accepted_offer_id,
+        rider_on_the_way_at=row.rider_on_the_way_at,
         paused=row.paused,
         pool_version=row.pool_version,
         created_at=row.created_at,
@@ -291,6 +304,16 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
             status=ride.status,
             driver_id=ride.driver_id,
             accepted_offer_id=ride.accepted_offer_id,
+            rider_on_the_way_at=ride.rider_on_the_way_at,
+            vehicle_snapshot={
+                "vehicle_id": (
+                    str(ride.vehicle_snapshot.vehicle_id)
+                    if ride.vehicle_snapshot.vehicle_id else None
+                ),
+                "vehicle_type": ride.vehicle_snapshot.vehicle_type,
+                "plate": ride.vehicle_snapshot.plate,
+                "vehicle_model": ride.vehicle_snapshot.vehicle_model,
+            } if ride.vehicle_snapshot else None,
             paused=ride.paused,
             pool_version=ride.pool_version,
             completed_at=ride.completed_at,
@@ -428,6 +451,26 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
         if row is None:  # pragma: no cover - el UPDATE acaba de devolver este id
             return None
         return _ride_to_entity(row)
+
+    async def mark_rider_on_the_way_if_arriving(
+        self, ride_id: uuid.UUID, rider_id: uuid.UUID,
+    ) -> tuple[RideRequest, bool] | None:
+        row = (await self._session.execute(
+            select(RideRequestModel).where(RideRequestModel.id == ride_id)
+            .execution_options(populate_existing=True).with_for_update()
+        )).scalar_one_or_none()
+        if row is None or row.rider_id != rider_id:
+            return None
+        if row.rider_on_the_way_at is not None:
+            return _ride_to_entity(row), False
+        if row.status is not RideStatus.ARRIVING:
+            return None
+        row.rider_on_the_way_at = await database_utc_now(self._session)
+        if self._commit_update_if_state:
+            await self._session.commit()
+        else:
+            await self._session.flush()
+        return _ride_to_entity(row), True
 
     async def cancel_if_searching(self, ride_id: uuid.UUID) -> RideRequest | None:
         row = (
@@ -978,7 +1021,8 @@ class SqlAlchemyOfferRepository(OfferRepository):
         return _offer_to_entity(row)
 
     async def create_or_supersede_atomically(
-        self, offer: Offer, *, expected_ride_fare: Decimal
+        self, offer: Offer, *, expected_ride_fare: Decimal,
+        expected_pool_version: int | None = None,
     ) -> OfferCreation | None:
         # Mismo orden que accept_atomically: conductor -> ride -> oferta. El lock
         # del conductor serializa dos envíos simultáneos del mismo conductor.
@@ -1014,6 +1058,10 @@ class SqlAlchemyOfferRepository(OfferRepository):
             or ride_row.paused
             or ride_row.service_type not in _row_offered_services(driver_row)
             or ride_row.fare != expected_ride_fare
+            or (
+                expected_pool_version is not None
+                and ride_row.pool_version != expected_pool_version
+            )
         ):
             await self._session.rollback()
             return None
@@ -1527,6 +1575,20 @@ class SqlAlchemyOfferRepository(OfferRepository):
             )
             .values(status=OfferStatus.REJECTED)
         )
+        vehicle_id = await self._session.scalar(
+            select(DriverVehicleModel.id).where(
+                DriverVehicleModel.user_id == driver_row.id,
+                DriverVehicleModel.vehicle_type == driver_row.vehicle_type,
+            )
+        )
+        # The driver row is locked by this transaction, also serializing vehicle
+        # switching. Store the snapshot before the assignment and outbox commit.
+        ride_row.vehicle_snapshot = {
+            "vehicle_id": str(vehicle_id) if vehicle_id else None,
+            "vehicle_type": driver_row.vehicle_type,
+            "plate": driver_row.plate,
+            "vehicle_model": driver_row.vehicle_model,
+        }
         ride_row.driver_id = driver_row.id
         ride_row.accepted_offer_id = offer_row.id
         ride_row.status = RideStatus.ACCEPTED

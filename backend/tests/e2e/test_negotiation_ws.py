@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
+from contextlib import ExitStack
 from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qs, urlsplit
 
@@ -45,6 +46,183 @@ from app.main import create_app
 from tests.e2e.helpers import phone_for, promote_to_driver, sign_in_sync, test_settings
 
 RIDES = "/api/v1/rides"
+
+
+@pytest.mark.parametrize("service_type", ["taxi", "moto"])
+def test_multiple_negotiations_survive_reconnect_and_only_winner_offers_are_withdrawn(
+    ws_client: TestClient, service_type: str,
+) -> None:
+    passengers = [_register(ws_client, f"multi-passenger-{index}") for index in range(3)]
+    drivers = [_register(ws_client, f"multi-driver-{index}") for index in range(2)]
+    for index in range(2):
+        _promote_driver(ws_client, f"multi-driver-{index}", VehicleType(service_type))
+    rides = [
+        ws_client.post(RIDES, json=_ride_payload(service_type), headers=_headers(token)).json()
+        for token in passengers
+    ]
+    with ExitStack() as sockets:
+        passenger_sockets = [
+            sockets.enter_context(_websocket_connect(
+                ws_client, f"/api/v1/ws/rides/{ride['id']}?token={token}",
+            ))
+            for ride, token in zip(rides, passengers, strict=True)
+        ]
+        for socket in passenger_sockets:
+            assert socket.receive_json()["type"] == "offers_snapshot"
+        offers = []
+        for driver in drivers:
+            driver_offers = []
+            for ride, socket in zip(rides, passenger_sockets, strict=True):
+                response = ws_client.post(
+                    f"{RIDES}/{ride['id']}/offers", headers=_headers(driver),
+                    json={"accept_at_fare": True, "eta_min": 4},
+                )
+                assert response.status_code == 201, response.text
+                offer = response.json()
+                driver_offers.append(offer)
+                event = socket.receive_json()
+                assert event["type"] == "offer_created"
+                assert event["data"]["id"] == offer["id"]
+            offers.append(driver_offers)
+
+        # Reconnection restores every pending negotiation, without assigning a trip.
+        driver_socket = sockets.enter_context(_websocket_connect(
+            ws_client, f"/api/v1/ws/driver?token={drivers[0]}",
+        ))
+        pool, snapshot = _receive_driver_handshake(driver_socket)
+        assert {item["id"] for item in pool["data"]["items"]} == {r["id"] for r in rides}
+        assert {item["id"] for item in snapshot["data"]} == {o["id"] for o in offers[0]}
+        assert ws_client.get(
+            "/api/v1/drivers/me/active-ride", headers=_headers(drivers[0]),
+        ).json() is None
+        for ride, token in zip(rides, passengers, strict=True):
+            available = ws_client.get(f"{RIDES}/{ride['id']}/offers", headers=_headers(token))
+            assert len(available.json()) == 2
+
+        accepted = ws_client.post(
+            f"{RIDES}/offers/{offers[0][0]['id']}/accept", headers=_headers(passengers[0]),
+        )
+        assert accepted.status_code == 200, accepted.text
+        assert passenger_sockets[0].receive_json()["data"]["status"] == "accepted"
+        for index in (1, 2):
+            withdrawn = passenger_sockets[index].receive_json()
+            assert withdrawn["type"] == "offer_withdrawn"
+            assert withdrawn["data"]["offer_id"] == offers[0][index]["id"]
+            available = ws_client.get(
+                f"{RIDES}/{rides[index]['id']}/offers", headers=_headers(passengers[index]),
+            ).json()
+            assert [item["id"] for item in available] == [offers[1][index]["id"]]
+
+        events = [driver_socket.receive_json() for _ in range(3)]
+        assert [event["type"] for event in events] == [
+            "ride_closed", "offer_accepted", "offers_withdrawn",
+        ]
+        assert events[1]["data"]["id"] == rides[0]["id"]
+        assert set(events[2]["data"]["ride_ids"]) == {r["id"] for r in rides[1:]}
+        stale_accept = ws_client.post(
+            f"{RIDES}/offers/{offers[0][1]['id']}/accept", headers=_headers(passengers[1]),
+        )
+        assert stale_accept.status_code == 409
+        busy_offer = ws_client.post(
+            f"{RIDES}/{rides[2]['id']}/offers", headers=_headers(drivers[0]),
+            json={"accept_at_fare": True, "eta_min": 4},
+        )
+        assert busy_offer.status_code == 409
+        second = ws_client.post(
+            f"{RIDES}/offers/{offers[1][1]['id']}/accept", headers=_headers(passengers[1]),
+        )
+        assert second.status_code == 200, second.text
+        assert second.json()["driver"]["id"] != accepted.json()["driver"]["id"]
+
+
+@pytest.mark.parametrize("service_type", ["taxi", "moto"])
+def test_v2_reconnect_restores_all_negotiations_and_converges_after_assignment(
+    ws_client_v2: TestClient, service_type: str,
+) -> None:
+    client = ws_client_v2
+    passengers = [_register(client, f"v2-multi-passenger-{index}") for index in range(3)]
+    drivers = [_register(client, f"v2-multi-driver-{index}") for index in range(2)]
+    for index in range(2):
+        _promote_driver(client, f"v2-multi-driver-{index}", VehicleType(service_type))
+    rides = []
+    for token in passengers:
+        created = client.post(RIDES, json=_ride_payload(service_type), headers=_headers(token))
+        assert created.status_code == 201, created.text
+        rides.append(created.json())
+
+    with ExitStack() as sockets:
+        passenger_sockets = [
+            sockets.enter_context(_websocket_connect(
+                client, f"/api/v1/ws/rides/{ride['id']}?token={token}",
+            ))
+            for ride, token in zip(rides, passengers, strict=True)
+        ]
+        versions = []
+        for socket in passenger_sockets:
+            snapshot = RideSnapshotMessageV2.model_validate(socket.receive_json())
+            assert snapshot.data.offers == []
+            versions.append(snapshot.watermarks[0].stream_version)
+        offers = []
+        for driver in drivers:
+            driver_offers = []
+            for index, (ride, socket) in enumerate(zip(rides, passenger_sockets, strict=True)):
+                response = client.post(
+                    f"{RIDES}/{ride['id']}/offers", headers=_headers(driver),
+                    json={"accept_at_fare": True, "eta_min": 4},
+                )
+                assert response.status_code == 201, response.text
+                driver_offers.append(response.json())
+                event = RealtimeEventEnvelopeV2.model_validate(socket.receive_json())
+                assert event.type == "offer_created"
+                assert event.data["id"] == response.json()["id"]
+                assert event.stream == f"ride:{ride['id']}"
+                assert event.stream_version == versions[index] + 1
+                versions[index] = event.stream_version
+            offers.append(driver_offers)
+
+        # The durable snapshot must recover every pending offer after disconnection.
+        with _websocket_connect(client, f"/api/v1/ws/driver?token={drivers[0]}") as driver_ws:
+            before = DriverSnapshotMessageV2.model_validate(driver_ws.receive_json())
+            assert {str(item.id) for item in before.data.offers} == {
+                offer["id"] for offer in offers[0]
+            }
+            assert before.data.active_ride is None
+
+        accepted = client.post(
+            f"{RIDES}/offers/{offers[0][0]['id']}/accept", headers=_headers(passengers[0]),
+        )
+        assert accepted.status_code == 200, accepted.text
+        for index, socket in enumerate(passenger_sockets):
+            event = RealtimeEventEnvelopeV2.model_validate(socket.receive_json())
+            assert event.stream_version == versions[index] + 1
+            assert event.stream == f"ride:{rides[index]['id']}"
+            if index == 0:
+                assert event.type == "ride_status"
+                assert event.data == accepted.json()
+            else:
+                assert event.type == "offer_withdrawn"
+                assert event.data["offer_id"] == offers[0][index]["id"]
+
+        # Reconnect both drivers: only the winner is assigned; the other keeps two offers.
+        for index, token in enumerate(drivers):
+            with _websocket_connect(client, f"/api/v1/ws/driver?token={token}") as driver_ws:
+                after = DriverSnapshotMessageV2.model_validate(driver_ws.receive_json())
+                if index == 0:
+                    assert after.data.active_ride.model_dump(mode="json") == accepted.json()
+                    assert after.data.offers == []
+                else:
+                    assert after.data.active_ride is None
+                    assert {str(item.id) for item in after.data.offers} == {
+                        offer["id"] for offer in offers[1][1:]
+                    }
+        for index in (1, 2):
+            with _websocket_connect(
+                client, f"/api/v1/ws/rides/{rides[index]['id']}?token={passengers[index]}",
+            ) as passenger_ws:
+                after = RideSnapshotMessageV2.model_validate(passenger_ws.receive_json())
+                assert after.data.ride.status.value == "searching"
+                assert [str(item.id) for item in after.data.offers] == [offers[1][index]["id"]]
+                assert after.watermarks[0].stream_version == versions[index] + 1
 
 
 def _ride_payload(service_type: str = "taxi") -> dict:
@@ -306,18 +484,19 @@ def test_live_local_sends_single_v2_snapshot_and_durable_delta(
             assert event.stream_version == rider_snapshot.watermarks[0].stream_version + 1
 
 
+@pytest.mark.parametrize("service_type", ["taxi", "moto"])
 def test_status_progression_reaches_both_participants_with_exact_http_payload(
-    ws_client: TestClient,
+    ws_client: TestClient, service_type: str,
 ) -> None:
     rider_token = _register(ws_client, "rider-status-ws")
     driver_token = _register(ws_client, "driver-status-ws")
-    _promote_driver(ws_client, "driver-status-ws")
+    _promote_driver(ws_client, "driver-status-ws", VehicleType(service_type))
 
     with _websocket_connect(ws_client, "/api/v1/ws/driver?token=" + driver_token) as driver_ws:
         _receive_driver_handshake(driver_ws)
         ride = ws_client.post(
             RIDES,
-            json=_ride_payload(),
+            json=_ride_payload(service_type),
             headers=_headers(rider_token),
         ).json()
 
@@ -359,6 +538,17 @@ def test_status_progression_reaches_both_participants_with_exact_http_payload(
                 driver_event = driver_ws.receive_json()
                 assert rider_event == {"type": "ride_status", "data": payload}
                 assert driver_event == {"type": "ride_status", "data": payload}
+                if next_status == "arriving":
+                    notice = ws_client.post(
+                        f"{RIDES}/{ride['id']}/rider-on-the-way", headers=_headers(rider_token),
+                    )
+                    assert notice.status_code == 200, notice.text
+                    assert notice.json()["rider_on_the_way_at"] is not None
+                    expected = {"type": "ride_status", "data": notice.json()}
+                    assert rider_ws.receive_json() == expected
+                    assert driver_ws.receive_json() == expected
+                else:
+                    assert payload["rider_on_the_way_at"] is not None
 
             assert payload["completed_at"] is not None
 

@@ -106,7 +106,7 @@ export function RatingScreen() {
         ride.driver.plate,
       ]
         .filter(Boolean)
-        .join(' · ')
+        .join(' · ') || 'Datos del vehículo no registrados'
     : null;
 
   return (
@@ -120,6 +120,7 @@ export function RatingScreen() {
           keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}>
           <RideRatingCard
+            key={ride.id}
             ride={ride}
             rateeRole="driver"
             counterpartName={ride.driver?.fullName ?? null}

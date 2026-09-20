@@ -1,5 +1,5 @@
 {
-  "revision": 21,
+  "revision": 23,
   "date": "19 de septiembre de 2026",
   "slides": [
     {
@@ -31,7 +31,8 @@
         }
       ],
       "criterion": "F01 cerrada localmente; F02 en curso y F04 parcial. La apertura pública todavía no está certificada.",
-      "source": "Base revisada: main · 986dd79 · PR #15 integrado el 14/09/2026."
+      "source": "Base revisada: main · 986dd79 · PR #15 integrado el 14/09/2026.",
+      "lead": "Desarrollo es el único entorno operativo; Pruebas queda temporalmente deprecado."
     },
     {
       "title": "Evidencia de la base integrada",
@@ -129,39 +130,39 @@
           ]
         }
       ],
-      "criterion": "La configuración de tres entornos está preparada; el despliegue productivo sigue pendiente."
+      "criterion": "Base local preparada. Solo Desarrollo está activo; Pruebas queda temporalmente deprecado."
     },
     {
       "phase": 1,
-      "title": "Desarrollo, Pruebas y Producción",
+      "title": "Solo Desarrollo por ahora",
       "columns": [
         {
-          "title": "Desarrollo",
+          "title": "Desarrollo activo",
           "items": [
-            "Trabajo local y datos ficticios.",
-            "OTP simulado sin proveedor SMS.",
-            "Variante ViajaYa Desarrollo."
+            "Trabajo diario, QA y recorridos entre teléfonos.",
+            "API local y APK ViajaYa Desarrollo.",
+            "Datos sintéticos y OTP simulado."
           ]
         },
         {
-          "title": "Pruebas",
+          "title": "Pruebas deprecado",
           "items": [
-            "Evidencia de PC + túnel HTTPS.",
-            "APK inicial anterior al candidato actual.",
-            "Actualizar y certificar; después alojar."
+            "Sin nuevos despliegues ni APK de Pruebas.",
+            "Configuraciones conservadas como referencia.",
+            "Reactivación solo con nueva decisión."
           ]
         },
         {
-          "title": "Producción",
+          "title": "Producción futura",
           "items": [
-            "Configuración preparada.",
-            "Sin despliegue certificado.",
-            "Proveedores reales, backups y alertas pendientes."
+            "No habilitada para esta entrega.",
+            "Requiere certificación y aprobación.",
+            "Mantener aislamiento de datos y credenciales."
           ]
         }
       ],
-      "criterion": "API, datos, caché, archivos, secretos y credenciales separados. Pruebas también se llama staging.",
-      "source": "La disponibilidad actual de las API y del túnel no se revalidó el 19/09."
+      "criterion": "Los tests automatizados y CI continúan. El ambiente Pruebas permanece inactivo.",
+      "source": "Decisión del usuario · 19/09/2026 · revisión 23."
     },
     {
       "phase": 2,
@@ -221,7 +222,7 @@
       "title": "OTP separado por entorno",
       "columns": [
         {
-          "title": "Desarrollo y Pruebas",
+          "title": "Desarrollo",
           "items": [
             "Desafíos simulados con caducidad y uso único.",
             "Autocompletado identificado como prueba.",
@@ -324,31 +325,31 @@
           ]
         }
       ],
-      "source": "Revisión 21 · codex/ui-improvements-and-bugfixes, sin commit · llegada y mapas 0021. Backend/PostgreSQL: evidencia histórica de revisión 17."
+      "source": "Revisión 21 · codex/ui-improvements-and-bugfixes, base e10e6ae · llegada y mapas 0021. Backend/PostgreSQL: evidencia histórica de revisión 17."
     },
     {
       "phase": 5,
       "title": "Seguimiento y notificaciones",
       "columns": [
         {
-          "title": "Base disponible",
+          "title": "Implementado localmente",
           "items": [
-            "Mapas, lugares y rutas.",
-            "Ubicación del dispositivo.",
-            "WebSocket y recuperación por snapshot."
+            "GPS privado desde aceptación hasta cierre.",
+            "Snapshot, reconexión y señal antigua visible.",
+            "Redis entre instancias y servicio Android."
           ]
         },
         {
-          "title": "Circuito por completar",
+          "title": "Pendiente de certificar",
           "items": [
-            "GPS del conductor al pasajero autorizado.",
-            "Hora, precisión y aviso de señal antigua.",
-            "Continuidad Android en segundo plano.",
-            "Push que recupera el estado actual."
+            "Dos teléfonos: GPS real, Waze y pantalla bloqueada.",
+            "Push que recupera el estado actual.",
+            "Permisos y recuperación en dispositivos reales."
           ]
         }
       ],
-      "criterion": "Un viaje en dos teléfonos se recupera de red perdida, permisos denegados y cambios de app."
+      "criterion": "Un viaje en dos teléfonos se recupera de red perdida, permisos denegados y cambios de app.",
+      "source": "Revisión 22 · plan 0022 · API/WS y Redis verificados; UI con mapa de prueba."
     },
     {
       "phase": 5,
@@ -378,23 +379,23 @@
       "title": "Navegación dentro de ViajaYa",
       "columns": [
         {
-          "title": "Integración pendiente",
+          "title": "Integración Android",
           "items": [
-            "Google Navigation hacia recogida y destino.",
-            "Voz, ETA y recálculo por desvíos.",
-            "Compatibilidad nativa con Expo 56 y RN 0.85.3."
+            "Google Navigation 0.16.3: recogida y destino.",
+            "APK Android compilado; voz y cámara cenital.",
+            "Waze opcional con GPS de ViajaYa independiente."
           ]
         },
         {
-          "title": "Criterios del recorrido",
+          "title": "Pendiente en teléfonos",
           "items": [
-            "Etapa recuperable tras cerrar o minimizar.",
-            "Una sola guía por voz y seguimiento activo.",
-            "Waze como opción externa voluntaria."
+            "Instalar nuevo APK y validar autorización Google.",
+            "Voz, Bluetooth, desvíos y cobertura de moto.",
+            "Segundo plano, bloqueo y retorno desde Waze."
           ]
         }
       ],
-      "criterion": "La llegada del SDK no completa el viaje ni confirma su pago. F06-A puede adelantarse para despejar compatibilidad.",
+      "criterion": "La llegada del SDK no modifica el viaje. Cambiar etapa requiere confirmación; build y dobles no certifican un recorrido real.",
       "source": "[Wrapper de Google](https://github.com/googlemaps/react-native-navigation-sdk) · [Cobertura](https://developers.google.com/maps/documentation/navigation/android-sdk/coverage-nav-sdk)."
     },
     {
@@ -629,7 +630,7 @@
         }
       ],
       "criterion": "Una alerta presupuestaria no detiene cargos. La apertura requiere límites y responsables.",
-      "source": "OTP de Desarrollo/Pruebas: cero cargos de envío/verificación externa; su hosting se contabiliza aparte."
+      "source": "OTP de Desarrollo: cero cargos de envío/verificación externa; su hosting se contabiliza aparte."
     },
     {
       "title": "Próximas entregas",

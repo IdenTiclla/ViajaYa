@@ -1,3 +1,5 @@
+import { useDriverLocation } from '@/features/tracking/application/useDriverLocation';
+import { DriverLocationStatus } from '@/features/tracking/presentation/DriverLocationStatus';
 /**
  * Viaje en curso (pasajero) — seguimiento con mapa (diseño Stitch
  * "Seguimiento del Viaje" / "Conductor en el origen").
@@ -84,6 +86,7 @@ export function TripScreen() {
   const { rideId } = useLocalSearchParams<{ rideId?: string }>();
   const id = rideId ?? null;
   const { ride, isLoading, isError, error, refetch } = useRide(id);
+  const tracking = useDriverLocation(ride);
   const actions = useTripActions(ride);
   const [confirmCancel, setConfirmCancel] = useState<{ id: string; status: RideStatus } | null>(null);
   const [sheetHeight, setSheetHeight] = useState(380);
@@ -158,7 +161,7 @@ export function TripScreen() {
 
   return (
     <View style={styles.root}>
-      <TripRouteMap service={ride.service} origin={ride.origin} destination={ride.destination} topPadding={48} bottomPadding={sheetHeight} />
+      <TripRouteMap vehicle={tracking.location ? { coordinates: tracking.location, heading: tracking.location.heading, type: ride.driver?.vehicleType ?? null, stale: tracking.freshness !== "live" } : undefined} service={ride.service} origin={ride.origin} destination={ride.destination} topPadding={48} bottomPadding={sheetHeight} />
 
       {(isCompleted || isCancelled) && (
         <SafeAreaView style={styles.topBar} edges={['top']} pointerEvents="box-none">
@@ -197,7 +200,10 @@ export function TripScreen() {
           <Text style={styles.hint}>Llegada estimada al aceptar: {ride.acceptedEtaMin} min.</Text>
         )}
 
-        {ride.driver && <DriverCard ride={ride} />}
+        {ride.driver && <>
+          {!isCompleted && !isCancelled && <DriverLocationStatus freshness={tracking.freshness} onRetry={tracking.retry} />}
+          <DriverCard ride={ride} />
+        </>}
         <TripSummary key={ride.id} ride={ride} compact />
 
         {ride.status === 'searching' && (

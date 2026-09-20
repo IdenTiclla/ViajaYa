@@ -1,3 +1,5 @@
+import { MarcadorVehiculo } from '@/features/driver/presentation/MarcadorVehiculo';
+import type { VehicleType } from '@/features/auth/domain/types';
 /**
  * Mapa de fondo del viaje en curso: dibuja el trayecto origen→destino por calles
  * y reencuadra para que quepan ambos puntos.
@@ -25,7 +27,9 @@ export function TripRouteMap({
   bottomPadding = 320,
   showPlaceNamesInTooltip = false,
   showMotorcycleNotice = true,
+  vehicle,
 }: {
+  vehicle?: { coordinates: Coordinates; heading: number | null; type: VehicleType | null; stale?: boolean };
   origin: Place;
   service: ServiceType;
   destination: Place;
@@ -62,17 +66,19 @@ export function TripRouteMap({
     ? coordinates
     : [origin.coordinates, destination.coordinates], [coordinates, origin.coordinates, destination.coordinates]);
 
+  const vehicleLatitude = vehicle?.coordinates.latitude;
+  const vehicleLongitude = vehicle?.coordinates.longitude;
   const fit = useCallback((animated: boolean) => {
     if (!ready || size.width <= 0 || size.height <= 0 || polyline.length < 2) return;
     // Compact labels need less margin than full addresses. Fit the entire
     // geometry into the remaining viewport without zooming away from the route.
     const tooltipInset = showPlaceNamesInTooltip ? 72 : 40;
     const tooltipSideInset = showPlaceNamesInTooltip ? 88 : 44;
-    mapRef.current?.fitToCoordinates(polyline, {
+    mapRef.current?.fitToCoordinates(vehicleLatitude != null && vehicleLongitude != null ? [...polyline, { latitude: vehicleLatitude, longitude: vehicleLongitude }] : polyline, {
       edgePadding: getTripMapPadding(size.width, size.height, topPadding + (service === 'moto' && showMotorcycleNotice ? noticeHeight : 0), bottomPadding, tooltipInset, tooltipSideInset),
       animated,
     });
-  }, [ready, size, polyline, topPadding, bottomPadding, showPlaceNamesInTooltip, noticeHeight, service, showMotorcycleNotice]);
+  }, [ready, size, polyline, topPadding, bottomPadding, showPlaceNamesInTooltip, noticeHeight, service, showMotorcycleNotice, vehicleLatitude, vehicleLongitude]);
 
   useEffect(() => {
     fit(false);
@@ -123,6 +129,9 @@ export function TripRouteMap({
         label={showPlaceNamesInTooltip ? `Destino: ${getPlaceStreetName(destination)}` : 'Destino'}
       />
       <RoutePolyline coordinates={coordinates ?? []} />
+      {vehicle && <MarcadorVehiculo coordinates={vehicle.coordinates} heading={vehicle.heading}
+        tipoVehiculo={vehicle.type ?? (service === 'moto' ? 'moto' : service === 'taxi' ? 'taxi' : null)}
+        label="Ubicación del conductor" opacity={vehicle.stale ? 0.5 : 1} />}
     </MapView>
     {service === 'moto' && showMotorcycleNotice && <View style={{ position: 'absolute', top: topPadding, left: 12, right: 12 }}
       onLayout={(event) => setNoticeHeight(event.nativeEvent.layout.height)}>

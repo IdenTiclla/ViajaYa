@@ -1,5 +1,7 @@
 # Entornos de ViajaYa
 
+**Política vigente (19/09/2026):** usamos únicamente **Desarrollo**. **Pruebas (`testing`/`preview`/staging) queda temporalmente deprecado**: no iniciar, desplegar ni generar entregas para ese entorno. Producción sigue siendo un objetivo futuro. Las configuraciones anteriores se conservan como referencia; las pruebas automatizadas y las bases desechables de CI continúan vigentes.
+
 La fase F01 prepara configuración, identidades móviles, dependencias y despliegues reproducibles. El aprovisionamiento de nube, la certificación de proveedores reales y la apertura pública se cierran en F09–F10.
 
 ## Contrato común

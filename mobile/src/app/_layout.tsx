@@ -1,3 +1,4 @@
+import '@/features/tracking/application/driverLocationTask';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
 import { useEffect, useState } from 'react';

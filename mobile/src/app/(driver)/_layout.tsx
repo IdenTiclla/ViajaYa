@@ -1,3 +1,4 @@
+import { useDriverLocationSharing } from '@/features/tracking/application/useDriverLocationSharing';
 import { Stack } from 'expo-router';
 
 import { DriverToaster } from '@/features/driver/presentation/DriverToaster';
@@ -9,6 +10,7 @@ export default function DriverLayout() {
   // aceptaciones del pasajero (a confirmar), resultado de la carrera y cambios
   // del viaje asignado. Así los avisos llegan esté en la pantalla que esté.
   useDriverPoolSocket();
+  useDriverLocationSharing();
   return (
     <>
       <Stack screenOptions={{ headerShown: false }} />

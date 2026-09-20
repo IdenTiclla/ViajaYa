@@ -18,6 +18,10 @@ import { TripSummary } from '@/features/rides/presentation/TripSummary';
 import { TripSecondaryAction } from '@/features/rides/presentation/TripSecondaryAction';
 import { Button, ConfirmDialog, FeedbackState } from '@/shared/components';
 
+import { DriverNavigationActions } from '@/features/navigation/presentation/DriverNavigationActions';
+import { DriverSharingStatus } from '@/features/tracking/presentation/DriverSharingStatus';
+import { useLocationSharingStore } from '@/features/tracking/application/locationSharingStore';
+
 type Confirmation = { rideId: string; status: RideStatus; action: 'arrive' | 'start' | 'complete' | 'cancel' };
 
 function getStage(ride: Ride) {
@@ -45,6 +49,7 @@ export function ViajeEnCursoConductorScreen({ ride }: { ride: Ride }) {
   const { styles } = useEstilos(createStyles);
   const router = useRouter();
   const queryClient = useQueryClient();
+  const sharing = useLocationSharingStore();
   const actions = useTripActions(ride);
   const contact = useTripContact(ride, ride.rider.phone);
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
@@ -96,7 +101,7 @@ export function ViajeEnCursoConductorScreen({ ride }: { ride: Ride }) {
 
   return (
     <View style={styles.root}>
-      <TripRouteMap service={ride.service} origin={ride.origin} destination={ride.destination} topPadding={48} bottomPadding={sheetHeight} />
+      <TripRouteMap vehicle={sharing.rideId === ride.id && sharing.coordinates ? { coordinates: sharing.coordinates, heading: sharing.heading, type: ride.driver?.vehicleType ?? null } : undefined} service={ride.service} origin={ride.origin} destination={ride.destination} topPadding={48} bottomPadding={sheetHeight} />
       <SafeAreaView style={styles.sheet} edges={['bottom']} onLayout={(event) => setSheetHeight(event.nativeEvent.layout.height)}>
         <View style={styles.handle} />
         <ScrollView contentContainerStyle={styles.sheetContent} bounces={false}>
@@ -106,6 +111,8 @@ export function ViajeEnCursoConductorScreen({ ride }: { ride: Ride }) {
             <Text style={styles.hint}>{stage.hint}</Text>
           </View>
 
+          <DriverNavigationActions ride={ride} />
+          <DriverSharingStatus rideId={ride.id} />
           <View style={styles.passenger}>
             <Text style={styles.name}>{ride.rider.fullName}</Text>
             <Text style={styles.hint}>{nouns.customerTitle}{ride.rider.rating != null ? ` · ${ride.rider.rating.toFixed(1)} de 5` : ''}</Text>

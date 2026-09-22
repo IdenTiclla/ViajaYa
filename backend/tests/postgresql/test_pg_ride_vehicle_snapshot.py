@@ -3,13 +3,16 @@
 import uuid
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
+from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import UUID as PgUUID
 
 from tests.postgresql.test_pg_integrity_0017 import _insert_ride, _insert_user
 
 
 @pytest.mark.parametrize("service", ["taxi", "moto"])
 async def test_vehicle_snapshot_backfill_preserves_unknown_history(pg_test_db, service):
+    await pg_test_db.purge_accounts()
     await pg_test_db.migrate_async("downgrade", "0028_driver_vehicles")
     expected = {}
     async with pg_test_db.engine.begin() as connection:
@@ -44,6 +47,11 @@ async def test_vehicle_snapshot_backfill_preserves_unknown_history(pg_test_db, s
             )
     await pg_test_db.migrate_async("upgrade", "head")
     async with pg_test_db.engine.begin() as connection:
-        rows = await connection.execute(text("SELECT id, vehicle_snapshot FROM ride_requests"))
+        rows = await connection.execute(
+            text("SELECT id, vehicle_snapshot FROM ride_requests WHERE id = ANY(:ids)").bindparams(
+                bindparam("ids", type_=ARRAY(PgUUID(as_uuid=True)))
+            ),
+            {"ids": list(expected)},
+        )
         assert dict(rows.all()) == expected
     await pg_test_db.purge_accounts()

@@ -94,6 +94,23 @@ function openRide() {
   };
 }
 
+test('pickup notice is preserved for both participants and older events remain compatible', () => {
+  for (const parser of [passengerRealtimeMessageParser, driverRealtimeMessageParser]) {
+    const legacy = parser.safeParse({ type: 'ride_status', data: ride() });
+    assert.equal(legacy.success, true);
+    assert.equal(legacy.data.data.rider_on_the_way_at, null);
+    const notice = parser.safeParse({
+      type: 'ride_status',
+      data: { ...ride(), status: 'arriving', rider_on_the_way_at: occurredAt },
+    });
+    assert.equal(notice.success, true);
+    assert.equal(notice.data.data.rider_on_the_way_at, occurredAt);
+    assert.equal(parser.safeParse({
+      type: 'ride_status', data: { ...ride(), rider_on_the_way_at: 'invalid' },
+    }).success, false);
+  }
+});
+
 function eventMetadata(overrides = {}) {
   return {
     schema_version: 2,

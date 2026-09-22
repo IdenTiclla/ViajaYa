@@ -10,6 +10,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 
+import { recoverCommittedMutation } from './recoverCommittedMutation';
 import { actualizarTrasCalificacion } from '@/features/rides/application/actualizarTrasCalificacion';
 import { ridesRepository } from '@/features/rides/data/ridesRepository';
 import type { RatingInput, RideStatus } from '@/features/rides/domain/types';
@@ -44,7 +45,11 @@ export function useRateRide() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (vars: { rideId: string; input: RatingInput }) =>
-      ridesRepository.rateRide(vars.rideId, vars.input),
+      recoverCommittedMutation(
+        async () => { await ridesRepository.rateRide(vars.rideId, vars.input); return true; },
+        () => ridesRepository.hasRating(vars.rideId),
+        (saved) => saved,
+      ),
     onSuccess: (_data, vars) => actualizarTrasCalificacion(queryClient, vars.rideId),
   });
 }

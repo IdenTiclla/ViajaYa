@@ -5,10 +5,9 @@ import Animated, { useAnimatedStyle, useFrameCallback, useReducedMotion, useShar
 
 import { radius } from '@/core/theme';
 
-const SIZE = 365;
 const SWEEP_DURATION_MS = 5000;
 
-export function RadarPulse() {
+export function RadarPulse({ size = 365 }: { size?: number }) {
   const reduceMotion = useReducedMotion();
   const sweep = useSharedValue(0);
   const scanningEnabled = useSharedValue(reduceMotion ? 0 : 1);
@@ -27,18 +26,18 @@ export function RadarPulse() {
   }));
 
   return (
-    <View style={styles.root} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-      <Animated.View style={[styles.sweep, sweepStyle]}><View style={styles.sweepArea} /></Animated.View>
+    <View style={[styles.root, { width: size, height: size }]} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      <Animated.View style={[StyleSheet.absoluteFill, sweepStyle]}><View style={[styles.sweepArea, {
+        top: size / 2, borderLeftWidth: size / 2, borderRightWidth: size / 2, borderBottomWidth: size / 2,
+      }]} /></Animated.View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { width: SIZE, height: SIZE, overflow: 'hidden', borderRadius: radius.pill },
-  sweep: { position: 'absolute', width: SIZE, height: SIZE },
+  root: { overflow: 'hidden', borderRadius: radius.pill },
   sweepArea: {
-    position: 'absolute', top: SIZE / 2, left: 0, width: 0, height: 0,
-    borderLeftWidth: SIZE / 2, borderRightWidth: SIZE / 2, borderBottomWidth: SIZE / 2,
+    position: 'absolute', left: 0, width: 0, height: 0,
     borderLeftColor: 'transparent', borderRightColor: 'transparent',
     borderBottomColor: 'rgba(245,197,24,0.3)',
   },

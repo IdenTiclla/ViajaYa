@@ -248,12 +248,25 @@ class InMemoryRideRequestRepository(RideRequestRepository):
                 cancelled_at = now
             updated = replace(
                 ride,
+                rider_on_the_way_at=existing.rider_on_the_way_at or ride.rider_on_the_way_at,
                 completed_at=completed_at,
                 cancelled_at=cancelled_at,
             )
             self.rides[i] = updated
             return updated
         return None
+
+    async def mark_rider_on_the_way_if_arriving(
+        self, ride_id: uuid.UUID, rider_id: uuid.UUID,
+    ) -> tuple[RideRequest, bool] | None:
+        ride = await self.get_by_id(ride_id)
+        if ride is None or ride.rider_id != rider_id:
+            return None
+        if ride.rider_on_the_way_at is not None:
+            return ride, False
+        if ride.status is not RideStatus.ARRIVING:
+            return None
+        return await self.update(replace(ride, rider_on_the_way_at=datetime.now(UTC))), True
 
     async def cancel_if_searching(self, ride_id: uuid.UUID) -> RideRequest | None:
         for i, existing in enumerate(self.rides):
@@ -434,7 +447,8 @@ class InMemoryOfferRepository(OfferRepository):
         return offer
 
     async def create_or_supersede_atomically(
-        self, offer: Offer, *, expected_ride_fare: Decimal
+        self, offer: Offer, *, expected_ride_fare: Decimal,
+        expected_pool_version: int | None = None,
     ) -> OfferCreation | None:
         if self._rides is not None:
             ride = await self._rides.get_by_id(offer.ride_id)
@@ -443,6 +457,10 @@ class InMemoryOfferRepository(OfferRepository):
                 or ride.status is not RideStatus.SEARCHING
                 or ride.paused
                 or ride.fare != expected_ride_fare
+                or (
+                    expected_pool_version is not None
+                    and ride.pool_version != expected_pool_version
+                )
                 or any(
                     active.driver_id == offer.driver_id
                     and active.status in _ACTIVE_RIDE_STATUSES

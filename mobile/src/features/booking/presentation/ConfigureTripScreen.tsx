@@ -3,11 +3,10 @@
  * el mapa, unidos por el trayecto real por calles (Google Routes API), y permite
  * elegir servicio, proponer una oferta y buscar ofertas de conductores.
  *
- * Si el cálculo del trayecto falla (key restringida, sin red), cae a una línea
- * recta entre ambos puntos.
+ * The camera stays locked around the complete road route.
  */
 import { Ionicons } from '@react-native-vector-icons/ionicons';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
 import { usePreventRemove } from 'expo-router/react-navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -18,17 +17,18 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
 import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
 import { useRoute } from '@/features/booking/application/useRoute';
 import { useTripPlaceLabels } from '@/features/booking/application/useTripPlaceLabels';
-import { ridesRepository } from '@/features/booking/data/ridesRepository';
+import { useCreateRide } from '@/features/booking/application/useCreateRide';
 import {
   BOLIVIA_SERVICE_AREA_MESSAGE,
   getBoliviaPlaceError,
@@ -52,8 +52,8 @@ import {
 import { useEstiloMapa } from '@/features/booking/presentation/mapStyle';
 import { RoutePinMarker } from '@/features/rides/presentation/RoutePinMarker';
 import { RoutePolyline } from '@/features/rides/presentation/RoutePolyline';
-import { MARGEN_TOOLTIP_EDITABLE } from '@/features/rides/presentation/routeTooltipLayout';
 import { useRumboMapa } from '@/features/rides/application/useRumboMapa';
+import { MotorcycleRouteNotice } from '@/features/rides/presentation/MotorcycleRouteNotice';
 import { Button, ConfirmDialog, FeedbackState } from '@/shared/components';
 
 const PAYMENTS: readonly SelectableOption<PaymentMethod>[] = [
@@ -63,8 +63,7 @@ const PAYMENTS: readonly SelectableOption<PaymentMethod>[] = [
 
 // Mismo encuadre lateral del mapa de solicitudes del conductor. Abajo se usa el
 // alto real del panel para mantener todo el trayecto en el área visible.
-const FIT_TOP = 170;
-const FIT_SIDES = 88;
+const FIT_SIDES = 32;
 const MIN_KEYBOARD_TRANSLATION = 280;
 
 function formatDistance(meters: number): string {
@@ -77,6 +76,8 @@ function formatDuration(seconds: number): string {
 
 export function ConfigureTripScreen() {
   const { colors, styles } = useEstilos(crearEstilos);
+  const insets = useSafeAreaInsets();
+  const { fontScale } = useWindowDimensions();
   const router = useRouter();
   const isFocused = useIsFocused();
   const { rideId } = useLocalSearchParams<{ rideId?: string }>();
@@ -104,13 +105,16 @@ export function ConfigureTripScreen() {
   const cancelRecoveryRide = useCancelRide();
   // Alto real del bottom sheet, para encuadrar los puntos por encima de él.
   const [sheetHeight, setSheetHeight] = useState(0);
+  const [headerHeight, setHeaderHeight] = useState(insets.top + 56);
+  const [mapReady, setMapReady] = useState(false);
+  const [mapSize, setMapSize] = useState({ width: 0, height: 0 });
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [keyboardOffset, setKeyboardOffset] = useState(0);
   // Mostrar/ocultar etiquetas de lugares (el usuario lo controla con el toggle).
   const [showPlaces, setShowPlaces] = useState(false);
   const { estiloMapa, modoMapa } = useEstiloMapa(!showPlaces);
   const [confirmExit, setConfirmExit] = useState(false);
-  const [allowExit, setAllowExit] = useState(false);
+  const [manualExit, setAllowExit] = useState(false);
   const [exitAfterSave, setExitAfterSave] = useState(false);
   const [exitHome, setExitHome] = useState(false);
   const [confirmRecoveryCancel, setConfirmRecoveryCancel] = useState(false);
@@ -133,25 +137,16 @@ export function ConfigureTripScreen() {
     };
   }, []);
 
-  const createRide = useMutation({
-    mutationFn: ridesRepository.create,
-    onSuccess: (ride) => {
-      // Refresca los recientes (este destino pasa a estar entre ellos).
-      void queryClient.invalidateQueries({ queryKey: ['recent-destinations'] });
-      // La creación devuelve un resumen corto; el layout obtiene el Ride completo
-      // y abre el socket único mediante el endpoint de viaje activo.
-      void queryClient.invalidateQueries({ queryKey: PASSENGER_ACTIVE_RIDE_KEY });
-      // No dejamos el formulario de creación debajo de una negociación activa:
-      // el regreso solo se hace mediante Modificar o Cancelar.
-      router.replace({ pathname: '/booking/offers', params: { rideId: ride.id } });
-    },
-  });
+  const createRide = useCreateRide();
 
   // Modo edición (Modificar solicitud): el llamador (Offers/Searching) ya pausó
   // la solicitud antes de navegar; aquí solo hidratamos el formulario con los
   // datos del viaje. La caché ['ride', id] la pobló usePauseForEdit.onSuccess.
   const editQuery = useRide(rideId ?? null);
   const existingRide = editQuery.ride;
+  const editAlreadyPublished = Boolean(isEditing && existingRide
+    && (existingRide.status !== 'searching' || !existingRide.paused));
+  const allowExit = manualExit || editAlreadyPublished;
   const didInitEdit = useRef(false);
   useEffect(() => {
     if (!rideId || didInitEdit.current || !existingRide) return;
@@ -185,14 +180,18 @@ export function ConfigureTripScreen() {
   useEffect(() => {
     if (!allowExit) return;
     const frame = requestAnimationFrame(() => {
-      if (exitHome) {
+      if (exitHome || existingRide?.status === 'cancelled') {
         router.dismissTo('/(app)/(tabs)');
-      } else if (exitAfterSave && rideId) {
-        router.replace({ pathname: '/booking/offers', params: { rideId } });
+      } else if ((exitAfterSave || editAlreadyPublished) && rideId) {
+        router.replace({
+          pathname: existingRide?.status === 'completed' ? '/booking/rating'
+            : existingRide?.status === 'searching' ? '/booking/offers' : '/booking/trip',
+          params: { rideId },
+        });
       }
     });
     return () => cancelAnimationFrame(frame);
-  }, [allowExit, exitAfterSave, exitHome, rideId, router]);
+  }, [allowExit, exitAfterSave, exitHome, editAlreadyPublished, existingRide?.status, rideId, router]);
 
   const cancelRecoveryAndExit = () => {
     setConfirmExit(false);
@@ -215,9 +214,10 @@ export function ConfigureTripScreen() {
     ? getBoliviaPlaceError(destination)
     : BOLIVIA_SERVICE_AREA_MESSAGE;
   const tripInServiceArea = serviceAreaError == null && destinationAreaError == null;
-  const { route, isLoading: routeLoading } = useRoute(
+  const { route, isLoading: routeLoading, retry: retryRoute } = useRoute(
     tripInServiceArea ? origin : null,
     tripInServiceArea ? destination : null,
+    service,
   );
 
   const region = useMemo<Region | undefined>(() => {
@@ -235,20 +235,13 @@ export function ConfigureTripScreen() {
   // Para encuadrar la cámara: el trayecto real si existe, si no la recta entre
   // ambos puntos (así el mapa enmarca el viaje desde el primer instante).
   const fitCoordinates = useMemo<Coordinates[]>(() => {
-    if (!routeLoading && route?.coordinates.length) return route.coordinates;
+    if (route && route.coordinates.length >= 2) return route.coordinates;
     if (origin && destination) return [origin.coordinates, destination.coordinates];
     return [];
-  }, [route, routeLoading, origin, destination]);
+  }, [route, origin, destination]);
 
-  // Para dibujar: la recta solo aparece como fallback cuando el cálculo del
-  // trayecto terminó sin ruta; mientras carga no se dibuja, para evitar el
-  // "salto" visual de recta → trayecto por calles.
-  const polylineCoordinates = useMemo<Coordinates[]>(() => {
-    if (routeLoading) return [];
-    if (route?.coordinates.length) return route.coordinates;
-    if (origin && destination) return [origin.coordinates, destination.coordinates];
-    return [];
-  }, [route, routeLoading, origin, destination]);
+  // Never present a straight line as a computed road route.
+  const polylineCoordinates = route?.coordinates ?? [];
 
   // react-native-maps conserva internamente overlays nativos. Una clave basada
   // en ambos puntos fuerza a reemplazarlos al editar origen o destino, evitando
@@ -260,23 +253,23 @@ export function ConfigureTripScreen() {
   // Encuadra origen + destino dejando libre el área que tapa el bottom sheet.
   const fitToTrip = useCallback(
     (animated: boolean) => {
-      if (fitCoordinates.length < 2) return;
+      if (!mapReady || mapSize.width <= 0 || mapSize.height <= 0 || fitCoordinates.length < 2) return;
       mapRef.current?.fitToCoordinates(fitCoordinates, {
         edgePadding: {
-          top: FIT_TOP,
+          top: Math.ceil(headerHeight + spacing.sm),
           right: FIT_SIDES,
-          bottom: sheetHeight + MARGEN_TOOLTIP_EDITABLE,
+          bottom: 24,
           left: FIT_SIDES,
         },
         animated,
       });
     },
-    [fitCoordinates, sheetHeight],
+    [fitCoordinates, mapReady, mapSize.width, mapSize.height, headerHeight],
   );
 
   // Reajusta la cámara cuando llega/cambia el trayecto o se mide el sheet.
   useEffect(() => {
-    fitToTrip(true);
+    fitToTrip(false);
   }, [fitToTrip]);
 
   if (isEditing && editQuery.isLoading && !existingRide) {
@@ -365,7 +358,12 @@ export function ConfigureTripScreen() {
 
   const searchOffers = () => {
     if (!tripInServiceArea || !labelsReady || !fareIsValid || createRide.isPending) return;
-    createRide.mutate({ origin, destination, service, payment, fare: fareValue });
+    createRide.mutate({ origin, destination, service, payment, fare: fareValue }, {
+      onSuccess: (ride) => router.replace({
+        pathname: ride.status === 'searching' ? '/booking/offers' : '/booking/trip',
+        params: { rideId: ride.id },
+      }),
+    });
   };
 
   const saveEdit = () => {
@@ -402,17 +400,30 @@ export function ConfigureTripScreen() {
   return (
     <View style={styles.root}>
       {isFocused && !allowExit && (
+        <View style={[styles.mapViewport, { bottom: sheetHeight }]}
+          onLayout={({ nativeEvent: { layout } }) => setMapSize((current) =>
+            current.width === layout.width && current.height === layout.height
+              ? current : { width: layout.width, height: layout.height })}>
         <MapView
           key={tripMapKey}
           ref={mapRef}
           provider={PROVIDER_GOOGLE}
+          showsBuildings={false}
+          showsIndoors={false}
+          showsIndoorLevelPicker={false}
           style={StyleSheet.absoluteFill}
           initialRegion={region}
           customMapStyle={estiloMapa}
           userInterfaceStyle={modoMapa}
           pitchEnabled={false}
+          scrollEnabled={false}
+          zoomEnabled={false}
+          rotateEnabled={false}
+          zoomTapEnabled={false}
+          toolbarEnabled={false}
+          moveOnMarkerPress={false}
           onRegionChangeComplete={actualizarRumbo}
-          onMapReady={() => fitToTrip(false)}>
+          onMapReady={() => { setMapReady(true); fitToTrip(false); }}>
           <RoutePinMarker
             key={`origin-${tripMapKey}`}
             kind="A"
@@ -421,7 +432,7 @@ export function ConfigureTripScreen() {
             rumboMapa={rumboMapa}
             zoomMapa={zoomMapa}
             label={`Origen: ${originMapLabel}`}
-            showEditControl
+            showTooltip={false}
             loading={originMapLoading}
             zIndex={20}
             onPress={editOrigin}
@@ -434,16 +445,18 @@ export function ConfigureTripScreen() {
             rumboMapa={rumboMapa}
             zoomMapa={zoomMapa}
             label={`Destino: ${destinationMapLabel}`}
-            showEditControl
+            showTooltip={false}
             loading={destinationMapLoading}
             zIndex={21}
             onPress={editDestination}
           />
           <RoutePolyline coordinates={polylineCoordinates} />
         </MapView>
+        </View>
       )}
 
-      <SafeAreaView style={styles.topBar} edges={['top']} pointerEvents="box-none">
+      <SafeAreaView style={styles.topBar} edges={['top']} pointerEvents="box-none"
+        onLayout={(event) => setHeaderHeight(event.nativeEvent.layout.height)}>
         <View style={styles.topLeft}>
           <TouchableOpacity
             style={styles.back}
@@ -495,14 +508,15 @@ export function ConfigureTripScreen() {
             keyboardDismissMode="on-drag"
             showsVerticalScrollIndicator={false}
             bounces={false}>
-            {route && (
-              <View style={styles.estimate}>
+            <View style={[styles.estimate, { minHeight: 32 * fontScale }]}>
                 <Ionicons name="navigate" size={16} color={colors.primary} />
                 <Text style={styles.estimateText}>
-                  {formatDistance(route.distanceMeters)} · {formatDuration(route.durationSeconds)}
+                  {routeLoading ? 'Actualizando ruta…' : route
+                    ? `${formatDistance(route.distanceMeters)} · ${formatDuration(route.durationSeconds)}`
+                    : 'No pudimos calcular la ruta'}
                 </Text>
               </View>
-            )}
+            {!route && !routeLoading && <Button title="Reintentar ruta" variant="secondary" onPress={retryRoute} />}
 
         <Text style={styles.fieldLabel}>Tipo de servicio</Text>
         <ServiceTypeSelector value={service} onChange={setService} />
@@ -562,6 +576,7 @@ export function ConfigureTripScreen() {
         {cancelRecoveryRide.isError && (
           <Text style={styles.error}>{getApiErrorMessage(cancelRecoveryRide.error)}</Text>
         )}
+        <MotorcycleRouteNotice service={service} />
           </ScrollView>
 
           <View style={styles.sheetFooter}>
@@ -611,6 +626,7 @@ export function ConfigureTripScreen() {
 
 const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceMuted },
+  mapViewport: { position: 'absolute', top: 0, left: 0, right: 0 },
   fallback: { alignItems: 'center', justifyContent: 'center', gap: spacing.md, padding: spacing.lg },
   fallbackText: { color: colors.textSecondary, fontSize: fontSize.md, textAlign: 'center' },
   fallbackButton: {
@@ -632,7 +648,7 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     paddingTop: spacing.sm,
     gap: spacing.sm,
   },
-  topLeft: { alignItems: 'flex-start', gap: spacing.xs },
+  topLeft: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.xs },
   back: {
     width: 48,
     minHeight: 48,
@@ -665,9 +681,9 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     shadowRadius: 12,
     shadowOffset: { width: 0, height: -3 },
     elevation: 12,
-    maxHeight: '72%',
+    height: '54%',
   },
-  sheetScroll: { flexShrink: 1 },
+  sheetScroll: { flex: 1 },
   sheetContent: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,

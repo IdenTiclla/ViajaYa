@@ -1,6 +1,8 @@
 # Entornos locales y scripts de operación
 
-Cómo levantar Desarrollo y Pruebas en una máquina nueva, publicarlos y verificarlos.
+**Política vigente (19/09/2026):** usamos únicamente **Desarrollo**. **Pruebas (`testing`/`preview`/staging) queda temporalmente deprecado**: no iniciar, desplegar ni generar entregas para ese entorno. Producción sigue siendo un objetivo futuro. Las configuraciones anteriores se conservan como referencia; las pruebas automatizadas y las bases desechables de CI continúan vigentes.
+
+Cómo levantar Desarrollo en una máquina nueva y verificarlo. Los procedimientos de Pruebas que aparecen más abajo son referencia histórica inactiva.
 Los scripts viven en `ops/scripts/`; los artefactos que generan (estado privado, respaldos,
 APK, informes) quedan fuera del repositorio.
 

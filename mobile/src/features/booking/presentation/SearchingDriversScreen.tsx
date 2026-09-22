@@ -1,3 +1,4 @@
+import { TripProgress } from '@/features/rides/presentation/TripProgress';
 /**
  * Buscando ofertas (pasajero) — diseño Stitch "Searching for Offers".
  *
@@ -25,23 +26,25 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
 import { fontSize, fontWeight, radius, spacing, useEstilos, useTema, type Tema } from '@/core/theme';
-import type { Place } from '@/features/booking/domain/types';
+import type { Place, ServiceType } from '@/features/booking/domain/types';
 import {
   usePauseForEdit,
   useUpdateRideFare,
 } from '@/features/rides/application/useRideMutations';
 import { formatBolivianosInput } from '@/features/rides/domain/money';
 import { TripRouteMap } from '@/features/rides/presentation/TripRouteMap';
+import { MotorcycleRouteNotice } from '@/features/rides/presentation/MotorcycleRouteNotice';
 import { ConfirmDialog } from '@/shared/components';
 
 const PASO_OFERTA = 1;
 
 export function SearchingDriversScreen({
   rideId,
+  service,
   origin,
   destination,
   currentFare,
@@ -53,6 +56,7 @@ export function SearchingDriversScreen({
   onRetry,
 }: {
   rideId: string | null;
+  service: ServiceType;
   origin: Place | null;
   destination: Place | null;
   /** Oferta vigente del viaje (en vivo). */
@@ -65,6 +69,7 @@ export function SearchingDriversScreen({
   onRetry?: () => void;
 }) {
   const { colors, styles } = useEstilos(crearEstilos);
+  const insets = useSafeAreaInsets();
   const updateFare = useUpdateRideFare();
   const pauseForEdit = usePauseForEdit();
   const negotiationBusy = cancelPending || updateFare.isPending || pauseForEdit.isPending;
@@ -73,11 +78,12 @@ export function SearchingDriversScreen({
   const pendingFareRef = useRef<number | null>(null);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [sheetHeight, setSheetHeight] = useState(0);
+  const [headerHeight, setHeaderHeight] = useState(insets.top + 80);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const hasConnectionError = connectionError != null;
   // La hoja no tiene una altura fija: medirla evita que el trayecto quede
   // descentrado o cubierto en pantallas pequeñas y grandes.
-  const mapBottomPadding = sheetHeight > 0 ? sheetHeight + spacing.lg : 440;
+  const mapBottomPadding = sheetHeight > 0 ? sheetHeight : 440;
 
   useEffect(() => {
     const showSubscription = Keyboard.addListener('keyboardDidShow', () => {
@@ -152,18 +158,21 @@ export function SearchingDriversScreen({
     <View style={styles.root}>
       {origin && destination ? (
         <TripRouteMap
+          service={service}
           origin={origin}
           destination={destination}
-          topPadding={160}
+          topPadding={headerHeight}
           bottomPadding={mapBottomPadding}
           showPlaceNamesInTooltip
+          showMotorcycleNotice={false}
         />
       ) : (
         <View style={styles.mapFallback} />
       )}
 
       <View style={styles.scrim} pointerEvents="box-none">
-        <SafeAreaView edges={['top']} style={styles.backArea} pointerEvents="box-none">
+        <SafeAreaView edges={['top']} style={styles.backArea} pointerEvents="box-none"
+          onLayout={(event) => setHeaderHeight(event.nativeEvent.layout.height)}>
           <TouchableOpacity
             style={[styles.backButton, negotiationBusy && styles.disabled]}
             onPress={onBack}
@@ -219,6 +228,8 @@ export function SearchingDriversScreen({
             </TouchableOpacity>
           </View>
 
+          <TripProgress status="searching" />
+          <MotorcycleRouteNotice service={service} />
           {/* Ajuste de oferta */}
           <View style={styles.bidHeader}>
             <Text style={styles.bidTitle}>Tu oferta</Text>
@@ -382,8 +393,8 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
 
   backArea: { position: 'absolute', top: 0, left: 0, padding: spacing.md },
   backButton: {
-    width: 44,
-    height: 44,
+    width: 48,
+    height: 48,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: radius.pill,
@@ -406,7 +417,7 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
 
   sheet: {
     width: '100%',
-    maxHeight: '88%',
+    maxHeight: '64%',
     backgroundColor: colors.background,
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,
@@ -440,8 +451,8 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   offlineTitle: { color: colors.danger },
   statusSubtitle: { fontSize: fontSize.xs, color: colors.textSecondary, marginTop: 2 },
   syncBadge: {
-    width: 34,
-    height: 34,
+    width: 48,
+    height: 48,
     borderRadius: radius.pill,
     backgroundColor: colors.surfaceMuted,
     alignItems: 'center',
@@ -463,10 +474,11 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   },
   fareInputWrap: {
     flex: 1,
-    height: 52,
+    minHeight: 52,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     borderRadius: radius.md,
     backgroundColor: colors.surface,
     borderWidth: 1,
@@ -505,13 +517,15 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.xs,
-    height: 48,
+    minHeight: 48,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     borderRadius: radius.md,
     backgroundColor: colors.peligroSuave,
     borderWidth: 1,
     borderColor: colors.bordePeligro,
   },
-  cancelText: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.danger },
+  cancelText: { flexShrink: 1, textAlign: 'center', fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.danger },
   disabled: { opacity: 0.5 },
   error: { color: colors.danger, fontSize: fontSize.sm, textAlign: 'center' },
 });

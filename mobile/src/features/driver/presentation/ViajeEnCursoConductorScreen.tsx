@@ -1,551 +1,197 @@
-/**
- * Viaje en curso (conductor) — navegación con mapa (diseños Stitch
- * "En Camino a Recogida", "Llegada y Comienzo", "Navegación de Viaje").
- *
- * Mapa con el trayecto y un banner de navegación arriba; abajo, las direcciones
- * y un botón único que progresa el ciclo de vida: Llegué → Iniciar → Finalizar
- * (`PATCH /rides/{id}/status`). Al completarse, califica al pasajero.
- */
-import { Ionicons, type IoniconsIconName } from '@react-native-vector-icons/ionicons';
+/** Driver pickup, travel and closing, with explicit confirmations for each ride. */
+import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Linking,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useQueryClient } from '@tanstack/react-query';
 
-import { getApiErrorMessage } from '@/core/errors/apiError';
 import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 import { useRoute } from '@/features/booking/application/useRoute';
-import { SERVICE_META } from '@/features/booking/domain/serviceCatalog';
-import { useCancelRide, useUpdateRideStatus } from '@/features/rides/application/useRideMutations';
-import { formatBolivianos } from '@/features/rides/domain/money';
-import {
-  DRIVER_ACTIVE_RIDE_KEY,
-  PENDING_RATING_RIDE_KEY,
-} from '@/features/rides/application/useRides';
+import { useTripActions, useTripContact } from '@/features/rides/application/useTripActions';
+import { DRIVER_ACTIVE_RIDE_KEY } from '@/features/rides/application/useRides';
+import { serviceNouns } from '@/features/rides/domain/serviceNouns';
+import type { Ride, RideStatus } from '@/features/rides/domain/types';
 import { RideRatingCard } from '@/features/rides/presentation/RideRatingCard';
 import { TripRouteMap } from '@/features/rides/presentation/TripRouteMap';
-import type { Ride, RideStatus } from '@/features/rides/domain/types';
-import { ConfirmDialog } from '@/shared/components';
-import { serviceNouns } from '@/features/rides/domain/serviceNouns';
+import { TripProgress } from '@/features/rides/presentation/TripProgress';
+import { TripSummary } from '@/features/rides/presentation/TripSummary';
+import { TripSecondaryAction } from '@/features/rides/presentation/TripSecondaryAction';
+import { Button, ConfirmDialog, FeedbackState } from '@/shared/components';
 
-// Siguiente acción según el estado actual del viaje.
-const NEXT: Partial<Record<RideStatus, { label: string; status: RideStatus }>> = {
-  accepted: { label: 'He llegado al punto de partida', status: 'arriving' },
-  arriving: { label: 'Iniciar viaje', status: 'in_progress' },
-  in_progress: { label: 'Finalizar viaje', status: 'completed' },
-};
+import { DriverNavigationActions } from '@/features/navigation/presentation/DriverNavigationActions';
+import { DriverSharingStatus } from '@/features/tracking/presentation/DriverSharingStatus';
+import { useLocationSharingStore } from '@/features/tracking/application/locationSharingStore';
 
-const DELIVERY_NEXT: Partial<Record<RideStatus, { label: string; status: RideStatus }>> = {
-  accepted: { label: 'Llegué al punto de recogida', status: 'arriving' },
-  arriving: { label: 'Iniciar entrega', status: 'in_progress' },
-  in_progress: { label: 'Confirmar entrega', status: 'completed' },
-};
+type Confirmation = { rideId: string; status: RideStatus; action: 'arrive' | 'start' | 'complete' | 'cancel' };
 
-// Banner de navegación: a dónde se dirige el conductor en cada estado.
-function navTarget(ride: Ride): { title: string; place: string } {
-  if (ride.service === 'delivery') {
-    if (ride.status === 'in_progress') {
-      return { title: 'Entregar la encomienda en', place: ride.destination.name };
-    }
-    if (ride.status === 'arriving') {
-      return { title: 'Esperando la encomienda en', place: ride.origin.name };
-    }
-    return { title: 'Recoger la encomienda en', place: ride.origin.name };
-  }
-  if (ride.service === 'moving') {
-    if (ride.status === 'in_progress') {
-      return { title: 'Llevando la mudanza a', place: ride.destination.name };
-    }
-    if (ride.status === 'arriving') {
-      return { title: 'Esperando para cargar en', place: ride.origin.name };
-    }
-    return { title: 'Cargar la mudanza en', place: ride.origin.name };
-  }
-  if (ride.status === 'in_progress') {
-    return { title: 'Llevando al pasajero a', place: ride.destination.name };
-  }
-  if (ride.status === 'arriving') {
-    return { title: 'Esperando al pasajero en', place: ride.origin.name };
-  }
-  return { title: 'Recoger al pasajero en', place: ride.origin.name };
-}
-
-function formatDuration(seconds: number): string {
-  return `${Math.max(1, Math.round(seconds / 60))} min`;
+function getStage(ride: Ride) {
+  const nouns = serviceNouns(ride.service);
+  if (ride.status === 'accepted') return {
+    title: 'Ve al punto de recogida',
+    hint: [ride.origin.name, ride.origin.address !== ride.origin.name && ride.origin.address].filter(Boolean).join(' · '),
+    action: 'Ya llegué al punto',
+  };
+  if (ride.status === 'arriving') return {
+    title: ride.riderOnTheWayAt ? 'Tu pasajero va al punto' : 'Llegada avisada',
+    hint: ride.riderOnTheWayAt
+      ? `${ride.rider.fullName} avisó que ya salió. Inicia solo cuando esté a bordo.`
+      : `Le avisamos a tu ${nouns.customer}. Inicia cuando esté contigo.`,
+    action: ride.service === 'delivery' ? 'Iniciar entrega' : ride.service === 'moving' ? 'Iniciar mudanza' : 'Iniciar viaje',
+  };
+  return {
+    title: ride.service === 'delivery' ? 'Encomienda en camino' : 'Viaje en curso',
+    hint: [ride.destination.name, ride.destination.address !== ride.destination.name && ride.destination.address].filter(Boolean).join(' · '),
+    action: ride.service === 'delivery' ? 'Confirmar entrega' : 'Finalizar viaje',
+  };
 }
 
 export function ViajeEnCursoConductorScreen({ ride }: { ride: Ride }) {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { styles } = useEstilos(createStyles);
   const router = useRouter();
   const queryClient = useQueryClient();
-  const [confirmCancel, setConfirmCancel] = useState(false);
-  const [confirmComplete, setConfirmComplete] = useState(false);
-  const updateStatus = useUpdateRideStatus();
-  const cancelRide = useCancelRide();
-  const busy = updateStatus.isPending || cancelRide.isPending;
-  const { route } = useRoute(ride.origin, ride.destination);
+  const sharing = useLocationSharingStore();
+  const actions = useTripActions(ride);
+  const contact = useTripContact(ride, ride.rider.phone);
+  const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
+  const [sheetHeight, setSheetHeight] = useState(440);
+  const terminal = ride.status === 'completed' || ride.status === 'cancelled';
+  const { route } = useRoute(terminal ? null : ride.origin, terminal ? null : ride.destination, ride.service);
+  const nouns = serviceNouns(ride.service);
 
-  const clearMatchingRide = (queryKey: readonly string[]) => {
-    queryClient.setQueryData<Ride | null>(queryKey, (current) =>
-      current?.id === ride.id ? null : current,
-    );
-  };
-
-  const closeCancelledRide = () => {
-    clearMatchingRide(DRIVER_ACTIVE_RIDE_KEY);
-    router.replace('/(driver)/(tabs)/solicitudes');
-  };
-
-  const closeRatingRide = () => {
-    clearMatchingRide(DRIVER_ACTIVE_RIDE_KEY);
-    clearMatchingRide(PENDING_RATING_RIDE_KEY);
-    router.replace('/(driver)/(tabs)/solicitudes');
-  };
-
-  // El pasajero (o el propio conductor) canceló: avisar y volver a solicitudes.
-  if (ride.status === 'cancelled') {
-    return (
-      <SafeAreaView style={styles.cancelledRoot}>
-        <View style={styles.cancelledIcon}>
-          <Ionicons name="close-circle" size={48} color={colors.danger} />
-        </View>
-        <Text style={styles.cancelledTitle}>Viaje cancelado</Text>
-        <Text style={styles.cancelledHint}>
-          Este viaje fue cancelado. No te preocupes: hay más solicitudes esperándote.
-        </Text>
-        <TouchableOpacity
-          style={styles.cancelledBtn}
-          onPress={closeCancelledRide}
-          accessibilityRole="button"
-          accessibilityLabel="Volver a solicitudes">
-          <Ionicons name="compass" size={20} color={colors.textOnPrimary} />
-          <Text style={styles.cancelledBtnText}>Volver a solicitudes</Text>
-        </TouchableOpacity>
-      </SafeAreaView>
-    );
-  }
-
-  // Al completarse, el conductor califica al pasajero antes de volver a su panel.
-  if (ride.status === 'completed') {
-    return (
-      <SafeAreaView style={styles.ratingRoot}>
-        <KeyboardAvoidingView
-          style={styles.ratingRoot}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <ScrollView
-            contentContainerStyle={styles.ratingContent}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="on-drag"
-            showsVerticalScrollIndicator={false}>
-            <RideRatingCard
-              ride={ride}
-              rateeRole="passenger"
-              counterpartName={ride.rider.fullName}
-              onDone={closeRatingRide}
-            />
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </SafeAreaView>
-    );
-  }
-
-  const next = (ride.service === 'delivery' ? DELIVERY_NEXT : NEXT)[ride.status];
-  const canCancel = ride.status === 'accepted' || ride.status === 'arriving';
-  const target = navTarget(ride);
-  const distanceKm = route ? (route.distanceMeters / 1000).toFixed(1) : null;
-  const advance = () => {
-    if (!next || busy) return;
-    if (next.status === 'completed') {
-      setConfirmComplete(true);
-      return;
+  const close = async (rated = false) => {
+    // Rating mutations already reconcile both caches before invoking onDone.
+    if (!rated) {
+      await queryClient.cancelQueries({ queryKey: DRIVER_ACTIVE_RIDE_KEY }, { revert: false });
+      queryClient.setQueryData<Ride | null>(DRIVER_ACTIVE_RIDE_KEY,
+        (current) => current?.id === ride.id ? null : current);
     }
-    updateStatus.mutate({ rideId: ride.id, status: next.status });
+    router.replace('/(driver)/(tabs)/solicitudes');
   };
+  const requestConfirmation = (action: Confirmation['action']) => {
+    if (!actions.busy) setConfirmation({ rideId: ride.id, status: ride.status, action });
+  };
+  const currentConfirmation = confirmation?.rideId === ride.id && confirmation.status === ride.status
+    ? confirmation : null;
+
+  if (ride.status === 'cancelled') return (
+    <SafeAreaView style={styles.safe}>
+      <ScrollView contentContainerStyle={styles.resultContent}>
+        <FeedbackState compact icon="close-circle-outline" title={`${ride.service === 'delivery' ? 'Entrega cancelada' : 'Viaje cancelado'}`}
+          message="El servicio ya no está activo. Puedes volver a revisar las solicitudes disponibles." />
+        <Button title="Volver a solicitudes" onPress={() => close()} />
+      </ScrollView>
+    </SafeAreaView>
+  );
+
+  if (ride.status === 'completed') return (
+    <SafeAreaView style={styles.safe}>
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <ScrollView contentContainerStyle={styles.ratingContent} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+          <RideRatingCard key={ride.id} ride={ride} rateeRole="passenger"
+            counterpartName={ride.rider.fullName} onDone={() => close(true)} />
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
+
+  const stage = getStage(ride);
+  const canCancel = ride.status === 'accepted' || ride.status === 'arriving';
+  const canAdvance = canCancel || ride.status === 'in_progress';
+  const isDelivery = ride.service === 'delivery';
 
   return (
     <View style={styles.root}>
-      <TripRouteMap origin={ride.origin} destination={ride.destination} bottomPadding={440} />
+      <TripRouteMap vehicle={sharing.rideId === ride.id && sharing.coordinates ? { coordinates: sharing.coordinates, heading: sharing.heading, type: ride.driver?.vehicleType ?? null } : undefined} service={ride.service} origin={ride.origin} destination={ride.destination} topPadding={48} bottomPadding={sheetHeight} />
+      <SafeAreaView style={styles.sheet} edges={['bottom']} onLayout={(event) => setSheetHeight(event.nativeEvent.layout.height)}>
+        <View style={styles.handle} />
+        <ScrollView contentContainerStyle={styles.sheetContent} bounces={false}>
+          <TripProgress status={ride.status} />
+          <View style={styles.stage} accessibilityLiveRegion="polite">
+            <Text accessibilityRole="header" style={styles.stageTitle}>{stage.title}</Text>
+            <Text style={styles.hint}>{stage.hint}</Text>
+          </View>
 
-      <SafeAreaView edges={['top']} style={styles.navBannerWrap} pointerEvents="box-none">
-        <View style={styles.navBanner}>
-          <View style={styles.navIcon}>
-            <Ionicons name="navigate" size={22} color={colors.textOnPrimary} />
+          <DriverNavigationActions ride={ride} />
+          <DriverSharingStatus rideId={ride.id} />
+          <View style={styles.passenger}>
+            <Text style={styles.name}>{ride.rider.fullName}</Text>
+            <Text style={styles.hint}>{nouns.customerTitle}{ride.rider.rating != null ? ` · ${ride.rider.rating.toFixed(1)} de 5` : ''}</Text>
+            {ride.rider.phone ? (
+              <View style={styles.contacts}>
+                <Button title="Llamar" leadingIcon="call-outline" variant="secondary" onPress={contact.call} style={styles.contactButton} />
+                <Button title="Mensaje" leadingIcon="chatbubble-outline" variant="secondary" onPress={contact.message} style={styles.contactButton} />
+              </View>
+            ) : <Text style={styles.hint}>No hay un teléfono de contacto disponible.</Text>}
+            {contact.error && <Text accessibilityRole="alert" style={styles.error}>{contact.error}</Text>}
           </View>
-          <View style={styles.navText}>
-            <Text style={styles.navTitle}>{target.title}</Text>
-            <Text style={styles.navPlace} numberOfLines={1}>
-              {target.place}
-            </Text>
-          </View>
-          {route && (
-            <View style={styles.navMeta}>
-              <Text style={styles.navMetaValue}>{formatDuration(route.durationSeconds)}</Text>
-              {distanceKm && <Text style={styles.navMetaSub}>{distanceKm} km</Text>}
-            </View>
-          )}
+
+          <TripSummary key={ride.id} ride={ride} compact showCurrentPlace={false} />
+          {route && <Text style={styles.hint}>
+            Trayecto estimado de recogida a destino: {(route.distanceMeters / 1000).toFixed(1)} km · {Math.max(1, Math.round(route.durationSeconds / 60))} min.
+          </Text>}
+        </ScrollView>
+        <View style={styles.actions}>
+          {actions.error && <Text accessibilityRole="alert" style={styles.error}>{actions.error}</Text>}
+          {canAdvance && <Button title={stage.action} leadingIcon="checkmark-circle-outline" loading={actions.busy}
+            loadingLabel="Actualizando viaje…" onPress={() => {
+              if (ride.status === 'accepted') requestConfirmation('arrive');
+              else requestConfirmation(ride.status === 'arriving' ? 'start' : 'complete');
+            }} />}
+          {canCancel && <TripSecondaryAction title={isDelivery ? 'Cancelar entrega' : 'Cancelar viaje'}
+            disabled={actions.busy} onPress={() => requestConfirmation('cancel')} />}
         </View>
       </SafeAreaView>
 
-      <SafeAreaView style={styles.sheet} edges={['bottom']}>
-        <View style={styles.sheetHandle} />
-
-        <ScrollView
-          style={styles.sheetScroll}
-          contentContainerStyle={styles.sheetContent}
-          showsVerticalScrollIndicator={false}
-          bounces={false}>
-          <View style={styles.header}>
-            <View style={styles.serviceBadge}>
-              <Ionicons
-                name={SERVICE_META[ride.service].icon}
-                size={18}
-                color={colors.primary}
-              />
-              <Text style={styles.serviceBadgeText}>{SERVICE_META[ride.service].shortLabel}</Text>
-            </View>
-            <Text style={styles.price}>Bs {formatBolivianos(ride.acceptedPrice ?? ride.fare)}</Text>
-          </View>
-
-          <View style={styles.routeCard}>
-            <Row icon="navigate-circle" color={colors.primary} label="Recoger en" value={ride.origin.name} />
-            <Row icon="location" color={colors.danger} label="Destino" value={ride.destination.name} />
-            <Row
-              icon="card"
-              color={colors.textSecondary}
-              label="Pago"
-              value={ride.payment === 'qr' ? 'QR' : 'Efectivo'}
-            />
-          </View>
-
-          <View style={styles.passengerBlock}>
-            <View style={styles.passengerAvatar}>
-              <Text style={styles.passengerAvatarText}>
-                {ride.rider.fullName.trim().charAt(0).toUpperCase() || 'P'}
-              </Text>
-            </View>
-            <View style={styles.passengerInfo}>
-              <Text style={styles.passengerName} numberOfLines={1}>
-                {ride.rider.fullName}
-              </Text>
-              <View style={styles.passengerMeta}>
-                <Text style={styles.passengerRole}>
-                  {serviceNouns(ride.service).customerTitle}
-                </Text>
-                {ride.rider.rating !== null && (
-                  <>
-                    <Ionicons name="star" size={13} color={colors.accent} />
-                    <Text style={styles.passengerRating}>{ride.rider.rating.toFixed(1)}</Text>
-                  </>
-                )}
-              </View>
-            </View>
-            {ride.rider.phone && (
-              <View style={styles.contactActions}>
-                <TouchableOpacity
-                  style={styles.contactBtn}
-                  onPress={() => void Linking.openURL(`sms:${ride.rider.phone}`)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Enviar SMS a ${ride.rider.fullName}`}>
-                  <Ionicons name="chatbubble-outline" size={20} color={colors.primary} />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.contactBtn}
-                  onPress={() => void Linking.openURL(`tel:${ride.rider.phone}`)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Llamar a ${ride.rider.fullName}`}>
-                  <Ionicons name="call-outline" size={20} color={colors.primary} />
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
-
-          {(updateStatus.isError || cancelRide.isError) && (
-            <Text style={styles.error}>
-              {getApiErrorMessage(updateStatus.error ?? cancelRide.error)}
-            </Text>
-          )}
-
-          {next && (
-            <TouchableOpacity
-              style={[styles.primaryBtn, busy && styles.disabled]}
-              onPress={advance}
-              disabled={busy}
-              accessibilityRole="button"
-              accessibilityLabel={next.label}>
-              {updateStatus.isPending ? (
-                <ActivityIndicator size="small" color={colors.textOnPrimary} />
-              ) : (
-                <Ionicons name="checkmark-circle" size={20} color={colors.textOnPrimary} />
-              )}
-              <Text style={styles.primaryText}>
-                {updateStatus.isPending ? 'Actualizando…' : next.label}
-              </Text>
-            </TouchableOpacity>
-          )}
-          {canCancel && (
-            <TouchableOpacity
-              style={[styles.cancelBtn, busy && styles.disabled]}
-              onPress={() => setConfirmCancel(true)}
-              disabled={busy}
-              accessibilityRole="button"
-              accessibilityLabel={ride.service === 'delivery' ? 'Cancelar entrega' : 'Cancelar viaje'}>
-              <Text style={styles.cancelText}>
-                {ride.service === 'delivery' ? 'Cancelar entrega' : 'Cancelar viaje'}
-              </Text>
-            </TouchableOpacity>
-          )}
-        </ScrollView>
-      </SafeAreaView>
-
-      <ConfirmDialog
-        visible={confirmCancel}
-        icon="warning-outline"
-        destructive
-        title={ride.service === 'delivery' ? '¿Cancelar entrega?' : '¿Cancelar viaje?'}
-        message={
-          ride.service === 'delivery'
-            ? 'El remitente será notificado y la entrega ya no podrá continuar.'
-            : 'El pasajero será notificado y este viaje ya no podrá continuar.'
-        }
-        confirmText="Sí, cancelar"
-        cancelText="Seguir con el viaje"
+      <ConfirmDialog visible={!!currentConfirmation && !actions.busy}
+        icon={currentConfirmation?.action === 'cancel' ? 'warning-outline' : 'checkmark-circle-outline'}
+        destructive={currentConfirmation?.action === 'cancel'}
+        title={currentConfirmation?.action === 'cancel' ? `¿Cancelar ${nouns.request}?`
+          : currentConfirmation?.action === 'arrive' ? '¿Llegaste al punto de recogida?'
+          : currentConfirmation?.action === 'start' ? `¿Iniciar ${nouns.request}?` : `¿Finalizar ${nouns.request}?`}
+        message={currentConfirmation?.action === 'cancel'
+          ? `Tu ${nouns.customer} recibirá el aviso y el servicio ya no podrá continuar.`
+          : currentConfirmation?.action === 'arrive'
+            ? `Confirma que estás en ${ride.origin.name}. Tu ${nouns.customer} recibirá el aviso de llegada.`
+          : currentConfirmation?.action === 'start'
+            ? isDelivery ? 'Confirma que recibiste la encomienda correcta y estás listo para llevarla al destino.'
+              : ride.service === 'moving' ? 'Confirma con el cliente que la carga está lista para salir.'
+                : `Confirma que ${ride.rider.fullName} es tu pasajero y ya está contigo para iniciar el viaje.`
+            : 'Confirma que llegaste al destino acordado. Finalizar el servicio no confirma ni procesa su pago.'}
+        confirmText={currentConfirmation?.action === 'cancel' ? 'Sí, cancelar'
+          : currentConfirmation?.action === 'arrive' ? 'Sí, ya llegué'
+          : currentConfirmation?.action === 'start' ? 'Sí, iniciar' : 'Sí, finalizar'}
+        cancelText="Volver al viaje"
         onConfirm={() => {
-          setConfirmCancel(false);
-          cancelRide.mutate(ride.id);
+          if (!currentConfirmation) return;
+          setConfirmation(null);
+          if (currentConfirmation.action === 'cancel') actions.cancel(currentConfirmation.status);
+          else actions.advance(currentConfirmation.status);
         }}
-        onCancel={() => setConfirmCancel(false)}
-      />
-
-      <ConfirmDialog
-        visible={confirmComplete}
-        icon="flag-outline"
-        title={ride.service === 'delivery' ? '¿Confirmar la entrega?' : '¿Finalizar el viaje?'}
-        message={
-          ride.service === 'delivery'
-            ? 'Confirma que la encomienda llegó al destino. Después ambos podrán calificar la experiencia.'
-            : 'Confirma que llegaste al destino. Después ambos podrán calificar la experiencia.'
-        }
-        confirmText={ride.service === 'delivery' ? 'Sí, entregada' : 'Sí, finalizar'}
-        cancelText={ride.service === 'delivery' ? 'Seguir entregando' : 'Seguir viajando'}
-        onConfirm={() => {
-          setConfirmComplete(false);
-          updateStatus.mutate({ rideId: ride.id, status: 'completed' });
-        }}
-        onCancel={() => setConfirmComplete(false)}
-      />
+        onCancel={() => setConfirmation(null)} />
     </View>
   );
 }
 
-function Row({
-  icon,
-  color,
-  label,
-  value,
-}: {
-  icon: IoniconsIconName;
-  color: string;
-  label: string;
-  value: string;
-}) {
-  const { styles } = useEstilos(crearEstilos);
-  return (
-    <View style={styles.row}>
-      <Ionicons name={icon} size={20} color={color} />
-      <View style={styles.rowText}>
-        <Text style={styles.rowLabel}>{label}</Text>
-        <Text style={styles.rowValue} numberOfLines={1}>
-          {value}
-        </Text>
-      </View>
-    </View>
-  );
-}
-
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Tema) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceMuted },
-  ratingRoot: { flex: 1, backgroundColor: colors.background },
+  safe: { flex: 1, backgroundColor: colors.background },
+  flex: { flex: 1 },
   ratingContent: { flexGrow: 1, padding: spacing.lg },
-
-  cancelledRoot: {
-    flex: 1,
-    backgroundColor: colors.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: spacing.lg,
-    gap: spacing.md,
-  },
-  cancelledIcon: {
-    width: 88,
-    height: 88,
-    borderRadius: radius.pill,
-    backgroundColor: colors.peligroSuave,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cancelledTitle: { fontSize: fontSize.xl, fontWeight: fontWeight.bold, color: colors.text },
-  cancelledHint: {
-    fontSize: fontSize.md,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    maxWidth: 300,
-  },
-  cancelledBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    height: 52,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.md,
-    backgroundColor: colors.primary,
-    marginTop: spacing.sm,
-  },
-  cancelledBtnText: { color: colors.textOnPrimary, fontSize: fontSize.md, fontWeight: fontWeight.bold },
-
-  navBannerWrap: { position: 'absolute', top: 0, left: 0, right: 0, padding: spacing.md },
-  navBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    backgroundColor: colors.surface,
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
-  },
-  navIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: radius.md,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  navText: { flex: 1, gap: 2 },
-  navTitle: { fontSize: fontSize.xs, color: colors.textSecondary },
-  navPlace: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.text },
-  navMeta: { alignItems: 'flex-end' },
-  navMetaValue: { fontSize: fontSize.md, fontWeight: fontWeight.bold, color: colors.primary },
-  navMetaSub: { fontSize: fontSize.xs, color: colors.textSecondary },
-
-  sheet: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    maxHeight: '72%',
-    paddingTop: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    backgroundColor: colors.background,
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: -3 },
-    elevation: 12,
-  },
-  sheetHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: radius.pill,
-    backgroundColor: colors.border,
-    alignSelf: 'center',
-    marginBottom: spacing.sm,
-  },
-  sheetScroll: { flexShrink: 1 },
-  sheetContent: { gap: spacing.md, paddingBottom: spacing.lg },
-
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  serviceBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surfaceMuted,
-  },
-  serviceBadgeText: { fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.primary },
-  price: { fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.text },
-
-  routeCard: {
-    gap: spacing.md,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  rowText: { flex: 1 },
-  rowLabel: { fontSize: fontSize.xs, color: colors.textSecondary },
-  rowValue: { fontSize: fontSize.md, fontWeight: fontWeight.medium, color: colors.text },
-
-  passengerBlock: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    padding: spacing.sm,
-    borderRadius: radius.md,
-    backgroundColor: colors.surfaceMuted,
-  },
-  passengerAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: radius.pill,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  passengerAvatarText: {
-    color: colors.textOnPrimary,
-    fontSize: fontSize.md,
-    fontWeight: fontWeight.bold,
-  },
-  passengerInfo: { flex: 1, minWidth: 0, gap: 2 },
-  passengerName: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.text },
-  passengerMeta: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  passengerRole: { fontSize: fontSize.xs, color: colors.textSecondary, marginRight: spacing.xs },
-  passengerRating: { fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: colors.text },
-  contactActions: { flexDirection: 'row', gap: spacing.xs },
-  contactBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  primaryBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    height: 52,
-    borderRadius: radius.md,
-    backgroundColor: colors.primary,
-  },
-  primaryText: { color: colors.textOnPrimary, fontSize: fontSize.md, fontWeight: fontWeight.bold },
-  disabled: { opacity: 0.5 },
-  cancelBtn: { alignItems: 'center', paddingVertical: spacing.xs },
-  cancelText: { color: colors.danger, fontSize: fontSize.sm, fontWeight: fontWeight.medium },
-  error: { color: colors.danger, fontSize: fontSize.sm, textAlign: 'center' },
+  resultContent: { flexGrow: 1, justifyContent: 'center', padding: spacing.lg, gap: spacing.md },
+  sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '64%',
+    backgroundColor: colors.background, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg,
+    paddingTop: spacing.sm, shadowColor: '#000', shadowOpacity: 0.12,
+    shadowRadius: 12, shadowOffset: { width: 0, height: -3 }, elevation: 12 },
+  handle: { width: 40, height: 4, borderRadius: radius.pill, backgroundColor: colors.border, alignSelf: 'center' },
+  sheetContent: { padding: spacing.md, gap: spacing.sm },
+  actions: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, gap: spacing.xs, borderTopWidth: 1, borderTopColor: colors.border },
+  stage: { padding: spacing.sm, gap: spacing.xs, backgroundColor: colors.primarioSuave, borderRadius: radius.md },
+  stageTitle: { fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.primary },
+  hint: { fontSize: fontSize.sm, color: colors.textSecondary, lineHeight: 20 },
+  passenger: { gap: spacing.xs, padding: spacing.sm, backgroundColor: colors.surfaceMuted, borderRadius: radius.md },
+  label: { fontSize: fontSize.sm, color: colors.textSecondary },
+  name: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.text },
+  contacts: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  contactButton: { flexGrow: 1 },
+  error: { fontSize: fontSize.sm, color: colors.danger },
 });

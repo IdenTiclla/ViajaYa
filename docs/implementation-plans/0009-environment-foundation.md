@@ -1,8 +1,8 @@
 # F01 — Base técnica y tres entornos
 
-Fecha: 2026-09-09. Rama de trabajo: `codex/phase-01-environments`.
+Fecha inicial: 2026-09-09. Actualización de estado: 2026-09-19. Rama original: `codex/phase-01-environments`; integrada en `main` mediante el PR #15 (`986dd79`, 14/09).
 
-Estado: **F01 completada y verificada localmente**, con APK de Desarrollo y Pruebas compilados y firmados en EAS. Corresponde a F01 del plan local de salida a producción. Pruebas funciona temporalmente en esta PC con acceso HTTPS; no se ha contratado alojamiento ni implementado F02.
+Estado: **F01 completada y verificada localmente**, con evidencia histórica de APK de Desarrollo y Pruebas compilados y firmados en EAS. Pruebas se configuró temporalmente en esta PC con HTTPS; su disponibilidad actual y el alojamiento permanente no se certificaron en la revisión del 19/09. F02 ya tiene implementación y conserva cierres pendientes. Estado vigente: [plan de producción](../plans/plan-salida-produccion.md).
 
 ## Entregas
 
@@ -30,7 +30,7 @@ Estado: **F01 completada y verificada localmente**, con APK de Desarrollo y Prue
 - Las dos definiciones Compose alojadas pasan validación sin desplegar servicios.
 - Ruff, snapshots OpenAPI/realtime y DTO TypeScript generado: aprobados. Se fijó LF en el archivo generado para evitar falsos negativos entre Windows y Linux.
 - Bundle Android productivo compilado con Hermes: 2.059 módulos, salida bajo `local-files/phase01/android-production-bundle/`. Se usaron valores sintéticos y carga de `.env` deshabilitada.
-- Workflow revisado con actionlint: sin errores. Las ejecuciones remotas de los jobs siguen pendientes hasta publicar la rama.
+- Workflow revisado con actionlint: sin errores. La rama ya se integró; falta enlazar y comprobar el resultado de CI remota del candidato que se vaya a certificar.
 - Herramientas OpenAPI: tres dependencias transitivas actualizadas dentro de rangos compatibles; `npm audit` de las herramientas de la raíz terminó con cero vulnerabilidades. Esta cifra no representa una auditoría de todas las dependencias de mobile/backend.
 
 ### Instalación Android y Pruebas temporal — 2026-09-09
@@ -44,10 +44,10 @@ Estado: **F01 completada y verificada localmente**, con APK de Desarrollo y Prue
 
 ## Condiciones externas y siguiente fase
 
-No se ha aprovisionado alojamiento permanente de pruebas/producción ni enviado SMS reales. El servidor temporal de Pruebas requiere mantener esta PC, Docker y el túnel encendidos; al reiniciar el túnel cambia la URL y hace falta recompilar el APK con ella. No sustituye el despliegue y la operación previstos en F09.
+No consta alojamiento permanente certificado de pruebas/producción ni entrega SMS real. El servidor temporal de Pruebas requiere mantener esta PC, Docker y el túnel encendidos. En F02 se recuperó HTTPS con ngrok; si cambia la URL incorporada al binario, hace falta recompilarlo. No sustituye el despliegue y la operación previstos en F09.
 
 Se configuró explícitamente la clave pública móvil de Maps existente como variable de Pruebas en EAS. Separar credenciales de Google por entorno y certificar restricciones por paquete/firma sigue pendiente. También quedan pendientes la certificación funcional completa en teléfonos, el binario productivo, iOS y la publicación en tiendas.
 
-No se han creado commits ni publicado esta rama. La ejecución remota de GitHub Actions sigue pendiente hasta publicar los cambios.
+El historial local confirma la integración del PR #15 en `main` el 14/09. No se consultó GitHub Actions en la revisión del 19/09; no se infiere una CI remota aprobada a partir del merge.
 
-Siguiente fase: F02, acceso por teléfono, OTP simulado con autofill en ambientes bajos, cuentas sociales y recuperación. Guía operativa: `docs/environments.md`.
+Siguiente cierre: completar la certificación de F02 y su adaptador SMS; F03-A puede avanzar como trabajo independiente. Guía operativa: `docs/environments.md`.

@@ -54,7 +54,11 @@ export function PhoneCodeForm({ phone, deviceId, onVerified, onChangePhone,
   const verifySeconds = Math.max(0, Math.ceil((state.verifyAt - now) / 1000));
   return (
     <View style={styles.container}>
-      <AuthHeading title="Verifica tu número" text={`Enviamos un código de seis dígitos al ${phone}.`} />
+      <AuthHeading title="Verifica tu número" text={state.challenge
+        ? controller.simulated
+          ? `Usa el código de prueba para verificar ${phone}.`
+          : `Enviamos un código de seis dígitos al ${phone}.`
+        : `Solicita un código de seis dígitos para verificar ${phone}.`} />
       {controller.simulated && <Text style={styles.hint}>OTP de prueba · sin SMS</Text>}
       {state.phase === 'waiting' && <View accessibilityLiveRegion="polite">
         <AuthNotice>Ya solicitaste un código hace poco. Pediremos uno nuevo cuando termine la espera.</AuthNotice>
@@ -62,7 +66,7 @@ export function PhoneCodeForm({ phone, deviceId, onVerified, onChangePhone,
       {state.challenge && (
         <>
           <TextField label="Código de seis dígitos" value={state.code} leadingIcon="shield-checkmark-outline"
-            onChangeText={controller.setCode} keyboardType="number-pad" maxLength={6}
+            onChangeText={controller.setCode} keyboardType="number-pad"
             editable={!busy} autoComplete="one-time-code" textContentType="oneTimeCode"
             placeholder="123456" style={styles.code} error={state.error ?? undefined} />
           <Button title={verifySeconds ? `Continuar en ${verifySeconds} s` : 'Continuar'}

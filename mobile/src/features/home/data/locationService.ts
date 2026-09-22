@@ -485,6 +485,27 @@ export const locationService = {
     }
   },
 
+  /** A fresh fix for pickup routing; never use the provisional last-known fix. */
+  async getRoutingCoordinates(): Promise<Coordinates> {
+    const permission = await Location.requestForegroundPermissionsAsync();
+    if (permission.status !== 'granted') {
+      throw new Error('Permite el acceso a tu ubicación para calcular la llegada.');
+    }
+    if (!await Location.hasServicesEnabledAsync()) {
+      throw new Error('Activa la ubicación del teléfono para calcular la llegada.');
+    }
+    const position = await conTiempoMaximo(obtenerPosicionActual().catch(() => {
+      throw new Error('No pudimos obtener tu ubicación actual. Intenta de nuevo.');
+    }), 10_000,
+      'No pudimos obtener tu ubicación actual. Intenta de nuevo.');
+    if (!Number.isFinite(position.timestamp) || Date.now() - position.timestamp > 30_000
+      || position.coords.accuracy == null || !Number.isFinite(position.coords.accuracy)
+      || position.coords.accuracy < 0 || position.coords.accuracy > 200) {
+      throw new Error('Tu señal de ubicación todavía es imprecisa. Intenta de nuevo.');
+    }
+    return crearResultadoUbicacion(position, false).coordinates;
+  },
+
   /** Seguimiento del conductor: GPS y brújula, con cancelación conjunta. */
   watchPosition: observarUbicacion,
   consultarDisponibilidad: consultarDisponibilidadUbicacion,

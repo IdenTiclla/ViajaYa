@@ -34,8 +34,9 @@ overview.addEventListener('click',()=>{mode=mode==='overview'?'slides':'overview
 reading.addEventListener('click',()=>{mode=mode==='document'?'slides':'document';show(current);window.scrollTo({top:0});});
 slides.forEach((s,i)=>{s.addEventListener('click',e=>{if(mode==='overview'&&!e.target.closest('a'))navigate(i);});s.addEventListener('keydown',e=>{if(mode==='overview'&&e.target===s&&(e.key==='Enter'||e.key===' ')){e.preventDefault();navigate(i);}});});
 document.addEventListener('keydown',e=>{
-  if(e.target.closest('button,a,input,select,textarea') || e.ctrlKey || e.metaKey || e.altKey)return;
+  if(e.ctrlKey || e.metaKey || e.altKey)return;
   if(e.key==='Escape' && mode!=='slides'){mode='slides';show(current,true);return;}
+  if(e.target.closest('button,a,input,select,textarea'))return;
   if(mode!=='slides')return;
   if(['ArrowRight','ArrowDown','PageDown',' '].includes(e.key)){e.preventDefault();navigate(current+1);}
   if(['ArrowLeft','ArrowUp','PageUp'].includes(e.key)){e.preventDefault();navigate(current-1);}

@@ -37,6 +37,7 @@ from app.api.v1.realtime_outbox import (
     OutboxUpdateRideStatusEventRecorder,
     OutboxWithdrawOfferEventRecorder,
 )
+from app.application.driver_location_channel import DriverLocationChannel
 from app.application.interfaces import (
     CancelRideEventRecorder,
     PassengerPresenceLeaseStore,
@@ -81,12 +82,14 @@ from app.application.use_cases.expire_offer_and_complete_scheduled_action import
 )
 from app.application.use_cases.get_driver_active_ride import GetDriverActiveRide
 from app.application.use_cases.get_driver_earnings import GetDriverEarnings
+from app.application.use_cases.get_driver_location import GetDriverLocation
 from app.application.use_cases.get_passenger_active_ride import GetPassengerActiveRide
 from app.application.use_cases.get_pending_rating_ride import GetPendingRatingRide
 from app.application.use_cases.get_realtime_outbox_operational_snapshot import (
     GetRealtimeOutboxOperationalSnapshot,
 )
 from app.application.use_cases.get_ride import GetRide
+from app.application.use_cases.get_ride_rating import GetRideRating
 from app.application.use_cases.get_scheduled_actions_operational_snapshot import (
     GetScheduledActionsOperationalSnapshot,
 )
@@ -97,6 +100,7 @@ from app.application.use_cases.list_recent_destinations import ListRecentDestina
 from app.application.use_cases.list_ride_history import ListRideHistory
 from app.application.use_cases.list_saved_places import ListSavedPlaces
 from app.application.use_cases.manage_account_sessions import ManageAccountSessions
+from app.application.use_cases.mark_rider_on_the_way import MarkRiderOnTheWay
 from app.application.use_cases.pause_ride_for_edit import PauseRideForEdit
 from app.application.use_cases.rate_ride import RateRide
 from app.application.use_cases.refresh_managed_session import RefreshManagedSession
@@ -104,6 +108,7 @@ from app.application.use_cases.register_driver_vehicle import RegisterDriverVehi
 from app.application.use_cases.reject_offer import RejectOffer
 from app.application.use_cases.remove_driver_vehicle import RemoveDriverVehicle
 from app.application.use_cases.renew_passenger_presence import RenewPassengerPresence
+from app.application.use_cases.report_driver_location import ReportDriverLocation
 from app.application.use_cases.request_account_recovery import RequestAccountRecovery
 from app.application.use_cases.request_phone_code import RequestPhoneCode
 from app.application.use_cases.set_driver_online import SetDriverOnline
@@ -161,6 +166,10 @@ from app.infrastructure.db.social_identities import SqlAlchemySocialIdentityRepo
 from app.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from app.infrastructure.oauth.facebook_verifier import FacebookIdentityVerifier
 from app.infrastructure.oauth.google_verifier import GoogleIdentityVerifier
+from app.infrastructure.realtime.driver_location import (
+    MemoryDriverLocationChannel,
+    RedisDriverLocationChannel,
+)
 from app.infrastructure.security.jwt_service import JwtTokenService
 from app.infrastructure.security.phone_verification import (
     HmacPhoneVerificationSecrets,
@@ -657,6 +666,24 @@ def build_disconnect_passenger_presence(
     )
 
 
+def get_mark_rider_on_the_way(
+    session: SessionDep,
+    settings: SettingsDep,
+) -> MarkRiderOnTheWay:
+    recorder = (
+        OutboxUpdateRideStatusEventRecorder(SqlAlchemyRealtimeOutbox(session))
+        if settings.realtime_outbox_recording_enabled
+        else DisabledUpdateRideStatusEventRecorder()
+    )
+    return MarkRiderOnTheWay(
+        SqlAlchemyRideRequestRepository(session, commit_update_if_state=False),
+        SqlAlchemyOfferRepository(session),
+        SqlAlchemyUserRepository(session),
+        SqlAlchemyUnitOfWork(session),
+        recorder,
+    )
+
+
 def get_update_ride_status(
     session: SessionDep,
     settings: SettingsDep,
@@ -859,6 +886,13 @@ def get_get_ride(
     return GetRide(rides, offers, users)
 
 
+def get_ride_rating(
+    rides: RideRequestRepositoryDep,
+    ratings: RatingRepositoryDep,
+) -> GetRideRating:
+    return GetRideRating(rides, ratings)
+
+
 def get_rate_ride(
     rides: RideRequestRepositoryDep,
     ratings: RatingRepositoryDep,
@@ -920,3 +954,38 @@ async def get_current_user(
 
 
 CurrentUserDep = Annotated[User, Depends(get_current_user)]
+
+
+def build_driver_location_channel(settings: Settings) -> DriverLocationChannel:
+    if settings.realtime_outbox_dispatch_mode == 'live_redis':
+        return RedisDriverLocationChannel(settings.realtime_redis_url, settings.app_env)
+    return MemoryDriverLocationChannel()
+
+
+def get_driver_location_channel(connection: HTTPConnection) -> DriverLocationChannel:
+    return connection.app.state.driver_location_channel
+
+
+DriverLocationChannelDep = Annotated[DriverLocationChannel, Depends(get_driver_location_channel)]
+
+
+def build_get_driver_location(
+    session: AsyncSession, channel: DriverLocationChannel,
+) -> GetDriverLocation:
+    return GetDriverLocation(SqlAlchemyRideRequestRepository(session), channel)
+
+
+def get_driver_location(
+    rides: RideRequestRepositoryDep, channel: DriverLocationChannelDep,
+) -> GetDriverLocation:
+    return GetDriverLocation(rides, channel)
+
+
+def get_report_driver_location(
+    rides: RideRequestRepositoryDep, channel: DriverLocationChannelDep,
+) -> ReportDriverLocation:
+    return ReportDriverLocation(rides, channel)
+
+
+GetDriverLocationDep = Annotated[GetDriverLocation, Depends(get_driver_location)]
+ReportDriverLocationDep = Annotated[ReportDriverLocation, Depends(get_report_driver_location)]

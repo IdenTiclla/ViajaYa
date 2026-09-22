@@ -26,10 +26,7 @@ from app.domain.entities import (
 )
 from app.domain.ride_policy import OFFER_TTL
 from app.infrastructure.db.models import ScheduledActionModel
-from app.infrastructure.db.repositories import (
-    SqlAlchemyOfferRepository,
-    SqlAlchemyRideRequestRepository,
-)
+from app.infrastructure.db.repositories import SqlAlchemyOfferRepository
 from app.infrastructure.db.scheduled_actions import (
     SqlAlchemyScheduledActionRepository,
 )
@@ -88,14 +85,48 @@ async def test_upgrade_backfill_y_downgrade_seguro_0022(pg_test_db) -> None:
                     for user in (rider, driver)
                 ],
             )
-            ride = await SqlAlchemyRideRequestRepository(session).add(
-                RideRequest(
-                    rider_id=rider.id,
-                    origin=Location(-17.39, -66.15, "Origen", "Calle 1"),
-                    destination=Location(-17.40, -66.16, "Destino", "Calle 2"),
-                    service_type=ServiceType.TAXI,
-                    fare=Decimal("20.00"),
-                )
+            ride = RideRequest(
+                rider_id=rider.id,
+                origin=Location(-17.39, -66.15, "Origen", "Calle 1"),
+                destination=Location(-17.40, -66.16, "Destino", "Calle 2"),
+                service_type=ServiceType.TAXI,
+                fare=Decimal("20.00"),
+            )
+            # Seed only columns present at this historical migration revision.
+            await session.execute(
+                sa.text(
+                    "INSERT INTO ride_requests ("
+                    "id, rider_id, "
+                    "origin_latitude, origin_longitude, origin_name, origin_address, "
+                    "destination_latitude, destination_longitude, "
+                    "destination_name, destination_address, "
+                    "service_type, fare, payment_method, status, paused, pool_version"
+                    ") VALUES ("
+                    ":id, :rider_id, "
+                    ":origin_latitude, :origin_longitude, :origin_name, :origin_address, "
+                    ":destination_latitude, :destination_longitude, "
+                    ":destination_name, :destination_address, "
+                    ":service_type, :fare, :payment_method, :status, :paused, :pool_version"
+                    ")"
+                ),
+                {
+                    "id": ride.id,
+                    "rider_id": ride.rider_id,
+                    "origin_latitude": ride.origin.latitude,
+                    "origin_longitude": ride.origin.longitude,
+                    "origin_name": ride.origin.name,
+                    "origin_address": ride.origin.address,
+                    "destination_latitude": ride.destination.latitude,
+                    "destination_longitude": ride.destination.longitude,
+                    "destination_name": ride.destination.name,
+                    "destination_address": ride.destination.address,
+                    "service_type": ride.service_type.value,
+                    "fare": ride.fare,
+                    "payment_method": ride.payment_method.value,
+                    "status": ride.status.value,
+                    "paused": ride.paused,
+                    "pool_version": ride.pool_version,
+                },
             )
             offer = await SqlAlchemyOfferRepository(session).add(
                 Offer(

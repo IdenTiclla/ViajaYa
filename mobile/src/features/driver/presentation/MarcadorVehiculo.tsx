@@ -11,16 +11,19 @@ import { programarRedibujadoMarcador } from '@/features/rides/presentation/route
 import { calcularRotacionVehiculo, esRumboValido } from './rumboVehiculo';
 
 type Props = {
+  label?: string;
+  opacity?: number;
   coordinates: Coordinates;
   heading: number | null;
   tipoVehiculo: VehicleType | null;
 };
 
 /** La posición y la rotación pertenecen al mapa nativo, no a un overlay de pantalla. */
-export function MarcadorVehiculo({ coordinates, heading, tipoVehiculo }: Props) {
+export function MarcadorVehiculo({ coordinates, heading, tipoVehiculo, label, opacity = 1 }: Props) {
   const { styles, modo } = useEstilos(crearEstilos);
   const marcador = useRef<MapMarker>(null);
   const orientado = esRumboValido(heading) && tipoVehiculo != null;
+  const hasVehicle = tipoVehiculo != null;
   const [rotacion, setRotacion] = useState(esRumboValido(heading) ? heading : 0);
   const anguloVisible = useRef(rotacion);
   const teniaRumbo = useRef(esRumboValido(heading));
@@ -53,13 +56,13 @@ export function MarcadorVehiculo({ coordinates, heading, tipoVehiculo }: Props) 
   const contenido = useMemo(() => (
     <View collapsable={false} style={styles.marco}>
       {/* Ambos slots permanecen montados para mantener estable el bitmap de Fabric. */}
-      <View style={[styles.vehiculo, { opacity: orientado ? 1 : 0 }]}>
+      <View style={[styles.vehiculo, { opacity: hasVehicle ? 1 : 0 }]}>
         <VehiculoMapa tipo={tipoVehiculo ?? 'taxi'} />
-        <View style={styles.frente} />
+        <View style={[styles.frente, { opacity: orientado ? 1 : 0 }]} />
       </View>
-      <View style={[styles.sinRumbo, { opacity: orientado ? 0 : 1 }]} />
+      <View style={[styles.sinRumbo, { opacity: hasVehicle ? 0 : 1 }]} />
     </View>
-  ), [styles, orientado, tipoVehiculo]);
+  ), [styles, orientado, hasVehicle, tipoVehiculo]);
   return (
     <Marker
       ref={marcador}
@@ -68,8 +71,9 @@ export function MarcadorVehiculo({ coordinates, heading, tipoVehiculo }: Props) 
       flat
       anchor={{ x: 0.5, y: 0.5 }}
       zIndex={30}
-      title={etiqueta}
-      accessibilityLabel={etiqueta}>
+      opacity={opacity}
+      title={label ?? etiqueta}
+      accessibilityLabel={label ?? etiqueta}>
       {contenido}
     </Marker>
   );

@@ -11,7 +11,7 @@ import {
 
 import { controles, fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 
-type Variant = 'primary' | 'secondary' | 'danger' | 'dangerSoft';
+type Variant = 'primary' | 'secondary' | 'danger' | 'dangerSoft' | 'text';
 
 type Props = PressableProps & {
   title: string;
@@ -48,7 +48,7 @@ export function Button({
     ? colors.textoDeshabilitado
     : variant === 'primary' || variant === 'danger'
       ? colors.textOnPrimary
-      : variant === 'dangerSoft' ? colors.danger : colors.primary;
+      : variant === 'dangerSoft' ? colors.danger : variant === 'text' ? colors.textSecondary : colors.primary;
 
   return (
     <Pressable
@@ -65,9 +65,12 @@ export function Button({
       style={(state) => [
         styles.base,
         styles[variant],
-        state.pressed && !isDisabled && styles.pressed,
+        state.pressed && !isDisabled && [styles.pressed,
+          variant === 'primary' && styles.primaryPressed,
+          variant === 'secondary' && styles.secondaryPressed],
         typeof style === 'function' ? style(state) : style,
         isDisabled && !loading && styles.disabled,
+        variant === 'text' && styles.text,
         enfocado && estiloFoco,
       ]}>
       <View style={styles.content} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
@@ -83,7 +86,7 @@ export function Button({
             color={colorTexto}
           />
         ) : null}
-        <Text style={[styles.label, { color: colorTexto }]}>
+        <Text style={[styles.label, variant === 'text' && styles.textLabel, { color: colorTexto }]}>
           {textoVisible}
         </Text>
         {!loading && trailingIcon ? (
@@ -98,10 +101,10 @@ export function Button({
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const crearEstilos = ({ colors, modo }: Tema) => StyleSheet.create({
   base: {
     minHeight: controles.altoMinimo,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: spacing.md,
@@ -109,15 +112,21 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     borderWidth: 1,
     borderColor: 'transparent',
   },
-  primary: { backgroundColor: colors.primary },
+  primary: { backgroundColor: colors.primary, borderColor: colors.primary,
+    shadowColor: colors.primary, shadowOpacity: modo === 'light' ? 0.16 : 0,
+    shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: modo === 'light' ? 2 : 0 },
+  primaryPressed: { backgroundColor: colors.primaryDark, borderColor: colors.primaryDark },
+  secondaryPressed: { backgroundColor: colors.primarioSuave, borderColor: colors.primary },
   secondary: {
-    backgroundColor: colors.primarioSuave,
-    borderColor: colors.primary,
+    backgroundColor: colors.surface,
+    borderColor: colors.bordeControl,
   },
   danger: { backgroundColor: colors.danger },
   dangerSoft: { backgroundColor: colors.peligroSuave, borderColor: colors.danger },
-  pressed: { opacity: 0.92 },
-  disabled: { backgroundColor: colors.fondoDeshabilitado, borderColor: 'transparent' },
+  text: { backgroundColor: 'transparent', borderColor: 'transparent' },
+  textLabel: { textDecorationLine: 'underline' },
+  pressed: { transform: [{ translateY: 1 }], shadowOpacity: 0, elevation: 0 },
+  disabled: { backgroundColor: colors.fondoDeshabilitado, borderColor: 'transparent', shadowOpacity: 0, elevation: 0 },
   content: { maxWidth: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   label: { flexShrink: 1, fontSize: fontSize.sm, fontWeight: fontWeight.semibold, textAlign: 'center' },
 });

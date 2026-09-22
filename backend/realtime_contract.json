@@ -1053,6 +1053,7 @@
               "rating": 4.9
             },
             "rider_id": "00000000-0000-4000-8000-000000000002",
+            "rider_on_the_way_at": null,
             "service_type": "taxi",
             "status": "searching"
           }
@@ -1118,6 +1119,7 @@
               "rating": 4.9
             },
             "rider_id": "00000000-0000-4000-8000-000000000002",
+            "rider_on_the_way_at": null,
             "service_type": "taxi",
             "status": "accepted"
           },

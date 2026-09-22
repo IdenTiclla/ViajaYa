@@ -1,3 +1,4 @@
+import { useOfferComposer } from './useOfferComposer';
 /**
  * Estado de una oferta enviada (conductor) — "Esperando al pasajero".
  *
@@ -40,13 +41,13 @@ import { useCountdown } from '@/core/hooks/useCountdown';
 import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 import { useRoute } from '@/features/booking/application/useRoute';
 import { useDriverRequests } from '@/features/driver/application/useDriverRequests';
+import { useNegotiationRide } from '@/features/driver/application/useNegotiationRide';
 import { RideUnavailableScreen } from '@/features/driver/presentation/RideUnavailableScreen';
 import { ViajeEnCursoConductorScreen } from '@/features/driver/presentation/ViajeEnCursoConductorScreen';
 import {
-  useCreateOffer,
   useWithdrawOffer,
 } from '@/features/rides/application/useRideMutations';
-import { useDriverActiveRide, useOpenRides } from '@/features/rides/application/useRides';
+import { useDriverActiveRide } from '@/features/rides/application/useRides';
 import { formatKm, haversineKm } from '@/features/rides/domain/geo';
 import { formatBolivianos, formatBolivianosInput } from '@/features/rides/domain/money';
 import { OfferLifeTimer } from '@/features/rides/presentation/OfferLifeTimer';
@@ -63,7 +64,7 @@ export function OfertaEnviadaScreen() {
 
   const activeRideQuery = useDriverActiveRide();
   const { ride: activeRide } = activeRideQuery;
-  const won = !!activeRide && activeRide.id === rideId;
+
 
   // Estado en vivo de la oferta (rechazo por WebSocket; oferta en store).
   const rejectedRides = useDriverRequests((s) => s.rejected);
@@ -80,20 +81,22 @@ export function OfertaEnviadaScreen() {
   const isPaused = !!rideId && pausedRides.has(rideId);
   const sentOffer = rideId ? offeredMap[rideId] : undefined;
 
-  const createOffer = useCreateOffer();
+  const createOffer = useOfferComposer();
   const withdrawOffer = useWithdrawOffer();
-  const offerActionBusy = createOffer.isPending || withdrawOffer.isPending;
+  const sendingThisOffer = rideId != null && createOffer.pendingRideIds.has(rideId);
+  const offerActionBusy = sendingThisOffer || withdrawOffer.isPending;
   const [showCounter, setShowCounter] = useState(false);
+  const [sheetHeight, setSheetHeight] = useState(440);
+  const [headerHeight, setHeaderHeight] = useState(80);
   const [counterPrice, setCounterPrice] = useState('');
 
   // La solicitud sigue en la lista abierta mientras nadie la toma.
-  const openRidesQuery = useOpenRides(!won);
-  const { rides, isLoading } = openRidesQuery;
-  const openRide = rides.find((r) => r.id === rideId) ?? null;
+  const openRidesQuery = useNegotiationRide(rideId, !activeRide);
+  const { ride: openRide, isLoading } = openRidesQuery;
 
   const origin = openRide?.origin ?? null;
   const destination = openRide?.destination ?? null;
-  const { route } = useRoute(origin, destination);
+  const { route } = useRoute(origin, destination, openRide?.service ?? 'taxi');
 
   // El contador es el de la propia oferta del conductor (30 s), solo para display.
   const secondsLeft = useCountdown(sentOffer?.expiresAt ?? null);
@@ -143,10 +146,10 @@ export function OfertaEnviadaScreen() {
   ]);
 
   const reAcceptAtFare = () => {
-    if (!rideId || offerActionBusy) return;
+    if (!rideId || !openRide || offerActionBusy) return;
     const attemptToken = beginOfferAttempt(rideId);
     createOffer.mutate(
-      { rideId, input: { acceptAtFare: true } },
+      { rideId, riderName: openRide.rider.fullName, poolVersion: openRide.poolVersion, pickup: openRide.origin.coordinates, service: openRide.service, input: { acceptAtFare: true } },
       {
         onSuccess: (offer) =>
           void markOffered(rideId, offer, openRide?.fare, attemptToken),
@@ -165,10 +168,11 @@ export function OfertaEnviadaScreen() {
   const counterPriceIsValid = Number.isFinite(parsedCounterPrice) && parsedCounterPrice > 0;
 
   const submitCounter = () => {
-    if (!rideId || !counterPriceIsValid || offerActionBusy) return;
+    if (!rideId || !openRide || !counterPriceIsValid || offerActionBusy) return;
+    setShowCounter(false);
     const attemptToken = beginOfferAttempt(rideId);
     createOffer.mutate(
-      { rideId, input: { acceptAtFare: false, price: parsedCounterPrice } },
+      { rideId, riderName: openRide.rider.fullName, poolVersion: openRide.poolVersion, pickup: openRide.origin.coordinates, service: openRide.service, input: { acceptAtFare: false, price: parsedCounterPrice } },
       {
         onSuccess: (offer) => {
           void markOffered(rideId, offer, openRide?.fare, attemptToken);
@@ -216,7 +220,7 @@ export function OfertaEnviadaScreen() {
             <TouchableOpacity
               style={styles.priceModalCancel}
               onPress={() => setShowCounter(false)}
-              disabled={createOffer.isPending}
+              disabled={sendingThisOffer}
               accessibilityRole="button"
               accessibilityLabel="Cancelar mejora de oferta">
               <Text style={styles.priceModalCancelText}>Cancelar</Text>
@@ -224,13 +228,13 @@ export function OfertaEnviadaScreen() {
             <TouchableOpacity
               style={[
                 styles.priceModalSubmit,
-                (!counterPriceIsValid || createOffer.isPending) && styles.disabled,
+                (!counterPriceIsValid || sendingThisOffer) && styles.disabled,
               ]}
               onPress={submitCounter}
-              disabled={!counterPriceIsValid || createOffer.isPending}
+              disabled={!counterPriceIsValid || sendingThisOffer}
               accessibilityRole="button"
               accessibilityLabel="Enviar oferta mejorada">
-              {createOffer.isPending ? (
+              {sendingThisOffer ? (
                 <ActivityIndicator color={colors.textOnPrimary} />
               ) : (
                 <Text style={styles.priceModalSubmitText}>Enviar</Text>
@@ -242,13 +246,12 @@ export function OfertaEnviadaScreen() {
     </Modal>
   );
 
-  // Si confirmé mi oferta y gané la carrera, muestro el viaje en curso aquí mismo.
-  if (won && activeRide) {
+  // Any assigned ride takes priority, even while viewing another negotiation.
+  if (activeRide) {
     return <ViajeEnCursoConductorScreen ride={activeRide} />;
   }
 
   if (
-    !sentOffer &&
     !openRide &&
     !activeRideQuery.isError &&
     !openRidesQuery.isError &&
@@ -329,13 +332,14 @@ export function OfertaEnviadaScreen() {
           fare={openRide?.fare ?? null}
           originName={originName}
           destName={destName}
-          submitting={createOffer.isPending}
+          submitting={sendingThisOffer}
           errorMessage={createOffer.isError ? getApiErrorMessage(createOffer.error) : null}
           onReoffer={reAcceptAtFare}
           onImprove={openCounter}
           onBack={backToList}
         />
         {counterPriceInput}
+        {createOffer.offerFeedback}
       </>
     );
   }
@@ -372,12 +376,13 @@ export function OfertaEnviadaScreen() {
   return (
     <View style={styles.root}>
       {origin && destination ? (
-        <TripRouteMap origin={origin} destination={destination} bottomPadding={440} />
+        <TripRouteMap service={openRide?.service ?? 'taxi'} origin={origin} destination={destination} topPadding={headerHeight} bottomPadding={sheetHeight} />
       ) : (
         <View style={styles.mapFallback} />
       )}
 
-      <SafeAreaView edges={['top']} style={styles.topBar} pointerEvents="box-none">
+      <SafeAreaView edges={['top']} style={styles.topBar} pointerEvents="box-none"
+        onLayout={(event) => setHeaderHeight(event.nativeEvent.layout.height)}>
         <TouchableOpacity
           style={styles.iconBtn}
           onPress={backToList}
@@ -389,7 +394,8 @@ export function OfertaEnviadaScreen() {
         <View style={styles.iconBtn} />
       </SafeAreaView>
 
-      <SafeAreaView edges={['bottom']} style={styles.sheet}>
+      <SafeAreaView edges={['bottom']} style={styles.sheet}
+        onLayout={(event) => setSheetHeight(event.nativeEvent.layout.height)}>
         <ScrollView
           contentContainerStyle={styles.sheetContent}
           showsVerticalScrollIndicator={false}
@@ -399,7 +405,10 @@ export function OfertaEnviadaScreen() {
         <View style={styles.statusHeader}>
           <SpinnerRing />
           <Text style={styles.statusTitle}>Esperando al pasajero</Text>
-          <Text style={styles.statusHint}>El pasajero está revisando tu propuesta…</Text>
+          <Text style={styles.statusHint}>Tu oferta sigue activa mientras negocias con otros pasajeros.</Text>
+          <Button title="Seguir viendo solicitudes" variant="secondary" leadingIcon="list"
+            onPress={backToList} />
+          <Text style={styles.statusHint}>El primero que acepte confirma tu viaje. Tus otras ofertas se retiran automáticamente.</Text>
           <OfferLifeTimer secondsLeft={secondsLeft} />
         </View>
 
@@ -458,12 +467,13 @@ export function OfertaEnviadaScreen() {
           </Text>
         )}
 
+        {createOffer.offerFeedback}
         <View style={styles.actions}>
           <Button
             title="Mejorar oferta"
             variant="secondary"
             leadingIcon="trending-up"
-            loading={createOffer.isPending}
+            loading={sendingThisOffer}
             loadingLabel="Enviando…"
             onPress={openCounter}
             disabled={offerActionBusy}
@@ -737,7 +747,7 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    maxHeight: '82%',
+    height: '64%',
     backgroundColor: colors.background,
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,

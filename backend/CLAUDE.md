@@ -321,6 +321,10 @@ offers vivas del conductor elegido en **otros rides** (`OfferAcceptance.withdraw
 `losing_driver_ids`). **Regla de oro**: si el conductor ya fue asignado a otro viaje →
 `DriverUnavailableError` (HTTP 409).
 
+- **Versión de solicitud:** `POST /rides/{id}/offers` acepta `expected_pool_version`
+  opcional (clientes nuevos lo envían). Si el pasajero cambió la solicitud, devuelve
+  409 antes de crear/reemplazar la oferta. El repositorio revalida bajo lock la
+  versión leída por el caso de uso, también para clientes anteriores. Sin migración.
 - **Mejorar oferta** (mismo conductor, mismo ride): **reemplaza** la anterior → se emite
   `offer_withdrawn {reason:"superseded"}` + `offer_created` (NO hay un evento `offer_superseded` propio).
 - **Modificar solicitud NO cancela** (ortogonal al status): `POST /{id}/pause-edit` oculta la

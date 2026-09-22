@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api import health, metrics
-from app.api.deps import get_session_factory
+from app.api.deps import build_driver_location_channel, get_session_factory
 from app.api.errors import register_exception_handlers
 from app.api.v1 import presence
 from app.api.v1.realtime_outbox import (
@@ -21,12 +21,14 @@ from app.api.v1.realtime_outbox import (
 )
 from app.api.v1.redis_realtime import RedisRealtimeBridge
 from app.api.v1.routers import auth, drivers, rides, saved_places
+from app.api.v1.routers import driver_location as driver_location_router
 from app.api.v1.routers.account_access import router as account_access_router
 from app.api.v1.routers.phone_verification import create_phone_verification_router
 from app.api.v1.scheduled_actions import (
     ApplicationScheduledActionExecutor,
     shutdown_shadow_scheduled_action_publications,
 )
+from app.api.v1.ws import driver_location as driver_location_ws
 from app.api.v1.ws import negotiation
 from app.application.interfaces import (
     RealtimeDeliveryBridge,
@@ -460,12 +462,14 @@ def create_app(
                 await redis_bridge.aclose()
             if shared_presence is not None:
                 await shared_presence.aclose()
+            await app.state.driver_location_channel.aclose()
             hub.set_shared_transport_healthy(previous_shared_transport_health)
             hub.set_legacy_delivery_enabled(previous_legacy_delivery)
             if process_lock is not None:
                 await process_lock.release()
 
     app = FastAPI(title="ViajaYa API", version="0.1.0", lifespan=lifespan)
+    app.state.driver_location_channel = build_driver_location_channel(resolved_settings)
     app.state.realtime_outbox_dispatcher = None
     app.state.realtime_outbox_dispatcher_task = None
     app.state.realtime_redis_bridge = None
@@ -511,6 +515,8 @@ def create_app(
     app.include_router(drivers.router, prefix="/api/v1")
     app.include_router(saved_places.router, prefix="/api/v1")
     app.include_router(negotiation.router, prefix="/api/v1")
+    app.include_router(driver_location_ws.router, prefix="/api/v1")
+    app.include_router(driver_location_router.router, prefix="/api/v1")
     app.include_router(health.router)
     if resolved_settings.openmetrics_enabled:
         app.include_router(metrics.router)

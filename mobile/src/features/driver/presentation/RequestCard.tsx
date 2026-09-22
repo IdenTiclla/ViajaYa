@@ -24,6 +24,7 @@ import { formatBolivianos } from '@/features/rides/domain/money';
 import { OfferLifeTimer } from '@/features/rides/presentation/OfferLifeTimer';
 import type { OpenRide } from '@/features/rides/domain/types';
 import { serviceNouns } from '@/features/rides/domain/serviceNouns';
+import { PersonAvatar } from '@/shared/components';
 
 const PAYMENT_LABELS = { qr: 'QR', cash: 'Efectivo' } as const;
 const QUICK_DELTAS = [1, 2, 5] as const;
@@ -47,6 +48,7 @@ type Props = {
   /** Precio que el conductor ofertó (mostrado cuando `offered`). */
   offerPrice: number | null;
   onPress: () => void;
+  onViewOffer: () => void;
   onAccept: () => void;
   onDismiss: () => void;
   onQuickAdd: (delta: number) => void;
@@ -67,6 +69,7 @@ export function RequestCard({
   offerExpiresAt,
   offerPrice,
   onPress,
+  onViewOffer,
   onAccept,
   onDismiss,
   onQuickAdd,
@@ -86,7 +89,6 @@ export function RequestCard({
 
   const { rider } = ride;
   const { customer: customerNoun, request: requestNoun } = serviceNouns(ride.service);
-  const initial = rider.fullName.trim().charAt(0).toUpperCase() || '?';
   const meta = [
     SERVICE_META[ride.service].shortLabel,
     `${rider.tripsCompleted} ${rider.tripsCompleted === 1 ? 'viaje' : 'viajes'}`,
@@ -155,9 +157,7 @@ export function RequestCard({
 
         <View style={styles.cardTop}>
           <View style={styles.avatarWrap}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{initial}</Text>
-            </View>
+            <PersonAvatar name={rider.fullName} size={48} />
             {rider.rating != null && (
               <View style={styles.ratingBadge}>
                 <Text style={styles.ratingBadgeText}>{rider.rating.toFixed(1)}★</Text>
@@ -232,6 +232,10 @@ export function RequestCard({
         <View style={styles.actionsSlot}>
           {offered && (
             <View style={styles.cardActions}>
+              <TouchableOpacity style={[styles.actionBtn, styles.accept]} onPress={onViewOffer}
+                accessibilityRole="button" accessibilityLabel={`Ver oferta para ${rider.fullName}`}>
+                <Text style={styles.acceptText}>Ver oferta</Text>
+              </TouchableOpacity>
               <TouchableOpacity
                 style={[
                   styles.actionBtn,
@@ -431,15 +435,6 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
 
   cardTop: { flexDirection: 'row', gap: spacing.md },
   avatarWrap: { width: 48, height: 48 },
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: radius.pill,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: { color: colors.textOnPrimary, fontSize: fontSize.lg, fontWeight: fontWeight.bold },
   ratingBadge: {
     position: 'absolute',
     bottom: -3,

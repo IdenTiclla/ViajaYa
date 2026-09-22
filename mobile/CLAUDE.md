@@ -276,20 +276,32 @@ Splash/adaptiveIcon conservan el azul de marca `#16308C`.
   El mapa se monta solo al recibir coordenadas recientes, sin una ciudad fija de
   respaldo; la carga tiene 15 s antes de ofrecer Reintentar y una señal tardía
   recupera el mapa. La cámara mide el contenedor y espera `onMapReady`; el primer
-  centrado y «Mi ubicación» usan `setCamera`, el seguimiento usa `animateCamera`.
+  centrado y seguimiento usan `setCamera`, con gestos bloqueados. El radar vive
+  dentro de `DriverSearchMap` y toma la proyección GPS de `pointForCoordinate`;
+  descarta respuestas atrasadas y se oculta si la proyección falla. Ver plan 0020.
 - Reutiliza `Button` para acciones de formulario y pie de pantalla: altura mínima
   de 48, texto de 14 y crecimiento natural al ampliar la letra. Evita alturas
   fijas y `adjustsFontSizeToFit` para hacer caber etiquetas de acciones.
 - Reserva `primary` para la acción principal, `secondary` para alternativas,
   `dangerSoft` para iniciar una acción destructiva y `danger` para confirmarla.
+  Los botones y campos usan radio 16; `secondary` tiene fondo `surface` y borde
+  `bordeControl`. Los estados pulsado, deshabilitado y cargando conservan su tamaño.
+  En el seguimiento/negociación, `TripSecondaryAction` usa la variante `text` de
+  `Button` para mantener cancelar u omitir en segundo plano; cancelar sigue
+  requiriendo un diálogo destructivo. Conserva el objetivo táctil mínimo de 48.
   `loading` bloquea la acción e informa su estado; `accessibilityState.busy` puede
   comunicar una consulta en segundo plano que permite seguir interactuando.
 - Conserva el foco de teclado visible (`estiloFoco`) y los estados de selección,
   carga y deshabilitado también mediante `aria-*`, compatibles con React Native
   y React Native Web. La selección se distingue además por una marca visible.
 - Los campos mantienen etiquetas al escribir y asocian los errores mediante su
-  pista de accesibilidad. Los diálogos son desplazables y apilan sus acciones
-  cuando falta espacio; al abrirse enfocan el título para el lector nativo.
+  pista de accesibilidad. `TextField` admite `helperText` (el error tiene prioridad)
+  y `showCharacterCount` para valores controlados con `maxLength`.
+  Los diálogos anclan la tarjeta abajo en móvil, desplazan solo el contenido y
+  mantienen sus acciones visibles; al abrirse enfocan el título para el lector
+  nativo. En pantallas amplias se centran y usan acciones horizontales.
+  `PersonAvatar` unifica las iniciales decorativas; debe acompañarse del nombre
+  completo accesible. `FeedbackState` bloquea el reintento mientras está cargando.
 - Verifica los controles con texto al 200% y pantallas estrechas. Una
   previsualización web ayuda a comprobar geometría y teclado; TalkBack y
   VoiceOver requieren validación en dispositivo.
@@ -327,9 +339,11 @@ Splash/adaptiveIcon conservan el azul de marca `#16308C`.
   acceso usan `skipAuth` para no depender de credenciales anteriores. Una
   generación descarta respuestas de arranque y renovaciones anteriores después
   de salir, iniciar otra sesión o expirar la actual.
-- Confirmar/omitir calificación libera la mutación al recibir el éxito HTTP;
-  las invalidaciones posteriores corren en segundo plano. Una lectura antigua se
-  cancela antes de retirar de caché ese cierre, conservando otros pendientes.
+- Confirmar/omitir calificación espera el asentamiento de las cancelaciones
+  locales antes de retirar ese cierre de las cachés de activo/pendiente. No vuelve
+  a cancelarlas al navegar: `CancelledError` no debe restaurar la pantalla de
+  recuperación. Las invalidaciones posteriores corren en segundo plano; no se
+  espera otra respuesta de red. Se conservan otros pendientes.
 - Las pantallas de recuperación priorizan errores sobre cargas de otras consultas.
   Una actualización en segundo plano no reemplaza por un spinner una pantalla ya
   verificada. Sin detalle de viaje, Viaje, Calificación y Edición permiten volver
@@ -391,13 +405,22 @@ npm run lint               # expo lint (eslint-config-expo)
   `RoutePinMarker`; seguimiento y negociación usan además `TripRouteMap`.
   `routeTooltipLayout.ts` concentra las medidas lógicas comunes: trazo 3,
   contorno 5 y pin A/B de 16, sin variantes de tamaño por rol. Configuración
-  conserva su control Editar y permite activar las etiquetas de lugares, pero
-  inicia con el mismo mapa despejado del conductor. No dupliques la polilínea ni
+  conserva la edición al tocar los marcadores y permite activar nombres de
+  lugares; se retiraron los dos bloques A/B superiores para ampliar el mapa. No dupliques la polilínea ni
   los estilos del pin en una pantalla. Conserva el contenedor nativo no aplanable,
   el anclaje al centro del símbolo y el redibujado cancelable tras cambios de layout.
   La colocación de tooltips comprueba todos los segmentos en la proyección de
   pantalla y mide el bloque completo (texto y Editar). Los mapas con ruta son
-  cenitales, con zoom y giro habilitados; ambos actualizan el cálculo. Se busca
+  cenitales y bloqueados (sin arrastre, zoom ni giro), por solicitud del usuario
+  del 19/09/2026. Configuración mantiene un panel de alto estable entre servicios
+  y mapa desde el borde superior, con Volver/lugares flotantes y cabecera medida;
+  seguimiento usa márgenes compactos de 40/44 y reserva más espacio solo para
+  direcciones largas. Búsqueda mide cabecera/panel, limita la hoja al 64 % y
+  muestra el aviso de moto dentro del panel para no cubrir la ruta con letra grande.
+  Todos los mapas desactivan `showsBuildings`, `showsIndoors`,
+  `showsIndoorLevelPicker` y `pitchEnabled`. El estilo compartido oculta geometría
+  de construcciones, terreno y POI, conservando parques/calles/nombres; activar
+  nombres de lugares no debe restaurar sombras ni interiores. Ver plan 0021. Se busca
   espacio arriba/abajo con separación acotada. Si no cabe, conserva A/B y su
   título al tocarlo, sin dibujar la etiqueta sobre la ruta ni agrandar el bitmap
   sin límite. El onPress de edición/selección permanece disponible.
@@ -408,3 +431,37 @@ npm run lint               # expo lint (eslint-config-expo)
   al volver a foreground. Sigue ese patrón al hacer hooks con tiempo/conexión.
 - Código, identificadores, comentarios y JSDoc nuevos en **inglés**, según la preferencia persistente de `../AGENTS.md`. Conserva la interfaz en español y verifica cada implementación.
 - Antes de tocar APIs de Expo, confirma firmas en los docs de la **v56** (no asumas versiones previas).
+
+
+### ETA y elección de rutas
+
+La ETA de oferta se calcula automáticamente desde una posición GPS reciente del
+conductor a la recogida, usando el vehículo activo también para encomiendas. No
+reintroducir minutos manuales ni usar duración origen→destino como ETA de llegada.
+Google Routes usa tráfico óptimo y alternativas; elegir la más rápida válida, con
+menor distancia como desempate. Una respuesta válida de 0 s y un punto se acepta
+como llegada inmediata: Google puede omitir la distancia cero. La oferta conserva
+el mínimo contractual de 1 min, sin estimaciones manuales ni rectas inventadas.
+Distingue ruta inexistente, respuesta incompleta, proveedor no disponible, timeout
+y desconexión; preserva cancelaciones. Configuración conserva el encuadre y los controles
+al cambiar servicio; los errores no se disfrazan de una ruta recta. Ver plan 0014.
+
+
+### Negociaciones simultáneas
+
+Un conductor puede ofertar a varios pasajeros y cada pasajero comparar varios
+conductores en su única solicitud. `useConcurrentOffers` usa promesas por envío
+para conservar todos los callbacks aunque se solapen, y consulta las mutaciones
+`automatic-driver-offer` para mantener el bloqueo por solicitud al navegar.
+No usar un modal de carga ni un bloqueo global para calcular ETA/enviar una oferta.
+La primera aceptación válida asigna un solo viaje y retira las demás ofertas del
+ganador. `OfertaEnviadaScreen` muestra cualquier viaje asignado, incluso cuando se
+estaba viendo otra negociación. Ver plan 0015.
+
+
+Las ofertas automáticas envían `expected_pool_version` desde la solicitud mostrada.
+Un 409 requiere refrescar/revisar la solicitud y recalcular ETA; no reenviar el
+mismo borrador antiguo. El detalle de oferta usa `useNegotiationRide` para recuperar
+solicitudes fuera de la primera página. Rechazo/expiración exactos conservan el
+intento de una mejora distinta en vuelo; solo invalidan el ID indicado. Las
+respuestas HTTP de un viaje anterior no sustituyen otro activo. Ver plan 0016.

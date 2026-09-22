@@ -292,6 +292,10 @@ export function PickOnMapScreen() {
         userInterfaceStyle={modoMapa}
         ref={mapRef}
         provider={PROVIDER_GOOGLE}
+        showsBuildings={false}
+        showsIndoors={false}
+        showsIndoorLevelPicker={false}
+        pitchEnabled={false}
         style={StyleSheet.absoluteFill}
         initialRegion={initialRegion}
         showsUserLocation

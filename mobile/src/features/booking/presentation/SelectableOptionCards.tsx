@@ -17,27 +17,30 @@ type Props<T extends string> = {
   options: readonly SelectableOption<T>[];
   value: T;
   onChange: (value: T) => void;
+  disabled?: boolean;
+  columns?: 2;
 };
 
 /** Tarjetas uniformes para elegir una única opción dentro de un formulario. */
-export function SelectableOptionCards<T extends string>({ options, value, onChange }: Props<T>) {
+export function SelectableOptionCards<T extends string>({ options, value, onChange, disabled = false, columns }: Props<T>) {
   const { colors, styles, estiloFoco } = useEstilos(crearEstilos);
   const { fontScale } = useWindowDimensions();
   const [enfocada, setEnfocada] = useState<T | null>(null);
   const enColumna = fontScale > 1.3;
   return (
-    <View style={[styles.cards, enColumna && styles.cardsColumn]} accessibilityRole="radiogroup">
+    <View style={[styles.cards, columns === 2 && !enColumna && styles.cardsGrid, enColumna && styles.cardsColumn]} accessibilityRole="radiogroup">
       {options.map((option) => {
         const selected = value === option.id;
         return (
           <Pressable
             key={option.id}
-            style={({ pressed }) => [styles.card, enColumna && styles.cardRow, selected && styles.cardSelected, pressed && styles.pressed, enfocada === option.id && estiloFoco]}
-            onPress={() => onChange(option.id)}
+            style={({ pressed }) => [styles.card, columns === 2 && !enColumna && styles.cardGrid, enColumna && styles.cardRow, selected && styles.cardSelected, pressed && styles.pressed, enfocada === option.id && estiloFoco]}
+            disabled={disabled}
+            onPress={() => { if (!selected) onChange(option.id); }}
             onFocus={() => setEnfocada(option.id)}
             onBlur={() => setEnfocada(null)}
             accessibilityRole="radio"
-            accessibilityState={{ checked: selected }}
+            accessibilityState={{ checked: selected, disabled }}
             aria-checked={selected}
             accessibilityLabel={option.accessibilityLabel}>
             <View style={[styles.icon, selected && styles.iconSelected]}>
@@ -68,6 +71,8 @@ export function SelectableOptionCards<T extends string>({ options, value, onChan
 const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   cards: { flexDirection: 'row', gap: spacing.sm },
   cardsColumn: { flexDirection: 'column' },
+  cardsGrid: { flexWrap: 'wrap' },
+  cardGrid: { flexBasis: '45%', flexGrow: 1 },
   card: {
     flex: 1,
     minWidth: 0,

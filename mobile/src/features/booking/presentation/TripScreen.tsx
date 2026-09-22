@@ -1,3 +1,5 @@
+import { useDriverLocation } from '@/features/tracking/application/useDriverLocation';
+import { DriverLocationStatus } from '@/features/tracking/presentation/DriverLocationStatus';
 /**
  * Viaje en curso (pasajero) — seguimiento con mapa (diseño Stitch
  * "Seguimiento del Viaje" / "Conductor en el origen").
@@ -12,9 +14,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
-  Linking,
   ScrollView,
-  Share,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -25,14 +25,17 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { getApiErrorMessage } from '@/core/errors/apiError';
 import { useBlockHardwareBack } from '@/core/navigation/useBlockHardwareBack';
 import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
-import { useCancelRide } from '@/features/rides/application/useRideMutations';
+import { useTripActions, useTripContact } from '@/features/rides/application/useTripActions';
 import {
   PASSENGER_ACTIVE_RIDE_KEY,
   useRide,
 } from '@/features/rides/application/useRides';
 import { TripRouteMap } from '@/features/rides/presentation/TripRouteMap';
+import { TripProgress } from '@/features/rides/presentation/TripProgress';
+import { TripSummary } from '@/features/rides/presentation/TripSummary';
+import { TripSecondaryAction } from '@/features/rides/presentation/TripSecondaryAction';
 import type { Ride, RideStatus } from '@/features/rides/domain/types';
-import { Button, ConfirmDialog, FeedbackState } from '@/shared/components';
+import { Button, ConfirmDialog, FeedbackState, PersonAvatar } from '@/shared/components';
 import { vehicleLabel } from '@/features/auth/domain/vehicleCatalog';
 
 
@@ -43,12 +46,12 @@ const BANNER: Record<RideStatus, Banner> = {
   accepted: {
     icon: 'car-sport',
     title: 'Tu conductor está en camino',
-    hint: 'Se dirige al punto de partida.',
+    hint: 'Te avisaremos cuando llegue. Revisa su nombre y placa para reconocerlo.',
   },
   arriving: {
     icon: 'notifications',
     title: '¡Tu conductor llegó!',
-    hint: 'Espéralo en el punto de partida.',
+    hint: 'Avísale que estás saliendo y ve al punto de recogida.',
     accent: true,
   },
   in_progress: { icon: 'navigate', title: 'Viaje en curso', hint: 'Disfruta tu viaje.' },
@@ -83,13 +86,15 @@ export function TripScreen() {
   const { rideId } = useLocalSearchParams<{ rideId?: string }>();
   const id = rideId ?? null;
   const { ride, isLoading, isError, error, refetch } = useRide(id);
-  const cancelRide = useCancelRide();
-  const [confirmCancel, setConfirmCancel] = useState(false);
+  const tracking = useDriverLocation(ride);
+  const actions = useTripActions(ride);
+  const [confirmCancel, setConfirmCancel] = useState<{ id: string; status: RideStatus } | null>(null);
+  const [sheetHeight, setSheetHeight] = useState(380);
   useBlockHardwareBack(Boolean(ride) && ride?.status !== 'cancelled' && ride?.status !== 'completed');
 
   const goHome = () => router.dismissTo('/(app)/(tabs)');
   const closeAndGoHome = () => {
-    queryClient.setQueryData(PASSENGER_ACTIVE_RIDE_KEY, null);
+    queryClient.setQueryData<Ride | null>(PASSENGER_ACTIVE_RIDE_KEY, (current) => current?.id === id ? null : current);
     goHome();
   };
   const goRate = () => router.replace(`/(app)/booking/rating?rideId=${id}`);
@@ -143,14 +148,20 @@ export function TripScreen() {
   }
 
   const isDelivery = ride.service === 'delivery';
-  const banner = (isDelivery ? DELIVERY_BANNER : BANNER)[ride.status];
+  const pickupAcknowledged = Boolean(ride.riderOnTheWayAt);
+  const supportsPickupNotice = ride.service === 'taxi' || ride.service === 'moto';
+  const atPickup = supportsPickupNotice && ride.status === 'arriving';
+  const banner = atPickup && pickupAcknowledged
+    ? { icon: 'checkmark-circle' as const, title: 'Tu conductor sabe que vas al punto',
+        hint: 'Tu aviso fue enviado. Verifica su nombre y la placa antes de subir.' }
+    : (isDelivery ? DELIVERY_BANNER : BANNER)[ride.status];
   const isCompleted = ride.status === 'completed';
   const isCancelled = ride.status === 'cancelled';
   const canCancel = CANCELLABLE.includes(ride.status);
 
   return (
     <View style={styles.root}>
-      <TripRouteMap origin={ride.origin} destination={ride.destination} bottomPadding={380} />
+      <TripRouteMap vehicle={tracking.location ? { coordinates: tracking.location, heading: tracking.location.heading, type: ride.driver?.vehicleType ?? null, stale: tracking.freshness !== "live" } : undefined} service={ride.service} origin={ride.origin} destination={ride.destination} topPadding={48} bottomPadding={sheetHeight} />
 
       {(isCompleted || isCancelled) && (
         <SafeAreaView style={styles.topBar} edges={['top']} pointerEvents="box-none">
@@ -166,35 +177,49 @@ export function TripScreen() {
         </SafeAreaView>
       )}
 
-      <SafeAreaView style={styles.sheet} edges={['bottom']}>
+      <SafeAreaView style={styles.sheet} edges={['bottom']} onLayout={(event) => setSheetHeight(event.nativeEvent.layout.height)}>
         <ScrollView
           contentContainerStyle={styles.sheetContent}
           showsVerticalScrollIndicator={false}
           bounces={false}>
         <View style={styles.sheetHandle} />
+        <TripProgress status={ride.status} />
 
-        <View style={[styles.banner, banner.accent && styles.bannerAccent]}>
+        <View accessibilityLiveRegion="polite" style={[styles.banner, banner.accent && styles.bannerAccent]}>
           <Ionicons
-            name={banner.icon}
+            name={ride.service === 'moto' && ride.status === 'accepted' ? 'bicycle' : banner.icon}
             size={26}
-            color={banner.accent ? colors.text : colors.primary}
+            color={banner.accent ? colors.textoSobreAcento : colors.primary}
           />
           <View style={styles.bannerText}>
-            <Text style={styles.bannerTitle}>{banner.title}</Text>
-            <Text style={styles.hint}>{banner.hint}</Text>
+            <Text accessibilityRole="header" style={[styles.bannerTitle, banner.accent && styles.bannerAccentText]}>{banner.title}</Text>
+            <Text style={[styles.hint, banner.accent && styles.bannerAccentText]}>{banner.hint}</Text>
           </View>
-          {ride.acceptedEtaMin != null && ride.status === 'accepted' && (
-            <View style={styles.etaBox}>
-              <Text style={styles.etaValue}>{ride.acceptedEtaMin}</Text>
-              <Text style={styles.etaLabel}>min</Text>
-            </View>
-          )}
         </View>
+        {ride.acceptedEtaMin != null && ride.status === 'accepted' && (
+          <Text style={styles.hint}>Llegada estimada al aceptar: {ride.acceptedEtaMin} min.</Text>
+        )}
 
-        {ride.driver && <DriverCard ride={ride} />}
+        {ride.driver && <>
+          {!isCompleted && !isCancelled && <DriverLocationStatus freshness={tracking.freshness} onRetry={tracking.retry} />}
+          <DriverCard ride={ride} />
+        </>}
+        <TripSummary key={ride.id} ride={ride} compact />
 
-        {cancelRide.isError && (
-          <Text style={styles.error}>{getApiErrorMessage(cancelRide.error)}</Text>
+        {ride.status === 'searching' && (
+          <Button title="Ver ofertas" onPress={() => router.replace({ pathname: '/booking/offers', params: { rideId: ride.id } })} />
+        )}
+
+        </ScrollView>
+        {(atPickup || actions.error || isCompleted || isCancelled || canCancel) && <View style={styles.tripActions}>
+        {atPickup && (
+          <Button title={pickupAcknowledged ? 'Aviso enviado: voy al punto' : 'Ya salí, voy al punto'}
+            leadingIcon={pickupAcknowledged ? 'checkmark-circle-outline' : 'walk-outline'}
+            disabled={pickupAcknowledged || actions.busy} loading={actions.notifyingOnTheWay}
+            loadingLabel="Enviando aviso…" onPress={actions.notifyOnTheWay} />
+        )}
+        {actions.error && (
+          <Text accessibilityRole="alert" style={styles.error}>{actions.error}</Text>
         )}
 
         {isCompleted ? (
@@ -202,33 +227,37 @@ export function TripScreen() {
         ) : isCancelled ? (
           <Button title="Volver al inicio" onPress={closeAndGoHome} />
         ) : canCancel ? (
-          <Button
+          <TripSecondaryAction
             title={isDelivery ? 'Cancelar entrega' : 'Cancelar viaje'}
-            variant="secondary"
-            loading={cancelRide.isPending}
-            onPress={() => setConfirmCancel(true)}
+            disabled={actions.busy}
+            onPress={() => setConfirmCancel({ id: ride.id, status: ride.status })}
           />
         ) : null}
-        </ScrollView>
+        </View>}
       </SafeAreaView>
 
       <ConfirmDialog
-        visible={confirmCancel}
+        visible={confirmCancel?.id === ride.id && confirmCancel.status === ride.status && !actions.busy}
         icon="warning"
         destructive
         title={isDelivery ? '¿Cancelar entrega?' : '¿Cancelar viaje?'}
         message={
-          isDelivery
+          ride.status === 'searching'
+            ? 'Se cerrará la búsqueda y se retirarán las ofertas de los conductores.'
+            : ride.status === 'arriving'
+            ? 'Tu conductor ya está en el punto de recogida. Recibirá un aviso de la cancelación.'
+            : isDelivery
             ? 'Tu conductor ya está en camino. Si cancelas ahora, se le notificará que la entrega fue cancelada.'
             : 'Tu conductor ya está en camino. Si cancelas ahora, se le notificará que el viaje fue cancelado.'
         }
         confirmText="Sí, cancelar"
         cancelText="Seguir"
         onConfirm={() => {
-          setConfirmCancel(false);
-          if (id) cancelRide.mutate(id);
+          if (!confirmCancel || confirmCancel.id !== ride.id) return;
+          actions.cancel(confirmCancel.status);
+          setConfirmCancel(null);
         }}
-        onCancel={() => setConfirmCancel(false)}
+        onCancel={() => setConfirmCancel(null)}
       />
     </View>
   );
@@ -237,36 +266,18 @@ export function TripScreen() {
 function DriverCard({ ride }: { ride: Ride }) {
   const { colors, styles } = useEstilos(crearEstilos);
   const driver = ride.driver!;
+  const contact = useTripContact(ride, driver.phone);
   const vehicle = [
     vehicleLabel(driver.vehicleType),
     driver.vehicleModel,
   ]
     .filter(Boolean)
-    .join(' · ');
-
-  const call = () => {
-    if (driver.phone) void Linking.openURL(`tel:${driver.phone}`);
-  };
-  const message = () => {
-    if (driver.phone) void Linking.openURL(`sms:${driver.phone}`);
-  };
-  const share = () => {
-    void Share.share({
-      message:
-        ride.service === 'delivery'
-          ? `Estoy enviando una encomienda con ViajaYa: ${ride.origin.name} → ${ride.destination.name}. Conductor: ${driver.fullName}.`
-          : `Estoy viajando con ViajaYa: ${ride.origin.name} → ${ride.destination.name}. Conductor: ${driver.fullName}.`,
-    });
-  };
+    .join(' · ') || 'Datos del vehículo no registrados';
 
   return (
     <View style={styles.driverWrap}>
       <View style={styles.driverRow}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>
-            {driver.fullName.trim().charAt(0).toUpperCase() || 'C'}
-          </Text>
-        </View>
+        <PersonAvatar name={driver.fullName} size={48} />
         <View style={styles.driverInfo}>
           <Text style={styles.driverName}>{driver.fullName}</Text>
           {!!vehicle && <Text style={styles.vehicle}>{vehicle}</Text>}
@@ -285,10 +296,11 @@ function DriverCard({ ride }: { ride: Ride }) {
       </View>
 
       <View style={styles.contactRow}>
-        <ContactButton icon="chatbubble-outline" label="Mensaje" onPress={message} disabled={!driver.phone} />
-        <ContactButton icon="call-outline" label="Llamar" onPress={call} disabled={!driver.phone} />
-        <ContactButton icon="share-social-outline" label="Compartir" onPress={share} />
+        <ContactButton icon="chatbubble-outline" label="Mensaje" onPress={contact.message} disabled={!driver.phone} />
+        <ContactButton icon="call-outline" label="Llamar" onPress={contact.call} disabled={!driver.phone} />
+        <ContactButton icon="share-social-outline" label="Compartir" onPress={contact.share} />
       </View>
+      {contact.error && <Text accessibilityRole="alert" style={styles.error}>{contact.error}</Text>}
     </View>
   );
 }
@@ -311,7 +323,8 @@ function ContactButton({
       onPress={onPress}
       disabled={disabled}
       accessibilityRole="button"
-      accessibilityLabel={label}>
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: !!disabled }}>
       <Ionicons name={icon} size={20} color={colors.primary} />
       <Text style={styles.contactLabel}>{label}</Text>
     </TouchableOpacity>
@@ -319,6 +332,7 @@ function ContactButton({
 }
 
 const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+  tripActions: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, gap: spacing.xs, borderTopWidth: 1, borderTopColor: colors.border },
   root: { flex: 1, backgroundColor: colors.surfaceMuted },
   fallback: { flex: 1, backgroundColor: colors.background, padding: spacing.lg, gap: spacing.md },
   center: { alignItems: 'center', justifyContent: 'center' },
@@ -345,7 +359,7 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    maxHeight: '72%',
+    height: '64%',
     backgroundColor: colors.background,
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,
@@ -355,16 +369,15 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     shadowOffset: { width: 0, height: -3 },
     elevation: 12,
   },
-  sheetContent: { padding: spacing.lg, gap: spacing.md },
+  sheetContent: { padding: spacing.md, gap: spacing.sm },
   sheetHandle: { width: 40, height: 4, borderRadius: radius.pill, backgroundColor: colors.border, alignSelf: 'center' },
 
-  banner: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  bannerAccent: { backgroundColor: colors.accent, padding: spacing.md, borderRadius: radius.md },
+  banner: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    backgroundColor: colors.primarioSuave, padding: spacing.sm, borderRadius: radius.md },
+  bannerAccent: { backgroundColor: colors.accent },
+  bannerAccentText: { color: colors.textoSobreAcento },
   bannerText: { flex: 1, gap: 2 },
   bannerTitle: { fontSize: fontSize.md, fontWeight: fontWeight.bold, color: colors.text },
-  etaBox: { alignItems: 'center' },
-  etaValue: { fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.primary },
-  etaLabel: { fontSize: fontSize.xs, color: colors.textSecondary },
 
   driverWrap: {
     gap: spacing.md,
@@ -373,17 +386,8 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  driverRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: radius.pill,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: { color: colors.textOnPrimary, fontSize: fontSize.lg, fontWeight: fontWeight.bold },
-  driverInfo: { flex: 1, gap: 2 },
+  driverRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.md },
+  driverInfo: { flexGrow: 1, flexShrink: 1, flexBasis: 140, gap: 2 },
   driverName: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.text },
   vehicle: { fontSize: fontSize.sm, color: colors.textSecondary },
   rating: { flexDirection: 'row', alignItems: 'center', gap: 2 },
@@ -396,9 +400,11 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   },
   plateText: { fontSize: fontSize.sm, fontWeight: fontWeight.bold, color: colors.text, letterSpacing: 1 },
 
-  contactRow: { flexDirection: 'row', gap: spacing.sm },
+  contactRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   contactBtn: {
-    flex: 1,
+    flexGrow: 1,
+    flexBasis: 80,
+    minHeight: 48,
     alignItems: 'center',
     gap: 2,
     paddingVertical: spacing.sm,
@@ -406,7 +412,7 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     backgroundColor: colors.surfaceMuted,
   },
   contactDisabled: { opacity: 0.4 },
-  contactLabel: { fontSize: fontSize.xs, color: colors.text },
+  contactLabel: { fontSize: fontSize.sm, color: colors.text },
 
   error: { color: colors.danger, fontSize: fontSize.sm, textAlign: 'center' },
 });

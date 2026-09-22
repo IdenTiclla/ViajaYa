@@ -8,7 +8,7 @@
  * para navegar entre solicitudes. Tocar la tarjeta abre el detalle.
  */
 import { Ionicons } from '@react-native-vector-icons/ionicons';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -23,6 +23,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useCountdown } from '@/core/hooks/useCountdown';
 import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { MotorcycleRouteNotice } from '@/features/rides/presentation/MotorcycleRouteNotice';
+import { getTripMapPadding } from '@/features/rides/presentation/tripMapLayout';
 import { useRoute } from '@/features/booking/application/useRoute';
 import { SERVICE_META } from '@/features/booking/domain/serviceCatalog';
 import { useEstiloMapa } from '@/features/booking/presentation/mapStyle';
@@ -33,7 +35,6 @@ import { formatKm, haversineKm, pricePerKm } from '@/features/rides/domain/geo';
 import { formatBolivianos } from '@/features/rides/domain/money';
 import { OfferLifeTimer } from '@/features/rides/presentation/OfferLifeTimer';
 import { RoutePinMarker } from '@/features/rides/presentation/RoutePinMarker';
-import { MARGEN_TOOLTIP_RUTA } from '@/features/rides/presentation/routeTooltipLayout';
 import { useRumboMapa } from '@/features/rides/application/useRumboMapa';
 import { RoutePolyline } from '@/features/rides/presentation/RoutePolyline';
 import type { OpenRide } from '@/features/rides/domain/types';
@@ -46,9 +47,10 @@ const QUICK_DELTAS = [1, 2, 5] as const;
 
 type Props = {
   rides: OpenRide[];
+  topOverlayHeight?: number;
   disabled: boolean;
   isOffered: (rideId: string) => boolean;
-  pendingRideId: string | null;
+  pendingRideIds: ReadonlySet<string>;
   /** Ofertas enviadas del conductor (para el contador de expiración de la card). */
   offeredMap: Record<string, SentOffer>;
   rejected: Set<string>;
@@ -70,9 +72,10 @@ type Props = {
 
 export function SolicitudesMapa({
   rides,
+  topOverlayHeight = 140,
   disabled,
   isOffered,
-  pendingRideId,
+  pendingRideIds,
   offeredMap,
   rejected,
   expired,
@@ -91,6 +94,8 @@ export function SolicitudesMapa({
 }: Props) {
   const { colors, styles } = useEstilos(crearEstilos);
   const mapRef = useRef<MapView>(null);
+  const [mapReady, setMapReady] = useState(false);
+  const [mapSize, setMapSize] = useState({ width: 0, height: 0 });
   const { estiloMapa, modoMapa } = useEstiloMapa(true);
   const { rumboMapa, zoomMapa, actualizarRumbo } = useRumboMapa(mapRef);
   const listRef = useRef<FlatList<OpenRide>>(null);
@@ -111,37 +116,23 @@ export function SolicitudesMapa({
     const ride = rides[index];
     if (ride) select(ride, index);
   };
-  const { route } = useRoute(selectedRide?.origin ?? null, selectedRide?.destination ?? null);
+  const { route } = useRoute(selectedRide?.origin ?? null, selectedRide?.destination ?? null, selectedRide?.service ?? 'taxi');
 
-  const polyline: Coordinates[] = route?.coordinates.length
-    ? route.coordinates
-    : selectedRide
-      ? [selectedRide.origin.coordinates, selectedRide.destination.coordinates]
-      : [];
+  const polyline = useMemo<Coordinates[]>(() => route?.coordinates.length
+    ? route.coordinates : selectedRide
+      ? [selectedRide.origin.coordinates, selectedRide.destination.coordinates] : [],
+  [route, selectedRide]);
 
-  // Encuadra el trayecto seleccionado (al montar, el useEffect corre antes de que
-  // el mapa esté listo; por eso repetimos sin animación en onMapReady).
-  const fitSelected = (animated = true) => {
-    if (!selectedRide) return;
-    const coords =
-      polyline.length >= 2
-        ? polyline
-        : [selectedRide.origin.coordinates, selectedRide.destination.coordinates];
-    mapRef.current?.fitToCoordinates(coords, {
-      edgePadding: {
-        top: 170,
-        right: 88,
-        bottom: bottomOverlayHeight + MARGEN_TOOLTIP_RUTA,
-        left: 88,
-      },
-      animated,
+  const fitSelected = useCallback(() => {
+    if (!mapReady || mapSize.width <= 0 || mapSize.height <= 0 || polyline.length < 2) return;
+    mapRef.current?.fitToCoordinates(polyline, {
+      edgePadding: getTripMapPadding(mapSize.width, mapSize.height, topOverlayHeight,
+        bottomOverlayHeight, 72, 88),
+      animated: false,
     });
-  };
+  }, [mapReady, mapSize.width, mapSize.height, polyline, bottomOverlayHeight, topOverlayHeight]);
 
-  useEffect(() => {
-    fitSelected(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bottomOverlayHeight, selectedId, polyline.length]);
+  useEffect(() => { fitSelected(); }, [fitSelected]);
 
   const initialRegion: Region | undefined = rides[0]
     ? {
@@ -166,15 +157,26 @@ export function SolicitudesMapa({
       <MapView
         ref={mapRef}
         provider={PROVIDER_GOOGLE}
+        showsBuildings={false}
+        showsIndoors={false}
+        showsIndoorLevelPicker={false}
         style={StyleSheet.absoluteFill}
         initialRegion={initialRegion}
         customMapStyle={estiloMapa}
         userInterfaceStyle={modoMapa}
         pitchEnabled={false}
+        scrollEnabled={false}
+        zoomEnabled={false}
+        rotateEnabled={false}
+        zoomTapEnabled={false}
+        toolbarEnabled={false}
+        moveOnMarkerPress={false}
         onRegionChangeComplete={actualizarRumbo}
-        onMapReady={() => fitSelected(false)}
-        onLayout={() => fitSelected(false)}>
-        <RoutePolyline coordinates={polyline} />
+        onMapReady={() => { setMapReady(true); fitSelected(); }}
+        onLayout={({ nativeEvent: { layout } }) => setMapSize((current) =>
+          current.width === layout.width && current.height === layout.height
+            ? current : { width: layout.width, height: layout.height })}>
+        <RoutePolyline coordinates={route?.coordinates ?? []} />
         {/* Los orígenes alternativos quedan como referencias discretas. El A y
             B activos se renderizan después y con mayor z-index para que nunca
             queden tapados por otro marcador o por la ruta en Google Maps. */}
@@ -297,8 +299,8 @@ export function SolicitudesMapa({
                 expired={expired.has(item.id)}
                 paused={paused.has(item.id)}
                 taken={taken.has(item.id)}
-                disabled={disabled}
-                pendingAccept={pendingRideId === item.id}
+                disabled={disabled || pendingRideIds.has(item.id)}
+                pendingAccept={pendingRideIds.has(item.id)}
                 offerExpiresAt={offeredMap[item.id]?.expiresAt ?? null}
                 offerPrice={offeredMap[item.id]?.price ?? null}
                 onPress={
@@ -462,6 +464,7 @@ function MapCard({
         </View>
       </View>
 
+      <MotorcycleRouteNotice service={ride.service} />
       <View style={styles.routeRow}>
         <View style={styles.routeStop}>
           <View style={styles.routeHeading}>

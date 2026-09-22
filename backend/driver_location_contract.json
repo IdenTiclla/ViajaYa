@@ -1,0 +1,116 @@
+{
+  "schema": {
+    "$defs": {
+      "DriverLocationResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "latitude": {
+            "maximum": 90,
+            "minimum": -90,
+            "title": "Latitude",
+            "type": "number"
+          },
+          "longitude": {
+            "maximum": 180,
+            "minimum": -180,
+            "title": "Longitude",
+            "type": "number"
+          },
+          "accuracy_meters": {
+            "maximum": 100,
+            "minimum": 0,
+            "title": "Accuracy Meters",
+            "type": "number"
+          },
+          "heading": {
+            "anyOf": [
+              {
+                "exclusiveMaximum": 360,
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Heading"
+          },
+          "captured_at": {
+            "format": "date-time",
+            "title": "Captured At",
+            "type": "string"
+          },
+          "ride_id": {
+            "format": "uuid",
+            "title": "Ride Id",
+            "type": "string"
+          },
+          "driver_id": {
+            "format": "uuid",
+            "title": "Driver Id",
+            "type": "string"
+          },
+          "received_at": {
+            "format": "date-time",
+            "title": "Received At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "latitude",
+          "longitude",
+          "accuracy_meters",
+          "captured_at",
+          "ride_id",
+          "driver_id",
+          "received_at"
+        ],
+        "title": "DriverLocationResponse",
+        "type": "object"
+      }
+    },
+    "properties": {
+      "type": {
+        "const": "driver_location",
+        "default": "driver_location",
+        "title": "Type",
+        "type": "string"
+      },
+      "data": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/DriverLocationResponse"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "required": [
+      "data"
+    ],
+    "title": "DriverLocationMessage",
+    "type": "object"
+  },
+  "examples": [
+    {
+      "type": "driver_location",
+      "data": null
+    },
+    {
+      "type": "driver_location",
+      "data": {
+        "latitude": -16.5,
+        "longitude": -68.13,
+        "accuracy_meters": 8.0,
+        "heading": 90.0,
+        "captured_at": "2026-09-19T12:00:00Z",
+        "ride_id": "00000000-0000-4000-8000-000000000001",
+        "driver_id": "00000000-0000-4000-8000-000000000002",
+        "received_at": "2026-09-19T12:00:00Z"
+      }
+    }
+  ]
+}

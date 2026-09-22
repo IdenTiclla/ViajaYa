@@ -139,6 +139,7 @@ export function toRide(dto: RideDto): Ride {
       : null,
     acceptedPrice: dto.accepted_price ? Number.parseFloat(dto.accepted_price) : null,
     acceptedEtaMin: dto.accepted_eta_min,
+    riderOnTheWayAt: dto.rider_on_the_way_at ?? null,
   };
 }
 
@@ -219,8 +220,14 @@ export const ridesRepository = {
       accept_at_fare: input.acceptAtFare,
       price: input.price,
       eta_min: input.etaMin,
+      expected_pool_version: input.expectedPoolVersion,
     });
     return toOffer(data);
+  },
+
+  async markRiderOnTheWay(rideId: string): Promise<Ride> {
+    const { data } = await api.post<RideDto>(`/rides/${rideId}/rider-on-the-way`);
+    return toRide(data);
   },
 
   async updateStatus(rideId: string, status: RideStatus): Promise<Ride> {
@@ -309,6 +316,11 @@ export const ridesRepository = {
       items: data.items.map(toHistoryItem),
       nextCursor: data.next_cursor,
     };
+  },
+
+  async hasRating(rideId: string): Promise<boolean> {
+    const { data } = await api.get<ApiSchemas['RatingResponse'] | null>(`/rides/${rideId}/rating`);
+    return data !== null && data.ride_id === rideId;
   },
 
   async rateRide(rideId: string, input: RatingInput): Promise<void> {

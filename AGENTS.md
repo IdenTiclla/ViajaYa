@@ -17,6 +17,8 @@ ViajaYa es un monorepo de taxis y encomiendas con negociación de tarifas en tie
 
 ## Reglas globales
 
+- Preferencia persistente del usuario (2026-09-19): operar solo **Desarrollo**. **Pruebas (`testing`/`preview`/staging) está temporalmente deprecado**; no iniciarlo, desplegarlo ni preparar nuevas entregas allí salvo reactivación explícita. Conservar configuraciones históricas y aislamiento; los tests automatizados y bases desechables de CI siguen vigentes. Producción es un objetivo futuro.
+
 - Preferencia persistente del usuario (2026-09-09): escribe el código, identificadores, nombres de archivos nuevos, comentarios y docstrings en **inglés**. Conserva los textos de la interfaz y la comunicación/documentación para el usuario en español. Los contratos existentes se renombran solo con una migración compatible y verificada; evita traducciones masivas ajenas al alcance.
 - Verifica cada implementación antes de entregarla con pruebas y comprobaciones proporcionales. Registra evidencia y distingue claramente lo verificado de lo pendiente; no declares una fase completa sin comprobar sus criterios de cierre.
 - No incluyas secretos ni modifiques/commitees archivos `.env`; usa los `.env.example` como referencia.

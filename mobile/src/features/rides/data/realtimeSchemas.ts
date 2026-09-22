@@ -111,6 +111,7 @@ export const rideDtoSchema = z.object({
     .nullable(),
   accepted_price: positiveDecimalSchema.nullable(),
   accepted_eta_min: z.number().int().min(0).max(240).nullable(),
+  rider_on_the_way_at: nullableDateTimeSchema.optional().default(null),
   created_at: nullableDateTimeSchema,
   completed_at: nullableDateTimeSchema,
   cancelled_at: nullableDateTimeSchema,

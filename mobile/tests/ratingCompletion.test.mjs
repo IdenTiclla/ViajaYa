@@ -6,6 +6,23 @@ import { actualizarTrasCalificacion } from '../src/features/rides/application/ac
 
 const key = ['pending-rating-ride'];
 
+test('driver rating clears cancelled recovery without leaving an error in the pool gate', async (t) => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  t.after(() => client.clear());
+  const keys = [['pending-rating-ride'], ['driver-active-ride']];
+  const reads = keys.map(queryKey => {
+    client.setQueryData(queryKey, { id: 'finished', status: 'completed' });
+    return client.fetchQuery({ queryKey, queryFn: () => new Promise(() => {}) }).catch(() => undefined);
+  });
+  await actualizarTrasCalificacion(client, 'finished');
+  for (const queryKey of keys) {
+    assert.equal(client.getQueryData(queryKey), null);
+    assert.equal(client.getQueryState(queryKey).status, 'success');
+    assert.equal(client.getQueryState(queryKey).error, null);
+  }
+  await Promise.all(reads);
+});
+
 test('una calificación guardada termina aunque la lectura siguiente quede bloqueada', async (t) => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   t.after(() => client.clear());
@@ -32,11 +49,11 @@ test('una calificación guardada termina aunque la lectura siguiente quede bloqu
   assert.equal(client.getQueryData(key), null);
 });
 
-test('cerrar una calificación no elimina otro viaje pendiente', (t) => {
+test('cerrar una calificación no elimina otro viaje pendiente', async (t) => {
   const client = new QueryClient();
   t.after(() => client.clear());
   client.setQueryData(key, { id: 'otro' });
-  actualizarTrasCalificacion(client, 'terminado');
+  await actualizarTrasCalificacion(client, 'terminado');
   assert.deepEqual(client.getQueryData(key), { id: 'otro' });
 });
 
@@ -49,7 +66,7 @@ test('cancelar una lectura antigua conserva un pendiente recibido mientras estab
     queryFn: () => new Promise(() => {}),
   }).catch(() => undefined);
   client.setQueryData(key, { id: 'otro' });
-  actualizarTrasCalificacion(client, 'terminado');
+  await actualizarTrasCalificacion(client, 'terminado');
   await lectura;
   assert.deepEqual(client.getQueryData(key), { id: 'otro' });
 });

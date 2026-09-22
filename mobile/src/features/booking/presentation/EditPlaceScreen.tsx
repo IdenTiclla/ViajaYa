@@ -140,6 +140,9 @@ export function EditPlaceScreen() {
               customMapStyle={estiloMapa}
               userInterfaceStyle={modoMapa}
               provider={PROVIDER_GOOGLE}
+              showsBuildings={false}
+              showsIndoors={false}
+              showsIndoorLevelPicker={false}
               style={StyleSheet.absoluteFill}
               region={{ latitude, longitude, latitudeDelta: 0.005, longitudeDelta: 0.005 }}
               scrollEnabled={false}

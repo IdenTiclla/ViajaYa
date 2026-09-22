@@ -60,6 +60,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         },
       },
       permissions: ['ACCESS_COARSE_LOCATION', 'ACCESS_FINE_LOCATION'],
+      blockedPermissions: ['android.permission.ACCESS_BACKGROUND_LOCATION'],
     },
     web: {
       output: 'static',
@@ -68,6 +69,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     plugins: [
       ...socialPlugins,
       'expo-router',
+      './plugins/withDriverNavigation',
       'expo-secure-store',
       ['expo-dev-client', { addGeneratedScheme: environment.appEnv === 'development' }],
       [
@@ -83,6 +85,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       [
         'expo-location',
         {
+          isAndroidForegroundServiceEnabled: true,
+          locationAlwaysAndWhenInUsePermission: 'Durante un viaje como conductor, ViajaYa comparte tu ubicación con tu pasajero aunque uses Waze o bloquees la pantalla.',
           locationWhenInUsePermission:
             'ViajaYa usa tu ubicación para mostrar tu posición en el mapa y coordinar viajes y encomiendas.',
         },

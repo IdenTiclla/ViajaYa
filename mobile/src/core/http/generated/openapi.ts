@@ -663,6 +663,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/rides/{ride_id}/driver-location": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Location */
+        get: operations["get_location_api_v1_rides__ride_id__driver_location_get"];
+        /** Report Location */
+        put: operations["report_location_api_v1_rides__ride_id__driver_location_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/rides/{ride_id}/fare": {
         parameters: {
             query?: never;
@@ -734,7 +752,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Get Ride Rating Response */
+        get: operations["get_ride_rating_response_api_v1_rides__ride_id__rating_get"];
         put?: never;
         /**
          * Rate Ride
@@ -761,6 +780,26 @@ export interface paths {
          * @description Cierra la calificación pendiente sin alterar la reputación.
          */
         post: operations["skip_ride_rating_api_v1_rides__ride_id__rating_skip_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/rides/{ride_id}/rider-on-the-way": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark Rider On The Way
+         * @description Persist a passenger's pickup notice and deliver it to both participants.
+         */
+        post: operations["mark_rider_on_the_way_api_v1_rides__ride_id__rider_on_the_way_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1009,6 +1048,58 @@ export interface components {
             /** Trips Today */
             trips_today: number;
         };
+        /** DriverLocationInput */
+        DriverLocationInput: {
+            /** Accuracy Meters */
+            accuracy_meters: number;
+            /**
+             * Captured At
+             * Format: date-time
+             */
+            captured_at: string;
+            /** Heading */
+            heading?: number | null;
+            /** Latitude */
+            latitude: number;
+            /** Longitude */
+            longitude: number;
+        };
+        /** DriverLocationReportResponse */
+        DriverLocationReportResponse: {
+            /** Accepted */
+            accepted: boolean;
+        };
+        /** DriverLocationResponse */
+        DriverLocationResponse: {
+            /** Accuracy Meters */
+            accuracy_meters: number;
+            /**
+             * Captured At
+             * Format: date-time
+             */
+            captured_at: string;
+            /**
+             * Driver Id
+             * Format: uuid
+             */
+            driver_id: string;
+            /** Heading */
+            heading?: number | null;
+            /** Latitude */
+            latitude: number;
+            /** Longitude */
+            longitude: number;
+            /**
+             * Received At
+             * Format: date-time
+             */
+            received_at: string;
+            /**
+             * Ride Id
+             * Format: uuid
+             */
+            ride_id: string;
+        };
         /**
          * DriverStatus
          * @description Outcome of a driver application; only ``APPROVED`` can enter driver mode.
@@ -1125,6 +1216,8 @@ export interface components {
             accept_at_fare: boolean;
             /** Eta Min */
             eta_min?: number | null;
+            /** Expected Pool Version */
+            expected_pool_version?: number | null;
             /** Price */
             price?: number | string | null;
         };
@@ -1784,6 +1877,8 @@ export interface components {
              * Format: uuid
              */
             rider_id: string;
+            /** Rider On The Way At */
+            rider_on_the_way_at?: string | null;
             service_type: components["schemas"]["ServiceType"];
             status: components["schemas"]["RideStatus"];
         };
@@ -3276,6 +3371,76 @@ export interface operations {
             };
         };
     };
+    get_location_api_v1_rides__ride_id__driver_location_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                ride_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriverLocationResponse"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    report_location_api_v1_rides__ride_id__driver_location_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                ride_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DriverLocationInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriverLocationReportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     update_fare_api_v1_rides__ride_id__fare_patch: {
         parameters: {
             query?: never;
@@ -3416,6 +3581,39 @@ export interface operations {
             };
         };
     };
+    get_ride_rating_response_api_v1_rides__ride_id__rating_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                ride_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RatingResponse"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     rate_ride_api_v1_rides__ride_id__rating_post: {
         parameters: {
             query?: never;
@@ -3472,6 +3670,39 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_rider_on_the_way_api_v1_rides__ride_id__rider_on_the_way_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                ride_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RideResponse"];
+                };
             };
             /** @description Validation Error */
             422: {

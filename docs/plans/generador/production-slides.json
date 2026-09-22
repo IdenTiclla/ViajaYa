@@ -1,0 +1,731 @@
+{
+  "revision": 23,
+  "date": "19 de septiembre de 2026",
+  "slides": [
+    {
+      "title": "ViajaYa<br>Salida a producción",
+      "layout": "cover",
+      "lead": "Avance del proyecto y próximos cierres<br>para abrir en Bolivia.",
+      "meta": "Android · Taxi, moto y encomiendas"
+    },
+    {
+      "title": "Estado del proyecto",
+      "columns": [
+        {
+          "title": "Núcleo implementado",
+          "items": [
+            "Solicitud, negociación y asignación atómica.",
+            "Ciclo del viaje, historial y calificaciones.",
+            "Teléfono/OTP simulado y sesiones revocables.",
+            "Conductores con varios vehículos y modo activo."
+          ]
+        },
+        {
+          "title": "Pendiente para operar",
+          "items": [
+            "SMS real, recuperación y Pruebas actualizado.",
+            "Panel, documentos y soporte operativo.",
+            "Seguimiento, navegación y cobros verificables.",
+            "Encomiendas completas y certificación alojada."
+          ]
+        }
+      ],
+      "criterion": "F01 cerrada localmente; F02 en curso y F04 parcial. La apertura pública todavía no está certificada.",
+      "source": "Base revisada: main · 986dd79 · PR #15 integrado el 14/09/2026.",
+      "lead": "Desarrollo es el único entorno operativo; Pruebas queda temporalmente deprecado."
+    },
+    {
+      "title": "Evidencia de la base integrada",
+      "stats": [
+        [
+          "700",
+          "pruebas backend aprobadas"
+        ],
+        [
+          "275",
+          "pruebas móviles aprobadas"
+        ],
+        [
+          "19/09",
+          "fecha de la comprobación local"
+        ]
+      ],
+      "columns": [
+        {
+          "title": "También aprobado",
+          "items": [
+            "Ruff, TypeScript y lint.",
+            "OpenAPI, contrato WebSocket y tipos móviles."
+          ]
+        },
+        {
+          "title": "Sin repetir en esta revisión",
+          "items": [
+            "PostgreSQL/Redis y CI remota.",
+            "Builds, teléfonos, carga y despliegue alojado."
+          ]
+        }
+      ],
+      "source": "Pytest informó 5 advertencias; 3 corresponden a helpers contados como tests. [Evidencia y límites](production-readiness-2026-09-19.md)."
+    },
+    {
+      "title": "Estado de las diez fases",
+      "layout": "phase-overview",
+      "criterion": "Las fases tienen tamaños distintos. Su cantidad no representa un porcentaje del producto."
+    },
+    {
+      "title": "Alcance de la primera apertura",
+      "stats": [
+        [
+          "500",
+          "conductores conectados: meta de capacidad"
+        ],
+        [
+          "5.000",
+          "servicios diarios: meta por comprobar"
+        ],
+        [
+          "3",
+          "servicios: taxi, moto y encomiendas"
+        ]
+      ],
+      "columns": [
+        {
+          "title": "Alcance acordado",
+          "items": [
+            "Android y apertura por zonas de Bolivia.",
+            "QR + efectivo, comisión y liquidaciones.",
+            "Operación desde un panel con permisos."
+          ]
+        },
+        {
+          "title": "Decisiones de alcance",
+          "items": [
+            "Mudanzas existe parcialmente en código; su apertura está por decidir.",
+            "Facebook permanece aplazado.",
+            "iOS y viajes internacionales quedan para después."
+          ]
+        }
+      ],
+      "source": "Las metas no representan usuarios actuales ni una contratación inicial obligatoria."
+    },
+    {
+      "phase": 1,
+      "title": "Base técnica y entornos",
+      "columns": [
+        {
+          "title": "Implementado",
+          "items": [
+            "Configuración validada y tokens separados por entorno.",
+            "Identidades Android y perfiles EAS distintos.",
+            "Docker, dependencias fijadas y workflow CI."
+          ]
+        },
+        {
+          "title": "Límite del cierre local",
+          "items": [
+            "APK instalados: antecedente del 09/09.",
+            "CI remota del candidato aún por comprobar.",
+            "Alojamiento y operación se certifican en F09."
+          ]
+        }
+      ],
+      "criterion": "Base local preparada. Solo Desarrollo está activo; Pruebas queda temporalmente deprecado."
+    },
+    {
+      "phase": 1,
+      "title": "Solo Desarrollo por ahora",
+      "columns": [
+        {
+          "title": "Desarrollo activo",
+          "items": [
+            "Trabajo diario, QA y recorridos entre teléfonos.",
+            "API local y APK ViajaYa Desarrollo.",
+            "Datos sintéticos y OTP simulado."
+          ]
+        },
+        {
+          "title": "Pruebas deprecado",
+          "items": [
+            "Sin nuevos despliegues ni APK de Pruebas.",
+            "Configuraciones conservadas como referencia.",
+            "Reactivación solo con nueva decisión."
+          ]
+        },
+        {
+          "title": "Producción futura",
+          "items": [
+            "No habilitada para esta entrega.",
+            "Requiere certificación y aprobación.",
+            "Mantener aislamiento de datos y credenciales."
+          ]
+        }
+      ],
+      "criterion": "Los tests automatizados y CI continúan. El ambiente Pruebas permanece inactivo.",
+      "source": "Decisión del usuario · 19/09/2026 · revisión 23."
+    },
+    {
+      "phase": 2,
+      "title": "Teléfono, cuentas y sesiones",
+      "columns": [
+        {
+          "title": "Implementado",
+          "items": [
+            "Acceso único: teléfono → OTP → cuenta o perfil.",
+            "Sesiones por dispositivo, rotación y revocación.",
+            "Cambio de número y vinculación social explícita.",
+            "Retiro del acceso por correo/contraseña."
+          ]
+        },
+        {
+          "title": "Para cerrar la fase",
+          "items": [
+            "API y APK de Pruebas del mismo candidato.",
+            "Recorrido real de acceso y sesión en Android.",
+            "Proveedor y adaptador SMS productivo.",
+            "Solicitud de recuperación visible en la app."
+          ]
+        }
+      ],
+      "criterion": "El código está integrado. Su cierre requiere pruebas del candidato y completar las funciones pendientes."
+    },
+    {
+      "phase": 2,
+      "title": "Google, SMS y recuperación",
+      "columns": [
+        {
+          "title": "Google",
+          "items": [
+            "Probado en Desarrollo el 13/09.",
+            "Faltan firma/configuración de Pruebas y recorrido en su APK."
+          ]
+        },
+        {
+          "title": "SMS",
+          "items": [
+            "Proveedor todavía por elegir.",
+            "Adaptador real pendiente; entrega acotada en producción durante F09."
+          ]
+        },
+        {
+          "title": "Recuperación",
+          "items": [
+            "Lógica y contrato existentes.",
+            "Falta entrada visible y panel de aprobación en F03-B."
+          ]
+        }
+      ],
+      "criterion": "Facebook sigue aplazado y deshabilitado; su inclusión se decide antes de la certificación productiva."
+    },
+    {
+      "phase": 2,
+      "title": "OTP separado por entorno",
+      "columns": [
+        {
+          "title": "Desarrollo",
+          "items": [
+            "Desafíos simulados con caducidad y uso único.",
+            "Autocompletado identificado como prueba.",
+            "Cero llamadas de envío/verificación al proveedor."
+          ]
+        },
+        {
+          "title": "Producción",
+          "items": [
+            "SMS real obligatorio para verificar el teléfono.",
+            "Sin códigos de prueba ni simulador.",
+            "El acceso OTP sigue indisponible hasta integrar el proveedor."
+          ]
+        }
+      ],
+      "criterion": "Simular OTP permite probar el flujo; la entrega real en operadores bolivianos se certifica aparte."
+    },
+    {
+      "phase": 3,
+      "title": "País, zona, moneda y horario",
+      "items": [
+        "F03-A está planificada; el código mantiene supuestos fijos de Bolivia.",
+        "Catálogo inicial BO / BOB / America/La_Paz.",
+        "Viajes y ofertas con zona y moneda explícitas.",
+        "Importes decimales; impedir operaciones entre monedas distintas.",
+        "Migraciones nuevas después de 0028 y backfill probado en PostgreSQL."
+      ],
+      "criterion": "Bolivia conserva su comportamiento y un país sintético demuestra el aislamiento de moneda y horario.",
+      "source": "BO-ALL preserva compatibilidad; no autoriza abrir comercialmente todo el territorio. [Plan 0011](../implementation-plans/0011-territorios-y-moneda.md)."
+    },
+    {
+      "phase": 3,
+      "title": "Panel, permisos y activación",
+      "columns": [
+        {
+          "title": "Administración",
+          "items": [
+            "Acceso reforzado y roles separados.",
+            "Cambios registrados con autor y motivo.",
+            "Recuperación asistida con aprobación."
+          ]
+        },
+        {
+          "title": "Servicios por zona",
+          "items": [
+            "Capacidades decididas por el backend.",
+            "Disponibilidad por país, zona y servicio.",
+            "La app presenta las opciones habilitadas."
+          ]
+        }
+      ],
+      "criterion": "Apagar una función bloquea operaciones nuevas y permite terminar viajes y obligaciones existentes.",
+      "source": "F03-B/C se pospusieron el 13/09; siguen siendo necesarias antes de abrir."
+    },
+    {
+      "phase": 4,
+      "title": "Alta y vehículos del conductor",
+      "columns": [
+        {
+          "title": "Ya implementado",
+          "items": [
+            "Registro de conductor desde Perfil.",
+            "Hasta un taxi, una moto y una camioneta.",
+            "Servicios compatibles por vehículo.",
+            "Cambio de modo y selección del vehículo activo."
+          ]
+        },
+        {
+          "title": "Aún pendiente",
+          "items": [
+            "Carga privada y revisión de documentos.",
+            "Aprobación o rechazo desde el panel.",
+            "Suspensión, vencimientos y elegibilidad por zona."
+          ]
+        }
+      ],
+      "criterion": "La autoaprobación de entornos bajos no reemplaza la revisión operativa necesaria para producción."
+    },
+    {
+      "phase": 4,
+      "title": "Operación y soporte del viaje",
+      "criterion": "Recorrido funcional verificado localmente. Falta certificación nativa; GPS, navegación y cobros mantienen sus cierres F05–F07.",
+      "columns": [
+        {
+          "title": "Taxi y mototaxi · avance local",
+          "items": [
+            "Llegada cercana corregida; ETA automática con Google real.",
+            "Controles sobre el mapa; búsqueda con ruta más cercana.",
+            "396 pruebas móviles, 68 casos UI y seis rutas reales.",
+            "Capas de relieve retiradas; confirmar zoom en teléfono."
+          ]
+        },
+        {
+          "title": "Pendiente para operar",
+          "items": [
+            "Recorrido de la versión actual en dos teléfonos.",
+            "Cobertura y recogida verificada por código.",
+            "Motivos de cancelación, ausencias e incidentes.",
+            "Resolución auditada desde soporte."
+          ]
+        }
+      ],
+      "source": "Revisión 21 · codex/ui-improvements-and-bugfixes, base e10e6ae · llegada y mapas 0021. Backend/PostgreSQL: evidencia histórica de revisión 17."
+    },
+    {
+      "phase": 5,
+      "title": "Seguimiento y notificaciones",
+      "columns": [
+        {
+          "title": "Implementado localmente",
+          "items": [
+            "GPS privado desde aceptación hasta cierre.",
+            "Snapshot, reconexión y señal antigua visible.",
+            "Redis entre instancias y servicio Android."
+          ]
+        },
+        {
+          "title": "Pendiente de certificar",
+          "items": [
+            "Dos teléfonos: GPS real, Waze y pantalla bloqueada.",
+            "Push que recupera el estado actual.",
+            "Permisos y recuperación en dispositivos reales."
+          ]
+        }
+      ],
+      "criterion": "Un viaje en dos teléfonos se recupera de red perdida, permisos denegados y cambios de app.",
+      "source": "Revisión 22 · plan 0022 · API/WS y Redis verificados; UI con mapa de prueba."
+    },
+    {
+      "phase": 5,
+      "title": "Mapas y consumo controlado",
+      "columns": [
+        {
+          "title": "Consultas propias",
+          "items": [
+            "Places, Routes y geocodificación por backend autenticado.",
+            "Límites, cancelación y tiempos de espera.",
+            "Errores de ruta visibles al usuario."
+          ]
+        },
+        {
+          "title": "Integración nativa",
+          "items": [
+            "Credenciales separadas por entorno, API y firma.",
+            "Navigation usa su SDK en Android.",
+            "Medir consumo y evitar peticiones repetidas."
+          ]
+        }
+      ],
+      "criterion": "Los ensayos reales de mapas requieren cuotas y presupuesto, incluso con OTP simulado."
+    },
+    {
+      "phase": 6,
+      "title": "Navegación dentro de ViajaYa",
+      "columns": [
+        {
+          "title": "Integración Android",
+          "items": [
+            "Google Navigation 0.16.3: recogida y destino.",
+            "APK Android compilado; voz y cámara cenital.",
+            "Waze opcional con GPS de ViajaYa independiente."
+          ]
+        },
+        {
+          "title": "Pendiente en teléfonos",
+          "items": [
+            "Instalar nuevo APK y validar autorización Google.",
+            "Voz, Bluetooth, desvíos y cobertura de moto.",
+            "Segundo plano, bloqueo y retorno desde Waze."
+          ]
+        }
+      ],
+      "criterion": "La llegada del SDK no modifica el viaje. Cambiar etapa requiere confirmación; build y dobles no certifican un recorrido real.",
+      "source": "[Wrapper de Google](https://github.com/googlemaps/react-native-navigation-sdk) · [Cobertura](https://developers.google.com/maps/documentation/navigation/android-sdk/coverage-nav-sdk)."
+    },
+    {
+      "phase": 7,
+      "title": "Cobros QR y efectivo",
+      "items": [
+        "Hoy seleccionar QR no procesa una transacción.",
+        "Separar finalización del servicio y estado del pago.",
+        "QR con importe, moneda, referencia y vencimiento.",
+        "Confirmación verificable del proveedor e idempotencia.",
+        "Declaración de efectivo con comisión adeudada y posibilidad de reclamo."
+      ],
+      "criterion": "Reintentos, caídas y notificaciones repetidas no duplican cobros. La integración se prueba en sandbox."
+    },
+    {
+      "phase": 7,
+      "title": "Comisiones y liquidaciones",
+      "columns": [
+        {
+          "title": "Registro del dinero",
+          "items": [
+            "Congelar tarifa y comisión al aceptar.",
+            "Cobros, ajustes y devoluciones auditables.",
+            "Deuda por efectivo y límites configurables."
+          ]
+        },
+        {
+          "title": "Operación financiera",
+          "items": [
+            "Conciliación con el proveedor.",
+            "Liquidaciones y cola de diferencias.",
+            "Panel financiero y billetera funcional."
+          ]
+        }
+      ],
+      "criterion": "Cada importe se explica desde el servicio hasta su cobro, comisión y liquidación."
+    },
+    {
+      "phase": 8,
+      "title": "Encomiendas completas",
+      "items": [
+        "El tipo delivery existe; el circuito completo sigue pendiente.",
+        "Remitente, destinatario, teléfonos y descripción del paquete.",
+        "Límites y artículos restringidos.",
+        "Retiro y entrega con código de recepción de uso único.",
+        "Ausencia, devolución e incidentes con ajustes autorizados."
+      ],
+      "criterion": "App y panel permiten entregar o resolver el paquete con estado, responsabilidad e importes registrados."
+    },
+    {
+      "phase": 9,
+      "title": "Alojamiento y promoción",
+      "columns": [
+        {
+          "title": "Base reutilizable",
+          "items": [
+            "Docker y workflow CI versionados.",
+            "Salud, métricas y reglas de alertas.",
+            "Outbox, Redis y soporte multiworker."
+          ]
+        },
+        {
+          "title": "Certificación pendiente",
+          "items": [
+            "Pruebas y Producción alojados y aislados.",
+            "Misma imagen backend certificada al promover.",
+            "Migraciones controladas y rollout realtime.",
+            "Alertas recibidas y rollback ensayado."
+          ]
+        }
+      ],
+      "criterion": "El túnel local de Pruebas no sustituye el alojamiento permanente ni demuestra capacidad productiva."
+    },
+    {
+      "phase": 9,
+      "title": "Carga y recuperación",
+      "stats": [
+        [
+          "≤ 500 ms",
+          "objetivo API propia · p95"
+        ],
+        [
+          "≤ 2 s",
+          "objetivo evento visible · p95"
+        ],
+        [
+          "2",
+          "réplicas API por certificar"
+        ]
+      ],
+      "columns": [
+        {
+          "title": "Carga objetivo",
+          "items": [
+            "500 conductores + hipótesis de 500 pasajeros.",
+            "Carga sostenida y ráfagas del doble.",
+            "Sin asignaciones ni cobros duplicados."
+          ]
+        },
+        {
+          "title": "Continuidad",
+          "items": [
+            "Restauración: RPO ≤ 15 min y RTO ≤ 2 h.",
+            "Caídas de API/Redis sin cancelaciones falsas.",
+            "Alerta real recibida por un responsable."
+          ]
+        }
+      ],
+      "source": "Son criterios por demostrar con el candidato alojado; no resultados obtenidos el 19/09."
+    },
+    {
+      "phase": 9,
+      "title": "Privacidad y proveedores reales",
+      "columns": [
+        {
+          "title": "Cuentas y datos",
+          "items": [
+            "Términos y privacidad publicados.",
+            "Aceptación versionada y reglas de conservación.",
+            "Eliminación desde la app y una vía web."
+          ]
+        },
+        {
+          "title": "Antes de certificar",
+          "items": [
+            "Ensayo SMS real acotado y presupuestado.",
+            "OAuth productivo y QR real verificados.",
+            "Navigation, contratos y responsables confirmados."
+          ]
+        }
+      ],
+      "criterion": "Facebook se certifica si se habilita; si permanece aplazado, debe continuar deshabilitado.",
+      "source": "[Requisitos de eliminación de cuentas de Google Play](https://support.google.com/googleplay/android-developer/answer/13327111?hl=en-EN)."
+    },
+    {
+      "phase": 10,
+      "title": "Google Play y apertura por zonas",
+      "items": [
+        "AAB firmado, ficha, Data Safety y permisos declarados.",
+        "Instalación limpia y actualización en teléfonos.",
+        "Confirmar si aplica prueba cerrada de 12 testers durante 14 días.",
+        "Promover el mismo AAB productivo certificado.",
+        "Abrir zonas con conductores aprobados, soporte y conciliación."
+      ],
+      "criterion": "La aceptación de Play y la preparación operativa de cada zona cierran F10, después de F09.",
+      "source": "[Aplicabilidad de las pruebas cerradas](https://support.google.com/googleplay/android-developer/answer/14151465?hl=en-GB). El tipo de cuenta aún no se comprobó."
+    },
+    {
+      "title": "Contratos que debemos conservar",
+      "columns": [
+        {
+          "title": "Negociación y presencia",
+          "items": [
+            "El pasajero decide; aceptación atómica.",
+            "Ofertas con vigencia de 30 segundos.",
+            "Gracia del pasajero de 120 segundos.",
+            "Ausencia automática solo cancela SEARCHING."
+          ]
+        },
+        {
+          "title": "Backend y app",
+          "items": [
+            "Cambios de contrato en ambos proyectos.",
+            "WebSocket principal; polling de respaldo.",
+            "Tokens WS fuera de la URL.",
+            "Migraciones compatibles con apps instaladas."
+          ]
+        }
+      ],
+      "criterion": "Cada entrega conserva estas reglas y añade pruebas proporcionales al comportamiento que modifica."
+    },
+    {
+      "title": "Infraestructura: presupuesto orientativo",
+      "columns": [
+        {
+          "title": "Apertura acotada",
+          "budget": "USD 300–400",
+          "text": "Mensuales: hipótesis propia de infraestructura de Pruebas y Producción, backups y monitoreo."
+        },
+        {
+          "title": "Preparación para la meta",
+          "budget": "USD 700–1.000",
+          "text": "Mensuales: referencia inicial de capacidad, sujeta a carga medida y cotización detallada."
+        }
+      ],
+      "criterion": "Estas bandas no son gasto observado ni presupuesto aprobado. Faltan mapas, SMS, pasarela y operación humana.",
+      "source": "Render es una propuesta; región y latencia desde Bolivia por validar. [Precios](https://render.com/pricing) · [Regiones](https://render.com/docs/regions)."
+    },
+    {
+      "title": "Mapas y navegación a la capacidad meta",
+      "intro": "Escenario de 5.000 servicios/día × 30 días; tarifas públicas consultadas el 19/09.",
+      "stats": [
+        [
+          "USD 3.488",
+          "mapas/mes con las hipótesis del plan"
+        ],
+        [
+          "USD 6.475",
+          "Navigation/mes: dos destinos por viaje"
+        ],
+        [
+          "USD 10.700",
+          "a 11.000/mes · total con infraestructura"
+        ]
+      ],
+      "items": [
+        "Supuesto conservador: mantener las consultas de mapas además del SDK.",
+        "No incluye SMS, pasarela, impuestos ni operación humana.",
+        "El piloto necesita otro cálculo con su volumen esperado."
+      ],
+      "source": "Estimaciones de consumo, no cotización. [Tarifas Google Maps](https://developers.google.com/maps/billing-and-pricing/pricing) · [Facturación Navigation](https://developers.google.com/maps/documentation/navigation/android-sdk/pricing)."
+    },
+    {
+      "title": "Control del gasto del piloto",
+      "columns": [
+        {
+          "title": "Medir",
+          "items": [
+            "Costo por búsqueda, viaje y destino de navegación.",
+            "OTP real por alta, cambio o recuperación.",
+            "Pasarela, liquidaciones y devoluciones."
+          ]
+        },
+        {
+          "title": "Limitar",
+          "items": [
+            "Presupuesto y cuotas por entorno.",
+            "Alertas al 50 %, 80 % y 100 %.",
+            "Límites de abuso y recálculos.",
+            "Comisión menos costos variables por servicio."
+          ]
+        }
+      ],
+      "criterion": "Una alerta presupuestaria no detiene cargos. La apertura requiere límites y responsables.",
+      "source": "OTP de Desarrollo: cero cargos de envío/verificación externa; su hosting se contabiliza aparte."
+    },
+    {
+      "title": "Próximas entregas",
+      "columns": [
+        {
+          "title": "Primeros cierres",
+          "items": [
+            "1. Recuperación visible y candidato de Pruebas actualizado.",
+            "2. F03-A: territorio, zona, moneda y horario.",
+            "3. Panel, permisos y revisión de conductores."
+          ]
+        },
+        {
+          "title": "Continuación",
+          "items": [
+            "4. Operación del viaje, GPS y compatibilidad de Navigation.",
+            "5. Navegación, dinero y encomiendas completas.",
+            "6. Certificación alojada, Google Play y apertura por zonas."
+          ]
+        }
+      ],
+      "criterion": "F03-A puede avanzar mientras se elige SMS; el bloqueo externo no impide tareas independientes."
+    },
+    {
+      "title": "Decisiones comerciales pendientes",
+      "columns": [
+        {
+          "title": "Mercado y operación",
+          "items": [
+            "Ciudad/zona, volumen y horarios del piloto.",
+            "Responsables de soporte y revisión documental.",
+            "Comisión, deuda y calendario de liquidación.",
+            "Inclusión comercial de mudanzas."
+          ]
+        },
+        {
+          "title": "Proveedores y presupuesto",
+          "items": [
+            "SMS con entrega comprobable en Bolivia.",
+            "QR con sandbox, contrato y conciliación.",
+            "Tope mensual, alojamiento y cuenta Play.",
+            "Facebook habilitado o aplazado en esta salida."
+          ]
+        }
+      ],
+      "criterion": "La fecha de apertura se fija después de resolver alcance, equipo y proveedores."
+    },
+    {
+      "title": "Dependencias de cierre",
+      "columns": [
+        {
+          "title": "Secuencia principal",
+          "items": [
+            "F01 → F02 → F03 → F04.",
+            "F05 → F06 → F08 → F09 → F10.",
+            "F07 también debe cerrar antes de F08."
+          ]
+        },
+        {
+          "title": "Trabajo adelantable",
+          "items": [
+            "F07 puede avanzar junto con F05–F06.",
+            "F06-A despeja compatibilidad nativa antes.",
+            "Cuentas y cotizaciones desde ahora.",
+            "Alojar Pruebas antes de certificar lo que lo requiere."
+          ]
+        }
+      ],
+      "criterion": "Con una persona, seguir el orden numérico y adelantar gestiones externas. Una entrega parcial no cierra su fase."
+    },
+    {
+      "title": "Siguiente hito verificable",
+      "intro": "Un candidato actualizado de Pruebas con acceso y viaje documentados en teléfonos.",
+      "columns": [
+        {
+          "title": "Resultado esperado",
+          "items": [
+            "API, migraciones y APK identificados por versión.",
+            "Teléfono, Google y sesión recorridos.",
+            "Cambio de número y solicitud de recuperación.",
+            "Flujo pasajero/conductor sin bloqueos."
+          ]
+        },
+        {
+          "title": "Evidencia del cierre",
+          "items": [
+            "CI remota y comprobaciones locales.",
+            "Fecha, entorno, versión y responsable.",
+            "Resultados y pendientes registrados.",
+            "Sin confundir el ensayo con apertura comercial."
+          ]
+        }
+      ],
+      "criterion": "Después: F03-A y la operación administrativa. SMS y QR avanzan como gestiones paralelas.",
+      "source": "[Plan completo, revisión 16](plan-salida-produccion.md) · [Evidencia del 19/09](production-readiness-2026-09-19.md)."
+    }
+  ]
+}

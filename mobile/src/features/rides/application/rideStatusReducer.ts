@@ -25,7 +25,10 @@ export function shouldApplyRideStatus(
   if (current?.id !== incoming.id) return true;
   const currentStatus = current.status;
   const incomingStatus = incoming.status;
-  if (currentStatus === incomingStatus) return true;
+  if (currentStatus === incomingStatus) {
+    // The pickup notice is permanent. An older same-stage reply cannot undo it.
+    return !current.riderOnTheWayAt || Boolean(incoming.riderOnTheWayAt);
+  }
   if (currentStatus === 'completed' || currentStatus === 'cancelled') return false;
   if (incomingStatus === 'cancelled') return currentStatus !== 'in_progress';
 
@@ -65,6 +68,9 @@ export function applyRideMutationResult(
   const currentActive = activeQueryKey
     ? queryClient.getQueryData<Ride | null>(activeQueryKey)
     : null;
+  if (currentActive && currentActive.id !== incoming.id && !isTerminalRide(currentActive)) {
+    return false;
+  }
   if (!shouldApplyRideStatus(currentActive, incoming)) return false;
   const reduction = reduceRideMutationResult(current, incoming);
   if (!reduction.applied) return false;

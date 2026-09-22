@@ -5,6 +5,7 @@
  */
 import { type QueryClient, useMutation, useQueryClient } from '@tanstack/react-query';
 
+import { recoverCommittedMutation } from './recoverCommittedMutation';
 import { useDriverRequests } from '@/features/driver/application/useDriverRequests';
 import {
   emptyOpenRides,
@@ -53,10 +54,20 @@ export function useCreateOffer() {
 export function useAcceptOffer() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (offerId: string) => ridesRepository.acceptOffer(offerId),
-    onSuccess: (ride) => {
+    mutationFn: (vars: { offerId: string; rideId: string }) => recoverCommittedMutation(
+      () => ridesRepository.acceptOffer(vars.offerId),
+      () => ridesRepository.getRide(vars.rideId),
+      (ride) => ride.id === vars.rideId && Boolean(ride.driver)
+        && !['searching', 'cancelled'].includes(ride.status),
+    ),
+    onSuccess: async (ride) => {
+      await Promise.all([
+        queryClient.cancelQueries({ queryKey: ['ride', ride.id] }),
+        queryClient.cancelQueries({ queryKey: PASSENGER_ACTIVE_RIDE_KEY }),
+      ]);
       if (!applyRideMutationResult(queryClient, ride, PASSENGER_ACTIVE_RIDE_KEY)) return;
-      queryClient.setQueryData(PASSENGER_ACTIVE_RIDE_KEY, ride);
+      queryClient.setQueryData(PASSENGER_ACTIVE_RIDE_KEY,
+        ['completed', 'cancelled'].includes(ride.status) ? null : ride);
     },
   });
 }
@@ -92,11 +103,39 @@ export function useUpdateRideStatus() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (vars: { rideId: string; status: RideStatus }) =>
-      ridesRepository.updateStatus(vars.rideId, vars.status),
+      recoverCommittedMutation(
+        () => ridesRepository.updateStatus(vars.rideId, vars.status),
+        () => ridesRepository.getRide(vars.rideId),
+        (ride) => ride.status === vars.status || ride.status === 'completed'
+          || ride.status === 'cancelled'
+          || (vars.status === 'arriving' && ride.status === 'in_progress'),
+      ),
     onMutate: () => queryClient.cancelQueries({ queryKey: DRIVER_ACTIVE_RIDE_KEY }),
-    onSuccess: (ride) => {
+    onSuccess: async (ride) => {
+      await queryClient.cancelQueries({ queryKey: DRIVER_ACTIVE_RIDE_KEY });
       if (!applyRideMutationResult(queryClient, ride, DRIVER_ACTIVE_RIDE_KEY)) return;
       queryClient.setQueryData(DRIVER_ACTIVE_RIDE_KEY, ride);
+    },
+  });
+}
+
+/** Passenger: persist a pickup acknowledgement and reconcile lost responses. */
+export function useMarkRiderOnTheWay() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (rideId: string) => recoverCommittedMutation(
+      () => ridesRepository.markRiderOnTheWay(rideId),
+      () => ridesRepository.getRide(rideId),
+      (ride) => Boolean(ride.riderOnTheWayAt) || !['accepted', 'arriving', 'searching'].includes(ride.status),
+    ),
+    onSuccess: async (ride) => {
+      await Promise.all([
+        queryClient.cancelQueries({ queryKey: ['ride', ride.id] }),
+        queryClient.cancelQueries({ queryKey: PASSENGER_ACTIVE_RIDE_KEY }),
+      ]);
+      if (!applyRideMutationResult(queryClient, ride, PASSENGER_ACTIVE_RIDE_KEY)) return;
+      queryClient.setQueryData(PASSENGER_ACTIVE_RIDE_KEY,
+        ['completed', 'cancelled'].includes(ride.status) ? null : ride);
     },
   });
 }
@@ -193,8 +232,16 @@ export function useEditRide() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (vars: { rideId: string; input: EditRideInput }) =>
-      ridesRepository.editRide(vars.rideId, vars.input),
-    onSuccess: (ride) => {
+      recoverCommittedMutation(
+        () => ridesRepository.editRide(vars.rideId, vars.input),
+        () => ridesRepository.getRide(vars.rideId),
+        (ride) => !ride.paused || ride.status !== 'searching',
+      ),
+    onSuccess: async (ride) => {
+      await Promise.all([
+        queryClient.cancelQueries({ queryKey: ['ride', ride.id] }),
+        queryClient.cancelQueries({ queryKey: PASSENGER_ACTIVE_RIDE_KEY }),
+      ]);
       if (!applyRideMutationResult(queryClient, ride, PASSENGER_ACTIVE_RIDE_KEY)) return;
       queryClient.setQueryData(PASSENGER_ACTIVE_RIDE_KEY, ride);
       void queryClient.invalidateQueries({ queryKey: ['ride-offers', ride.id] });

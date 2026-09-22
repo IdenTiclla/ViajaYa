@@ -191,6 +191,135 @@
         "title": "DriverEarningsResponse",
         "type": "object"
       },
+      "DriverLocationInput": {
+        "additionalProperties": false,
+        "properties": {
+          "accuracy_meters": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Accuracy Meters",
+            "type": "number"
+          },
+          "captured_at": {
+            "format": "date-time",
+            "title": "Captured At",
+            "type": "string"
+          },
+          "heading": {
+            "anyOf": [
+              {
+                "exclusiveMaximum": 360.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heading"
+          },
+          "latitude": {
+            "maximum": 90.0,
+            "minimum": -90.0,
+            "title": "Latitude",
+            "type": "number"
+          },
+          "longitude": {
+            "maximum": 180.0,
+            "minimum": -180.0,
+            "title": "Longitude",
+            "type": "number"
+          }
+        },
+        "required": [
+          "latitude",
+          "longitude",
+          "accuracy_meters",
+          "captured_at"
+        ],
+        "title": "DriverLocationInput",
+        "type": "object"
+      },
+      "DriverLocationReportResponse": {
+        "properties": {
+          "accepted": {
+            "title": "Accepted",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "accepted"
+        ],
+        "title": "DriverLocationReportResponse",
+        "type": "object"
+      },
+      "DriverLocationResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "accuracy_meters": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Accuracy Meters",
+            "type": "number"
+          },
+          "captured_at": {
+            "format": "date-time",
+            "title": "Captured At",
+            "type": "string"
+          },
+          "driver_id": {
+            "format": "uuid",
+            "title": "Driver Id",
+            "type": "string"
+          },
+          "heading": {
+            "anyOf": [
+              {
+                "exclusiveMaximum": 360.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heading"
+          },
+          "latitude": {
+            "maximum": 90.0,
+            "minimum": -90.0,
+            "title": "Latitude",
+            "type": "number"
+          },
+          "longitude": {
+            "maximum": 180.0,
+            "minimum": -180.0,
+            "title": "Longitude",
+            "type": "number"
+          },
+          "received_at": {
+            "format": "date-time",
+            "title": "Received At",
+            "type": "string"
+          },
+          "ride_id": {
+            "format": "uuid",
+            "title": "Ride Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "latitude",
+          "longitude",
+          "accuracy_meters",
+          "captured_at",
+          "ride_id",
+          "driver_id",
+          "received_at"
+        ],
+        "title": "DriverLocationResponse",
+        "type": "object"
+      },
       "DriverStatus": {
         "description": "Outcome of a driver application; only ``APPROVED`` can enter driver mode.",
         "enum": [
@@ -473,6 +602,18 @@
               }
             ],
             "title": "Eta Min"
+          },
+          "expected_pool_version": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Pool Version"
           },
           "price": {
             "anyOf": [
@@ -2256,6 +2397,18 @@
             "format": "uuid",
             "title": "Rider Id",
             "type": "string"
+          },
+          "rider_on_the_way_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rider On The Way At"
           },
           "service_type": {
             "$ref": "#/components/schemas/ServiceType"
@@ -5107,6 +5260,140 @@
         ]
       }
     },
+    "/api/v1/rides/{ride_id}/driver-location": {
+      "get": {
+        "operationId": "get_location_api_v1_rides__ride_id__driver_location_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ride_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Ride Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/DriverLocationResponse"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Get Location Api V1 Rides  Ride Id  Driver Location Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Location",
+        "tags": [
+          "driver-location"
+        ]
+      },
+      "put": {
+        "operationId": "report_location_api_v1_rides__ride_id__driver_location_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ride_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Ride Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DriverLocationInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriverLocationReportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Report Location",
+        "tags": [
+          "driver-location"
+        ]
+      }
+    },
     "/api/v1/rides/{ride_id}/fare": {
       "patch": {
         "description": "El pasajero ajusta su oferta mientras se buscan conductores.",
@@ -5370,6 +5657,71 @@
       }
     },
     "/api/v1/rides/{ride_id}/rating": {
+      "get": {
+        "operationId": "get_ride_rating_response_api_v1_rides__ride_id__rating_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ride_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Ride Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/RatingResponse"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Get Ride Rating Response Api V1 Rides  Ride Id  Rating Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Ride Rating Response",
+        "tags": [
+          "rides"
+        ]
+      },
       "post": {
         "description": "Califica al otro participante tras completarse el viaje.",
         "operationId": "rate_ride_api_v1_rides__ride_id__rating_post",
@@ -5487,6 +5839,66 @@
           }
         },
         "summary": "Skip Ride Rating",
+        "tags": [
+          "rides"
+        ]
+      }
+    },
+    "/api/v1/rides/{ride_id}/rider-on-the-way": {
+      "post": {
+        "description": "Persist a passenger's pickup notice and deliver it to both participants.",
+        "operationId": "mark_rider_on_the_way_api_v1_rides__ride_id__rider_on_the_way_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ride_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Ride Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RideResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mark Rider On The Way",
         "tags": [
           "rides"
         ]

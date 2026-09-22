@@ -19,5 +19,5 @@ const OPTIONS: readonly SelectableOption<ServiceType>[] = SERVICE_OPTIONS.map((o
 
 /** Selector visual único para el servicio de la solicitud del pasajero. */
 export function ServiceTypeSelector({ value, onChange }: Props) {
-  return <SelectableOptionCards options={OPTIONS} value={value} onChange={onChange} />;
+  return <SelectableOptionCards options={OPTIONS} value={value} onChange={onChange} columns={2} />;
 }

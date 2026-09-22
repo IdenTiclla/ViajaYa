@@ -1,3 +1,4 @@
+import { TripProgress } from '@/features/rides/presentation/TripProgress';
 /**
  * Tarjeta de cierre de viaje reutilizable (pasajero ↔ conductor).
  *
@@ -6,15 +7,16 @@
  * hasta enviar, incluso después de elegir estrellas.
  */
 import { Ionicons } from '@react-native-vector-icons/ionicons';
-import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { useRef, useState } from 'react';
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
 import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
 import { useRateRide, useSkipRating } from '@/features/rides/application/useCloseFlow';
 import { formatBolivianos } from '@/features/rides/domain/money';
 import type { Ride } from '@/features/rides/domain/types';
-import { Button } from '@/shared/components';
+import { Button, PersonAvatar, TextField } from '@/shared/components';
+import { TripSecondaryAction } from './TripSecondaryAction';
 
 type Props = {
   ride: Ride;
@@ -41,18 +43,19 @@ export function RideRatingCard({
   const { fontScale } = useWindowDimensions();
   const [score, setScore] = useState(0);
   const [comment, setComment] = useState('');
+  const [showComment, setShowComment] = useState(false);
   const [estrellaEnfocada, setEstrellaEnfocada] = useState<number | null>(null);
-  const [comentarioEnfocado, setComentarioEnfocado] = useState(false);
   const rate = useRateRide();
   const skip = useSkipRating();
+  const submissionLock = useRef(false);
 
   const price = formatBolivianos(ride.acceptedPrice ?? ride.fare);
   const rateeLabel = rateeRole === 'driver' ? 'tu conductor' : 'tu pasajero';
-  const initial = (counterpartName?.trim().charAt(0) || '?').toUpperCase();
   const submitting = rate.isPending || skip.isPending;
 
   const submitRating = () => {
-    if (submitting || score < 1) return;
+    if (submitting || submissionLock.current || score < 1) return;
+    submissionLock.current = true;
     skip.reset();
     void rate
       .mutateAsync({
@@ -60,17 +63,21 @@ export function RideRatingCard({
         input: { score, comment: comment.trim() || null },
       })
       .then(onDone)
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => { submissionLock.current = false; });
   };
 
   const skipRating = () => {
-    if (submitting) return;
+    if (submitting || submissionLock.current) return;
+    submissionLock.current = true;
     rate.reset();
-    void skip.mutateAsync(ride.id).then(onDone).catch(() => undefined);
+    void skip.mutateAsync(ride.id).then(onDone).catch(() => undefined)
+      .finally(() => { submissionLock.current = false; });
   };
 
   return (
     <View style={styles.root}>
+      <TripProgress status="completed" />
       <View style={styles.successHeader}>
         <View style={styles.checkCircle}>
           <Ionicons name="checkmark" size={28} color={colors.textOnPrimary} />
@@ -88,7 +95,7 @@ export function RideRatingCard({
         </View>
         <View style={styles.summaryDivider} />
         <View style={styles.summaryItem}>
-          <Text style={styles.summaryLabel}>Pago</Text>
+          <Text style={styles.summaryLabel}>Pago acordado</Text>
           <Text style={styles.summaryValue}>{ride.payment === 'qr' ? 'QR' : 'Efectivo'}</Text>
         </View>
       </View>
@@ -96,9 +103,7 @@ export function RideRatingCard({
       {!!counterpartName && (
         <View style={styles.counterpart}>
           {fontScale <= 1.3 && (
-            <View style={styles.avatar} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-              <Text style={styles.avatarText}>{initial}</Text>
-            </View>
+            <PersonAvatar name={counterpartName} />
           )}
           <View style={styles.counterpartInfo}>
             <Text style={styles.counterpartName}>{counterpartName}</Text>
@@ -109,7 +114,7 @@ export function RideRatingCard({
 
       <View style={styles.rateBlock}>
         <Text style={styles.rateTitle}>Califica a {rateeLabel}</Text>
-        <Text style={styles.subtitle}>Tu opinión nos ayuda a mejorar.</Text>
+        <Text style={styles.subtitle}>Elige las estrellas. El comentario es opcional.</Text>
         <View style={styles.stars} accessibilityRole="radiogroup" accessibilityLabel={`Calificación de ${rateeLabel}`}>
           {[1, 2, 3, 4, 5].map((n) => (
             <Pressable
@@ -142,61 +147,47 @@ export function RideRatingCard({
         </Text>
       </View>
 
-      <View style={styles.commentBlock}>
-        <Text style={styles.commentLabel}>Comentario (opcional)</Text>
-        <TextInput
-          style={[
-            styles.comment,
-            { minHeight: 96 * fontScale },
-            score === 0 && styles.commentDisabled,
-            comentarioEnfocado && styles.commentFocused,
-          ]}
+      <Button title={showComment ? 'Ocultar comentario' : comment ? 'Editar comentario' : 'Agregar comentario (opcional)'}
+        variant="secondary" leadingIcon="chatbubble-outline" disabled={score === 0 || submitting}
+        accessibilityState={{ expanded: showComment }} onPress={() => setShowComment(value => !value)} />
+      {showComment && <TextField label="Comentario (opcional)" showCharacterCount
+          style={{ minHeight: 96 * fontScale }}
           placeholder={
             score > 0
               ? '¿Qué te gustaría destacar o mejorar?'
               : 'Selecciona una calificación para comentar'
           }
-          placeholderTextColor={colors.placeholder}
           value={comment}
           onChangeText={setComment}
-          onFocus={() => setComentarioEnfocado(true)}
-          onBlur={() => setComentarioEnfocado(false)}
           editable={score > 0 && !submitting}
           maxLength={500}
           multiline
           accessibilityLabel="Comentario de la calificación"
           accessibilityHint="Opcional, hasta 500 caracteres. Selecciona primero una calificación."
-        />
-        <Text style={styles.commentCounter} accessibilityLabel={`${comment.length} de 500 caracteres`}>{comment.length}/500</Text>
-      </View>
+        />}
 
       {(rate.isError || skip.isError) && (
         <Text style={styles.error} accessibilityRole="alert">{getApiErrorMessage(rate.error ?? skip.error)}</Text>
       )}
 
-      {score > 0 && (
         <Button
           title="Enviar calificación"
           loadingLabel="Enviando calificación"
           loading={rate.isPending}
-          disabled={submitting}
+          disabled={submitting || score === 0}
           leadingIcon="send"
           onPress={submitRating}
         />
-      )}
-      <Button
-        title="Omitir calificación"
-        loadingLabel="Cerrando"
-        loading={skip.isPending}
+      <TripSecondaryAction
+        title={skip.isPending ? 'Cerrando…' : 'Omitir calificación'}
         disabled={submitting}
-        variant="secondary"
         onPress={skipRating}
       />
     </View>
   );
 }
 
-const crearEstilos = ({ colors, estiloFoco }: Tema) => StyleSheet.create({
+const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   root: { gap: spacing.md },
   successHeader: { alignItems: 'center', gap: spacing.xs },
   checkCircle: {
@@ -232,15 +223,6 @@ const crearEstilos = ({ colors, estiloFoco }: Tema) => StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: radius.pill,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: { color: colors.textOnPrimary, fontSize: fontSize.md, fontWeight: fontWeight.bold },
   counterpartInfo: { flex: 1, minWidth: 0, gap: 2 },
   counterpartName: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.text },
   vehicle: { fontSize: fontSize.sm, color: colors.textSecondary },
@@ -259,19 +241,5 @@ const crearEstilos = ({ colors, estiloFoco }: Tema) => StyleSheet.create({
   starSelected: { backgroundColor: colors.primarioSuave },
   scoreLabel: { color: colors.textSecondary, fontSize: fontSize.sm, textAlign: 'center' },
 
-  commentBlock: { gap: spacing.xs },
-  commentLabel: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.text },
-  commentCounter: { fontSize: fontSize.xs, color: colors.textSecondary, textAlign: 'right' },
-  comment: {
-    padding: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.bordeControl,
-    color: colors.text,
-    fontSize: fontSize.md,
-    textAlignVertical: 'top',
-  },
-  commentDisabled: { backgroundColor: colors.surfaceMuted },
-  commentFocused: { borderColor: colors.primary, ...estiloFoco },
   error: { color: colors.danger, fontSize: fontSize.sm, textAlign: 'center' },
 });

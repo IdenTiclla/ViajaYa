@@ -22,6 +22,7 @@ export function ProfileCompletionForm({ phone, capabilities, busy, initialName =
       <AuthHeading title="Completa tu cuenta"
         text={`Verificamos ${phone}. Solo falta tu nombre para crear tu cuenta.`} />
       <TextField label="Tu nombre" value={fullName} onChangeText={setFullName} leadingIcon="person-outline"
+        helperText="Así te reconocerán durante el viaje."
         autoComplete="name" textContentType="name" maxLength={100} editable={!busy} placeholder="Nombre y apellido" />
       <TermsCheckbox termsText={capabilities?.termsText} checked={accepted} onChange={setAccepted} disabled={busy} />
       <Button title="Crear cuenta" loading={busy} disabled={!accepted || fullName.trim().length < 2}

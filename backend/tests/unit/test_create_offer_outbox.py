@@ -101,10 +101,13 @@ async def test_create_offer_records_after_mutation_and_commits_last():
     operations: list[str] = []
 
     class RecordingOfferRepository(InMemoryOfferRepository):
-        async def create_or_supersede_atomically(self, offer, *, expected_ride_fare):
+        async def create_or_supersede_atomically(
+            self, offer, *, expected_ride_fare, expected_pool_version=None,
+        ):
             result = await super().create_or_supersede_atomically(
                 offer,
                 expected_ride_fare=expected_ride_fare,
+                expected_pool_version=expected_pool_version,
             )
             operations.append("mutate")
             return result

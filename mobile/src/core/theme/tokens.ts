@@ -44,7 +44,6 @@ export const coloresClaros = {
   // Detalles del vehículo: conservan su identidad sobre ambos estilos de mapa.
   vehiculoContorno: '#162238',
   vehiculoReflejo: '#E8F7FF',
-  vehiculoFondo: '#EAF0F5',
 
   // Social
   google: '#FFFFFF',

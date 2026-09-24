@@ -1,4 +1,4 @@
-"""Caso de uso: vence una oferta desde la vía legacy y completa su acción."""
+"""Use case: expire an offer through the legacy path and complete its action."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from app.domain.ride_policy import offer_expires_at
 
 
 class ExpireOfferAndCompleteScheduledAction:
-    """Hace competir timer/barrido y worker sin dejar acciones huérfanas."""
+    """Let the timer/sweep and the worker race without leaving orphaned actions."""
 
     def __init__(
         self,
@@ -39,12 +39,12 @@ class ExpireOfferAndCompleteScheduledAction:
         try:
             offer = await self._offers.mark_expired_if_pending(offer_id)
             if offer is not None:
-                # Durante un rolling deploy, la versión anterior puede crear la
-                # oferta después del backfill 0022. El timer/barrido nuevo repara
-                # esa fila antes de aplicar el CAS terminal.
+                # During a rolling deploy, the previous version may create the
+                # offer after the 0022 backfill. The new timer/sweep repairs
+                # that row before applying the terminal CAS.
                 execute_at = offer_expires_at(offer)
                 if execute_at is None:  # pragma: no cover - la BD exige created_at
-                    raise RuntimeError("La oferta persistida no tiene fecha de creación.")
+                    raise RuntimeError("The persisted offer has no creation date.")
                 await self._actions.schedule(
                     PendingScheduledAction(
                         dedupe_key=f"expire_offer:{offer_id}",
@@ -62,8 +62,8 @@ class ExpireOfferAndCompleteScheduledAction:
                 completed_at,
             )
             if not completed:
-                # Un worker ya posee o completó la acción. También se revierte la
-                # expiración local para que solo el dueño del lease confirme.
+                # A worker already owns or completed the action. The local expiry is
+                # also rolled back so that only the lease owner confirms it.
                 await self._unit_of_work.rollback()
                 return None
             await self._unit_of_work.commit()

@@ -1,8 +1,8 @@
 /**
- * Calificación del viaje (pasajero) — pantalla "Viaje Finalizado".
+ * Ride rating (passenger) — "Viaje Finalizado" screen.
  *
- * Carga el viaje por `rideId`, muestra el resumen y permite calificar al
- * conductor. Al finalizar, vuelve al inicio.
+ * Loads the ride by `rideId`, shows the summary and lets the user rate the
+ * driver. When done, it goes back home.
  */
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
@@ -19,7 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
 import { useBlockHardwareBack } from '@/core/navigation/useBlockHardwareBack';
-import { fontSize, spacing, useEstilos, type Tema } from '@/core/theme';
+import { fontSize, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import {
   PASSENGER_ACTIVE_RIDE_KEY,
   PENDING_RATING_RIDE_KEY,
@@ -32,7 +32,7 @@ import { vehicleLabel } from '@/features/auth/domain/vehicleCatalog';
 
 
 export function RatingScreen() {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   const router = useRouter();
   const queryClient = useQueryClient();
   const { rideId } = useLocalSearchParams<{ rideId?: string }>();
@@ -133,7 +133,7 @@ export function RatingScreen() {
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
   center: { alignItems: 'center', justifyContent: 'center' },
   content: { padding: spacing.lg, gap: spacing.md },

@@ -1,7 +1,7 @@
 /**
- * Acceso HTTP a la API de lugares guardados (`/saved-places`).
- * Usa el cliente axios único (Bearer/refresh) y mapea el contrato del backend
- * a/desde los tipos del dominio móvil, igual que `ridesRepository`.
+ * HTTP access to the saved places API (`/saved-places`).
+ * Uses the single axios client (Bearer/refresh) and maps the backend contract
+ * to/from the mobile domain types, just like `ridesRepository`.
  */
 import { api } from '@/core/http/client';
 import {

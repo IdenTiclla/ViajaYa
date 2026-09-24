@@ -338,7 +338,7 @@ async def test_create_offer_persists_business_and_outbox_in_one_commit(
     assert scheduled_action.execute_at > result.detail.offer.created_at
 
 
-async def test_create_offer_off_tambien_persiste_recuperacion_durable(
+async def test_create_offer_off_also_persists_durable_recovery(
     session_factory,
 ) -> None:
     async with session_factory() as session:
@@ -373,7 +373,7 @@ async def test_error_after_scheduling_rolls_back_offer_outbox_and_action(
         class ScheduleThenFail:
             async def schedule(self, action):
                 await scheduled_actions.schedule(action)
-                raise RuntimeError("fallo después de agendar")
+                raise RuntimeError("failure after scheduling")
 
         use_case = CreateOffer(
             rides,
@@ -383,7 +383,7 @@ async def test_error_after_scheduling_rolls_back_offer_outbox_and_action(
             ScheduleThenFail(),  # type: ignore[arg-type]
         )
 
-        with pytest.raises(RuntimeError, match="después de agendar"):
+        with pytest.raises(RuntimeError, match="after scheduling"):
             await use_case.execute(
                 driver,
                 ride.id,
@@ -412,7 +412,7 @@ async def test_error_after_inserting_outbox_rolls_back_offer_event_and_version(
         class RecordThenFail:
             async def record(self, result):
                 await recorder.record(result)
-                raise RuntimeError("fallo después de insertar la outbox")
+                raise RuntimeError("failure after inserting the outbox")
 
         use_case = CreateOffer(
             rides,
@@ -421,7 +421,7 @@ async def test_error_after_inserting_outbox_rolls_back_offer_event_and_version(
             RecordThenFail(),  # type: ignore[arg-type]
         )
 
-        with pytest.raises(RuntimeError, match="después de insertar"):
+        with pytest.raises(RuntimeError, match="after inserting"):
             await use_case.execute(
                 driver,
                 ride.id,

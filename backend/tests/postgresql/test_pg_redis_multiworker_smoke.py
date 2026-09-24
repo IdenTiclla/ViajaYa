@@ -1,4 +1,4 @@
-"""Gate legacy y negociación real entre dos procesos live_redis."""
+"""Legacy gate and real negotiation between two live_redis processes."""
 
 from __future__ import annotations
 
@@ -50,7 +50,7 @@ async def _wait_ready(base_url: str, process) -> None:
         while True:
             if process.exitcode is not None:
                 pytest.fail(
-                    "La primera réplica terminó antes de readiness "
+                    "The first replica exited before readiness "
                     f"(exitcode={process.exitcode})."
                 )
             try:
@@ -63,7 +63,7 @@ async def _wait_ready(base_url: str, process) -> None:
             except httpx.HTTPError:
                 pass
             if time.monotonic() >= deadline:
-                pytest.fail("La primera réplica live_redis no alcanzó readiness.")
+                pytest.fail("The first live_redis replica did not reach readiness.")
             await asyncio.sleep(0.02)
 
 
@@ -72,7 +72,7 @@ async def _wait_exit(process, expected_exitcode: int) -> None:
     if process.is_alive():
         process.kill()
         await asyncio.to_thread(process.join, 5)
-        pytest.fail("La segunda réplica no terminó dentro del deadline.")
+        pytest.fail("The second replica did not exit before the deadline.")
     assert process.exitcode == expected_exitcode
 
 
@@ -110,7 +110,7 @@ async def _receive_event_for_aggregate(
     event_type: str,
     aggregate_id: uuid.UUID,
 ) -> RealtimeEventEnvelopeV2:
-    """Ignora backlog legítimo de otros agregados sobre un topic compartido."""
+    """Ignore legitimate backlog of other aggregates on a shared topic."""
     async with asyncio.timeout(10):
         while True:
             event = RealtimeEventEnvelopeV2.model_validate(
@@ -120,14 +120,14 @@ async def _receive_event_for_aggregate(
                 return event
 
 
-async def test_segundo_worker_live_redis_falla_hasta_compartir_presencia(
+async def test_second_live_redis_worker_fails_until_presence_is_shared(
     pg_test_db,
 ) -> None:
     if os.name != "posix":
-        pytest.skip("El gate multiworker usa sockets heredados y requiere POSIX.")
+        pytest.skip("The multi-worker gate uses inherited sockets and requires POSIX.")
     redis_url = os.getenv("VIAJAYA_TEST_REDIS_URL")
     if not redis_url:
-        pytest.skip("Define VIAJAYA_TEST_REDIS_URL para el gate multiworker.")
+        pytest.skip("Set VIAJAYA_TEST_REDIS_URL for the multi-worker gate.")
 
     first_listener, first_url = _listener()
     second_listener, _second_url = _listener()
@@ -175,14 +175,14 @@ async def test_segundo_worker_live_redis_falla_hasta_compartir_presencia(
         second_listener.close()
 
 
-async def test_dos_workers_negocian_con_presencia_compartida(
+async def test_two_workers_negotiate_with_shared_presence(
     pg_test_db,
 ) -> None:
     if os.name != "posix":
-        pytest.skip("El smoke multiworker usa sockets heredados y requiere POSIX.")
+        pytest.skip("The multi-worker smoke uses inherited sockets and requires POSIX.")
     redis_url = os.getenv("VIAJAYA_TEST_REDIS_URL")
     if not redis_url:
-        pytest.skip("Define VIAJAYA_TEST_REDIS_URL para el smoke multiworker.")
+        pytest.skip("Set VIAJAYA_TEST_REDIS_URL for the multi-worker smoke.")
 
     first_listener, first_url = _listener()
     second_listener, second_url = _listener()

@@ -11,7 +11,7 @@ function deferred() {
   return { promise, resolve };
 }
 
-test('la generación nueva no espera al handler viejo y descarta su cola', async () => {
+test('the new generation does not wait for the old handler and discards its queue', async () => {
   const queue = createGenerationMessageQueue();
   const release = deferred();
   const started = deferred();
@@ -48,7 +48,7 @@ test('la generación nueva no espera al handler viejo y descarta su cola', async
     completed.promise,
     new Promise((_, reject) =>
       setTimeout(
-        () => reject(new Error('La generación nueva quedó bloqueada.')),
+        () => reject(new Error('The new generation got blocked.')),
         100,
       ),
     ),
@@ -58,7 +58,7 @@ test('la generación nueva no espera al handler viejo y descarta su cola', async
   release.resolve();
 });
 
-test('reporta error solo si la generación sigue vigente', async () => {
+test('reports an error only if the generation is still current', async () => {
   const queue = createGenerationMessageQueue();
   const completed = deferred();
   const generation = queue.currentGeneration();

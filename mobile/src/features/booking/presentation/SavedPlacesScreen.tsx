@@ -1,8 +1,8 @@
 /**
- * "Mis lugares guardados": lista los favoritos del pasajero (Casa, Trabajo,
- * Gimnasio, Otros). Permite agregar uno nuevo, editar cada uno, y tocar uno
- * para usarlo como destino del viaje. También ofrece guardar rápido un destino
- * reciente.
+ * "Mis lugares guardados": lists the passenger's favorites (Casa, Trabajo,
+ * Gimnasio, Otros). Allows adding a new one, editing each one, and tapping one
+ * to use it as the ride's destination. It also offers quick-saving a recent
+ * destination.
  */
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -18,7 +18,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
-import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
 import { useRecentDestinations } from '@/features/booking/application/useRecentDestinations';
 import { useSavedPlaces } from '@/features/booking/application/useSavedPlaces';
@@ -31,7 +31,7 @@ import { CATEGORY_META } from '@/features/booking/presentation/savedPlaceCategor
 import { FeedbackState } from '@/shared/components';
 
 export function SavedPlacesScreen() {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   const router = useRouter();
   const { rideId } = useLocalSearchParams<{ rideId?: string }>();
   const {
@@ -84,8 +84,8 @@ export function SavedPlacesScreen() {
     });
   };
 
-  // Guarda rápido un destino reciente: ya tiene coordenadas, así que va directo
-  // al formulario sin pasar por el mapa.
+  // Quick-save a recent destination: it already has coordinates, so it goes straight
+  // to the form without going through the map.
   const quickSave = (place: Place) => {
     const locationError = getBoliviaPlaceError(place);
     if (locationError) {
@@ -107,7 +107,7 @@ export function SavedPlacesScreen() {
     });
   };
 
-  // Recientes que aún no están guardados (compara por coordenadas).
+  // Recents that are not saved yet (compared by coordinates).
   const savedKeys = new Set(
     saved.map(
       (s) => `${s.place.coordinates.latitude.toFixed(5)},${s.place.coordinates.longitude.toFixed(5)}`,
@@ -248,7 +248,7 @@ export function SavedPlacesScreen() {
     </SafeAreaView>
   );
 }
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
   header: {
     flexDirection: 'row',
@@ -272,7 +272,7 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     marginBottom: spacing.md,
     padding: spacing.md,
     borderRadius: radius.md,
-    backgroundColor: colors.peligroSuave,
+    backgroundColor: colors.dangerSoft,
   },
   areaWarningText: { flex: 1, color: colors.danger, fontSize: fontSize.sm },
 

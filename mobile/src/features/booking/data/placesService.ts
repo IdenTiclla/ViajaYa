@@ -1,16 +1,16 @@
 /**
- * Búsqueda de lugares por texto vía Google Places API (new), usando la misma
- * API key de Maps que `routesService`.
+ * Place search by text through Google Places API (new), using the same
+ * Maps API key as `routesService`.
  *
- * El flujo es en dos pasos para no malgastar cuota:
- *  1. `autocomplete(query)` → lista de predicciones (placeId + etiquetas), que se
- *     pide a cada pulsación (con debounce en el hook).
- *  2. `placeDetails(placeId)` → coordenadas reales, solo cuando el usuario elige
- *     una predicción.
+ * The flow has two steps so quota is not wasted:
+ *  1. `autocomplete(query)` → list of predictions (placeId + labels),
+ *     requested on every keystroke (debounced in the hook).
+ *  2. `placeDetails(placeId)` → real coordinates, only when the user picks
+ *     a prediction.
  *
- * Ambos comparten un `sessionToken` para que Google los facture como una sola
- * sesión de autocompletado. Los fallos se propagan para que la UI no confunda
- * un problema de red o configuración con una búsqueda sin resultados.
+ * Both share a `sessionToken` so Google bills them as a single
+ * autocomplete session. Failures are propagated so the UI does not confuse
+ * a network or configuration problem with a search without results.
  */
 import * as Crypto from 'expo-crypto';
 
@@ -23,12 +23,12 @@ import { locationService } from '@/features/home/data/locationService';
 
 const AUTOCOMPLETE_ENDPOINT = 'https://places.googleapis.com/v1/places:autocomplete';
 const DETAILS_ENDPOINT = 'https://places.googleapis.com/v1/places';
-const CALLE_SIN_NOMBRE_RE = /^(?:unnamed road|calle sin nombre|v[ií]a sin nombre|camino sin nombre)$/i;
+const UNNAMED_STREET_RE = /^(?:unnamed road|calle sin nombre|v[ií]a sin nombre|camino sin nombre)$/i;
 
-/** Radio (m) alrededor del origen para priorizar resultados cercanos. */
+/** Radius (m) around the origin to prioritize nearby results. */
 const BIAS_RADIUS_METERS = 50_000;
 
-/** Crea un token de sesión para enlazar autocompletado + detalle de un lugar. */
+/** Create a session token to link autocomplete + a place's details. */
 export function newSessionToken(): string {
   return Crypto.randomUUID();
 }
@@ -47,9 +47,9 @@ type AutocompleteResponse = {
 };
 
 /**
- * Busca lugares que coincidan con `query`. Sesga los resultados hacia `bias`
- * (normalmente el origen) cuando se proporciona, para que aparezcan primero los
- * lugares cercanos.
+ * Search for places matching `query`. Biases the results toward `bias`
+ * (usually the origin) when given, so nearby places show up
+ * first.
  */
 export async function autocomplete(
   query: string,
@@ -117,15 +117,15 @@ function streetFromAddressComponents(
   components: DetailsResponse['addressComponents'],
 ): string | null {
   const street = addressComponentText(components, 'route');
-  if (!street || CALLE_SIN_NOMBRE_RE.test(street)) return null;
+  if (!street || UNNAMED_STREET_RE.test(street)) return null;
   const number = addressComponentText(components, 'street_number');
   return number ? `${street} ${number}` : street;
 }
 
 /**
- * Resuelve las coordenadas (y etiquetas finales) de una predicción. Conserva el
- * `name`/`address` ya mostrados si la respuesta no trae uno mejor, para que la
- * fila elegida no "salte" visualmente.
+ * Resolve the coordinates (and final labels) of a prediction. Keeps the
+ * `name`/`address` already shown if the response does not bring a better one, so the
+ * chosen row does not visually "jump".
  */
 export async function placeDetails(
   suggestion: PlaceSuggestion,
@@ -157,8 +157,8 @@ export async function placeDetails(
         .toUpperCase() ?? null;
     const street = streetFromAddressComponents(data.addressComponents);
     const coordinates = { latitude, longitude };
-    // Places puede omitir `route` en POI, plazas o barrios. En ese caso usamos
-    // sus coordenadas para buscar la vía cercana antes de mostrar el nombre genérico.
+    // Places may omit `route` for POIs, squares or neighborhoods. In that case we use
+    // their coordinates to look up the nearby street before showing the generic name.
     const nearbyStreet = street
       ? null
       : await locationService.reverseGeocodeNearestStreet(coordinates);

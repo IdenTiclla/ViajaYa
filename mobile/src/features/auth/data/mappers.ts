@@ -1,4 +1,4 @@
-/** Mapeo entre el contrato HTTP (snake_case) y los tipos del dominio. */
+/** Mapping between the HTTP contract (snake_case) and the domain types. */
 import type { AuthResult, AuthTokens, User } from '@/features/auth/domain/types';
 import type { ServiceType } from '@/features/booking/domain/types';
 

@@ -1,8 +1,8 @@
 import type { QueryClient, QueryKey, Updater } from '@tanstack/react-query';
 
 /**
- * Aplica una escritura proveniente del WebSocket después de cancelar cualquier
- * GET exacto en vuelo, para que una respuesta anterior no restaure datos viejos.
+ * Apply a write coming from the WebSocket after cancelling any
+ * exact GET in flight, so an older response does not restore stale data.
  */
 export async function writeRealtimeQueryData<T>(
   queryClient: QueryClient,

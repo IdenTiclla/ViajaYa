@@ -40,7 +40,7 @@ function queryClient() {
   });
 }
 
-test('un HTTP anterior no pisa un snapshot del mismo estado', () => {
+test('an earlier HTTP response does not overwrite a snapshot of the same state', () => {
   const client = queryClient();
   const detailKey = ['ride', 'ride-1'];
   const snapshot = { ...ride('searching', 30), paused: true };
@@ -58,7 +58,7 @@ test('un HTTP anterior no pisa un snapshot del mismo estado', () => {
   client.clear();
 });
 
-test('un empate local conserva el detalle que ya estaba aplicado', () => {
+test('a local tie keeps the detail that was already applied', () => {
   const client = queryClient();
   const detailKey = ['ride', 'ride-1'];
   const snapshot = ride('searching', 30);
@@ -75,7 +75,7 @@ test('un empate local conserva el detalle que ya estaba aplicado', () => {
   client.clear();
 });
 
-test('un activo realmente más nuevo refresca y conserva su timestamp', () => {
+test('a truly newer active ride refreshes and keeps its timestamp', () => {
   const client = queryClient();
   const detailKey = ['ride', 'ride-1'];
   client.setQueryData(detailKey, ride('searching', 20), { updatedAt: 100 });
@@ -89,7 +89,7 @@ test('un activo realmente más nuevo refresca y conserva su timestamp', () => {
   client.clear();
 });
 
-test('un activo inicial puede sembrar el detalle sin fabricar frescura', () => {
+test('an initial active ride can seed the detail without faking freshness', () => {
   const client = queryClient();
   const detailKey = ['ride', 'ride-1'];
   const active = ride('searching', 25);
@@ -102,7 +102,7 @@ test('un activo inicial puede sembrar el detalle sin fabricar frescura', () => {
   client.clear();
 });
 
-test('un HTTP accepted no revive un detalle terminal aunque resuelva después', () => {
+test('an HTTP accepted does not revive a terminal detail even if it resolves later', () => {
   const client = queryClient();
   const detailKey = ['ride', 'ride-1'];
   const cancelled = ride('cancelled', 20);

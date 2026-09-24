@@ -1,4 +1,4 @@
-/** Barrido decorativo de búsqueda; la ubicación la representa el marcador nativo. */
+/** Decorative search sweep; the location is represented by the native marker. */
 import { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, { useAnimatedStyle, useFrameCallback, useReducedMotion, useSharedValue } from 'react-native-reanimated';

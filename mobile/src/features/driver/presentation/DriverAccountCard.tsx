@@ -9,7 +9,7 @@ import { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
-import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import type { DriverStatus, VehicleType } from '@/features/auth/domain/types';
 import { VEHICLE_META } from '@/features/auth/domain/vehicleCatalog';
 import { SERVICE_META } from '@/features/booking/domain/serviceCatalog';
@@ -20,7 +20,7 @@ import {
   useSwitchAccountMode,
 } from '@/features/driver/application/useDriverAccount';
 import { MAX_DRIVER_VEHICLES, type DriverVehicle } from '@/features/driver/domain/types';
-import { SelectorVehiculo } from '@/features/driver/presentation/SelectorVehiculo';
+import { VehicleSelector } from '@/features/driver/presentation/VehicleSelector';
 import { Button, ConfirmDialog } from '@/shared/components';
 import { useAuthStore } from '@/store/authStore';
 
@@ -31,7 +31,7 @@ const STATUS_META: Record<DriverStatus, { label: string; icon: IoniconsIconName 
 };
 
 export function DriverAccountCard() {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const vehicles = useDriverVehicles(user != null);
@@ -46,7 +46,7 @@ export function DriverAccountCard() {
   const canAdd = list.length < MAX_DRIVER_VEHICLES;
   const goToForm = (vehicleType?: VehicleType) =>
     router.navigate({
-      pathname: '/(app)/conductor/registro',
+      pathname: '/(app)/driver/register',
       params: vehicleType ? { vehicle: vehicleType } : {},
     });
   const enterAsDriver = (vehicleType: VehicleType) => {
@@ -100,7 +100,7 @@ export function DriverAccountCard() {
 
       <View style={styles.actions}>
         {approved.length > 0 && (
-          <SelectorVehiculo
+          <VehicleSelector
             vehicles={approved}
             onPick={enterAsDriver}
             pending={switchMode.isPending ? pendingVehicle : null}
@@ -153,7 +153,7 @@ function VehicleRow({
   onEdit: () => void;
   onRemove: () => void;
 }) {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   const meta = VEHICLE_META[vehicle.vehicleType];
   const status = STATUS_META[vehicle.status];
   const services = vehicle.services.map((s) => SERVICE_META[s].shortLabel).join(' · ');
@@ -199,7 +199,7 @@ function VehicleRow({
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   card: {
     alignSelf: 'stretch',
     marginTop: spacing.lg,

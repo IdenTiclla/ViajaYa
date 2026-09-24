@@ -1,4 +1,4 @@
-"""Pruebas del adaptador DTO de aplicación → snapshot WebSocket v2."""
+"""Tests of the application DTO → v2 WebSocket snapshot adapter."""
 
 from __future__ import annotations
 

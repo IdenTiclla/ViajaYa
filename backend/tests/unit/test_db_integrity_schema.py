@@ -1,4 +1,4 @@
-"""Contrato del esquema ORM para integridad e índices críticos."""
+"""ORM schema contract for integrity and critical indexes."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ def _check_names(model: type) -> set[str | None]:
     }
 
 
-def test_modelos_declaran_restricciones_de_integridad() -> None:
+def test_models_declare_integrity_constraints() -> None:
     assert "ck_users_rating_range" in _check_names(UserModel)
     assert {
         "ck_ride_requests_fare_positive",
@@ -43,7 +43,7 @@ def test_modelos_declaran_restricciones_de_integridad() -> None:
     assert "ck_ride_ratings_score_range" in _check_names(RideRatingModel)
 
 
-def test_accepted_offer_tiene_fk_set_null() -> None:
+def test_accepted_offer_has_fk_set_null() -> None:
     foreign_keys = RideRequestModel.__table__.c.accepted_offer_id.foreign_keys
 
     assert len(foreign_keys) == 1
@@ -53,7 +53,7 @@ def test_accepted_offer_tiene_fk_set_null() -> None:
     assert foreign_key.constraint.name == "fk_ride_requests_accepted_offer_id_offers"
 
 
-def test_indices_compuestos_reemplazan_indices_simples() -> None:
+def test_composite_indexes_replace_simple_indexes() -> None:
     ride_indexes = {index.name: index for index in RideRequestModel.__table__.indexes}
     offer_indexes = {index.name: index for index in OfferModel.__table__.indexes}
 
@@ -89,7 +89,7 @@ def test_indices_compuestos_reemplazan_indices_simples() -> None:
     assert "ix_offers_driver_id" not in offer_indexes
 
 
-def test_preflight_rechaza_oferta_aceptada_de_otro_ride_o_conductor(monkeypatch) -> None:
+def test_preflight_rejects_an_accepted_offer_from_another_ride_or_driver(monkeypatch) -> None:
     engine = create_engine("sqlite://")
     with engine.begin() as connection:
         connection.exec_driver_sql("CREATE TABLE users (id TEXT PRIMARY KEY, rating REAL)")
@@ -144,13 +144,13 @@ def test_preflight_rechaza_oferta_aceptada_de_otro_ride_o_conductor(monkeypatch)
         context = MigrationContext.configure(connection)
         monkeypatch.setattr(migration, "op", Operations(context))
 
-        with pytest.raises(RuntimeError, match="no coincide con ride/conductor/estado: 3"):
+        with pytest.raises(RuntimeError, match="does not match ride/driver/status: 3"):
             migration._run_preflight()
 
     engine.dispose()
 
 
-def test_migracion_renderiza_not_valid_e_indice_parcial(monkeypatch) -> None:
+def test_migration_renders_not_valid_and_partial_index(monkeypatch) -> None:
     output = StringIO()
     context = MigrationContext.configure(
         dialect=postgresql.dialect(),

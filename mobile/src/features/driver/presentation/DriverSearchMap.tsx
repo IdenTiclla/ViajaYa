@@ -7,60 +7,60 @@ import { useRef, useState } from 'react';
 import { ActivityIndicator, Linking, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 
-import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
-import { useEstiloMapa } from '@/features/booking/presentation/mapStyle';
+import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
+import { useMapStyle } from '@/features/booking/presentation/mapStyle';
 import type { VehicleType } from '@/features/auth/domain/types';
 import type { Coordinates } from '@/core/domain/geo';
 import type { WatchStatus } from '@/features/home/application/useWatchPosition';
-import { MarcadorVehiculo } from './MarcadorVehiculo';
+import { VehicleMarker } from './VehicleMarker';
 import { RadarPulse } from './RadarPulse';
 import { useDriverMapCamera } from './useDriverMapCamera';
 
-// Zoom de navegación urbano: muestra unas manzanas alrededor del conductor.
+// Urban navigation zoom: shows a few blocks around the driver.
 const FOLLOW_DELTA = 0.012;
 
 type Props = {
   coordinates: Coordinates | null;
   heading: number | null;
-  tipoVehiculo: VehicleType | null;
+  vehicleType: VehicleType | null;
   status: WatchStatus;
   retry: () => void;
   showRadar?: boolean;
 };
 
 export function DriverSearchMap(props: Props) {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   const { coordinates, status, retry } = props;
-  if (coordinates) return <MapaUbicado {...props} coordinates={coordinates} />;
+  if (coordinates) return <LocatedMap {...props} coordinates={coordinates} />;
 
-  const cargando = status === 'loading';
-  const abrirConfiguracion = status === 'denied' || status === 'disabled';
-  const mensaje = cargando ? 'Buscando tu ubicación…'
+  const loading = status === 'loading';
+  const openSettings = status === 'denied' || status === 'disabled';
+  const message = loading ? 'Buscando tu ubicación…'
     : status === 'disabled' ? 'La ubicación del teléfono está desactivada.'
       : status === 'denied' ? 'Permite el acceso a tu ubicación para mostrarte en el mapa.'
         : 'Todavía no recibimos tu ubicación. Comprueba la señal y que la ubicación esté activada.';
-  const configurar = () => {
+  const configure = () => {
     if (status === 'disabled' && Platform.OS === 'android') {
       void Linking.sendIntent('android.settings.LOCATION_SOURCE_SETTINGS').catch(() => Linking.openSettings());
     } else {
       void Linking.openSettings();
     }
   };
-  // No mostrar una ciudad fija como si fuera la ubicación del conductor.
+  // Do not show a fixed city as if it were the driver's location.
   return (
     <View style={styles.container}>
       <View style={styles.permissionOverlay}>
         <View style={styles.permissionCard}>
-          {cargando ? <ActivityIndicator color={colors.primary} size="large" />
+          {loading ? <ActivityIndicator color={colors.primary} size="large" />
             : <Ionicons name="location-outline" size={28} color={colors.primary} />}
-          <Text style={styles.permissionText} accessibilityLiveRegion="polite">{mensaje}</Text>
-          {!cargando && (
+          <Text style={styles.permissionText} accessibilityLiveRegion="polite">{message}</Text>
+          {!loading && (
             <TouchableOpacity
               style={styles.retryBtn}
-              onPress={abrirConfiguracion ? configurar : retry}
+              onPress={openSettings ? configure : retry}
               accessibilityRole="button"
-              accessibilityLabel={abrirConfiguracion ? 'Abrir configuración de ubicación' : 'Reintentar ubicación'}>
-              <Text style={styles.retryBtnText}>{abrirConfiguracion ? 'Abrir configuración' : 'Reintentar'}</Text>
+              accessibilityLabel={openSettings ? 'Abrir configuración de ubicación' : 'Reintentar ubicación'}>
+              <Text style={styles.retryBtnText}>{openSettings ? 'Abrir configuración' : 'Reintentar'}</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -69,13 +69,13 @@ export function DriverSearchMap(props: Props) {
   );
 }
 
-function MapaUbicado({ coordinates, heading, tipoVehiculo, showRadar = false }: Props & { coordinates: Coordinates }) {
-  const { styles } = useEstilos(crearEstilos);
+function LocatedMap({ coordinates, heading, vehicleType, showRadar = false }: Props & { coordinates: Coordinates }) {
+  const { styles } = useThemedStyles(createStyles);
   const mapRef = useRef<MapView>(null);
-  const { estiloMapa, modoMapa } = useEstiloMapa(true);
-  const [listo, setListo] = useState(false);
+  const { mapStyle, mapMode } = useMapStyle(true);
+  const [ready, setReady] = useState(false);
   const [layout, setLayout] = useState({ width: 0, height: 0 });
-  const { radarPoint, updateRadarPosition } = useDriverMapCamera(mapRef, coordinates, listo, layout.width, layout.height);
+  const { radarPoint, updateRadarPosition } = useDriverMapCamera(mapRef, coordinates, ready, layout.width, layout.height);
   const radarSize = Math.min(365, layout.width, layout.height);
 
   const region: Region = {
@@ -88,9 +88,9 @@ function MapaUbicado({ coordinates, heading, tipoVehiculo, showRadar = false }: 
   return (
     <View
       style={styles.container}
-      onLayout={({ nativeEvent: { layout: medidas } }) => {
-        setLayout((actual) => actual.width === medidas.width && actual.height === medidas.height
-          ? actual : { width: medidas.width, height: medidas.height });
+      onLayout={({ nativeEvent: { layout: size } }) => {
+        setLayout((current) => current.width === size.width && current.height === size.height
+          ? current : { width: size.width, height: size.height });
       }}>
       <MapView
         ref={mapRef}
@@ -100,8 +100,8 @@ function MapaUbicado({ coordinates, heading, tipoVehiculo, showRadar = false }: 
         showsIndoorLevelPicker={false}
         style={StyleSheet.absoluteFill}
         initialRegion={region}
-        customMapStyle={estiloMapa}
-        userInterfaceStyle={modoMapa}
+        customMapStyle={mapStyle}
+        userInterfaceStyle={mapMode}
         scrollEnabled={false}
         zoomEnabled={false}
         rotateEnabled={false}
@@ -112,9 +112,9 @@ function MapaUbicado({ coordinates, heading, tipoVehiculo, showRadar = false }: 
         showsMyLocationButton={false}
         showsCompass={false}
         showsScale={false}
-        onMapReady={() => setListo(true)}
+        onMapReady={() => setReady(true)}
         onRegionChangeComplete={updateRadarPosition}>
-        <MarcadorVehiculo coordinates={coordinates} heading={heading} tipoVehiculo={tipoVehiculo} />
+        <VehicleMarker coordinates={coordinates} heading={heading} vehicleType={vehicleType} />
       </MapView>
 
       {showRadar && radarPoint && <View testID="driver-location-radar" pointerEvents="none" style={{ position: 'absolute',
@@ -125,7 +125,7 @@ function MapaUbicado({ coordinates, heading, tipoVehiculo, showRadar = false }: 
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   container: { flex: 1, overflow: 'hidden', backgroundColor: colors.surfaceMuted },
   permissionOverlay: {
     position: 'absolute',

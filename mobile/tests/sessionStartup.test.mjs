@@ -4,13 +4,13 @@ import test from 'node:test';
 
 const mocks = {
   '@/core/http/tokenStorage': `export const tokenStorage = {
-    async get() { return { accessToken: 'anterior', refreshToken: 'válido' }; },
+    async get() { return { accessToken: 'previous', refreshToken: 'válido' }; },
     async save() {}, async clear() {},
   };`,
   '@/core/http/client': `export let expired;
     export const api = { async post() {} };
     export function setOnSessionExpired(fn) { expired = fn; }
-    export function invalidarSolicitudesSesion() {}`,
+    export function invalidateSessionRequests() {}`,
   '@/features/auth/data/authRepository': `export const authRepository = {
     async me() { return { id: 'pasajero' }; },
   };`,
@@ -37,19 +37,19 @@ const { authRepository } = await import('@/features/auth/data/authRepository');
 const { expired } = await import('@/core/http/client');
 hooks.deregister();
 
-test('un fallo nativo al leer la sesión termina la carga y permite reintentar', async (t) => {
+test('a native failure reading the session ends loading and allows retrying', async (t) => {
   const get = tokenStorage.get;
   t.after(() => { tokenStorage.get = get; });
-  tokenStorage.get = async () => { throw new Error('No se pudo leer la sesión'); };
+  tokenStorage.get = async () => { throw new Error('Could not read the session'); };
   await useAuthStore.getState().bootstrap();
   assert.equal(useAuthStore.getState().status, 'error');
-  assert.match(useAuthStore.getState().startupError, /leer la sesión/);
+  assert.match(useAuthStore.getState().startupError, /read the session/);
   tokenStorage.get = get;
   await useAuthStore.getState().bootstrap();
   assert.equal(useAuthStore.getState().status, 'authenticated');
 });
 
-test('el arranque sin red conserva credenciales para otro intento', async (t) => {
+test('starting without network keeps credentials for another attempt', async (t) => {
   const me = authRepository.me;
   t.after(() => { authRepository.me = me; });
   const clear = t.mock.method(tokenStorage, 'clear');
@@ -62,25 +62,25 @@ test('el arranque sin red conserva credenciales para otro intento', async (t) =>
   assert.equal(useAuthStore.getState().status, 'authenticated');
 });
 
-test('un arranque bloqueado vence y una respuesta vieja no pisa la sesión nueva', async (t) => {
+test('a blocked startup times out and an old response does not overwrite the new session', async (t) => {
   const me = authRepository.me;
   t.after(() => { authRepository.me = me; });
   t.mock.timers.enable({ apis: ['setTimeout'] });
-  let resolver;
-  authRepository.me = () => new Promise((resolve) => { resolver = resolve; });
-  const intento = useAuthStore.getState().bootstrap();
+  let release;
+  authRepository.me = () => new Promise((resolve) => { release = resolve; });
+  const attempt = useAuthStore.getState().bootstrap();
   await Promise.resolve();
   t.mock.timers.tick(30_000);
-  await intento;
+  await attempt;
   assert.equal(useAuthStore.getState().status, 'error');
   authRepository.me = async () => ({ id: 'nuevo' });
   await useAuthStore.getState().bootstrap();
-  resolver({ id: 'anterior' });
+  release({ id: 'anterior' });
   await Promise.resolve();
   assert.equal(useAuthStore.getState().user.id, 'nuevo');
 });
 
-test('una respuesta de arranque no restaura una sesión que ya venció', async (t) => {
+test('a startup response does not restore a session that already expired', async (t) => {
   const me = authRepository.me;
   t.after(() => { authRepository.me = me; });
   authRepository.me = async () => { expired(); return { id: 'anterior' }; };
@@ -89,7 +89,7 @@ test('una respuesta de arranque no restaura una sesión que ya venció', async (
   assert.equal(useAuthStore.getState().user, null);
 });
 
-test('salir de la recuperación lleva al login aunque falle el borrado nativo', async (t) => {
+test('leaving recovery goes to login even if the native deletion fails', async (t) => {
   t.mock.method(tokenStorage, 'clear', async () => { throw new Error('Almacenamiento inaccesible'); });
   useAuthStore.setState({ status: 'error', user: null, startupError: 'Sin conexión' });
   await useAuthStore.getState().signOut();
@@ -97,14 +97,14 @@ test('salir de la recuperación lleva al login aunque falle el borrado nativo', 
   assert.equal(useAuthStore.getState().startupError, null);
 });
 
-test('salir descarta una restauración pendiente que responde después', async (t) => {
-  let resolver;
-  t.mock.method(authRepository, 'me', () => new Promise((resolve) => { resolver = resolve; }));
-  const arranque = useAuthStore.getState().bootstrap();
+test('leaving discards a pending restore that answers later', async (t) => {
+  let release;
+  t.mock.method(authRepository, 'me', () => new Promise((resolve) => { release = resolve; }));
+  const startup = useAuthStore.getState().bootstrap();
   await Promise.resolve();
   await useAuthStore.getState().signOut();
-  resolver({ id: 'anterior' });
-  await arranque;
+  release({ id: 'anterior' });
+  await startup;
   assert.equal(useAuthStore.getState().status, 'unauthenticated');
   assert.equal(useAuthStore.getState().user, null);
 });

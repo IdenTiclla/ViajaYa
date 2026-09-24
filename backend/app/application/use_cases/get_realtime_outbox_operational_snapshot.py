@@ -1,4 +1,4 @@
-"""Caso de uso: obtiene un snapshot operativo de la outbox realtime."""
+"""Use case: get an operational snapshot of the realtime outbox."""
 
 from __future__ import annotations
 
@@ -16,12 +16,12 @@ def _as_utc(value: datetime) -> datetime:
 
 
 def _nonnegative_seconds(later: datetime, earlier: datetime) -> float:
-    """Calcula una duración sin publicar gauges negativos por clock skew."""
+    """Compute a duration without publishing negative gauges due to clock skew."""
     return max(0.0, (_as_utc(later) - _as_utc(earlier)).total_seconds())
 
 
 class GetRealtimeOutboxOperationalSnapshot:
-    """Deriva edades operativas sobre una proyección persistida y estable."""
+    """Derive operational ages over a stable, persisted projection."""
 
     def __init__(self, reader: RealtimeOutboxOperationalReader) -> None:
         self._reader = reader

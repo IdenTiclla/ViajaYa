@@ -1,9 +1,9 @@
 /**
- * Completa las etiquetas de origen/destino antes de publicar un viaje.
+ * Complete the origin/destination labels before publishing a ride.
  *
- * La selección del mapa puede avanzar apenas tiene coordenadas para no bloquear
- * equipos lentos. Esta barrera reintenta la geocodificación en la pantalla de
- * configuración y evita que un texto provisional llegue al conductor.
+ * The map selection may move on as soon as it has coordinates so slow devices are
+ * not blocked. This barrier retries geocoding on the
+ * configure screen and keeps a provisional text from reaching the driver.
  */
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo } from 'react';
@@ -15,7 +15,7 @@ import { locationService } from '@/features/home/data/locationService';
 
 type PointKey = 'origin' | 'destination';
 
-function mismasCoordenadas(a: Place['coordinates'], b: Place['coordinates']): boolean {
+function sameCoordinates(a: Place['coordinates'], b: Place['coordinates']): boolean {
   return a.latitude === b.latitude && a.longitude === b.longitude;
 }
 
@@ -69,8 +69,8 @@ export function useTripPlaceLabels(): {
         coordinates: Place['coordinates'];
         label: Awaited<ReturnType<typeof locationService.reverseGeocode>>;
       }[] = [];
-      // Secuencial a propósito: Android desaconseja varias geocodificaciones
-      // nativas simultáneas y el origen no debe desplazar al destino de la cola.
+      // Sequential on purpose: Android discourages several simultaneous native
+      // geocodings, and the origin must not push the destination out of the queue.
       for (const item of pending) {
         results.push({
           key: item.key,
@@ -93,7 +93,7 @@ export function useTripPlaceLabels(): {
         isUsefulLabel(item.label) &&
         currentPlace &&
         !isPlaceLabelResolved(currentPlace) &&
-        mismasCoordenadas(currentPlace.coordinates, item.coordinates)
+        sameCoordinates(currentPlace.coordinates, item.coordinates)
       ) {
         updates[item.key] = {
           coordinates: currentPlace.coordinates,

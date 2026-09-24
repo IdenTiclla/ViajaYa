@@ -1,4 +1,4 @@
-"""Contrato de leases Redis por conexión para presencia compartida."""
+"""Contract of per-connection Redis leases for shared presence."""
 
 from __future__ import annotations
 
@@ -95,7 +95,7 @@ def _store(
     )
 
 
-async def test_desconectar_una_conexion_no_borra_el_lease_de_otra() -> None:
+async def test_disconnecting_a_connection_does_not_delete_another_lease() -> None:
     client = _FakeRedisPresenceClient()
     store = _store(client)
     ride_id = uuid.uuid4()
@@ -114,7 +114,7 @@ async def test_desconectar_una_conexion_no_borra_el_lease_de_otra() -> None:
     assert observation.retry_after_seconds == 145
 
 
-async def test_ultima_desconexion_conserva_gracia_y_luego_desaparece() -> None:
+async def test_last_disconnection_keeps_grace_and_then_disappears() -> None:
     client = _FakeRedisPresenceClient()
     store = _store(client)
     ride_id = uuid.uuid4()
@@ -130,7 +130,7 @@ async def test_ultima_desconexion_conserva_gracia_y_luego_desaparece() -> None:
     assert observation.present is False
 
 
-async def test_heartbeat_http_renueva_solo_la_gracia_del_ride() -> None:
+async def test_http_heartbeat_renews_only_the_ride_grace() -> None:
     client = _FakeRedisPresenceClient()
     store = _store(client)
     visible_id = uuid.uuid4()
@@ -142,7 +142,7 @@ async def test_heartbeat_http_renueva_solo_la_gracia_del_ride() -> None:
     assert await store.present_ride_ids([visible_id, absent_id]) == set()
 
 
-async def test_caida_y_recuperacion_del_transporte_aplazan_toda_cancelacion(
+async def test_transport_outage_and_recovery_postpone_every_cancellation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     now = 10.0
@@ -167,7 +167,7 @@ async def test_caida_y_recuperacion_del_transporte_aplazan_toda_cancelacion(
     assert (await store.observe(uuid.uuid4())).present is False
 
 
-async def test_fallos_redis_se_sanitizan_y_marcan_el_store_no_sano() -> None:
+async def test_redis_failures_are_sanitized_and_mark_the_store_unhealthy() -> None:
     client = _FakeRedisPresenceClient()
     store = _store(client)
     await store.preflight()

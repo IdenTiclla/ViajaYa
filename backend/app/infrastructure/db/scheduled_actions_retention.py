@@ -1,4 +1,4 @@
-"""Retención SQLAlchemy de acciones diferidas terminales exitosas."""
+"""SQLAlchemy retention of successful terminal deferred actions."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from app.infrastructure.db.models import ScheduledActionModel
 
 
 class SqlAlchemyTerminalScheduledActionsRetention(TerminalScheduledActionsRetention):
-    """Elimina un chunk antiguo sin tocar pendientes, leases ni acciones ``dead``."""
+    """Delete an old chunk without touching pending actions, leases or ``dead`` actions."""
 
     _PURGEABLE_STATUSES = ("succeeded", "cancelled")
 
@@ -25,7 +25,7 @@ class SqlAlchemyTerminalScheduledActionsRetention(TerminalScheduledActionsRetent
         action_limit: int,
     ) -> int:
         if action_limit <= 0:
-            raise ValueError("El límite de acciones debe ser positivo.")
+            raise ValueError("The action limit must be positive.")
 
         candidate_ids = list(
             (

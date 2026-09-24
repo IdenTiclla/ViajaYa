@@ -1,4 +1,4 @@
-"""Proyección SQLAlchemy para observar la salud de la outbox realtime."""
+"""SQLAlchemy projection to observe the realtime outbox's health."""
 
 from __future__ import annotations
 
@@ -25,15 +25,15 @@ def _as_utc(value: datetime | None) -> datetime | None:
 
 
 class SqlAlchemyRealtimeOutboxOperationalReader(RealtimeOutboxOperationalReader):
-    """Cuenta filas y batches terminales sin cargar payloads ni modelos ORM."""
+    """Count terminal rows and batches without loading payloads or ORM models."""
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
     async def read(self) -> RealtimeOutboxOperationalState:
         if self._session.get_bind().dialect.name == "postgresql":
-            # Todos los agregados del endpoint pertenecen al mismo corte. Debe
-            # ser la primera sentencia de esta sesión corta y de solo lectura.
+            # All the endpoint's aggregates belong to the same cut. It must
+            # be the first statement of this short, read-only session.
             await self._session.execute(
                 text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
             )

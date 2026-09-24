@@ -3,7 +3,7 @@ import { useRef } from 'react';
 import { AccessibilityInfo, findNodeHandle, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import { Button } from './Button';
 
 type Props = {
@@ -12,17 +12,17 @@ type Props = {
   message?: string;
   confirmText?: string;
   cancelText?: string;
-  /** Resalta la acción de confirmar en rojo (p. ej. eliminar). */
+  /** Highlight the confirm action in red (e.g. delete). */
   destructive?: boolean;
-  /** Ícono de Ionicons mostrado sobre el título. */
+  /** Ionicons icon shown above the title. */
   icon?: IoniconsIconName;
   onConfirm: () => void;
   onCancel: () => void;
 };
 
 /**
- * Diálogo de confirmación con el estilo de la app (en vez del `Alert` nativo).
- * Controlado por `visible`; el padre decide qué hacer en confirmar/cancelar.
+ * Confirmation dialog with the app's style (instead of the native `Alert`).
+ * Controlled by `visible`; the parent decides what to do on confirm/cancel.
  */
 export function ConfirmDialog({
   visible,
@@ -35,13 +35,13 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: Props) {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   const accent = destructive ? colors.danger : colors.primary;
-  const tituloRef = useRef<Text>(null);
+  const titleRef = useRef<Text>(null);
   const { width, fontScale } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const mobileLayout = width < 600;
-  const accionesEnColumna = mobileLayout || fontScale > 1.2;
+  const actionsInColumn = mobileLayout || fontScale > 1.2;
 
   return (
     <Modal
@@ -50,44 +50,44 @@ export function ConfirmDialog({
       animationType="fade"
       statusBarTranslucent
       onShow={() => {
-        // En web el Modal administra el foco mediante su contenedor de diálogo.
+        // On web the Modal manages focus through its dialog container.
         if (Platform.OS === 'web') return;
-        const titulo = findNodeHandle(tituloRef.current);
-        if (titulo != null) AccessibilityInfo.setAccessibilityFocus(titulo);
+        const titleNode = findNodeHandle(titleRef.current);
+        if (titleNode != null) AccessibilityInfo.setAccessibilityFocus(titleNode);
       }}
       onRequestClose={onCancel}>
       {/* Fondo: tocar fuera cancela. */}
       <Pressable style={[styles.backdrop, mobileLayout && styles.mobileBackdrop,
         { paddingTop: Math.max(insets.top, spacing.md), paddingBottom: Math.max(insets.bottom, spacing.md) }]}
         onPress={onCancel} accessible={false}>
-        {/* Tarjeta: detiene la propagación para no cancelar al tocarla. */}
+        {/* Card: stops propagation so tapping it does not cancel. */}
         <Pressable
           style={styles.card}
           onPress={event => event.stopPropagation()}
           accessible={false}
           onAccessibilityEscape={onCancel}
           accessibilityViewIsModal>
-          <ScrollView style={styles.scroll} contentContainerStyle={styles.contenido} bounces={false}>
+          <ScrollView style={styles.scroll} contentContainerStyle={styles.content} bounces={false}>
           {icon && (
-            <View style={[styles.iconWrap, { backgroundColor: destructive ? colors.peligroSuave : colors.primarioSuave }]}>
+            <View style={[styles.iconWrap, { backgroundColor: destructive ? colors.dangerSoft : colors.primarySoft }]}>
               <Ionicons name={icon} size={26} color={accent} />
             </View>
           )}
-          <Text ref={tituloRef} style={styles.title} accessibilityRole="header">{title}</Text>
+          <Text ref={titleRef} style={styles.title} accessibilityRole="header">{title}</Text>
           {message ? <Text style={styles.message}>{message}</Text> : null}
 
           </ScrollView>
-          <View style={[styles.actions, accionesEnColumna && styles.actionsColumn]}>
+          <View style={[styles.actions, actionsInColumn && styles.actionsColumn]}>
             <Button
               title={cancelText}
               variant="text"
-              style={!accionesEnColumna && styles.button}
+              style={!actionsInColumn && styles.button}
               onPress={onCancel}
             />
             <Button
               title={confirmText}
               variant={destructive ? 'danger' : 'primary'}
-              style={!accionesEnColumna && styles.button}
+              style={!actionsInColumn && styles.button}
               onPress={onConfirm}
             />
           </View>
@@ -97,7 +97,7 @@ export function ConfirmDialog({
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.55)',
@@ -119,7 +119,7 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     elevation: 12,
   },
   scroll: { flexShrink: 1 },
-  contenido: { padding: spacing.lg, alignItems: 'flex-start', gap: spacing.sm },
+  content: { padding: spacing.lg, alignItems: 'flex-start', gap: spacing.sm },
   iconWrap: {
     width: 52,
     height: 52,

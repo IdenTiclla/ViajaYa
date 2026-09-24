@@ -1,4 +1,4 @@
-"""Exposición OpenMetrics de señales operativas sanitizadas."""
+"""OpenMetrics exposure of sanitized operational signals."""
 
 from __future__ import annotations
 
@@ -107,87 +107,87 @@ def render_realtime_openmetrics(
     presence_observation_count: int = 0,
     presence_failure_count: int = 0,
 ) -> str:
-    """Renderiza solo agregados operativos, sin payloads, topics ni errores."""
+    """Render only operational aggregates, without payloads, topics or errors."""
     document = _OpenMetricsDocument()
     dispatcher_enabled = mode in {"shadow", "live_local", "live_redis"}
     document.metric(
         "viajaya_realtime_outbox",
-        "Información estable del modo realtime activo.",
+        "Stable information about the active realtime mode.",
         "info",
         [({"mode": mode}, 1)],
         sample_name="viajaya_realtime_outbox_info",
     )
     document.metric(
         "viajaya_realtime_outbox_collection_success",
-        "Indica si la lectura persistida requerida por este scrape tuvo éxito.",
+        "Whether the persisted read required by this scrape succeeded.",
         "gauge",
         [({}, int(scrape_success))],
     )
     document.metric(
         "viajaya_realtime_outbox_dispatcher_enabled",
-        "Indica si la configuración requiere un dispatcher de outbox.",
+        "Whether the configuration requires an outbox dispatcher.",
         "gauge",
         [({}, int(dispatcher_enabled))],
     )
     document.metric(
         "viajaya_realtime_outbox_dispatcher_running",
-        "Indica si el dispatcher requerido está ejecutándose en este proceso.",
+        "Whether the required dispatcher is running in this process.",
         "gauge",
         [({}, int(dispatcher_running))],
     )
     document.metric(
         "viajaya_realtime_outbox_dispatcher_error",
-        "Indica si el dispatcher conserva un fallo operativo sin recuperar.",
+        "Whether the dispatcher keeps an unrecovered operational failure.",
         "gauge",
         [({}, int(dispatcher_error))],
     )
     document.metric(
         "viajaya_realtime_redis_bridge_enabled",
-        "Indica si el modo activo requiere fanout Redis entre procesos.",
+        "Whether the active mode requires Redis fan-out between processes.",
         "gauge",
         [({}, int(mode == "live_redis"))],
     )
     document.metric(
         "viajaya_realtime_redis_bridge_connected",
-        "Indica si este proceso mantiene su suscripción Redis realtime.",
+        "Whether this process keeps its realtime Redis subscription.",
         "gauge",
         [({}, int(redis_connected))],
     )
     document.metric(
         "viajaya_realtime_redis_bridge_error",
-        "Indica si el bridge Redis conserva un fallo sin recuperar.",
+        "Whether the Redis bridge keeps an unrecovered failure.",
         "gauge",
         [({}, int(redis_error))],
     )
     for name, help_text, value in (
         (
             "published_batches",
-            "Batches publicados a Redis por este proceso desde su arranque.",
+            "Batches published to Redis by this process since startup.",
             redis_published_batch_count,
         ),
         (
             "received_batches",
-            "Batches Redis recibidos por este proceso desde su arranque.",
+            "Redis batches received by this process since startup.",
             redis_received_batch_count,
         ),
         (
             "received_events",
-            "Eventos Redis recibidos por este proceso desde su arranque.",
+            "Redis events received by this process since startup.",
             redis_received_event_count,
         ),
         (
             "resync_messages",
-            "Órdenes Redis de resnapshot recibidas desde el arranque.",
+            "Redis resnapshot commands received since startup.",
             redis_resync_message_count,
         ),
         (
             "reconnects",
-            "Reconexiones Redis intentadas por este proceso desde el arranque.",
+            "Redis reconnections attempted by this process since startup.",
             redis_reconnect_count,
         ),
         (
             "invalid_messages",
-            "Mensajes Redis inválidos descartados desde el arranque.",
+            "Invalid Redis messages discarded since startup.",
             redis_invalid_message_count,
         ),
     ):
@@ -200,50 +200,50 @@ def render_realtime_openmetrics(
         )
     document.metric(
         "viajaya_realtime_redis_last_publish_subscribers",
-        "Suscriptores confirmados por el último PUBLISH de este proceso.",
+        "Subscribers confirmed by this process's last PUBLISH.",
         "gauge",
         [({}, redis_last_publish_subscriber_count)],
     )
     document.metric(
         "viajaya_realtime_local_sockets",
-        "Sockets WebSocket locales únicos suscritos en este proceso.",
+        "Unique local WebSocket sockets subscribed in this process.",
         "gauge",
         [({}, redis_local_socket_count)],
     )
     document.metric(
         "viajaya_realtime_outbox_retention_enabled",
-        "Indica si la configuración requiere el worker de retención.",
+        "Whether the configuration requires the retention worker.",
         "gauge",
         [({}, int(retention_days > 0))],
     )
     document.metric(
         "viajaya_realtime_outbox_retention_running",
-        "Indica si el worker de retención requerido está ejecutándose.",
+        "Whether the required retention worker is running.",
         "gauge",
         [({}, int(retention_running))],
     )
     document.metric(
         "viajaya_realtime_outbox_retention_error",
-        "Indica si el worker de retención conserva un fallo sin recuperar.",
+        "Whether the retention worker keeps an unrecovered failure.",
         "gauge",
         [({}, int(retention_error))],
     )
     document.metric(
         "viajaya_realtime_outbox_retention_days",
-        "TTL configurado para batches publicados; cero deshabilita la retención.",
+        "TTL configured for published batches; zero disables retention.",
         "gauge",
         [({}, retention_days)],
     )
     document.metric(
         "viajaya_realtime_outbox_retention_deleted_batches",
-        "Batches publicados eliminados por este proceso desde su arranque.",
+        "Published batches deleted by this process since startup.",
         "counter",
         [({}, retention_deleted_batch_count)],
         sample_name="viajaya_realtime_outbox_retention_deleted_batches_total",
     )
     document.metric(
         "viajaya_realtime_outbox_retention_deleted_events",
-        "Eventos publicados eliminados por este proceso desde su arranque.",
+        "Published events deleted by this process since startup.",
         "counter",
         [({}, retention_deleted_event_count)],
         sample_name="viajaya_realtime_outbox_retention_deleted_events_total",
@@ -251,56 +251,56 @@ def render_realtime_openmetrics(
 
     document.metric(
         "viajaya_scheduled_actions",
-        "Información estable del modo de acciones programadas.",
+        "Stable information about the scheduled actions mode.",
         "info",
         [({"mode": scheduled_mode}, 1)],
         sample_name="viajaya_scheduled_actions_info",
     )
     document.metric(
         "viajaya_scheduled_actions_collection_success",
-        "Indica si el scrape persistido del scheduler tuvo éxito.",
+        "Whether the scheduler's persisted scrape succeeded.",
         "gauge",
         [({}, int(scheduled_scrape_success))],
     )
     document.metric(
         "viajaya_scheduled_actions_worker_enabled",
-        "Indica si la configuración requiere ejecutar el worker.",
+        "Whether the configuration requires running the worker.",
         "gauge",
         [({}, int(scheduled_mode in {"shadow", "live"}))],
     )
     document.metric(
         "viajaya_scheduled_actions_worker_running",
-        "Indica si el worker requerido está ejecutándose en este proceso.",
+        "Whether the required worker is running in this process.",
         "gauge",
         [({}, int(scheduled_worker_running))],
     )
     document.metric(
         "viajaya_scheduled_actions_worker_error",
-        "Indica si el worker conserva un fallo operativo sin recuperar.",
+        "Whether the worker keeps an unrecovered operational failure.",
         "gauge",
         [({}, int(scheduled_worker_error))],
     )
     document.metric(
         "viajaya_scheduled_actions_retention_running",
-        "Indica si la retención requerida está ejecutándose en este proceso.",
+        "Whether the required retention is running in this process.",
         "gauge",
         [({}, int(scheduled_retention_running))],
     )
     document.metric(
         "viajaya_scheduled_actions_retention_error",
-        "Indica si la retención conserva un fallo operativo sin recuperar.",
+        "Whether retention keeps an unrecovered operational failure.",
         "gauge",
         [({}, int(scheduled_retention_error))],
     )
     document.metric(
         "viajaya_scheduled_actions_retention_days",
-        "TTL de acciones succeeded/cancelled; las acciones dead se conservan.",
+        "TTL of succeeded/cancelled actions; dead actions are kept.",
         "gauge",
         [({}, scheduled_retention_days)],
     )
     document.metric(
         "viajaya_scheduled_actions_retention_deleted_actions",
-        "Acciones terminales eliminadas por este proceso desde su arranque.",
+        "Terminal actions deleted by this process since startup.",
         "counter",
         [({}, scheduled_retention_deleted_action_count)],
         sample_name="viajaya_scheduled_actions_retention_deleted_actions_total",
@@ -308,32 +308,32 @@ def render_realtime_openmetrics(
     for name, help_text, value in (
         (
             "claimed",
-            "Acciones reclamadas por este proceso desde su arranque.",
+            "Actions claimed by this process since startup.",
             scheduled_claimed_count,
         ),
         (
             "succeeded",
-            "Acciones completadas por este proceso desde su arranque.",
+            "Actions completed by this process since startup.",
             scheduled_succeeded_count,
         ),
         (
             "deferred",
-            "Acciones aplazadas de forma segura por este proceso.",
+            "Actions safely postponed by this process.",
             scheduled_deferred_count,
         ),
         (
             "retried",
-            "Acciones reprogramadas por este proceso desde su arranque.",
+            "Actions rescheduled by this process since startup.",
             scheduled_retried_count,
         ),
         (
             "dead",
-            "Acciones agotadas por este proceso desde su arranque.",
+            "Actions exhausted by this process since startup.",
             scheduled_dead_count,
         ),
         (
             "recovered_leases",
-            "Leases abandonados recuperados por este proceso desde su arranque.",
+            "Abandoned leases recovered by this process since startup.",
             scheduled_recovered_lease_count,
         ),
     ):
@@ -359,17 +359,17 @@ def render_realtime_openmetrics(
             ),
             (
                 "running",
-                "Acciones con lease reclamado.",
+                "Actions with a claimed lease.",
                 scheduled_snapshot.running_count,
             ),
             (
                 "stale",
-                "Acciones running cuyo lease ya puede recuperarse.",
+                "Running actions whose lease can already be recovered.",
                 scheduled_snapshot.stale_count,
             ),
             (
                 "retrying",
-                "Acciones pendientes que consumieron al menos un intento.",
+                "Pending actions that consumed at least one attempt.",
                 scheduled_snapshot.retrying_count,
             ),
         ):
@@ -391,7 +391,7 @@ def render_realtime_openmetrics(
             )
         document.metric(
             "viajaya_scheduled_actions_dead_persisted",
-            "Acciones terminales dead agrupadas por tipo acotado.",
+            "Terminal dead actions grouped by bounded type.",
             "gauge",
             [
                 ({"action_type": action_type}, count)
@@ -400,56 +400,56 @@ def render_realtime_openmetrics(
         )
         document.metric(
             "viajaya_scheduled_actions_oldest_due_age_seconds",
-            "Edad de la acción vencida más antigua.",
+            "Age of the oldest due action.",
             "gauge",
             [({}, scheduled_snapshot.oldest_due_age_seconds)],
         )
         if scheduled_snapshot.next_due_at is not None:
             document.metric(
                 "viajaya_scheduled_actions_next_due_timestamp_seconds",
-                "Instante Unix del próximo deadline pendiente.",
+                "Unix instant of the next pending deadline.",
                 "gauge",
                 [({}, scheduled_snapshot.next_due_at.timestamp())],
             )
         if scheduled_snapshot.latest_succeeded_at is not None:
             document.metric(
                 "viajaya_scheduled_actions_latest_succeeded_timestamp_seconds",
-                "Instante Unix del último ack exitoso observado.",
+                "Unix instant of the last successful ack observed.",
                 "gauge",
                 [({}, scheduled_snapshot.latest_succeeded_at.timestamp())],
             )
 
     document.metric(
         "viajaya_passenger_presence_enabled",
-        "Indica si este proceso usa leases Redis compartidos de presencia.",
+        "Whether this process uses shared Redis presence leases.",
         "gauge",
         [({}, int(shared_presence_enabled))],
     )
     document.metric(
         "viajaya_passenger_presence_healthy",
-        "Indica si el cliente Redis de presencia está sano.",
+        "Whether the Redis presence client is healthy.",
         "gauge",
         [({}, int(shared_presence_healthy))],
     )
     for name, help_text, value in (
         (
             "renewals",
-            "Leases WebSocket o pulsos HTTP renovados desde el arranque.",
+            "WebSocket leases or HTTP pulses renewed since startup.",
             presence_renewal_count,
         ),
         (
             "disconnects",
-            "Leases WebSocket cerrados desde el arranque.",
+            "WebSocket leases closed since startup.",
             presence_disconnect_count,
         ),
         (
             "observations",
-            "Solicitudes evaluadas por presencia desde el arranque.",
+            "Requests evaluated by presence since startup.",
             presence_observation_count,
         ),
         (
             "failures",
-            "Fallos sanitizados del cliente de presencia desde el arranque.",
+            "Sanitized presence client failures since startup.",
             presence_failure_count,
         ),
     ):
@@ -466,19 +466,19 @@ def render_realtime_openmetrics(
 
     document.metric(
         "viajaya_realtime_outbox_pending_events",
-        "Eventos pendientes no terminales en la outbox.",
+        "Pending non-terminal events in the outbox.",
         "gauge",
         [({}, snapshot.pending_event_count)],
     )
     document.metric(
         "viajaya_realtime_outbox_pending_batches",
-        "Batches pendientes no terminales en la outbox.",
+        "Pending non-terminal batches in the outbox.",
         "gauge",
         [({}, snapshot.pending_batch_count)],
     )
     document.metric(
         "viajaya_realtime_outbox_retrying_batches",
-        "Batches pendientes que ya consumieron al menos un intento.",
+        "Pending batches that already consumed at least one attempt.",
         "gauge",
         [({}, snapshot.retrying_batch_count)],
     )
@@ -488,7 +488,7 @@ def render_realtime_openmetrics(
         quarantine_counts[code] = quarantine_counts.get(code, 0) + item.batch_count
     document.metric(
         "viajaya_realtime_outbox_quarantined_batches",
-        "Batches terminales en cuarentena agrupados por código estable.",
+        "Terminal quarantined batches grouped by stable code.",
         "gauge",
         [
             ({"code": code}, count)
@@ -497,21 +497,21 @@ def render_realtime_openmetrics(
     )
     document.metric(
         "viajaya_realtime_outbox_max_pending_age_seconds",
-        "Edad máxima aproximada de los eventos pendientes.",
+        "Approximate maximum age of the pending events.",
         "gauge",
         [({}, snapshot.max_pending_age_seconds)],
     )
     if snapshot.latest_publish_delay_seconds is not None:
         document.metric(
             "viajaya_realtime_outbox_latest_publish_delay_seconds",
-            "Demora conservadora created_at a published_at del último evento publicado.",
+            "Conservative created_at to published_at delay of the last published event.",
             "gauge",
             [({}, snapshot.latest_publish_delay_seconds)],
         )
     if snapshot.latest_published_at is not None:
         document.metric(
             "viajaya_realtime_outbox_latest_published_timestamp_seconds",
-            "Instante Unix del último evento publicado observado.",
+            "Unix instant of the last published event observed.",
             "gauge",
             [({}, snapshot.latest_published_at.timestamp())],
         )
@@ -532,7 +532,7 @@ async def metrics(
     use_case: RealtimeOutboxOperationalSnapshotDep,
     scheduled_use_case: ScheduledActionsOperationalSnapshotDep,
 ) -> Response:
-    """Expone métricas scrapeables sin convertir fallos internos en datos."""
+    """Expose scrapeable metrics without turning internal failures into data."""
     mode = settings.realtime_outbox_dispatch_mode
     retention_days = settings.realtime_outbox_published_retention_days
     dispatcher = request.app.state.realtime_outbox_dispatcher
@@ -602,7 +602,7 @@ async def metrics(
         except Exception as error:  # noqa: BLE001 - scrape sanitizado
             scrape_success = False
             logger.warning(
-                "Falló el scrape OpenMetrics de la outbox (%s).",
+                "Outbox OpenMetrics scrape failed (%s).",
                 type(error).__name__,
             )
 
@@ -618,7 +618,7 @@ async def metrics(
         except Exception as error:  # noqa: BLE001 - scrape sanitizado
             scheduled_scrape_success = False
             logger.warning(
-                "Falló el scrape OpenMetrics de scheduled_actions (%s).",
+                "scheduled_actions OpenMetrics scrape failed (%s).",
                 type(error).__name__,
             )
 

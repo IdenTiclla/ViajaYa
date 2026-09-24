@@ -1,1 +1,1 @@
-"""Pruebas opt-in que certifican garantías exclusivas de PostgreSQL."""
+"""Opt-in tests that certify guarantees exclusive to PostgreSQL."""

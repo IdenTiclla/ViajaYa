@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import { createRealtimeDiagnosticRecorder } from '../src/core/realtime/diagnostics.ts';
 
-test('conserva un buffer acotado con metadatos sanitizados', () => {
+test('keeps a bounded buffer with sanitized metadata', () => {
   const emitted = [];
   const recorder = createRealtimeDiagnosticRecorder({
     capacity: 2,
@@ -17,14 +17,14 @@ test('conserva un buffer acotado con metadatos sanitizados', () => {
     scope: 'passenger',
     frameType: 'ride_status',
     path: 'data.status',
-    payload: { token: 'no debe conservarse' },
+    payload: { token: 'must not be kept' },
   });
   recorder.record({
     kind: 'closed',
     scope: 'passenger',
     code: 1012,
     wasClean: false,
-    reason: 'texto remoto no confiable',
+    reason: 'untrusted remote text',
   });
 
   assert.equal(emitted.length, 3);
@@ -50,7 +50,7 @@ test('conserva un buffer acotado con metadatos sanitizados', () => {
   assert.equal('reason' in emitted[2], false);
 });
 
-test('normaliza metadatos inválidos y nunca propaga fallos del sink', () => {
+test('normalizes invalid metadata and never propagates sink failures', () => {
   const recorder = createRealtimeDiagnosticRecorder({
     sink: () => {
       throw new Error('sink');
@@ -93,7 +93,7 @@ test('normaliza metadatos inválidos y nunca propaga fallos del sink', () => {
   );
 });
 
-test('el observador deshabilitado no conserva ni emite eventos', () => {
+test('the disabled observer neither keeps nor emits events', () => {
   let emitted = 0;
   const recorder = createRealtimeDiagnosticRecorder({
     enabled: false,

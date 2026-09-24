@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 
 class ScheduledActionsWorker:
-    """Reclama en transacciones cortas y ejecuta cada efecto en una sesión nueva."""
+    """Claim in short transactions and run each effect in a new session."""
 
     def __init__(
         self,
@@ -57,17 +57,17 @@ class ScheduledActionsWorker:
         reconciliation_batch_limit: int = 1000,
     ) -> None:
         if poll_interval_seconds <= 0:
-            raise ValueError("El intervalo de polling debe ser positivo.")
+            raise ValueError("The polling interval must be positive.")
         if lease_seconds <= 0:
-            raise ValueError("El lease debe ser positivo.")
+            raise ValueError("The lease must be positive.")
         if not 0 < handler_timeout_seconds < lease_seconds:
-            raise ValueError("El timeout del handler debe ser menor al lease.")
+            raise ValueError("The handler timeout must be lower than the lease.")
         if max_attempts < 1:
-            raise ValueError("La cantidad máxima de intentos debe ser positiva.")
+            raise ValueError("The maximum number of attempts must be positive.")
         if retry_base_seconds <= 0 or retry_max_seconds < retry_base_seconds:
-            raise ValueError("El backoff configurado no es válido.")
+            raise ValueError("The configured backoff is not valid.")
         if reconciliation_batch_limit <= 0:
-            raise ValueError("El límite de reconciliación debe ser positivo.")
+            raise ValueError("The reconciliation limit must be positive.")
         self._session_factory = session_factory
         self._executor = executor
         self._poll_interval_seconds = poll_interval_seconds
@@ -123,7 +123,7 @@ class ScheduledActionsWorker:
         return self._recovered_lease_count
 
     async def preflight(self) -> None:
-        """Exige la tabla completa y sus índices operativos antes de arrancar."""
+        """Require the full table and its operational indexes before starting."""
         async with self._session_factory() as session:
             try:
                 await session.execute(select(ScheduledActionModel).limit(1))
@@ -143,7 +143,7 @@ class ScheduledActionsWorker:
                 }
                 if not required <= index_names:
                     raise RuntimeError(
-                        "Faltan índices operativos de la migración 0022."
+                        "Operational indexes from migration 0022 are missing."
                     )
             finally:
                 await session.rollback()
@@ -170,7 +170,7 @@ class ScheduledActionsWorker:
                 timeout=self._handler_timeout_seconds,
             )
         except asyncio.CancelledError:
-            # Un SIGTERM/cancel deja el lease running; otro worker lo recupera.
+            # A SIGTERM/cancel leaves the lease running; another worker recovers it.
             raise
         except (InvalidScheduledActionError, UnsupportedScheduledActionError) as error:
             return await self._record_failure(
@@ -212,9 +212,9 @@ class ScheduledActionsWorker:
 
     async def run(self) -> None:
         if self._running:
-            raise RuntimeError("El worker de scheduled_actions ya está en ejecución.")
+            raise RuntimeError("The scheduled_actions worker is already running.")
         self._running = True
-        logger.info("Worker de scheduled_actions iniciado.")
+        logger.info("scheduled_actions worker started.")
         try:
             while not self._stop_event.is_set():
                 try:
@@ -225,7 +225,7 @@ class ScheduledActionsWorker:
                 except Exception as error:  # noqa: BLE001 - loop operativo resiliente
                     self._last_error = type(error).__name__
                     logger.error(
-                        "Falló un ciclo de scheduled_actions (%s).",
+                        "A scheduled_actions cycle failed (%s).",
                         self._last_error,
                     )
                     await self._wait_for_work()
@@ -235,13 +235,13 @@ class ScheduledActionsWorker:
                     await self._wait_for_work()
                 elif result.status == "dead":
                     logger.error(
-                        "Una scheduled_action terminó dead (%s, intento %s).",
+                        "A scheduled_action ended dead (%s, attempt %s).",
                         result.action_type,
                         result.attempts,
                     )
         finally:
             self._running = False
-            logger.info("Worker de scheduled_actions detenido.")
+            logger.info("scheduled_actions worker stopped.")
 
     def stop(self) -> None:
         self._stop_event.set()
@@ -264,8 +264,8 @@ class ScheduledActionsWorker:
         loop_now = loop.time()
         if loop_now < self._next_reconciliation_at:
             return
-        # Durante un backlog el loop consume sin dormir. Limitar la consulta al
-        # intervalo de polling evita escanear ofertas antes de cada claim.
+        # During a backlog the loop consumes without sleeping. Limiting the query to the
+        # polling interval avoids scanning offers before every claim.
         self._next_reconciliation_at = loop_now + self._poll_interval_seconds
         async with self._session_factory() as session:
             created_count = await ReconcileMissingScheduledActions(
@@ -274,7 +274,7 @@ class ScheduledActionsWorker:
             ).execute(self._reconciliation_batch_limit)
         if created_count:
             logger.warning(
-                "Reconciliación reparó %s acciones durables ausentes.",
+                "Reconciliation repaired %s missing durable actions.",
                 created_count,
             )
 

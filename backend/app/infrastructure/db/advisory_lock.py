@@ -1,4 +1,4 @@
-"""Coordinación de procesos consumidores de la outbox realtime."""
+"""Coordination of the realtime outbox consumer processes."""
 
 from __future__ import annotations
 
@@ -35,23 +35,23 @@ class LiveLocalProcessLockUnavailableError(RuntimeError):
 
 
 class PostgreSQLLiveLocalProcessLock:
-    """Mantiene la exclusión de modos realtime en una conexión dedicada.
+    """Hold the realtime mode exclusion on a dedicated connection.
 
-    El lock se deriva del nombre de la base para no hacer colisionar entornos
-    que compartan un mismo clúster PostgreSQL. La conexión usa autocommit: queda
-    reservada durante el lifespan sin mantener una transacción ociosa abierta.
-    Durante el rolling deploy todos los modos conservan además la clave de la
-    versión anterior: shadow la comparte y ambos live la toman en exclusiva.
-    Esto impide mezclar binarios viejos/nuevos. ``live_redis`` solo comparte la
-    clave legada cuando el despliegue certifica presencia compartida; un binario
-    anterior, que todavía la toma en exclusiva, continúa bloqueando el rolling.
-    Un mutex efímero
-    serializa únicamente la transición mientras cada grupo comprueba que el
-    opuesto esté vacío.
+    The lock is derived from the database name so that environments sharing the
+    same PostgreSQL cluster do not collide. The connection uses autocommit: it stays
+    reserved for the lifespan without keeping an idle transaction open.
+    During a rolling deploy every mode also keeps the previous version's
+    key: shadow shares it and both live modes take it exclusively.
+    This prevents mixing old/new binaries. ``live_redis`` only shares the
+    legacy key when the deployment certifies shared presence; an older
+    binary, which still takes it exclusively, keeps blocking the rollout.
+    An ephemeral mutex
+    serializes only the transition while each group checks that the
+    opposite one is empty.
 
-    SQLite solo se admite para las pruebas locales. En ese dialecto el método
-    devuelve ``False`` y no finge una exclusión que SQLite no puede garantizar
-    entre procesos.
+    SQLite is only supported for local tests. In that dialect the method
+    returns ``False`` and does not pretend to provide an exclusion SQLite cannot guarantee
+    across processes.
     """
 
     def __init__(
@@ -65,7 +65,7 @@ class PostgreSQLLiveLocalProcessLock:
         self._session_factory = session_factory
         self._mode = mode or ("live_local" if exclusive else "shadow")
         if allow_live_redis_multiworker and self._mode != "live_redis":
-            raise ValueError("Solo live_redis puede habilitar el lock multiworker.")
+            raise ValueError("Only live_redis can enable the multi-worker lock.")
         self._allow_live_redis_multiworker = allow_live_redis_multiworker
         self._connection: AsyncConnection | None = None
         self._dialect_name: str | None = None
@@ -85,17 +85,17 @@ class PostgreSQLLiveLocalProcessLock:
         return self._dialect_name
 
     async def acquire(self) -> bool:
-        """Adquiere la exclusión o falla si otra instancia ya la posee."""
+        """Acquire the exclusion or fail if another instance already holds it."""
         if self._connection is not None or self._dialect_name is not None:
-            raise RuntimeError("El lock live_local ya fue inicializado.")
+            raise RuntimeError("The live_local lock was already initialized.")
 
         engine = await self._resolve_engine()
         self._dialect_name = engine.dialect.name
         if self._dialect_name == "sqlite":
-            logger.warning("SQLite no aplica coordinación multiproceso realtime.")
+            logger.warning("SQLite does not apply multi-process realtime coordination.")
             return False
         if self._dialect_name != "postgresql":
-            raise RuntimeError("El lock realtime requiere PostgreSQL.")
+            raise RuntimeError("The realtime lock requires PostgreSQL.")
 
         connection = await engine.connect()
         try:
@@ -141,7 +141,7 @@ class PostgreSQLLiveLocalProcessLock:
                 )
                 if not legacy_acquired:
                     raise LiveLocalProcessLockUnavailableError(
-                        "Existe un modo realtime incompatible activo para esta base."
+                        "An incompatible realtime mode is active for this database."
                     )
                 held_acquired = False
                 try:
@@ -152,7 +152,7 @@ class PostgreSQLLiveLocalProcessLock:
                     )
                     if not held_acquired:
                         raise LiveLocalProcessLockUnavailableError(
-                            "Existe un modo realtime incompatible activo para esta base."
+                            "An incompatible realtime mode is active for this database."
                         )
                     conflicting_acquired = await self._try_lock(
                         connection,
@@ -161,7 +161,7 @@ class PostgreSQLLiveLocalProcessLock:
                     )
                     if not conflicting_acquired:
                         raise LiveLocalProcessLockUnavailableError(
-                            "Existe un modo realtime incompatible activo para esta base."
+                            "An incompatible realtime mode is active for this database."
                         )
                     await self._unlock(
                         connection,
@@ -199,10 +199,10 @@ class PostgreSQLLiveLocalProcessLock:
         return True
 
     async def check(self) -> bool:
-        """Comprueba la misma sesión propietaria sin readquirir el lock.
+        """Check the same owning session without re-acquiring the lock.
 
-        Comparar el PID evita considerar sana una reconexión transparente: una
-        nueva sesión ya no posee el advisory lock original.
+        Comparing the PID avoids treating a transparent reconnection as healthy: a
+        new session no longer holds the original advisory lock.
         """
         async with self._operation_lock:
             if self._dialect_name == "sqlite":
@@ -221,12 +221,12 @@ class PostgreSQLLiveLocalProcessLock:
                     ).scalar_one()
                 )
             except Exception:  # noqa: BLE001 - probe fail-closed y sanitizado
-                logger.error("Se perdió la sesión propietaria del lock realtime.")
+                logger.error("The session owning the realtime lock was lost.")
                 return False
             return current_pid == self._backend_pid
 
     async def release(self) -> None:
-        """Libera la exclusión y devuelve la conexión dedicada al pool."""
+        """Release the exclusion and return the dedicated connection to the pool."""
         async with self._operation_lock:
             connection = self._connection
             self._connection = None
@@ -244,7 +244,7 @@ class PostgreSQLLiveLocalProcessLock:
                 if connection.invalidated:
                     return
                 if held_expression is None:
-                    raise RuntimeError("El lock realtime perdió su identidad.")
+                    raise RuntimeError("The realtime lock lost its identity.")
                 released = await self._unlock(
                     connection,
                     held_expression,
@@ -252,7 +252,7 @@ class PostgreSQLLiveLocalProcessLock:
                 )
                 if not released:
                     logger.error(
-                        "PostgreSQL informó que el lock realtime no estaba tomado."
+                        "PostgreSQL reported that the realtime lock was not held."
                     )
                 legacy_released = await self._unlock(
                     connection,
@@ -261,11 +261,11 @@ class PostgreSQLLiveLocalProcessLock:
                 )
                 if not legacy_released:
                     logger.error(
-                        "PostgreSQL informó que el lock realtime legado no estaba tomado."
+                        "PostgreSQL reported that the legacy realtime lock was not held."
                     )
             except Exception:  # noqa: BLE001 - cerrar libera el lock
-                # No se registra el error del driver para no filtrar el DSN.
-                logger.error("No se pudo liberar limpiamente el lock realtime.")
+                # The driver error is not logged so the DSN does not leak.
+                logger.error("Could not cleanly release the realtime lock.")
                 await connection.invalidate()
             finally:
                 await connection.close()
@@ -310,7 +310,7 @@ class PostgreSQLLiveLocalProcessLock:
         try:
             engine = session.bind
             if not isinstance(engine, AsyncEngine):
-                raise RuntimeError("La factoría de sesiones no tiene un AsyncEngine.")
+                raise RuntimeError("The session factory has no AsyncEngine.")
             return engine
         finally:
             await session.close()

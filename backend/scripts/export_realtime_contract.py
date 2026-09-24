@@ -1,12 +1,12 @@
-"""Genera y verifica ejemplos versionados del contrato realtime backend → mobile.
+"""Generate and verify versioned examples of the backend → mobile realtime contract.
 
-Uso::
+Usage::
 
     python -m scripts.export_realtime_contract
     python -m scripts.export_realtime_contract --check
 
-Los ejemplos se construyen con los schemas y serializadores productivos. El
-modo ``--check`` solo compara el contrato actual con el snapshot; nunca escribe.
+The examples are built with the production schemas and serializers. ``--check``
+mode only compares the current contract with the snapshot; it never writes.
 """
 
 from __future__ import annotations
@@ -481,8 +481,8 @@ def _v2_snapshot_cases() -> list[_ContractCase]:
     ]
 
 
-def construir_contrato_realtime() -> dict[str, object]:
-    """Construye la matriz canónica con serializadores productivos."""
+def build_realtime_contract() -> dict[str, object]:
+    """Build the canonical matrix with the production serializers."""
     messages = _messages()
     cases = [
         *_legacy_cases(messages),
@@ -495,10 +495,10 @@ def construir_contrato_realtime() -> dict[str, object]:
     }
 
 
-def serializar_contrato_realtime() -> str:
-    """Devuelve el contrato como JSON estable terminado en salto de línea."""
+def serialize_realtime_contract() -> str:
+    """Return the contract as stable JSON ending with a newline."""
     return json.dumps(
-        construir_contrato_realtime(),
+        build_realtime_contract(),
         ensure_ascii=False,
         allow_nan=False,
         indent=2,
@@ -506,40 +506,40 @@ def serializar_contrato_realtime() -> str:
     ) + "\n"
 
 
-def snapshot_esta_actualizado(
-    destino: Path = REALTIME_CONTRACT_SNAPSHOT,
+def snapshot_is_current(
+    destination: Path = REALTIME_CONTRACT_SNAPSHOT,
     *,
-    esperado: str | None = None,
+    expected: str | None = None,
 ) -> bool:
-    """Compara el snapshot sin escribir en disco."""
-    if esperado is None:
-        esperado = serializar_contrato_realtime()
+    """Compare the snapshot without writing to disk."""
+    if expected is None:
+        expected = serialize_realtime_contract()
     try:
-        actual = destino.read_text(encoding="utf-8")
+        current = destination.read_text(encoding="utf-8")
     except FileNotFoundError:
         return False
-    return actual == esperado
+    return current == expected
 
 
-def escribir_snapshot(
-    destino: Path = REALTIME_CONTRACT_SNAPSHOT,
+def write_snapshot(
+    destination: Path = REALTIME_CONTRACT_SNAPSHOT,
     *,
-    contenido: str | None = None,
+    content: str | None = None,
 ) -> None:
     """Escribe el contrato realtime serializado de forma determinista."""
-    if contenido is None:
-        contenido = serializar_contrato_realtime()
-    destino.write_text(contenido, encoding="utf-8")
+    if content is None:
+        content = serialize_realtime_contract()
+    destination.write_text(content, encoding="utf-8")
 
 
-def _crear_parser() -> argparse.ArgumentParser:
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Genera o verifica el snapshot realtime backend → mobile."
+        description="Generate or verify the backend → mobile realtime snapshot."
     )
     parser.add_argument(
         "--check",
         action="store_true",
-        help="falla si el snapshot difiere, sin modificarlo",
+        help="fail if the snapshot differs, without modifying it",
     )
     return parser
 
@@ -547,25 +547,25 @@ def _crear_parser() -> argparse.ArgumentParser:
 def main(
     argv: Sequence[str] | None = None,
     *,
-    destino: Path = REALTIME_CONTRACT_SNAPSHOT,
+    destination: Path = REALTIME_CONTRACT_SNAPSHOT,
 ) -> int:
-    """Ejecuta la exportación o comprobación solicitada."""
-    args = _crear_parser().parse_args(argv)
-    esperado = serializar_contrato_realtime()
+    """Run the requested export or check."""
+    args = _build_parser().parse_args(argv)
+    expected = serialize_realtime_contract()
 
     if args.check:
-        if snapshot_esta_actualizado(destino, esperado=esperado):
-            print(f"Contrato realtime actualizado: {destino}")
+        if snapshot_is_current(destination, expected=expected):
+            print(f"Contrato realtime actualizado: {destination}")
             return 0
         print(
-            "El snapshot realtime está desactualizado. Ejecuta "
-            "`python -m scripts.export_realtime_contract` y versiona el resultado.",
+            "The realtime snapshot is out of date. Run "
+            "`python -m scripts.export_realtime_contract` and commit the result.",
             file=sys.stderr,
         )
         return 1
 
-    escribir_snapshot(destino, contenido=esperado)
-    print(f"Contrato realtime exportado: {destino}")
+    write_snapshot(destination, content=expected)
+    print(f"Contrato realtime exportado: {destination}")
     return 0
 
 

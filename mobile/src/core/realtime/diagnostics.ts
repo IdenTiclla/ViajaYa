@@ -1,8 +1,8 @@
 /**
- * Evidencia técnica acotada para certificar el WebSocket en un dev build.
+ * Bounded technical evidence to certify the WebSocket on a dev build.
  *
- * Solo conserva categorías cerradas y metadatos del transporte. Nunca acepta
- * rutas, identificadores de viaje, tokens, frames ni payloads.
+ * It only keeps closed categories and transport metadata. It never accepts
+ * routes, ride identifiers, tokens, frames or payloads.
  */
 
 export type RealtimeDiagnosticScope = 'passenger' | 'driver';
@@ -164,7 +164,7 @@ export function createRealtimeDiagnosticRecorder(
 const developmentDiagnosticsEnabled =
   typeof __DEV__ !== 'undefined' && __DEV__;
 
-/** Buffer global consultable desde herramientas de desarrollo y visible en logcat. */
+/** Global buffer queryable from developer tools and visible in logcat. */
 export const realtimeDiagnostics = createRealtimeDiagnosticRecorder({
   enabled: developmentDiagnosticsEnabled,
   sink: (record) => {

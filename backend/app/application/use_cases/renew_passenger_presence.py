@@ -1,4 +1,4 @@
-"""Caso de uso: renovar un lease compartido de presencia del pasajero."""
+"""Use case: renew a shared passenger presence lease."""
 
 from __future__ import annotations
 
@@ -36,11 +36,11 @@ class RenewPassengerPresence:
         try:
             if source == "websocket":
                 if connection_id is None:
-                    raise ValueError("La presencia WebSocket requiere connection_id.")
+                    raise ValueError("WebSocket presence requires a connection_id.")
                 delay = await self._leases.renew_websocket(ride_id, connection_id)
             else:
                 if connection_id is not None:
-                    raise ValueError("La presencia HTTP no admite connection_id.")
+                    raise ValueError("HTTP presence does not accept a connection_id.")
                 delay = await self._leases.renew_http(ride_id)
             action = await self._actions.schedule_next(
                 RenewableScheduledAction(

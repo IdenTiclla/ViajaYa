@@ -1,4 +1,4 @@
-"""Mapeo único de excepciones de dominio a respuestas HTTP (DRY)."""
+"""Single mapping of domain exceptions to HTTP responses (DRY)."""
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ from app.domain.phone_identity import (
     PhoneVerificationUnavailableError,
 )
 
-# Excepción de dominio -> código HTTP.
+# Domain exception -> HTTP status code.
 _STATUS_MAP: dict[type[DomainError], int] = {
     InvalidAccountProfileError: 422,
     ReauthenticationRequiredError: 403,

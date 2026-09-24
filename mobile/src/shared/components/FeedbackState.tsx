@@ -1,7 +1,7 @@
 import { Ionicons, type IoniconsIconName } from '@react-native-vector-icons/ionicons';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
-import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import { Button } from '@/shared/components/Button';
 
 type Props = {
@@ -14,7 +14,7 @@ type Props = {
   onAction?: () => void;
 };
 
-/** Estado consistente para cargas, errores y listas vacías. */
+/** Consistent state for loading, errors and empty lists. */
 export function FeedbackState({
   title,
   message,
@@ -24,7 +24,7 @@ export function FeedbackState({
   actionLabel,
   onAction,
 }: Props) {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   return (
     <View
       style={[styles.root, compact ? styles.compact : styles.expanded]}
@@ -54,7 +54,7 @@ export function FeedbackState({
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   root: {
     minHeight: 260,
     alignItems: 'center',
@@ -70,7 +70,7 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: radius.lg,
-    backgroundColor: colors.primarioSuave,
+    backgroundColor: colors.primarySoft,
     borderWidth: 1,
     borderColor: colors.border,
     marginBottom: spacing.xs,

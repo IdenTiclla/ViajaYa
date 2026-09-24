@@ -1,4 +1,4 @@
-"""Reconciliación SQLAlchemy de acciones durables ausentes."""
+"""SQLAlchemy reconciliation of missing durable actions."""
 
 from __future__ import annotations
 
@@ -24,14 +24,14 @@ from app.infrastructure.db.scheduled_actions import (
 class SqlAlchemyMissingOfferScheduledActionsReconciler(
     MissingScheduledActionsReconciler
 ):
-    """Repara por lotes la ventana entre migración y productor nuevo."""
+    """Repair in batches the window between the migration and the new producer."""
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
     async def reconcile(self, action_limit: int) -> int:
         if action_limit <= 0:
-            raise ValueError("El límite de reconciliación debe ser positivo.")
+            raise ValueError("The reconciliation limit must be positive.")
 
         already_scheduled = (
             select(ScheduledActionModel.id)
@@ -77,17 +77,17 @@ class SqlAlchemyMissingOfferScheduledActionsReconciler(
 class SqlAlchemyMissingPassengerPresenceActionsReconciler(
     MissingScheduledActionsReconciler
 ):
-    """Da una gracia completa a búsquedas previas al productor compartido."""
+    """Give searches that predate the shared producer a full grace period."""
 
     def __init__(self, session: AsyncSession, *, grace_seconds: float) -> None:
         if grace_seconds <= 0:
-            raise ValueError("La gracia de presencia debe ser positiva.")
+            raise ValueError("The presence grace period must be positive.")
         self._session = session
         self._grace = timedelta(seconds=grace_seconds)
 
     async def reconcile(self, action_limit: int) -> int:
         if action_limit <= 0:
-            raise ValueError("El límite de reconciliación debe ser positivo.")
+            raise ValueError("The reconciliation limit must be positive.")
 
         already_scheduled = (
             select(ScheduledActionModel.id)
@@ -134,16 +134,16 @@ class SqlAlchemyMissingPassengerPresenceActionsReconciler(
 
 
 class CompositeMissingScheduledActionsReconciler(MissingScheduledActionsReconciler):
-    """Ejecuta un lote acotado por cada clase de acción independiente."""
+    """Run one bounded batch per independent action class."""
 
     def __init__(self, *reconcilers: MissingScheduledActionsReconciler) -> None:
         if not reconcilers:
-            raise ValueError("Se requiere al menos un reconciliador.")
+            raise ValueError("At least one reconciler is required.")
         self._reconcilers = reconcilers
 
     async def reconcile(self, action_limit: int) -> int:
         if action_limit <= 0:
-            raise ValueError("El límite de reconciliación debe ser positivo.")
+            raise ValueError("The reconciliation limit must be positive.")
         created_count = 0
         for reconciler in self._reconcilers:
             created_count += await reconciler.reconcile(action_limit)

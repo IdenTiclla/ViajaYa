@@ -1,4 +1,4 @@
-"""Certificación PostgreSQL de la cuarentena terminal de outbox 0020."""
+"""PostgreSQL certification of the 0020 outbox terminal quarantine."""
 
 from __future__ import annotations
 
@@ -168,7 +168,7 @@ async def test_migration_0020_preserves_rows_and_protects_its_downgrade(
                 {"id": event_id, "now": now},
             )
 
-        with pytest.raises(RuntimeError, match="existen eventos"):
+        with pytest.raises(RuntimeError, match="quarantined outbox events"):
             await pg_test_db.migrate_async("downgrade", _REVISION_0019)
 
         async with pg_test_db.engine.begin() as connection:

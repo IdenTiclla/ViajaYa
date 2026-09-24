@@ -18,8 +18,8 @@ import MapView, { PROVIDER_GOOGLE, type Details, type Region } from 'react-nativ
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
-import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
-import { useEstiloMapa } from '@/features/booking/presentation/mapStyle';
+import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
+import { useMapStyle } from '@/features/booking/presentation/mapStyle';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
 import { useRecentDestinations } from '@/features/booking/application/useRecentDestinations';
 import { useRegionPlace } from '@/features/booking/application/useRegionPlace';
@@ -38,7 +38,7 @@ import {
 import type { Coordinates, Place } from '@/features/booking/domain/types';
 import { CenterPin } from '@/features/booking/presentation/CenterPin';
 import { ServiceTypeSelector } from '@/features/booking/presentation/ServiceTypeSelector';
-import { confirmarRecuperacion } from '@/features/home/application/confirmarRecuperacion';
+import { confirmRecovery } from '@/features/home/application/confirmRecovery';
 import { useCurrentLocation } from '@/features/home/application/useCurrentLocation';
 import {
   PASSENGER_ACTIVE_RIDE_KEY,
@@ -59,7 +59,7 @@ function firstName(fullName: string | undefined): string {
   return fullName?.trim().split(/\s+/)[0] ?? 'viajero';
 }
 
-function coordenadasCasiIguales(a: Coordinates, b: Coordinates): boolean {
+function coordinatesNearlyEqual(a: Coordinates, b: Coordinates): boolean {
   return (
     Math.abs(a.latitude - b.latitude) < 0.00001 &&
     Math.abs(a.longitude - b.longitude) < 0.00001
@@ -67,11 +67,11 @@ function coordenadasCasiIguales(a: Coordinates, b: Coordinates): boolean {
 }
 
 export function HomeScreen() {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   const user = useAuthStore((s) => s.user);
   const insets = useSafeAreaInsets();
   const { height: screenHeight } = useWindowDimensions();
-  // Mantiene visibles saludo, busqueda y servicios sin cubrir innecesariamente el mapa.
+  // Keeps the greeting, search and services visible without needlessly covering the map.
   const availableHeight = Math.max(320, screenHeight - insets.top - spacing.md);
   const sheetHeight = Math.min(
     Math.max(Math.round(screenHeight * 0.66), 420),
@@ -100,7 +100,7 @@ export function HomeScreen() {
   } = usePendingRatingRide();
   const { status, coordinates, canAskAgain, isEstimated, retry } = useCurrentLocation();
   const mapRef = useRef<MapView>(null);
-  const { estiloMapa, modoMapa } = useEstiloMapa(false);
+  const { mapStyle, mapMode } = useMapStyle(false);
   const mapReady = useRef(false);
   const pendingAutomaticRegion = useRef<Region | null>(null);
   const lastLocationRefresh = useRef(0);
@@ -123,7 +123,7 @@ export function HomeScreen() {
     () => recentPlaces.filter(isPlaceInBolivia),
     [recentPlaces],
   );
-  // Al terminar de mover el mapa, el centro pasa a ser el origen.
+  // When the map stops moving, the center becomes the origin.
   const {
     onRegionChangeComplete: handleRegionChange,
     isResolving: originResolving,
@@ -139,10 +139,10 @@ export function HomeScreen() {
         ? `${originPrefix}: Dirección pendiente`
         : `${originPrefix}: ${origin ? 'Obteniendo dirección…' : 'Mueve el mapa'}`;
 
-  // Empieza colapsado (mapa visible). translateY: 0 = expandido, MAX = colapsado.
-  // `useState` con inicializador perezoso crea valores estables; el offset del
-  // arrastre lo lleva el propio Animated.Value (extractOffset/flattenOffset),
-  // así no hace falta una ref accedida durante el render.
+  // Starts collapsed (map visible). translateY: 0 = expanded, MAX = collapsed.
+  // `useState` with a lazy initializer creates stable values; the drag offset
+  // is tracked by the Animated.Value itself (extractOffset/flattenOffset),
+  // so no ref needs to be read during render.
   const [translateY] = useState(() => new Animated.Value(maxTranslate));
 
   useEffect(() => {
@@ -152,17 +152,17 @@ export function HomeScreen() {
   const pan = useMemo(
     () =>
       PanResponder.create({
-        // Solo toma el gesto si es un arrastre vertical claro (deja pasar taps).
+        // Only takes the gesture if it is a clear vertical drag (lets taps through).
         onMoveShouldSetPanResponder: (_, g) =>
           Math.abs(g.dy) > 4 && Math.abs(g.dy) > Math.abs(g.dx),
-        // Conserva la posición actual como base del arrastre.
+        // Keep the current position as the drag base.
         onPanResponderGrant: () => translateY.extractOffset(),
         onPanResponderMove: (_, g) => translateY.setValue(g.dy),
         onPanResponderRelease: (_, g) => {
           translateY.flattenOffset();
           translateY.stopAnimation((value) => {
             const collapsed = maxTranslate;
-            // Snap a la posición más cercana, o según la velocidad del gesto.
+            // Snap to the closest position, or based on the gesture's velocity.
             const target =
               g.vy > 0.5
                 ? collapsed
@@ -192,9 +192,9 @@ export function HomeScreen() {
     };
   }, [coordinates]);
 
-  // Siembra el origen con la ubicación disponible. Si empezó con una posición
-  // estimada, la reemplaza por la posición fresca salvo que el pasajero haya movido
-  // el mapa o elegido otro origen mientras tanto.
+  // Seed the origin with the available location. If it started with an estimated
+  // position, replace it with the fresh one unless the passenger moved
+  // the map or chose another origin in the meantime.
   useEffect(() => {
     if (!region) return;
     const nextCoordinates = { latitude: region.latitude, longitude: region.longitude };
@@ -211,14 +211,14 @@ export function HomeScreen() {
     if (
       previousCoordinates &&
       origin &&
-      !coordenadasCasiIguales(origin.coordinates, previousCoordinates)
+      !coordinatesNearlyEqual(origin.coordinates, previousCoordinates)
     ) {
       originAdjustedByUser.current = true;
       setOriginManuallyAdjusted(true);
       cancelOriginResolution();
       return;
     }
-    if (previousCoordinates && coordenadasCasiIguales(previousCoordinates, nextCoordinates)) return;
+    if (previousCoordinates && coordinatesNearlyEqual(previousCoordinates, nextCoordinates)) return;
 
     if (!mapReady.current) {
       pendingAutomaticRegion.current = region;
@@ -230,9 +230,9 @@ export function HomeScreen() {
     handleRegionChange(region);
   }, [cancelOriginResolution, handleRegionChange, origin, region]);
 
-  // Cada entrada a Home confirma primero el estado autoritativo. React Query puede
-  // conservar SEARCHING durante 30 s; navegar antes de este refetch revive viajes
-  // que el pasajero acaba de cancelar.
+  // Every entry to Home first confirms the authoritative state. React Query may
+  // keep SEARCHING for 30 s; navigating before this refetch revives rides
+  // the passenger just cancelled.
   useFocusEffect(
     useCallback(() => {
       let focused = true;
@@ -242,7 +242,7 @@ export function HomeScreen() {
 
       const recover = async () => {
         try {
-          await confirmarRecuperacion(refetchActiveRide, refetchPendingRating);
+          await confirmRecovery(refetchActiveRide, refetchPendingRating);
         } catch (error) {
           if (focused) {
             setRecoveryFailure(getApiErrorMessage(
@@ -268,9 +268,9 @@ export function HomeScreen() {
     }, [recoveryAttempt, refetchActiveRide, refetchPendingRating]),
   );
 
-  // El tab permanece montado: al volver después de un tiempo actualizamos el
-  // GPS para que "centrar" no use una posición antigua. No sobrescribimos el
-  // origen que el pasajero haya ajustado manualmente.
+  // The tab stays mounted: when coming back after a while we refresh the
+  // GPS so "center" does not use an old position. We do not overwrite the
+  // origin the passenger adjusted manually.
   useFocusEffect(
     useCallback(() => {
       if (status !== 'granted') return;
@@ -285,8 +285,8 @@ export function HomeScreen() {
     }, [retry, status]),
   );
 
-  // Recupera el punto exacto del flujo una vez terminada la verificacion fresca.
-  // El foco evita navegar desde el Home que permanece montado debajo del stack.
+  // Recover the flow's exact point once the fresh check finishes.
+  // Focus prevents navigating from the Home that stays mounted under the stack.
   useFocusEffect(
     useCallback(() => {
       if (
@@ -317,8 +317,8 @@ export function HomeScreen() {
         return;
       }
 
-      // Un pendiente solo puede ganar cuando el endpoint activo confirmó que no
-      // hay viaje vigente. Durante carga/refetch/error se conserva la prioridad.
+      // A pending one can only win once the active endpoint confirmed there is
+      // no current ride. During loading/refetch/error the priority is kept.
       if (pendingRatingLoading || pendingRatingFetching || pendingRatingError) return;
 
       if (pendingRatingRide) {
@@ -367,12 +367,12 @@ export function HomeScreen() {
     }
     const automaticCoordinates = automaticOriginCoordinates.current;
     if (!originAdjustedByUser.current) {
-      // El centrado automático ya se envía explícitamente a handleRegionChange.
-      // Android vuelve a notificarlo con unos decimales distintos; ignoramos ese
-      // eco para que no sustituya el origen por otro provisional.
+      // Automatic centering is already sent explicitly to handleRegionChange.
+      // Android notifies it again with slightly different decimals; we ignore that
+      // echo so it does not replace the origin with another provisional one.
       return;
     }
-    if (automaticCoordinates && coordenadasCasiIguales(nextRegion, automaticCoordinates)) return;
+    if (automaticCoordinates && coordinatesNearlyEqual(nextRegion, automaticCoordinates)) return;
     handleRegionChange(nextRegion);
   };
 
@@ -457,8 +457,8 @@ export function HomeScreen() {
     <View style={styles.root}>
       {status === 'granted' && region ? (
         <MapView
-          customMapStyle={estiloMapa}
-          userInterfaceStyle={modoMapa}
+          customMapStyle={mapStyle}
+          userInterfaceStyle={mapMode}
           ref={mapRef}
           provider={PROVIDER_GOOGLE}
           showsBuildings={false}
@@ -521,9 +521,11 @@ export function HomeScreen() {
         </TouchableOpacity>
       )}
 
-      {/* El PanResponder está en TODA la tarjeta: se arrastra desde cualquier
-          punto. Solo captura si hay desplazamiento vertical, así los taps en los
-          botones siguen funcionando. */}
+      {/*
+ * The PanResponder covers the WHOLE card: it can be dragged from any
+ * point. It only captures when there is vertical movement, so taps on the
+ * buttons keep working.
+ */}
       <Animated.View
         style={[styles.sheet, { height: sheetHeight, transform: [{ translateY }] }]}
         {...pan.panHandlers}>
@@ -582,7 +584,7 @@ export function HomeScreen() {
 }
 
 function ActiveRideGate() {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   return (
     <SafeAreaView style={styles.recovery}>
       <ActivityIndicator size="large" color={colors.primary} />
@@ -602,7 +604,7 @@ function MapPlaceholder({
   outsideArea: boolean;
   onRetry: () => void;
 }) {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   if (status === 'loading') {
     return (
       <View style={[styles.placeholder, styles.placeholderBg]}>
@@ -636,7 +638,7 @@ function MapPlaceholder({
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceMuted },
   recovery: {
     flex: 1,

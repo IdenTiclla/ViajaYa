@@ -1,5 +1,5 @@
-import { PerfilConductorScreen } from '@/features/driver/presentation/PerfilConductorScreen';
+import { DriverProfileScreen } from '@/features/driver/presentation/DriverProfileScreen';
 
 export default function DriverProfileTab() {
-  return <PerfilConductorScreen />;
+  return <DriverProfileScreen />;
 }

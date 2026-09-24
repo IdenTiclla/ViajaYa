@@ -322,7 +322,7 @@ export interface paths {
         };
         /**
          * Earnings
-         * @description Resumen de ganancias del conductor (hoy, histórico y viajes recientes).
+         * @description The driver's earnings summary (today, all-time and recent rides).
          */
         get: operations["earnings_api_v1_drivers_me_earnings_get"];
         put?: never;
@@ -364,7 +364,7 @@ export interface paths {
         put?: never;
         /**
          * Set Online
-         * @description Alterna la disponibilidad del conductor (en línea/desconectado).
+         * @description Toggle the driver's availability (online/offline).
          */
         post: operations["set_online_api_v1_drivers_me_online_post"];
         delete?: never;
@@ -466,7 +466,7 @@ export interface paths {
         };
         /**
          * Passenger Active Ride
-         * @description Solicitud o viaje no terminal del pasajero, para recuperar el flujo.
+         * @description The passenger's non-terminal request or ride, to resume the flow.
          */
         get: operations["passenger_active_ride_api_v1_rides_me_active_get"];
         put?: never;
@@ -486,7 +486,7 @@ export interface paths {
         };
         /**
          * Pending Rating Ride
-         * @description Último viaje completado que el usuario actual todavía no calificó.
+         * @description The latest completed ride the current user has not rated yet.
          */
         get: operations["pending_rating_ride_api_v1_rides_me_pending_rating_get"];
         put?: never;
@@ -508,9 +508,9 @@ export interface paths {
         put?: never;
         /**
          * Accept Offer
-         * @description El pasajero acepta una oferta: le asigna el viaje (decisión final).
+         * @description The passenger accepts an offer: it assigns them the ride (final decision).
          *
-         *     Las demás ofertas vivas del viaje quedan rechazadas en la misma transacción.
+         *     The ride's other live offers are rejected in the same transaction.
          */
         post: operations["accept_offer_api_v1_rides_offers__offer_id__accept_post"];
         delete?: never;
@@ -530,7 +530,7 @@ export interface paths {
         put?: never;
         /**
          * Reject Offer
-         * @description El pasajero rechaza una oferta concreta; el conductor lo ve en vivo.
+         * @description The passenger rejects a specific offer; the driver sees it live.
          */
         post: operations["reject_offer_api_v1_rides_offers__offer_id__reject_post"];
         delete?: never;
@@ -550,7 +550,7 @@ export interface paths {
         put?: never;
         /**
          * Withdraw Offer
-         * @description El conductor retira su oferta (o se niega a confirmarla); el pasajero deja de verla.
+         * @description The driver withdraws (or declines to confirm) their offer; the passenger stops seeing it.
          */
         post: operations["withdraw_offer_api_v1_rides_offers__offer_id__withdraw_post"];
         delete?: never;
@@ -568,10 +568,10 @@ export interface paths {
         };
         /**
          * Open Rides
-         * @description Solicitudes abiertas del tipo de vehículo del conductor (en línea).
+         * @description Open requests for the (online) driver's vehicle type.
          *
-         *     Solo las que tienen al pasajero presente (conexión WS viva): las abandonadas
-         *     no se muestran.
+         *     Only those whose passenger is present (live WS connection): abandoned ones
+         *     are not shown.
          */
         get: operations["open_rides_api_v1_rides_open_get"];
         put?: never;
@@ -608,7 +608,7 @@ export interface paths {
         };
         /**
          * Get Ride
-         * @description Detalle del viaje para polling (pasajero o conductor asignado).
+         * @description Ride detail for polling (passenger or assigned driver).
          */
         get: operations["get_ride_api_v1_rides__ride_id__get"];
         put?: never;
@@ -618,7 +618,7 @@ export interface paths {
         head?: never;
         /**
          * Edit Ride
-         * @description Guarda los cambios de una solicitud pausada y la vuelve a publicar en el pool.
+         * @description Save the changes to a paused request and publish it to the pool again.
          */
         patch: operations["edit_ride_api_v1_rides__ride_id__patch"];
         trace?: never;
@@ -634,7 +634,7 @@ export interface paths {
         put?: never;
         /**
          * Cancel Ride
-         * @description Cancela el viaje (pasajero o conductor asignado), antes de iniciarlo.
+         * @description Cancel the ride (passenger or assigned driver) before it starts.
          */
         post: operations["cancel_ride_api_v1_rides__ride_id__cancel_post"];
         delete?: never;
@@ -654,7 +654,7 @@ export interface paths {
         put?: never;
         /**
          * Dismiss Open Ride
-         * @description Oculta para este conductor la versión vigente de una solicitud abierta.
+         * @description Hide the current version of an open request for this driver.
          */
         post: operations["dismiss_open_ride_api_v1_rides__ride_id__dismiss_post"];
         delete?: never;
@@ -696,7 +696,7 @@ export interface paths {
         head?: never;
         /**
          * Update Fare
-         * @description El pasajero ajusta su oferta mientras se buscan conductores.
+         * @description The passenger adjusts their offer while drivers are being searched.
          */
         patch: operations["update_fare_api_v1_rides__ride_id__fare_patch"];
         trace?: never;
@@ -710,13 +710,13 @@ export interface paths {
         };
         /**
          * List Offers
-         * @description Ofertas pendientes recibidas por el pasajero para su viaje.
+         * @description Pending offers the passenger received for their ride.
          */
         get: operations["list_offers_api_v1_rides__ride_id__offers_get"];
         put?: never;
         /**
          * Create Offer
-         * @description El conductor oferta sobre un viaje (aceptar al precio, contraofertar o mejorar).
+         * @description The driver offers on a ride (accept at the price, counter-offer or improve).
          */
         post: operations["create_offer_api_v1_rides__ride_id__offers_post"];
         delete?: never;
@@ -736,7 +736,7 @@ export interface paths {
         put?: never;
         /**
          * Pause Ride For Edit
-         * @description Pausa la solicitud para editarla (Modificar): la oculta del pool y retira ofertas.
+         * @description Pause the request to edit it (Modify): hide it from the pool and withdraw offers.
          */
         post: operations["pause_ride_for_edit_api_v1_rides__ride_id__pause_edit_post"];
         delete?: never;
@@ -757,7 +757,7 @@ export interface paths {
         put?: never;
         /**
          * Rate Ride
-         * @description Califica al otro participante tras completarse el viaje.
+         * @description Rate the other participant after the ride is completed.
          */
         post: operations["rate_ride_api_v1_rides__ride_id__rating_post"];
         delete?: never;
@@ -777,7 +777,7 @@ export interface paths {
         put?: never;
         /**
          * Skip Ride Rating
-         * @description Cierra la calificación pendiente sin alterar la reputación.
+         * @description Close the pending rating without changing reputation.
          */
         post: operations["skip_ride_rating_api_v1_rides__ride_id__rating_skip_post"];
         delete?: never;
@@ -821,7 +821,7 @@ export interface paths {
         head?: never;
         /**
          * Update Status
-         * @description El conductor asignado avanza el estado del viaje.
+         * @description The assigned driver advances the ride's status.
          */
         patch: operations["update_status_api_v1_rides__ride_id__status_patch"];
         trace?: never;
@@ -871,7 +871,7 @@ export interface paths {
         };
         /**
          * Health
-         * @description Contrato de liveness histórico, conservado sin cambios.
+         * @description Historical liveness contract, kept unchanged.
          */
         get: operations["health_health_get"];
         put?: never;
@@ -891,7 +891,7 @@ export interface paths {
         };
         /**
          * Liveness
-         * @description Solo certifica que el proceso puede responder; no consulta dependencias.
+         * @description Only certifies that the process can respond; it does not query dependencies.
          */
         get: operations["liveness_health_live_get"];
         put?: never;
@@ -911,7 +911,7 @@ export interface paths {
         };
         /**
          * Readiness
-         * @description Comprueba PostgreSQL y los workers habilitados, sin filtrar errores.
+         * @description Check PostgreSQL and the enabled workers without leaking errors.
          */
         get: operations["readiness_health_ready_get"];
         put?: never;
@@ -931,7 +931,7 @@ export interface paths {
         };
         /**
          * Realtime Health
-         * @description Expone métricas acotadas de outbox sin topics, payloads ni errores.
+         * @description Expose bounded outbox metrics without topics, payloads or errors.
          */
         get: operations["realtime_health_health_realtime_get"];
         put?: never;
@@ -951,7 +951,7 @@ export interface paths {
         };
         /**
          * Scheduled Actions Health
-         * @description Expone backlog y leases agregados, nunca payloads ni identificadores.
+         * @description Expose aggregated backlog and leases, never payloads or identifiers.
          */
         get: operations["scheduled_actions_health_health_scheduled_actions_get"];
         put?: never;
@@ -1010,7 +1010,7 @@ export interface components {
         };
         /**
          * AuthProvider
-         * @description Origen de la identidad del usuario.
+         * @description Where the user's identity comes from.
          * @enum {string}
          */
         AuthProvider: "local" | "google" | "facebook";
@@ -1034,7 +1034,7 @@ export interface components {
         };
         /**
          * DriverEarningsResponse
-         * @description Resumen de ganancias del conductor (hoy, histórico y recientes).
+         * @description The driver's earnings summary (today, all-time and recent).
          */
         DriverEarningsResponse: {
             /** Recent */
@@ -1147,7 +1147,7 @@ export interface components {
         };
         /**
          * EarningsItemResponse
-         * @description Una línea del desglose de ganancias.
+         * @description One line of the earnings breakdown.
          */
         EarningsItemResponse: {
             /** Completed At */
@@ -1178,7 +1178,7 @@ export interface components {
         };
         /**
          * HistoryCounterpartSchema
-         * @description La otra parte del viaje en el historial (conductor o pasajero).
+         * @description The other party of the ride in the history (driver or passenger).
          */
         HistoryCounterpartSchema: {
             /** Full Name */
@@ -1203,10 +1203,10 @@ export interface components {
         };
         /**
          * OfferCreate
-         * @description Oferta de un conductor: aceptar al precio del pasajero o contraofertar.
+         * @description A driver's offer: accept at the passenger's price or counter-offer.
          *
-         *     Si ``accept_at_fare`` es ``True`` se ignora ``price`` (se toma el del viaje).
-         *     Si es ``False`` (contraoferta) ``price`` es obligatorio.
+         *     If ``accept_at_fare`` is ``True``, ``price`` is ignored (the ride's is used).
+         *     If it is ``False`` (counter-offer), ``price`` is required.
          */
         OfferCreate: {
             /**
@@ -1223,7 +1223,7 @@ export interface components {
         };
         /**
          * OfferDriverSchema
-         * @description Datos públicos del conductor que hace la oferta.
+         * @description Public data of the driver making the offer.
          */
         OfferDriverSchema: {
             /** Full Name */
@@ -1266,18 +1266,18 @@ export interface components {
         };
         /**
          * OfferStatus
-         * @description Estado de una oferta de un conductor sobre una solicitud de viaje.
+         * @description Status of a driver's offer on a ride request.
          *
-         *     El pasajero tiene la decisión final: al aceptar una oferta ``PENDING`` esta
-         *     pasa a ``ACCEPTED`` y el viaje se asigna a ese conductor (transacción
-         *     atómica); las demás ofertas vivas del viaje quedan ``REJECTED``. ``EXPIRED``
-         *     aplica cuando vence el TTL de 30 s sin que el pasajero la aceptara.
+         *     The passenger has the final say: accepting a ``PENDING`` offer moves it
+         *     to ``ACCEPTED`` and assigns the ride to that driver (atomic
+         *     transaction); the ride's other live offers become ``REJECTED``. ``EXPIRED``
+         *     applies when the 30 s TTL runs out without the passenger accepting it.
          * @enum {string}
          */
         OfferStatus: "pending" | "accepted" | "rejected" | "expired";
         /**
          * OnlineRequest
-         * @description Cuerpo para alternar disponibilidad del conductor.
+         * @description Body to toggle the driver's availability.
          */
         OnlineRequest: {
             /** Is Online */
@@ -1285,7 +1285,7 @@ export interface components {
         };
         /**
          * OpenRidePageResponse
-         * @description Página de solicitudes abiertas ordenadas de forma estable.
+         * @description Page of open requests in a stable order.
          */
         OpenRidePageResponse: {
             /** Items */
@@ -1295,7 +1295,7 @@ export interface components {
         };
         /**
          * OpenRideResponse
-         * @description Solicitud abierta tal como la ve un conductor en su lista.
+         * @description Open request as a driver sees it in their list.
          */
         OpenRideResponse: {
             /** Created At */
@@ -1317,7 +1317,7 @@ export interface components {
         };
         /**
          * OpenRideRiderResponse
-         * @description Datos públicos del pasajero que el conductor ve en una solicitud abierta.
+         * @description Public passenger data the driver sees on an open request.
          */
         OpenRideRiderResponse: {
             /** Full Name */
@@ -1334,9 +1334,9 @@ export interface components {
         };
         /**
          * PaymentMethod
-         * @description Forma de pago elegida para el viaje.
+         * @description Payment method chosen for the ride.
          *
-         *     Por ahora la app soporta pago por QR y pago en efectivo.
+         *     For now the app supports QR payment and cash.
          * @enum {string}
          */
         PaymentMethod: "qr" | "cash";
@@ -1497,7 +1497,7 @@ export interface components {
         };
         /**
          * PointInputSchema
-         * @description Punto entrante: nunca admite una etiqueta provisional como nombre final.
+         * @description Incoming point: never accepts a provisional label as the final name.
          */
         PointInputSchema: {
             /** Address */
@@ -1513,7 +1513,7 @@ export interface components {
         };
         /**
          * PointSchema
-         * @description Un punto del viaje en el contrato HTTP.
+         * @description A ride point in the HTTP contract.
          */
         PointSchema: {
             /** Address */
@@ -1752,7 +1752,7 @@ export interface components {
         };
         /**
          * RideDriverSchema
-         * @description Datos del conductor asignado, expuestos al pasajero durante el viaje.
+         * @description Assigned driver's data, shown to the passenger during the ride.
          */
         RideDriverSchema: {
             /** Full Name */
@@ -1774,7 +1774,7 @@ export interface components {
         };
         /**
          * RideEdit
-         * @description Cambios a guardar al modificar una solicitud pausada (mismos campos que al crear).
+         * @description Changes to save when modifying a paused request (same fields as on creation).
          */
         RideEdit: {
             destination: components["schemas"]["PointInputSchema"];
@@ -1787,7 +1787,7 @@ export interface components {
         };
         /**
          * RideFareUpdate
-         * @description Nuevo monto ofertado por el pasajero mientras busca conductor.
+         * @description New fare offered by the passenger while searching for a driver.
          */
         RideFareUpdate: {
             /** Fare */
@@ -1795,7 +1795,7 @@ export interface components {
         };
         /**
          * RideHistoryItemResponse
-         * @description Un viaje del historial, listo para pintar la tarjeta.
+         * @description A history ride, ready to render the card.
          */
         RideHistoryItemResponse: {
             counterpart: components["schemas"]["HistoryCounterpartSchema"] | null;
@@ -1818,7 +1818,7 @@ export interface components {
         };
         /**
          * RideHistoryPageResponse
-         * @description Página del historial de un pasajero o conductor.
+         * @description Page of a passenger's or driver's history.
          */
         RideHistoryPageResponse: {
             /** Items */
@@ -1845,7 +1845,7 @@ export interface components {
         };
         /**
          * RideResponse
-         * @description Detalle completo de un viaje (polling de estado para ambos lados).
+         * @description Full ride detail (status polling for both sides).
          */
         RideResponse: {
             /** Accepted Eta Min */
@@ -1884,7 +1884,7 @@ export interface components {
         };
         /**
          * RideRiderSchema
-         * @description Datos del pasajero, visibles para el conductor asignado.
+         * @description Passenger data, visible to the assigned driver.
          */
         RideRiderSchema: {
             /** Full Name */
@@ -1901,18 +1901,18 @@ export interface components {
         };
         /**
          * RideStatus
-         * @description Estado del ciclo de vida de una solicitud de viaje.
+         * @description Lifecycle status of a ride request.
          *
-         *     Flujo: ``SEARCHING`` (publicada, esperando ofertas) → ``ACCEPTED`` (el
-         *     pasajero eligió una oferta y hay conductor asignado) → ``ARRIVING`` (el
-         *     conductor va al origen) → ``IN_PROGRESS`` (viaje en curso) → ``COMPLETED``.
-         *     ``CANCELLED`` es posible antes de ``IN_PROGRESS``.
+         *     Flow: ``SEARCHING`` (published, waiting for offers) → ``ACCEPTED`` (the
+         *     passenger picked an offer and a driver is assigned) → ``ARRIVING`` (the
+         *     driver is heading to the origin) → ``IN_PROGRESS`` (ride underway) → ``COMPLETED``.
+         *     ``CANCELLED`` is possible before ``IN_PROGRESS``.
          * @enum {string}
          */
         RideStatus: "searching" | "accepted" | "arriving" | "in_progress" | "completed" | "cancelled";
         /**
          * RideStatusUpdate
-         * @description Avance de estado del viaje solicitado por el conductor.
+         * @description Ride status change requested by the driver.
          */
         RideStatusUpdate: {
             status: components["schemas"]["RideStatus"];
@@ -1926,7 +1926,7 @@ export interface components {
         };
         /**
          * SavedPlaceCategory
-         * @description Categoría de un lugar guardado; define el ícono en la app.
+         * @description Category of a saved place; sets the icon in the app.
          * @enum {string}
          */
         SavedPlaceCategory: "home" | "work" | "gym" | "other";
@@ -2135,10 +2135,10 @@ export interface components {
         };
         /**
          * UserRole
-         * @description Rol del usuario en la plataforma.
+         * @description User role on the platform.
          *
-         *     Define qué navegación y acciones ve la app: el pasajero publica solicitudes,
-         *     el conductor responde con ofertas. ``DELIVERY`` se reserva para repartos.
+         *     Defines which navigation and actions the app shows: the passenger publishes requests,
+         *     the driver answers with offers. ``DELIVERY`` is reserved for deliveries.
          * @enum {string}
          */
         UserRole: "passenger" | "driver" | "delivery";

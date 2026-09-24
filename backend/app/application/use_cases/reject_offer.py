@@ -1,8 +1,8 @@
-"""Caso de uso: el pasajero rechaza una oferta concreta de su viaje.
+"""Use case: the passenger rejects a specific offer on their ride.
 
-A diferencia de aceptar, rechazar NO asigna conductor: solo descarta esa oferta
-(p. ej. el pasajero no quiere a ese conductor). El conductor recibe el aviso por
-WebSocket y su pantalla de espera deja de mostrarse como vigente.
+Unlike accepting, rejecting does NOT assign a driver: it only discards that offer
+(e.g. the passenger does not want that driver). The driver is notified via
+WebSocket and their waiting screen stops showing it as current.
 """
 
 from __future__ import annotations
@@ -53,8 +53,8 @@ class RejectOffer:
             raise RideNotFoundError("La solicitud de viaje no existe.")
         if ride.rider_id != rider.id:
             raise NotAuthorizedActionError("No puedes rechazar ofertas de este viaje.")
-        # Solo se puede rechazar una oferta pendiente (active). El conductor recibe
-        # el aviso por WebSocket y su pantalla de espera deja de mostrarse vigente.
+        # Only a pending (active) offer can be rejected. The driver is notified
+        # via WebSocket and their waiting screen stops showing it as current.
         if offer.status not in ACTIVE_OFFER_STATUSES:
             raise InvalidRideTransitionError("La oferta ya no está disponible.")
 

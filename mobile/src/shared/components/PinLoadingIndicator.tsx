@@ -1,6 +1,6 @@
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
-import { useEstilos } from '@/core/theme';
+import { useThemedStyles } from '@/core/theme';
 
 type Props = {
   loading: boolean;
@@ -9,18 +9,18 @@ type Props = {
 };
 
 /**
- * Slot estable para indicar que un pin está resolviendo su dirección.
+ * Stable slot to show that a pin is resolving its address.
  *
- * El `ActivityIndicator` permanece montado incluso al terminar. Esto evita
- * insertar o quitar hijos dentro de los marcadores personalizados de Maps,
- * una operación especialmente frágil con Fabric en Android.
+ * The `ActivityIndicator` stays mounted even when done. This avoids
+ * inserting or removing children inside custom Maps markers,
+ * an especially fragile operation with Fabric on Android.
  */
 export function PinLoadingIndicator({
   loading,
   color,
   compact = false,
 }: Props) {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   return (
     <View
       style={[styles.slot, compact && styles.slotCompact]}
@@ -40,7 +40,7 @@ export function PinLoadingIndicator({
   );
 }
 
-const crearEstilos = () => StyleSheet.create({
+const createStyles = () => StyleSheet.create({
   slot: {
     width: 18,
     height: 18,

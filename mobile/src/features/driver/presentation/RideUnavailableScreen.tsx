@@ -1,10 +1,10 @@
 /**
- * "Viaje ya no disponible" (conductor) — diseño Stitch "Estado del Viaje".
+ * "Viaje ya no disponible" (driver) — Stitch "Estado del Viaje" design.
  *
- * Se muestra cuando una solicitud que el conductor estaba mirando/esperando deja
- * de estar disponible: otro conductor la tomó, el pasajero canceló, o expiró su
- * ventana de negociación. Ícono con ondas, mensaje tranquilizador, tarjeta con la
- * última oferta y el trayecto, y un botón para volver a las solicitudes.
+ * Shown when a request the driver was looking at/waiting on stops
+ * being available: another driver took it, the passenger cancelled, or its
+ * negotiation window expired. Rippling icon, reassuring message, a card with the
+ * latest offer and the route, and a button to go back to the requests.
  */
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useEffect, useState } from 'react';
@@ -12,7 +12,7 @@ import { Animated, Easing, StyleSheet, Text, TouchableOpacity, View } from 'reac
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '@/shared/components';
 
-import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import { formatBolivianos } from '@/features/rides/domain/money';
 
 export function RideUnavailableScreen({
@@ -32,11 +32,13 @@ export function RideUnavailableScreen({
   priceLabel?: string;
   title?: string;
   hint?: string;
-  /** Etiqueta opcional de la tarjeta (p. ej. "Expirado", "Cancelado"). Si no se
-   * pasa, no se muestra (antes estaba hardcodeada como "Expirado"). */
+  /**
+   * Optional card label (e.g. "Expirado", "Cancelado"). If not
+   * passed, it is not shown (it used to be hardcoded as "Expirado").
+   */
   badge?: string;
 }) {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   return (
     <View style={styles.root}>
       <SafeAreaView edges={['top']} style={styles.topBar}>
@@ -110,9 +112,9 @@ export function RideUnavailableScreen({
   );
 }
 
-/** Ícono central con ondas expandiéndose (ripple), en bucle infinito. */
+/** Central icon with expanding ripples, looping forever. */
 function RippleIcon() {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   const [wave] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
@@ -143,7 +145,7 @@ function RippleIcon() {
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceMuted },
 
   topBar: {

@@ -1,4 +1,4 @@
-"""Schemas Pydantic de la API de lugares guardados (contrato HTTP)."""
+"""Pydantic schemas of the saved places API (HTTP contract)."""
 
 from __future__ import annotations
 

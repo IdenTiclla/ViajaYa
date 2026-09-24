@@ -1,4 +1,4 @@
-"""Certificación PostgreSQL del corte consistente de snapshots realtime."""
+"""PostgreSQL certification of the consistent realtime snapshot cut."""
 
 from __future__ import annotations
 
@@ -45,7 +45,7 @@ async def _cleanup(pg_test_db, rider_id: uuid.UUID, ride_id: uuid.UUID, topic: s
         await connection.execute(sa.delete(UserModel).where(UserModel.id == rider_id))
 
 
-async def test_snapshot_usa_repeatable_read_read_only_antes_de_cualquier_lectura(
+async def test_snapshot_uses_repeatable_read_read_only_before_any_read(
     pg_test_db,
 ) -> None:
     sessions = async_sessionmaker(pg_test_db.engine, expire_on_commit=False)
@@ -62,8 +62,8 @@ async def test_snapshot_usa_repeatable_read_read_only_antes_de_cualquier_lectura
                 role=UserRole.PASSENGER,
             )
         )
-        # Estos modelos no declaran una relationship ORM entre sí; el flush
-        # explicita que la FK del ride siempre observa primero al pasajero.
+        # These models do not declare an ORM relationship between them; the flush
+        # makes explicit that the ride's FK always sees the passenger first.
         await session.flush()
         session.add(
             RideRequestModel(

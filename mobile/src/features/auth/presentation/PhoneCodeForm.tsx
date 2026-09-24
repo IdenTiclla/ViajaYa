@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppState, StyleSheet, Text, View } from 'react-native';
 
-import { fontSize, spacing, useEstilos, type Tema } from '@/core/theme';
+import { fontSize, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import { Button } from '@/shared/components/Button';
 import { TextField } from '@/shared/components/TextField';
 import { usePhoneVerification } from '../application/usePhoneVerification';
@@ -21,7 +21,7 @@ type Props = {
 export function PhoneCodeForm({ phone, deviceId, onVerified, onChangePhone,
   purpose = 'sign_in', autoRequest = false }: Props) {
   const { state, controller } = usePhoneVerification(phone, deviceId, purpose);
-  const { styles } = useEstilos(createStyles);
+  const { styles } = useThemedStyles(createStyles);
   const [now, setNow] = useState(Date.now);
   const deliveredProof = useRef<string | null>(null);
   useEffect(() => {
@@ -90,8 +90,8 @@ export function PhoneCodeForm({ phone, deviceId, onVerified, onChangePhone,
   );
 }
 
-const createStyles = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   container: { gap: spacing.md },
-  hint: { fontSize: fontSize.sm, color: colors.aviso },
+  hint: { fontSize: fontSize.sm, color: colors.warning },
   code: { fontSize: fontSize.lg, letterSpacing: 6 },
 });

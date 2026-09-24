@@ -1,4 +1,4 @@
-"""Pruebas de las proyecciones SQL de lectura de viajes."""
+"""Tests of the SQL read projections for rides."""
 
 from __future__ import annotations
 

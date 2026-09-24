@@ -1,31 +1,34 @@
 /**
- * Marcador de ruta reutilizable: pines circulares A (origen) y B (destino)
- * y un tooltip "Origen"/"Destino" al lado libre de la ruta. Lo usan las vistas de
- * trayecto (pasajero y conductor) para que origen y destino se vean siempre igual.
+ * Reusable route marker: circular A (origin) and B (destination) pins
+ * and an "Origen"/"Destino" tooltip on the free side of the route. Used by the
+ * route views (passenger and driver) so origin and destination always look the same.
  *
- * El tooltip va en flujo (no absoluto) para que renderice de forma fiable dentro
- * del marker en iOS y Android; el `anchor` apunta al pin (no al centro del
- * conjunto) para que el punto quede exacto en la coordenada.
+ * The tooltip is laid out in flow (not absolute) so it renders reliably inside
+ * the marker on iOS and Android; the `anchor` points at the pin (not at the center of
+ * the group) so the point sits exactly on the coordinate.
  */
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Marker, type MapMarker } from 'react-native-maps';
 
-import { fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import type { Coordinates } from '@/features/booking/domain/types';
-import { InsigniaPuntoMapa } from '@/shared/components/mapa/InsigniaPuntoMapa';
+import { MapPointBadge } from '@/shared/components/map/MapPointBadge';
 import {
-  BORDE_PIN_RUTA,
-  calcularAnclajePin,
-  elegirPosicionTooltip,
-  programarRedibujadoMarcador,
-  proyectarRutaRespectoAlPin,
-  SEPARACION_TOOLTIP,
-  TAMANO_LETRA_PIN_RUTA,
-  TAMANO_PIN_RUTA,
-  ubicarTooltipSinCruzarRuta,
-  type MedidasEtiqueta,
+  ROUTE_PIN_BORDER,
+  computePinAnchor,
+  chooseTooltipPlacement,
+  scheduleMarkerRedraw,
+  projectRouteRelativeToPin,
+  TOOLTIP_SEPARATION,
+  ROUTE_PIN_LETTER_SIZE,
+  PIN_BLOCK_HEIGHT,
+  ROUTE_PIN_DOT,
+  ROUTE_PIN_SIZE,
+  ROUTE_PIN_STEM,
+  placeTooltipClearOfRoute,
+  type LabelSize,
 } from '@/features/rides/presentation/routeTooltipLayout';
 
 type Props = {
@@ -33,36 +36,36 @@ type Props = {
   coordinate: Coordinates;
   /** Texto del tooltip (p. ej. "Origen", "Destino"). */
   label: string;
-  /** Trayecto visible: permite alejar la etiqueta de la ruta junto al pin. */
-  ruta?: readonly Coordinates[];
-  /** Orientación actual de la cámara, en grados. */
-  rumboMapa?: number;
-  /** Zoom de Google Maps para comparar el tamaño del texto con el trayecto. */
-  zoomMapa?: number;
-  /** Oculta el tooltip cuando la información se presenta fuera del mapa. */
+  /** Visible route: lets the label move away from the route next to the pin. */
+  route?: readonly Coordinates[];
+  /** Current camera bearing, in degrees. */
+  mapBearing?: number;
+  /** Google Maps zoom to compare the text size with the route. */
+  mapZoom?: number;
+  /** Hide the tooltip when the information is shown outside the map. */
   showTooltip?: boolean;
-  /** Muestra un control de edición unido al marcador. */
+  /** Show an edit control attached to the marker. */
   showEditControl?: boolean;
-  /** Atenuar el pin (p. ej. orígenes no seleccionados en el mapa de solicitudes). */
+  /** Dim the pin (e.g. unselected origins on the requests map). */
   dim?: boolean;
-  /** Jerarquía del marcador cuando varios puntos se superponen. */
+  /** Marker stacking order when several points overlap. */
   zIndex?: number;
-  /** Indica que todavía se está resolviendo el nombre de este punto. */
+  /** Signals that this point's name is still being resolved. */
   loading?: boolean;
   onPress?: () => void;
   /** Reports the measured label block so the camera can frame it. */
-  onLabelSize?: (size: MedidasEtiqueta) => void;
+  onLabelSize?: (size: LabelSize) => void;
 };
 
-const RUTA_VACIA: readonly Coordinates[] = [];
+const EMPTY_ROUTE: readonly Coordinates[] = [];
 
 export function RoutePinMarker({
   kind,
   coordinate,
   label,
-  ruta = RUTA_VACIA,
-  rumboMapa = 0,
-  zoomMapa,
+  route = EMPTY_ROUTE,
+  mapBearing = 0,
+  mapZoom,
   showTooltip = true,
   showEditControl,
   dim,
@@ -71,66 +74,80 @@ export function RoutePinMarker({
   onPress,
   onLabelSize,
 }: Props) {
-  const { colors, styles, modo } = useEstilos(crearEstilos);
-  const marcador = useRef<MapMarker>(null);
-  const [medidas, setMedidas] = useState({ ancho: 0, alto: TAMANO_PIN_RUTA });
-  const [medidasEtiquetas, setMedidasEtiquetas] = useState({
-    ancho: 178, alto: showEditControl ? 70 : 40,
+  const { colors, styles, mode } = useThemedStyles(createStyles);
+  const marker = useRef<MapMarker>(null);
+  const [size, setSize] = useState({ width: 0, height: PIN_BLOCK_HEIGHT });
+  const [labelSize, setLabelSize] = useState({
+    width: 178, height: showEditControl ? 70 : 40,
   });
-  const tieneEtiquetas = Boolean(showTooltip || showEditControl);
-  const ubicacion = useMemo(() => {
-    const preferida = elegirPosicionTooltip(kind, coordinate, ruta, rumboMapa);
-    if (!tieneEtiquetas || zoomMapa == null) {
-      return { posicion: preferida, separacion: SEPARACION_TOOLTIP, visible: true };
+  const hasLabels = Boolean(showTooltip || showEditControl);
+  const location = useMemo(() => {
+    const preferred = chooseTooltipPlacement(kind, coordinate, route, mapBearing);
+    if (!hasLabels || mapZoom == null) {
+      return { placement: preferred, separation: TOOLTIP_SEPARATION, visible: true };
     }
-    return ubicarTooltipSinCruzarRuta(
-      proyectarRutaRespectoAlPin(coordinate, ruta, rumboMapa, zoomMapa),
-      medidasEtiquetas, preferida,
+    return placeTooltipClearOfRoute(
+      projectRouteRelativeToPin(coordinate, route, mapBearing, mapZoom),
+      labelSize, preferred,
     );
-  }, [kind, coordinate, ruta, rumboMapa, zoomMapa, tieneEtiquetas, medidasEtiquetas]);
-  const { posicion, separacion, visible } = ubicacion;
-  useEffect(() => programarRedibujadoMarcador(() => marcador.current?.redraw()), [
-    medidas.ancho, medidas.alto, label, kind, posicion, showTooltip,
-    showEditControl, loading, dim, separacion, visible, modo,
-  ]);
+  }, [kind, coordinate, route, mapBearing, mapZoom, hasLabels, labelSize]);
+  const { placement, separation, visible } = location;
+  const redrawKey = [size.width, size.height, label, kind, placement, showTooltip,
+    showEditControl, loading, dim, separation, visible, mode].join('|');
+  useEffect(() => scheduleMarkerRedraw(() => marker.current?.redraw()), [redrawKey]);
+  // Android may capture the bitmap before the label text finishes laying out,
+  // leaving an empty box; a late second capture repairs it.
+  useEffect(() => {
+    const timer = setTimeout(() => marker.current?.redraw(), LATE_REDRAW_MS);
+    return () => clearTimeout(timer);
+  }, [redrawKey]);
+  // Derive the bitmap height from the measured label instead of waiting for the
+  // container's onLayout: a stale height would shift a label-below pin upward.
+  const bitmapHeight = hasLabels
+    ? PIN_BLOCK_HEIGHT + separation + labelSize.height
+    : PIN_BLOCK_HEIGHT;
+  const pinColor = kind === 'A' ? colors.primary : colors.danger;
 
   return (
     <Marker
-      ref={marcador}
+      // Android keeps a stale bitmap when the label flips sides (the pin would
+      // be drawn with the other side's anchor); a fresh native marker fixes it.
+      key={placement}
+      ref={marker}
       coordinate={coordinate}
-      // En Google Maps Android las polilíneas y los marcadores son capas
-      // separadas; un z-index explícito mantiene el pin visible sobre la ruta.
+      // On Google Maps Android polylines and markers are separate
+      // layers; an explicit z-index keeps the pin visible above the route.
       zIndex={zIndex ?? 10}
-      anchor={calcularAnclajePin(medidas.alto, posicion)}
+      anchor={computePinAnchor(bitmapHeight, placement)}
       accessibilityLabel={label}
       title={!visible ? label : undefined}
       onPress={onPress}>
       <View
-        // Fabric no debe aplanar este contenedor: Android mide el primer hijo
-        // nativo para dimensionar el bitmap completo (texto, Editar y símbolo).
+        // Fabric must not flatten this container: Android measures the first native
+        // child to size the whole bitmap (text, Editar and symbol).
         collapsable={false}
-        style={[styles.wrap, posicion === 'abajo' && styles.wrapAbajo]}
+        style={[styles.wrap, placement === 'below' && styles.wrapBelow]}
         onLayout={(event) => {
           const { width, height } = event.nativeEvent.layout;
-          setMedidas((actuales) => actuales.ancho === width && actuales.alto === height
-            ? actuales
-            : { ancho: width, alto: height });
+          setSize((current) => current.width === width && current.height === height
+            ? current
+            : { width, height });
         }}>
         <View
           style={[
-            styles.etiquetas,
-            posicion === 'abajo' && styles.wrapAbajo,
+            styles.labels,
+            placement === 'below' && styles.wrapBelow,
             {
               opacity: visible ? 1 : 0,
-              marginTop: tieneEtiquetas && posicion === 'abajo' ? separacion : 0,
-              marginBottom: tieneEtiquetas && posicion === 'arriba' ? separacion : 0,
+              marginTop: hasLabels && placement === 'below' ? separation : 0,
+              marginBottom: hasLabels && placement === 'above' ? separation : 0,
             },
           ]}
           onLayout={(event) => {
             const { width, height } = event.nativeEvent.layout;
-            setMedidasEtiquetas((actuales) => actuales.ancho === width && actuales.alto === height
-              ? actuales : { ancho: width, alto: height });
-            onLabelSize?.({ ancho: width, alto: height });
+            setLabelSize((current) => current.width === width && current.height === height
+              ? current : { width, height });
+            onLabelSize?.({ width, height });
           }}>
           {showEditControl && (
             <View
@@ -153,23 +170,40 @@ export function RoutePinMarker({
             </View>
           )}
         </View>
-        <InsigniaPuntoMapa
-          tipo={kind === 'A' ? 'origen' : 'destino'}
-          tamano={TAMANO_PIN_RUTA}
-          borde={BORDE_PIN_RUTA}
-          tamanoLetra={TAMANO_LETRA_PIN_RUTA}
-          cargando={loading}
-          atenuado={dim}
-        />
+        {/* Same shape as the selection pin: the stem tip is the exact coordinate. */}
+        <View style={[styles.pin, dim && styles.dimmed]}>
+          <MapPointBadge
+            kind={kind === 'A' ? 'origin' : 'destination'}
+            size={ROUTE_PIN_SIZE}
+            border={ROUTE_PIN_BORDER}
+            letterSize={ROUTE_PIN_LETTER_SIZE}
+            loading={loading}
+          />
+          <View style={[styles.stem, { backgroundColor: pinColor }]} />
+          <View style={[styles.exactPoint, { backgroundColor: pinColor }]} />
+        </View>
       </View>
     </Marker>
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const LATE_REDRAW_MS = 400;
+
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   wrap: { alignItems: 'center' },
-  etiquetas: { alignItems: 'center', gap: spacing.sm },
-  wrapAbajo: { flexDirection: 'column-reverse' },
+  pin: { height: PIN_BLOCK_HEIGHT, alignItems: 'center' },
+  dimmed: { opacity: 0.5 },
+  stem: { width: 2, height: ROUTE_PIN_STEM },
+  exactPoint: {
+    width: ROUTE_PIN_DOT,
+    height: ROUTE_PIN_DOT,
+    marginTop: -ROUTE_PIN_DOT / 2,
+    borderRadius: ROUTE_PIN_DOT / 2,
+    borderWidth: 1,
+    borderColor: colors.surface,
+  },
+  labels: { alignItems: 'center', gap: spacing.sm },
+  wrapBelow: { flexDirection: 'column-reverse' },
   editControl: {
     width: 56,
     height: 22,

@@ -1,4 +1,4 @@
-"""Caso de uso: construir el snapshot realtime consistente del pasajero."""
+"""Use case: build the passenger's consistent realtime snapshot."""
 
 from __future__ import annotations
 

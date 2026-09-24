@@ -1,4 +1,4 @@
-"""offers: rider_accepted_at (aceptación del pasajero pendiente de confirmar)
+"""offers: rider_accepted_at (passenger acceptance pending confirmation)
 
 Revision ID: 0010_offer_rider_accepted_at
 Revises: 0009_drop_ride_last_seen_at
@@ -18,8 +18,8 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # El estado ``rider_accepted`` viaja por la columna ``status`` existente
-    # (String(20), enum no nativo): no requiere ALTER TYPE.
+    # The ``rider_accepted`` status travels through the existing ``status`` column
+    # (String(20), non-native enum): it does not require ALTER TYPE.
     op.add_column(
         "offers",
         sa.Column("rider_accepted_at", sa.DateTime(timezone=True), nullable=True),

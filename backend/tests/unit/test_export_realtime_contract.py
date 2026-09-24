@@ -1,4 +1,4 @@
-"""Pruebas del snapshot realtime consumido por los parsers mobile."""
+"""Tests of the realtime snapshot consumed by the mobile parsers."""
 
 from __future__ import annotations
 
@@ -12,11 +12,11 @@ from app.api.v1.schemas.realtime import (
 from scripts.export_realtime_contract import (
     REALTIME_CONTRACT_SNAPSHOT,
     main,
-    serializar_contrato_realtime,
+    serialize_realtime_contract,
 )
 
 
-def _tipos_negociacion_productivos() -> set[str]:
+def _production_negotiation_types() -> set[str]:
     union = get_args(NegotiationMessage)[0]
     return {
         modelo.model_fields["type"].default
@@ -24,22 +24,22 @@ def _tipos_negociacion_productivos() -> set[str]:
     }
 
 
-def test_contrato_realtime_es_determinista_y_snapshot_esta_actualizado() -> None:
-    primera_serializacion = serializar_contrato_realtime()
-    segunda_serializacion = serializar_contrato_realtime()
+def test_realtime_contract_is_deterministic_and_snapshot_is_current() -> None:
+    first_serialization = serialize_realtime_contract()
+    second_serialization = serialize_realtime_contract()
 
-    assert primera_serializacion == segunda_serializacion
-    assert primera_serializacion.endswith("\n")
-    assert primera_serializacion == REALTIME_CONTRACT_SNAPSHOT.read_text(
+    assert first_serialization == second_serialization
+    assert first_serialization.endswith("\n")
+    assert first_serialization == REALTIME_CONTRACT_SNAPSHOT.read_text(
         encoding="utf-8"
     )
 
 
-def test_contrato_realtime_cubre_protocolos_y_tipos_emitidos() -> None:
-    contrato = json.loads(serializar_contrato_realtime())
-    casos = contrato["cases"]
+def test_realtime_contract_covers_emitted_protocols_and_types() -> None:
+    contract = json.loads(serialize_realtime_contract())
+    casos = contract["cases"]
 
-    assert contrato["fixture_version"] == 1
+    assert contract["fixture_version"] == 1
     assert len({caso["name"] for caso in casos}) == len(casos)
     assert all(
         set(caso["audiences"]) <= {"passenger", "driver"}
@@ -47,32 +47,32 @@ def test_contrato_realtime_cubre_protocolos_y_tipos_emitidos() -> None:
         for caso in casos
     )
 
-    tipos_legacy = {
+    legacy_types = {
         caso["message"]["type"]
         for caso in casos
         if caso["protocol"] == "legacy"
     }
-    tipos_eventos_v2 = {
+    v2_event_types = {
         caso["message"]["type"]
         for caso in casos
         if caso["protocol"] == "v2_event"
     }
-    tipos_snapshots_v2 = {
+    v2_snapshot_types = {
         caso["message"]["type"]
         for caso in casos
         if caso["protocol"] == "v2_snapshot"
     }
 
-    assert tipos_legacy == _tipos_negociacion_productivos()
-    assert tipos_eventos_v2 == set(get_args(RealtimeEventType))
-    assert tipos_snapshots_v2 == {"ride_snapshot", "driver_snapshot"}
+    assert legacy_types == _production_negotiation_types()
+    assert v2_event_types == set(get_args(RealtimeEventType))
+    assert v2_snapshot_types == {"ride_snapshot", "driver_snapshot"}
 
 
-def test_check_detecta_drift_sin_reescribir(tmp_path, capsys) -> None:
+def test_check_detects_drift_without_rewriting(tmp_path, capsys) -> None:
     snapshot = tmp_path / "realtime_contract.json"
-    contenido_obsoleto = '{"contrato":"obsoleto"}\n'
-    snapshot.write_text(contenido_obsoleto, encoding="utf-8")
+    stale_content = '{"contrato":"obsoleto"}\n'
+    snapshot.write_text(stale_content, encoding="utf-8")
 
-    assert main(["--check"], destino=snapshot) == 1
-    assert snapshot.read_text(encoding="utf-8") == contenido_obsoleto
-    assert "desactualizado" in capsys.readouterr().err
+    assert main(["--check"], destination=snapshot) == 1
+    assert snapshot.read_text(encoding="utf-8") == stale_content
+    assert "out of date" in capsys.readouterr().err

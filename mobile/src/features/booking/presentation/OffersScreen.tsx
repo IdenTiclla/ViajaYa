@@ -1,18 +1,18 @@
 import { formatBolivianos } from '@/features/rides/domain/money';
 import { TripProgress } from '@/features/rides/presentation/TripProgress';
 /**
- * Ofertas en vivo (pasajero).
+ * Live offers (passenger).
  *
- * Mapa de fondo con el trayecto y, superpuestas, las tarjetas de
- * los conductores que ofertaron. El pasajero **decide**: al pulsar Aceptar se le
- * asigna el viaje (transacción atómica en el backend) y se muestra un overlay de
- * confirmación antes de pasar al viaje en curso. Puede **rechazar** ofertas o
- * **modificar** la solicitud (la pausa del pool y abre la edición) y **cancelar**
- * (las únicas dos formas de salir de la negociación).
+ * Background map with the route and, on top, the cards of
+ * the drivers who made offers. The passenger **decides**: tapping Accept
+ * assigns them the ride (atomic transaction in the backend) and a
+ * confirmation overlay is shown before moving to the ride in progress. They can **reject** offers,
+ * **modify** the request (pauses it in the pool and opens the edit) and **cancel**
+ * (the only two ways out of the negotiation).
  *
- * La solicitud no caduca por tiempo; cada oferta vive 30 s (`expiresAt`) con su
- * propio contador por tarjeta. Mientras no llegan ofertas se muestra la pantalla
- * de búsqueda.
+ * The request does not expire over time; each offer lives 30 s (`expiresAt`) with its
+ * own countdown per card. While no offers arrive, the searching
+ * screen is shown.
  */
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -31,11 +31,11 @@ import { useReducedMotion } from 'react-native-reanimated';
 
 import { getApiErrorMessage, getApiErrorStatus } from '@/core/errors/apiError';
 import { useBlockHardwareBack } from '@/core/navigation/useBlockHardwareBack';
-import { controles, fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { controls, fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
 import { ConfirmationOverlay } from '@/features/booking/presentation/ConfirmationOverlay';
 import { SearchingDriversScreen } from '@/features/booking/presentation/SearchingDriversScreen';
-import { TarjetaOferta } from '@/features/booking/presentation/TarjetaOferta';
+import { OfferCard } from '@/features/booking/presentation/OfferCard';
 import {
   useAcceptOffer,
   useCancelRide,
@@ -51,7 +51,7 @@ import { TripSecondaryAction } from '@/features/rides/presentation/TripSecondary
 import { Button, ConfirmDialog, FeedbackState } from '@/shared/components';
 
 export function OffersScreen() {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   const router = useRouter();
   const { rideId } = useLocalSearchParams<{ rideId?: string }>();
   const id = rideId ?? null;
@@ -63,13 +63,13 @@ export function OffersScreen() {
 
   const rideQuery = useRide(id);
   const { ride } = rideQuery;
-  // Tras reiniciar la app el Zustand de booking esta vacio; el viaje persistido
-  // es la fuente de verdad para reconstruir mapa y resumen.
+  // After restarting the app the booking Zustand is empty; the persisted ride
+  // is the source of truth to rebuild the map and summary.
   const displayOrigin = ride?.origin ?? origin;
   const displayDestination = ride?.destination ?? destination;
-  // Solo cuenta como asignado si hay conductor real; al cancelar, el viaje pasa
-  // a 'cancelled' y NO debe llevar a la pantalla de viaje (vendría a mostrar
-  // "Viaje cancelado"). El handler de cancelar ya envía al inicio directamente.
+  // It only counts as assigned if there is a real driver; when cancelling, the ride becomes
+  // 'cancelled' and must NOT lead to the trip screen (it would end up showing
+  // "Viaje cancelado"). The cancel handler already sends the user home directly.
   const assigned = !!ride && ride.status !== 'searching' && ride.status !== 'cancelled';
   const cancelled = ride?.status === 'cancelled';
   useBlockHardwareBack(Boolean(ride) && !cancelled);
@@ -80,9 +80,9 @@ export function OffersScreen() {
   const cancelRide = useCancelRide();
   const pauseForEdit = usePauseForEdit();
 
-  // Descartes locales: tarjetas que el pasajero quitó de su pantalla.
+  // Local dismissals: cards the passenger removed from their screen.
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
-  // Tick por segundo para que las ofertas vencidas desaparezcan solas.
+  // Tick every second so expired offers disappear on their own.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -98,7 +98,7 @@ export function OffersScreen() {
     [offers, dismissed, now],
   );
 
-  // Tags derivados client-side (ECONÓMICO / RÁPIDO / FAVORITO).
+  // Client-side derived tags (ECONÓMICO / RÁPIDO / FAVORITO).
   const tagsMap = useMemo(() => deriveOfferTags(visibleOffers), [visibleOffers]);
   const [offerOrder, setOfferOrder] = useState<OfferOrder>('recent');
   const orderedOffers = useMemo(() => orderOffers(visibleOffers, offerOrder), [visibleOffers, offerOrder]);
@@ -109,9 +109,9 @@ export function OffersScreen() {
   const [sheetHeight, setSheetHeight] = useState(500);
   const activeOfferToAccept = offerToAccept
     ? visibleOffers.find((offer) => offer.id === offerToAccept.id) ?? null : null;
-  // Se activa antes de disparar el HTTP. El backend publica `ride_status`
-  // accepted antes de responder, asi que esta intencion evita que ese evento
-  // navegue a Trip y desmonte la confirmacion local prematuramente.
+  // Set before firing the HTTP request. The backend publishes `ride_status`
+  // accepted before responding, so this intent keeps that event from
+  // navigating to Trip and unmounting the local confirmation too early.
   const [acceptIntent, setAcceptIntent] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [offerToReject, setOfferToReject] = useState<Offer | null>(null);
@@ -138,17 +138,17 @@ export function OffersScreen() {
     setEditTarget({ rideId: targetRideId });
   }, []);
 
-  // Primero desmonta mapa, marcadores y diálogos. En el siguiente frame vuelve
-  // al Tabs que ya existe debajo, evitando dos árboles nativos superpuestos.
+  // First unmount the map, markers and dialogs. On the next frame go back
+  // to the Tabs that already exist underneath, avoiding two overlapping native trees.
   useEffect(() => {
     if (!returningHome) return;
     const frame = requestAnimationFrame(() => router.dismissTo('/(app)/(tabs)'));
     return () => cancelAnimationFrame(frame);
   }, [returningHome, router]);
 
-  // Fabric procesa los cambios nativos por frame. Desmontar primero el mapa y
-  // navegar dos frames despues evita que react-native-maps reutilice una vista
-  // que Android todavia considera hija del arbol anterior.
+  // Fabric processes native changes per frame. Unmounting the map first and
+  // navigating two frames later keeps react-native-maps from reusing a view
+  // that Android still considers a child of the previous tree.
   useEffect(() => {
     if (!editTarget) return;
 
@@ -172,15 +172,15 @@ export function OffersScreen() {
     };
   }, [editTarget, router]);
 
-  // Backup: si el viaje queda asignado por otra vía (p. ej. WS), ir al viaje.
+  // Backup: if the ride gets assigned another way (e.g. WS), go to the ride.
   useEffect(() => {
     if (assigned && id && !confirmationVisible) {
       router.replace({ pathname: '/booking/trip', params: { rideId: id } });
     }
   }, [assigned, id, confirmationVisible, router]);
 
-  // Esta es la única autoridad de salida, tanto para cancelación local como para
-  // un evento recibido desde otro dispositivo. El ref impide navegar dos veces.
+  // This is the only exit authority, both for a local cancellation and for
+  // an event received from another device. The ref prevents navigating twice.
   useEffect(() => {
     if (!cancelled || cancelRide.isPending || confirmationVisible) return;
     beginReturnHome();
@@ -191,7 +191,7 @@ export function OffersScreen() {
       || (offer.expiresAt != null && Date.parse(offer.expiresAt) <= Date.now())) return;
     acceptingRef.current = true;
     setAcceptIntent(true);
-    // Aceptar asigna el viaje (decisión final): mostramos el overlay al confirmar.
+    // Accepting assigns the ride (final decision): we show the overlay on confirm.
     acceptOffer.mutate({ offerId: offer.id, rideId: id }, {
       onSettled: () => { acceptingRef.current = false; },
       onSuccess: (savedRide) => {
@@ -200,7 +200,7 @@ export function OffersScreen() {
       },
       onError: (error) => {
         setAcceptIntent(false);
-        // La oferta murió en el camino (expiró/retirada/otro la tomó): la quitamos.
+        // The offer died on the way (expired/withdrawn/taken by someone else): we remove it.
         if (getApiErrorStatus(error) === 409) {
           setDismissed((prev) => new Set(prev).add(offer.id));
         }
@@ -240,7 +240,7 @@ export function OffersScreen() {
       cancelRide.isPending ||
       !id
     ) return;
-    // Pausa la solicitud (la oculta del pool) y abre la edición sin cancelar.
+    // Pause the request (hide it from the pool) and open the edit without cancelling.
     pauseForEdit.mutate(id, {
       onSuccess: () => beginEdit(id),
     });
@@ -257,8 +257,8 @@ export function OffersScreen() {
       beginReturnHome();
       return;
     }
-    // Resetea el store recién cuando el backend confirma: si la red falla, el
-    // usuario se queda en la pantalla con el error (sin ride huérfano).
+    // Reset the store only once the backend confirms: if the network fails, the
+    // user stays on the screen with the error (no orphaned ride).
     cancelRide.mutate(id, {
       onSuccess: beginReturnHome,
     });
@@ -269,8 +269,8 @@ export function OffersScreen() {
     cancelRequest();
   };
 
-  // Solo la oferta elegida muestra el progreso; las decisiones se bloquean
-  // mientras termina cualquiera de las operaciones de negociación.
+  // Only the chosen offer shows progress; decisions are locked
+  // while any of the negotiation operations finishes.
   const acceptingId = acceptOffer.isPending ? acceptOffer.variables?.offerId ?? null : null;
   const negotiationBusy =
     acceptOffer.isPending ||
@@ -296,13 +296,13 @@ export function OffersScreen() {
   }
 
   if (assigned && !confirmationVisible) {
-    // El viaje quedó asignado: el overlay ya navegó, o este es el respaldo.
+    // The ride was assigned: the overlay already navigated, or this is the fallback.
     return null;
   }
 
-  // Mientras el overlay de confirmación está activo NO se cambia a la pantalla
-  // de búsqueda: si la oferta aceptada (única visible) expira en ese instante,
-  // desmontar el overlay dejaría `confirming` colgado y al pasajero sin navegar.
+  // While the confirmation overlay is active we do NOT switch to the searching
+  // screen: if the accepted offer (the only visible one) expires at that moment,
+  // unmounting the overlay would leave `confirming` hanging and the passenger stuck.
   if (visibleOffers.length === 0 && !confirmationVisible && offerToAccept == null) {
     return (
       <SearchingDriversScreen
@@ -379,7 +379,7 @@ export function OffersScreen() {
             </Text>
           )}
           {orderedOffers.map((offer) => (
-            <TarjetaOferta
+            <OfferCard
               key={offer.id}
               offer={offer}
               tag={primaryTag(tagsMap[offer.id])}
@@ -469,7 +469,7 @@ export function OffersScreen() {
 }
 
 function OfferOrderControl({ value, onChange }: { value: OfferOrder; onChange: (order: OfferOrder) => void }) {
-  const { styles, estiloFoco } = useEstilos(crearEstilos);
+  const { styles, focusStyle } = useThemedStyles(createStyles);
   const [focused, setFocused] = useState<OfferOrder | null>(null);
   const choices: { value: OfferOrder; label: string; description: string }[] = [
     { value: 'recent', label: 'Recientes', description: 'Ofertas más recientes primero' },
@@ -480,7 +480,7 @@ function OfferOrderControl({ value, onChange }: { value: OfferOrder; onChange: (
     {choices.map(choice => <TouchableOpacity key={choice.value} accessibilityRole="tab"
       accessibilityLabel={choice.description} accessibilityState={{ selected: value === choice.value }}
       onPress={() => onChange(choice.value)} onFocus={() => setFocused(choice.value)} onBlur={() => setFocused(null)}
-      style={[styles.orderButton, value === choice.value && styles.orderSelected, focused === choice.value && estiloFoco]}>
+      style={[styles.orderButton, value === choice.value && styles.orderSelected, focused === choice.value && focusStyle]}>
       {value === choice.value && <Ionicons accessible={false} name="checkmark" size={16} color={styles.orderSelectedLabel.color} />}
       <Text style={[styles.orderLabel, value === choice.value && styles.orderSelectedLabel]}>{choice.label}</Text>
     </TouchableOpacity>)}
@@ -489,11 +489,11 @@ function OfferOrderControl({ value, onChange }: { value: OfferOrder; onChange: (
 
 /** Punto verde que late: indicador "en vivo". */
 function LiveDot() {
-  const { styles } = useEstilos(crearEstilos);
-  const reducirMovimiento = useReducedMotion();
+  const { styles } = useThemedStyles(createStyles);
+  const reduceMotion = useReducedMotion();
   const [value] = useState(() => new Animated.Value(0));
   useEffect(() => {
-    if (reducirMovimiento) return;
+    if (reduceMotion) return;
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(value, {
@@ -512,16 +512,16 @@ function LiveDot() {
     );
     loop.start();
     return () => loop.stop();
-  }, [value, reducirMovimiento]);
+  }, [value, reduceMotion]);
   return (
     <Animated.View
       accessible={false}
-      style={[styles.liveDot, { opacity: reducirMovimiento ? 1 : value.interpolate({ inputRange: [0, 1], outputRange: [1, 0.35] }) }]}
+      style={[styles.liveDot, { opacity: reduceMotion ? 1 : value.interpolate({ inputRange: [0, 1], outputRange: [1, 0.35] }) }]}
     />
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceMuted },
   mapFallback: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: colors.surfaceMuted },
 
@@ -530,14 +530,14 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     paddingTop: spacing.sm, overflow: 'hidden' },
   orderControl: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs,
     padding: spacing.xs, borderRadius: radius.md, backgroundColor: colors.surfaceMuted },
-  orderButton: { minHeight: controles.altoMinimo, flexDirection: 'row', gap: spacing.xs,
+  orderButton: { minHeight: controls.minHeight, flexDirection: 'row', gap: spacing.xs,
     flexBasis: 80, flexGrow: 1, justifyContent: 'center', alignItems: 'center',
     paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderRadius: radius.sm },
   orderSelected: { backgroundColor: colors.primary },
   orderLabel: { flexShrink: 1, fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textSecondary },
   orderSelectedLabel: { color: colors.textOnPrimary },
 
-  // Cabecera opaca para conservar la legibilidad sobre el mapa.
+  // Opaque header to keep it readable over the map.
   liveHeader: { paddingVertical: spacing.xs },
   liveTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   liveTitle: { flexShrink: 1, fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.text },
@@ -556,7 +556,7 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     paddingVertical: spacing.sm,
     borderRadius: radius.sm,
     borderWidth: 1,
-    borderColor: colors.bordePeligro,
+    borderColor: colors.dangerBorder,
     backgroundColor: colors.surface,
   },
   connectionWarningText: {

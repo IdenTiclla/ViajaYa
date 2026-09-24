@@ -1,35 +1,35 @@
 /**
- * Pin fijo en el centro del mapa: el usuario mueve el mapa por debajo y el pin
- * marca siempre el centro geográfico (que coincide con el centro de la cámara).
- * No captura toques (`pointerEvents="none"`) para no interferir con el gesto del
- * mapa. El extremo del tallo se ancla al 50% del mapa, independientemente de la
- * altura de la etiqueta o del tamaño de texto elegido en el teléfono.
+ * Pin fixed at the center of the map: the user moves the map underneath and the pin
+ * always marks the geographic center (which matches the camera center).
+ * It does not capture touches (`pointerEvents="none"`) so it does not interfere with the
+ * map gesture. The tip of the stem is anchored at 50% of the map, regardless of the
+ * label's height or the text size chosen on the phone.
  */
 import { StyleSheet, Text, View } from 'react-native';
 
-import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import { PinLoadingIndicator } from '@/shared/components/PinLoadingIndicator';
-import { InsigniaPuntoMapa, type TipoPuntoMapa } from '@/shared/components/mapa/InsigniaPuntoMapa';
+import { MapPointBadge, type MapPointKind } from '@/shared/components/map/MapPointBadge';
 
 export function CenterPin({
   label,
-  tipo = 'origen',
+  kind = 'origin',
   loading = false,
 }: {
   label: string;
-  tipo?: TipoPuntoMapa;
+  kind?: MapPointKind;
   loading?: boolean;
 }) {
-  const { colors, styles } = useEstilos(crearEstilos);
-  const color = tipo === 'destino' ? colors.danger : colors.primary;
-  const nombre = tipo === 'origen' ? 'Origen' : tipo === 'destino' ? 'Destino' : 'Lugar';
+  const { colors, styles } = useThemedStyles(createStyles);
+  const color = kind === 'destination' ? colors.danger : colors.primary;
+  const name = kind === 'origin' ? 'Origen' : kind === 'destination' ? 'Destino' : 'Lugar';
   return (
     <View
       style={styles.overlay}
       pointerEvents="none"
       accessible
       accessibilityRole="image"
-      accessibilityLabel={`${nombre}. ${label}`}
+      accessibilityLabel={`${name}. ${label}`}
       accessibilityState={{ busy: loading }}>
       <View style={styles.callout}>
         <PinLoadingIndicator loading={loading} color={colors.surface} compact />
@@ -37,15 +37,15 @@ export function CenterPin({
           {label}
         </Text>
       </View>
-      <InsigniaPuntoMapa tipo={tipo} tamano={32} borde={2} tamanoLetra={17} />
-      <View style={[styles.tallo, { backgroundColor: color }]}>
-        <View style={[styles.puntoExacto, { backgroundColor: color }]} />
+      <MapPointBadge kind={kind} size={32} border={2} letterSize={17} />
+      <View style={[styles.stem, { backgroundColor: color }]}>
+        <View style={[styles.exactPoint, { backgroundColor: color }]} />
       </View>
     </View>
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   overlay: {
     position: 'absolute',
     left: 0,
@@ -54,8 +54,8 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: spacing.md,
   },
-  tallo: { width: 2, height: 14, alignItems: 'center' },
-  puntoExacto: {
+  stem: { width: 2, height: 14, alignItems: 'center' },
+  exactPoint: {
     position: 'absolute', bottom: -4, width: 8, height: 8,
     borderRadius: 4, borderWidth: 1.5, borderColor: colors.surface,
   },

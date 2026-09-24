@@ -1,13 +1,13 @@
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 
 type Props = { title?: string; subtitle?: string };
 
-/** Logo + marca ViajaYa usado en las pantallas de autenticación. */
+/** ViajaYa logo + brand used on the authentication screens. */
 export function BrandHeader({ title = 'ViajaYa', subtitle }: Props) {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   return (
     <View style={styles.wrapper}>
       <View style={styles.logo}>
@@ -19,7 +19,7 @@ export function BrandHeader({ title = 'ViajaYa', subtitle }: Props) {
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   wrapper: { alignItems: 'center', gap: spacing.xs },
   logo: {
     width: 64,

@@ -121,7 +121,7 @@ function reducePool(events) {
   return { projection, reduction };
 }
 
-test('el snapshot reemplaza las ofertas anteriores', () => {
+test('the snapshot replaces the previous offers', () => {
   const incoming = [offer('new', 'driver-new')];
   const result = reducePassengerOffers([offer('old', 'driver-old')], {
     type: 'snapshot',
@@ -133,7 +133,7 @@ test('el snapshot reemplaza las ofertas anteriores', () => {
   assert.equal(result.notice, null);
 });
 
-test('un evento duplicado actualiza sin repetir la notificación', () => {
+test('a duplicated event updates without repeating the notification', () => {
   const previous = offer('offer-1', 'driver-1', 20);
   const updated = offer('offer-1', 'driver-1', 22);
   const result = reducePassengerOffers([previous], {
@@ -146,7 +146,7 @@ test('un evento duplicado actualiza sin repetir la notificación', () => {
   assert.equal(previous.price, 20);
 });
 
-test('una oferta nueva reemplaza la anterior del mismo conductor', () => {
+test('a new offer replaces the same driver\'s previous one', () => {
   const retained = offer('other', 'driver-2');
   const replacement = offer('new', 'driver-1', 25);
   const result = reducePassengerOffers(
@@ -158,7 +158,7 @@ test('una oferta nueva reemplaza la anterior del mismo conductor', () => {
   assert.deepEqual(result.notice, { kind: 'received', offer: replacement });
 });
 
-test('un retiro superseded conserva la referencia para evitar parpadeo', () => {
+test('a superseded withdrawal keeps the reference to avoid flicker', () => {
   const current = [offer('offer-1', 'driver-1')];
   const result = reducePassengerOffers(current, {
     type: 'withdrawn',
@@ -171,7 +171,7 @@ test('un retiro superseded conserva la referencia para evitar parpadeo', () => {
   assert.equal(result.notice, null);
 });
 
-test('un retiro por id elimina únicamente la oferta indicada', () => {
+test('a withdrawal by id removes only the given offer', () => {
   const removed = offer('offer-1', 'driver-1');
   const retained = offer('offer-2', 'driver-2');
   const result = reducePassengerOffers([removed, retained], {
@@ -184,7 +184,7 @@ test('un retiro por id elimina únicamente la oferta indicada', () => {
   assert.deepEqual(result.notice, { kind: 'withdrawn', offer: removed });
 });
 
-test('un retiro sin id elimina la oferta por conductor', () => {
+test('a withdrawal without id removes the offer by driver', () => {
   const removed = offer('offer-1', 'driver-1');
   const retained = offer('offer-2', 'driver-2');
   const result = reducePassengerOffers([removed, retained], {
@@ -196,7 +196,7 @@ test('un retiro sin id elimina la oferta por conductor', () => {
   assert.deepEqual(result.notice, { kind: 'withdrawn', offer: removed });
 });
 
-test('una expiración elimina por id y describe la notificación', () => {
+test('an expiry removes by id and describes the notification', () => {
   const expired = offer('offer-1', 'driver-1');
   const retained = offer('offer-2', 'driver-2');
   const result = reducePassengerOffers([expired, retained], {
@@ -208,7 +208,7 @@ test('una expiración elimina por id y describe la notificación', () => {
   assert.deepEqual(result.notice, { kind: 'expired', offer: expired });
 });
 
-test('una expiración atrasada no elimina la oferta nueva del mismo conductor', () => {
+test('a late expiry does not remove the same driver\'s new offer', () => {
   const replacement = offer('offer-2', 'driver-1');
   const result = reducePassengerOffers([replacement], {
     type: 'expired',
@@ -219,7 +219,7 @@ test('una expiración atrasada no elimina la oferta nueva del mismo conductor', 
   assert.equal(result.notice, null);
 });
 
-test('un ride terminal no retrocede por un evento atrasado', () => {
+test('a terminal ride does not go back because of a late event', () => {
   assert.equal(
     shouldApplyRideStatus(ride('ride-1', 'cancelled'), ride('ride-1', 'searching')),
     false,
@@ -234,7 +234,7 @@ test('un ride terminal no retrocede por un evento atrasado', () => {
   );
 });
 
-test('los estados de ride avanzan de forma monótona y permiten refrescarse', () => {
+test('ride statuses advance monotonically and can be refreshed', () => {
   const forwardTransitions = [
     ['searching', 'accepted'],
     ['accepted', 'arriving'],
@@ -259,7 +259,7 @@ test('los estados de ride avanzan de forma monótona y permiten refrescarse', ()
   }
 });
 
-test('los estados de ride rechazan retrocesos no terminales', () => {
+test('ride statuses reject non-terminal regressions', () => {
   const regressions = [
     ['accepted', 'searching'],
     ['arriving', 'accepted'],
@@ -275,7 +275,7 @@ test('los estados de ride rechazan retrocesos no terminales', () => {
   }
 });
 
-test('cancelled solo se acepta antes de iniciar el viaje', () => {
+test('cancelled is only accepted before the ride starts', () => {
   for (const status of ['searching', 'accepted', 'arriving']) {
     assert.equal(
       shouldApplyRideStatus(ride('ride-1', status), ride('ride-1', 'cancelled')),
@@ -299,7 +299,7 @@ test('cancelled solo se acepta antes de iniciar el viaje', () => {
   );
 });
 
-test('una respuesta HTTP accepted atrasada no reemplaza el cancelled recibido por WS', async () => {
+test('a late HTTP accepted response does not replace the cancelled received over WS', async () => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -317,7 +317,7 @@ test('una respuesta HTTP accepted atrasada no reemplaza el cancelled recibido po
     }
   });
 
-  // El WebSocket se adelanta mientras la petición HTTP continúa pendiente.
+  // The WebSocket gets ahead while the HTTP request is still pending.
   const cancelled = ride('ride-1', 'cancelled');
   queryClient.setQueryData(detailKey, cancelled);
   queryClient.setQueryData(activeKey, null);
@@ -329,7 +329,7 @@ test('una respuesta HTTP accepted atrasada no reemplaza el cancelled recibido po
   queryClient.clear();
 });
 
-test('una respuesta HTTP normal avanza el ride no terminal', () => {
+test('a normal HTTP response advances the non-terminal ride', () => {
   const accepted = ride('ride-1', 'accepted');
   const reduction = reduceRideMutationResult(
     ride('ride-1', 'searching'),
@@ -340,7 +340,7 @@ test('una respuesta HTTP normal avanza el ride no terminal', () => {
   assert.strictEqual(reduction.ride, accepted);
 });
 
-test('una respuesta HTTP atrasada respeta la caché activa más adelantada', () => {
+test('a late HTTP response respects the more advanced active cache', () => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -360,7 +360,7 @@ test('una respuesta HTTP atrasada respeta la caché activa más adelantada', () 
   queryClient.clear();
 });
 
-test('una respuesta HTTP del mismo estado terminal puede refrescar sus datos', () => {
+test('an HTTP response with the same terminal status can refresh its data', () => {
   const cancelled = ride('ride-1', 'cancelled');
   const reduction = reduceRideMutationResult(
     ride('ride-1', 'cancelled'),
@@ -371,7 +371,7 @@ test('una respuesta HTTP del mismo estado terminal puede refrescar sus datos', (
   assert.strictEqual(reduction.ride, cancelled);
 });
 
-test('el activo del pasajero se recupera, actualiza y limpia al terminar', () => {
+test('the passenger\'s active ride is recovered, updated and cleared when it ends', () => {
   const searching = ride('ride-1', 'searching');
   const accepted = ride('ride-1', 'accepted');
   const completed = ride('ride-1', 'completed');
@@ -385,7 +385,7 @@ test('el activo del pasajero se recupera, actualiza y limpia al terminar', () =>
   );
 });
 
-test('el activo del conductor solo cambia cuando coincide el ride', () => {
+test('the driver\'s active ride only changes when the ride matches', () => {
   const current = ride('ride-1', 'accepted');
   const arriving = ride('ride-1', 'arriving');
   const other = ride('ride-2', 'arriving');
@@ -395,7 +395,7 @@ test('el activo del conductor solo cambia cuando coincide el ride', () => {
   assert.equal(reduceDriverActiveRide(null, arriving), null);
 });
 
-test('los reducers activos tampoco permiten retrocesos', () => {
+test('the active reducers do not allow regressions either', () => {
   const inProgress = ride('ride-1', 'in_progress');
   const arriving = ride('ride-1', 'arriving');
 
@@ -406,7 +406,7 @@ test('los reducers activos tampoco permiten retrocesos', () => {
   assert.strictEqual(reduceDriverActiveRide(inProgress, arriving), inProgress);
 });
 
-test('la expiración del conductor compara offerId y es idempotente', () => {
+test('the driver\'s expiry compares offerId and is idempotent', () => {
   const store = useDriverRequests.getState();
   store.reset();
   applySentOffer(store, 'ride-1', sentOffer('offer-1'), 18);
@@ -424,7 +424,7 @@ test('la expiración del conductor compara offerId y es idempotente', () => {
   store.reset();
 });
 
-test('el retiro resumido elimina solo los rides indicados y tolera duplicados', () => {
+test('the summarized withdrawal removes only the given rides and tolerates duplicates', () => {
   const store = useDriverRequests.getState();
   store.reset();
   applySentOffer(store, 'ride-1', sentOffer('offer-1'));
@@ -437,7 +437,7 @@ test('el retiro resumido elimina solo los rides indicados y tolera duplicados', 
   store.reset();
 });
 
-test('un rechazo WS anterior al HTTP impide revivir la misma oferta', () => {
+test('a WS rejection before the HTTP response prevents reviving the same offer', () => {
   const store = useDriverRequests.getState();
   store.reset();
   const attemptToken = store.beginOfferAttempt('ride-1');
@@ -453,7 +453,7 @@ test('un rechazo WS anterior al HTTP impide revivir la misma oferta', () => {
   store.reset();
 });
 
-test('una reoferta legítima no hereda el tombstone de la oferta anterior', () => {
+test('a legitimate re-offer does not inherit the previous offer\'s tombstone', () => {
   const store = useDriverRequests.getState();
   store.reset();
   store.markRejected('ride-1', 'offer-1');
@@ -465,7 +465,7 @@ test('una reoferta legítima no hereda el tombstone de la oferta anterior', () =
   store.reset();
 });
 
-test('expiración y pausa exactas bloquean su respuesta HTTP tardía', () => {
+test('exact expiry and pause block their late HTTP response', () => {
   const store = useDriverRequests.getState();
   store.reset();
   const expiredAttempt = store.beginOfferAttempt('ride-1');
@@ -496,7 +496,7 @@ test('expiración y pausa exactas bloquean su respuesta HTTP tardía', () => {
   store.reset();
 });
 
-test('un ride asignado, tomado o cancelado bloquea cualquier oferta tardía', () => {
+test('an assigned, taken or cancelled ride blocks any late offer', () => {
   const store = useDriverRequests.getState();
   store.reset();
 
@@ -537,7 +537,7 @@ test('un ride asignado, tomado o cancelado bloquea cualquier oferta tardía', ()
   store.reset();
 });
 
-test('ride_closed y offer_rejected convergen en cualquier orden', () => {
+test('ride_closed and offer_rejected converge in any order', () => {
   const reduceInOrder = (closedFirst) => {
     const store = useDriverRequests.getState();
     store.reset();
@@ -561,7 +561,7 @@ test('ride_closed y offer_rejected convergen en cualquier orden', () => {
   useDriverRequests.getState().reset();
 });
 
-test('el snapshot PENDING corrige una expiración local por reloj adelantado', () => {
+test('the PENDING snapshot corrects a local expiry caused by a clock running ahead', () => {
   const store = useDriverRequests.getState();
   store.reset();
   store.markExpired('ride-1', 'offer-1');
@@ -573,7 +573,7 @@ test('el snapshot PENDING corrige una expiración local por reloj adelantado', (
       price: 20,
       rideFare: 20,
       etaMin: 5,
-      // Simula reloj del dispositivo adelantado respecto al servidor.
+      // Simulates a device clock ahead of the server's.
       expiresAt: '2000-07-18T12:00:30Z',
     },
   ]);
@@ -589,7 +589,7 @@ test('el snapshot PENDING corrige una expiración local por reloj adelantado', (
   store.reset();
 });
 
-test('un intento cubierto pero ausente fuerza resnapshot y uno posterior se admite', () => {
+test('a covered but missing attempt forces a resnapshot and a later one is admitted', () => {
   const store = useDriverRequests.getState();
   store.reset();
   const oldAttempt = store.beginOfferAttempt('ride-old');
@@ -628,7 +628,7 @@ test('un intento cubierto pero ausente fuerza resnapshot y uno posterior se admi
   store.reset();
 });
 
-test('un 201 que resuelve durante el snapshot no queda borrado sin resync', () => {
+test('a 201 resolving during the snapshot is not erased without a resync', () => {
   const store = useDriverRequests.getState();
   store.reset();
   const attempt = store.beginOfferAttempt('ride-race');
@@ -650,7 +650,7 @@ test('un 201 que resuelve durante el snapshot no queda borrado sin resync', () =
   store.reset();
 });
 
-test('un 201 aplicado antes de crear el corte también fuerza resnapshot', () => {
+test('a 201 applied before creating the cut also forces a resnapshot', () => {
   const store = useDriverRequests.getState();
   store.reset();
   const attempt = store.beginOfferAttempt('ride-before-frame');
@@ -672,7 +672,7 @@ test('un 201 aplicado antes de crear el corte también fuerza resnapshot', () =>
   store.reset();
 });
 
-test('una oferta iniciada después del corte fuerza confirmación con otro snapshot', () => {
+test('an offer started after the cut forces confirmation with another snapshot', () => {
   const store = useDriverRequests.getState();
   store.reset();
   const cut = store.beginOfferSnapshot();
@@ -686,7 +686,7 @@ test('una oferta iniciada después del corte fuerza confirmación con otro snaps
   store.reset();
 });
 
-test('una mejora ausente del snapshot fuerza resync aunque este avance el token', () => {
+test('an improvement missing from the snapshot forces a resync even if it advances the token', () => {
   const store = useDriverRequests.getState();
   store.reset();
   const firstAttempt = store.beginOfferAttempt('ride-1');
@@ -722,7 +722,7 @@ test('una mejora ausente del snapshot fuerza resync aunque este avance el token'
   store.reset();
 });
 
-test('una pausa de snapshot invalida el HTTP incluso después de reanudar', () => {
+test('a snapshot pause invalidates the HTTP response even after resuming', () => {
   const store = useDriverRequests.getState();
   store.reset();
   store.applyPoolEvent({ rideId: 'ride-1', poolVersion: 1, phase: 'open' });
@@ -739,7 +739,7 @@ test('una pausa de snapshot invalida el HTTP incluso después de reanudar', () =
   store.reset();
 });
 
-test('una pausa atrasada sella su oferta sin degradar la generación nueva', () => {
+test('a late pause seals its offer without downgrading the new generation', () => {
   const store = useDriverRequests.getState();
   store.reset();
   store.applyPoolEvent({ rideId: 'ride-1', poolVersion: 1, phase: 'open' });
@@ -766,7 +766,7 @@ test('una pausa atrasada sella su oferta sin degradar la generación nueva', () 
   store.reset();
 });
 
-test('el retiro voluntario de A no elimina una oferta B posterior', () => {
+test('the voluntary withdrawal of A does not remove a later offer B', () => {
   const store = useDriverRequests.getState();
   store.reset();
   applySentOffer(store, 'ride-1', sentOffer('offer-a'));
@@ -778,7 +778,7 @@ test('el retiro voluntario de A no elimina una oferta B posterior', () => {
   store.reset();
 });
 
-test('el retiro exacto de A no invalida una reoferta B en vuelo', () => {
+test('the exact withdrawal of A does not invalidate a re-offer B in flight', () => {
   const store = useDriverRequests.getState();
   store.reset();
   applySentOffer(store, 'ride-1', sentOffer('offer-a'));
@@ -794,7 +794,7 @@ test('el retiro exacto de A no invalida una reoferta B en vuelo', () => {
   store.reset();
 });
 
-test('offers_withdrawn exacto hace CAS por offer_id y sus duplicados son idempotentes', () => {
+test('exact offers_withdrawn does CAS by offer_id and its duplicates are idempotent', () => {
   const store = useDriverRequests.getState();
   store.reset();
   applySentOffer(store, 'ride-1', sentOffer('offer-a'));
@@ -827,7 +827,7 @@ test('offers_withdrawn exacto hace CAS por offer_id y sus duplicados son idempot
   store.reset();
 });
 
-test('dos intentos solapados solo aplican la respuesta más nueva', () => {
+test('two overlapping attempts only apply the newest response', () => {
   const store = useDriverRequests.getState();
   store.reset();
   const firstAttempt = store.beginOfferAttempt('ride-1');
@@ -845,7 +845,7 @@ test('dos intentos solapados solo aplican la respuesta más nueva', () => {
   store.reset();
 });
 
-test('pasar offline invalida respuestas de oferta todavía pendientes', () => {
+test('going offline invalidates offer responses that are still pending', () => {
   const store = useDriverRequests.getState();
   store.reset();
   const attemptToken = store.beginOfferAttempt('ride-1');
@@ -859,7 +859,7 @@ test('pasar offline invalida respuestas de oferta todavía pendientes', () => {
   store.reset();
 });
 
-test('los guards históricos mantienen una retención acotada', () => {
+test('the historical guards keep a bounded retention', () => {
   const store = useDriverRequests.getState();
   store.reset();
   for (let index = 0; index < 520; index += 1) {
@@ -878,7 +878,7 @@ test('los guards históricos mantienen una retención acotada', () => {
   store.reset();
 });
 
-test('close y pause de la misma versión convergen sin importar el orden', () => {
+test('close and pause of the same version converge regardless of order', () => {
   const opened = { rideId: 'ride-1', poolVersion: 1, phase: 'open' };
   const closedForPause = { rideId: 'ride-1', poolVersion: 1, phase: 'closed' };
   const paused = { rideId: 'ride-1', poolVersion: 1, phase: 'paused' };
@@ -897,7 +897,7 @@ test('close y pause de la misma versión convergen sin importar el orden', () =>
   assert.equal(pauseFirst.reduction.kind, 'superseded');
 });
 
-test('un cierre terminal domina una pausa de la misma versión', () => {
+test('a terminal close dominates a pause of the same version', () => {
   const opened = { rideId: 'ride-1', poolVersion: 1, phase: 'open' };
   const paused = { rideId: 'ride-1', poolVersion: 1, phase: 'paused' };
   const terminal = { rideId: 'ride-1', poolVersion: 1, phase: 'terminal' };
@@ -913,7 +913,7 @@ test('un cierre terminal domina una pausa de la misma versión', () => {
   }
 });
 
-test('un created duplicado no reabre un ciclo cerrado', () => {
+test('a duplicated created does not reopen a closed cycle', () => {
   const result = reducePool([
     { rideId: 'ride-1', poolVersion: 1, phase: 'open' },
     { rideId: 'ride-1', poolVersion: 1, phase: 'closed' },
@@ -928,7 +928,7 @@ test('un created duplicado no reabre un ciclo cerrado', () => {
   assert.equal(result.reduction.acceptsPayload, false);
 });
 
-test('cierres y pausas atrasados no degradan una publicación nueva', () => {
+test('late closes and pauses do not downgrade a new publication', () => {
   for (const phase of ['closed', 'paused', 'terminal']) {
     const result = reducePool([
       { rideId: 'ride-1', poolVersion: 1, phase: 'open' },
@@ -945,7 +945,7 @@ test('cierres y pausas atrasados no degradan una publicación nueva', () => {
   }
 });
 
-test('solo una versión abierta mayor limpia desenlaces del conductor', () => {
+test('only a greater open version clears the driver\'s outcomes', () => {
   const store = useDriverRequests.getState();
   store.reset();
 
@@ -991,7 +991,7 @@ test('solo una versión abierta mayor limpia desenlaces del conductor', () => {
   store.reset();
 });
 
-test('solo un close aplicado retira la oferta e invalida su intento', () => {
+test('only an applied close withdraws the offer and invalidates its attempt', () => {
   const store = useDriverRequests.getState();
   store.reset();
   store.applyPoolEvent({ rideId: 'ride-1', poolVersion: 2, phase: 'open' });
@@ -1038,7 +1038,7 @@ test('solo un close aplicado retira la oferta e invalida su intento', () => {
   store.reset();
 });
 
-test('terminal elimina una tarjeta pausada y una pausa tardía no la revive', () => {
+test('terminal removes a paused card and a late pause does not revive it', () => {
   const store = useDriverRequests.getState();
   store.reset();
   const ride = openRide('ride-1', 1);
@@ -1075,7 +1075,7 @@ test('terminal elimina una tarjeta pausada y una pausa tardía no la revive', ()
   store.reset();
 });
 
-test('el snapshot conserva un objeto local más nuevo aunque esté en otra página', () => {
+test('the snapshot keeps a newer local object even if it is on another page', () => {
   const local = openRide('ride-1', 2, 30);
   const stale = openRide('ride-1', 1, 20);
   const current = {
@@ -1094,7 +1094,7 @@ test('el snapshot conserva un objeto local más nuevo aunque esté en otra pági
   assert.deepEqual(flattenOpenRides(reconciled), [local]);
 });
 
-test('la proyección del pool conserva una retención acotada y reiniciable', () => {
+test('the pool projection keeps a bounded, resettable retention', () => {
   const store = useDriverRequests.getState();
   store.reset();
   for (let index = 0; index < MAX_DRIVER_POOL_CYCLES + 8; index += 1) {

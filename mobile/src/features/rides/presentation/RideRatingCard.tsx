@@ -1,17 +1,17 @@
 import { TripProgress } from '@/features/rides/presentation/TripProgress';
 /**
- * Tarjeta de cierre de viaje reutilizable (pasajero ↔ conductor).
+ * Reusable ride-closing card (passenger ↔ driver).
  *
- * Muestra el resumen del viaje terminado y permite calificar a la otra parte
- * (1–5 estrellas + comentario opcional). La opción de omitir permanece disponible
- * hasta enviar, incluso después de elegir estrellas.
+ * Shows the finished ride's summary and lets the user rate the other party
+ * (1–5 stars + optional comment). The skip option stays available
+ * until submitting, even after choosing stars.
  */
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
-import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import { useRateRide, useSkipRating } from '@/features/rides/application/useCloseFlow';
 import { formatBolivianos } from '@/features/rides/domain/money';
 import type { Ride } from '@/features/rides/domain/types';
@@ -20,17 +20,17 @@ import { TripSecondaryAction } from './TripSecondaryAction';
 
 type Props = {
   ride: Ride;
-  /** Nombre de la otra parte (conductor para el pasajero; pasajero para el conductor). */
+  /** Name of the other party (the driver for the passenger; the passenger for the driver). */
   counterpartName?: string | null;
-  /** Detalle del vehículo, cuando se califica al conductor. */
+  /** Vehicle detail, when rating the driver. */
   counterpartVehicle?: string | null;
-  /** A quién se califica, para el texto de ayuda. */
+  /** Who is being rated, for the helper text. */
   rateeRole: 'driver' | 'passenger';
-  /** Se llama tras enviar la calificación o al omitir. */
+  /** Called after submitting the rating or when skipping. */
   onDone: () => void;
 };
 
-const VALORACIONES = ['Mala', 'Regular', 'Buena', 'Muy buena', 'Excelente'];
+const RATING_LABELS = ['Mala', 'Regular', 'Buena', 'Muy buena', 'Excelente'];
 
 export function RideRatingCard({
   ride,
@@ -39,12 +39,12 @@ export function RideRatingCard({
   rateeRole,
   onDone,
 }: Props) {
-  const { colors, styles, estiloFoco } = useEstilos(crearEstilos);
+  const { colors, styles, focusStyle } = useThemedStyles(createStyles);
   const { fontScale } = useWindowDimensions();
   const [score, setScore] = useState(0);
   const [comment, setComment] = useState('');
   const [showComment, setShowComment] = useState(false);
-  const [estrellaEnfocada, setEstrellaEnfocada] = useState<number | null>(null);
+  const [focusedStar, setFocusedStar] = useState<number | null>(null);
   const rate = useRateRide();
   const skip = useSkipRating();
   const submissionLock = useRef(false);
@@ -121,18 +121,18 @@ export function RideRatingCard({
               key={n}
               disabled={submitting}
               onPress={() => setScore(n)}
-              onFocus={() => setEstrellaEnfocada(n)}
-              onBlur={() => setEstrellaEnfocada(null)}
+              onFocus={() => setFocusedStar(n)}
+              onBlur={() => setFocusedStar(null)}
               style={({ pressed }) => [
                 styles.starButton,
                 score === n && styles.starSelected,
                 pressed && styles.starPressed,
-                estrellaEnfocada === n && estiloFoco,
+                focusedStar === n && focusStyle,
               ]}
               accessibilityRole="radio"
               accessibilityState={{ checked: score === n, disabled: submitting }}
               aria-checked={score === n}
-              accessibilityLabel={`${n} ${n === 1 ? 'estrella' : 'estrellas'}: ${VALORACIONES[n - 1]}`}>
+              accessibilityLabel={`${n} ${n === 1 ? 'estrella' : 'estrellas'}: ${RATING_LABELS[n - 1]}`}>
               <Ionicons
                 accessible={false}
                 name={n <= score ? 'star' : 'star-outline'}
@@ -143,7 +143,7 @@ export function RideRatingCard({
           ))}
         </View>
         <Text style={styles.scoreLabel} accessibilityLiveRegion="polite">
-          {score > 0 ? `${VALORACIONES[score - 1]} · ${score} de 5 estrellas` : 'Selecciona de 1 a 5 estrellas'}
+          {score > 0 ? `${RATING_LABELS[score - 1]} · ${score} de 5 estrellas` : 'Selecciona de 1 a 5 estrellas'}
         </Text>
       </View>
 
@@ -187,7 +187,7 @@ export function RideRatingCard({
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   root: { gap: spacing.md },
   successHeader: { alignItems: 'center', gap: spacing.xs },
   checkCircle: {
@@ -238,7 +238,7 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     borderRadius: radius.pill,
   },
   starPressed: { backgroundColor: colors.surfaceMuted },
-  starSelected: { backgroundColor: colors.primarioSuave },
+  starSelected: { backgroundColor: colors.primarySoft },
   scoreLabel: { color: colors.textSecondary, fontSize: fontSize.sm, textAlign: 'center' },
 
   error: { color: colors.danger, fontSize: fontSize.sm, textAlign: 'center' },

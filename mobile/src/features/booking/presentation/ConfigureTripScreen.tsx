@@ -1,7 +1,7 @@
 /**
- * Configurar viaje — paso final del flujo: muestra origen y destino marcados en
- * el mapa, unidos por el trayecto real por calles (Google Routes API), y permite
- * elegir servicio, proponer una oferta y buscar ofertas de conductores.
+ * Configure trip — final step of the flow: shows origin and destination marked on
+ * the map, joined by the real street route (Google Routes API), and lets the user
+ * choose a service, propose a fare and search for driver offers.
  *
  * The camera stays locked around the complete road route.
  */
@@ -24,7 +24,7 @@ import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
-import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
 import { useRoute } from '@/features/booking/application/useRoute';
 import { useTripPlaceLabels } from '@/features/booking/application/useTripPlaceLabels';
@@ -49,14 +49,14 @@ import {
   PASSENGER_ACTIVE_RIDE_KEY,
   useRide,
 } from '@/features/rides/application/useRides';
-import { useEstiloMapa } from '@/features/booking/presentation/mapStyle';
+import { useMapStyle } from '@/features/booking/presentation/mapStyle';
 import { RoutePinMarker } from '@/features/rides/presentation/RoutePinMarker';
 import {
   getLabelAwareFitCoordinates,
-  type MedidasEtiqueta,
+  type LabelSize,
 } from '@/features/rides/presentation/routeTooltipLayout';
 import { RoutePolyline } from '@/features/rides/presentation/RoutePolyline';
-import { useRumboMapa } from '@/features/rides/application/useRumboMapa';
+import { useMapBearing } from '@/features/rides/application/useMapBearing';
 import { MotorcycleRouteNotice } from '@/features/rides/presentation/MotorcycleRouteNotice';
 import { Button, ConfirmDialog, FeedbackState } from '@/shared/components';
 
@@ -70,7 +70,7 @@ const FIT_INSET = 16;
 // Smallest route area the camera keeps when the viewport is tiny.
 const MIN_FIT_SPAN = 48;
 // RoutePinMarker's initial label estimate, used until it reports the real size.
-const DEFAULT_LABEL_SIZE: MedidasEtiqueta = { ancho: 178, alto: 40 };
+const DEFAULT_LABEL_SIZE: LabelSize = { width: 178, height: 40 };
 const MIN_KEYBOARD_TRANSLATION = 280;
 
 function formatDistance(meters: number): string {
@@ -82,7 +82,7 @@ function formatDuration(seconds: number): string {
 }
 
 export function ConfigureTripScreen() {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   const insets = useSafeAreaInsets();
   const { fontScale } = useWindowDimensions();
   const router = useRouter();
@@ -106,22 +106,22 @@ export function ConfigureTripScreen() {
     retry: retryLabels,
   } = useTripPlaceLabels();
   const mapRef = useRef<MapView>(null);
-  const { rumboMapa, zoomMapa, actualizarRumbo } = useRumboMapa(mapRef);
+  const { mapBearing, mapZoom, updateBearing } = useMapBearing(mapRef);
   const queryClient = useQueryClient();
   const editRide = useEditRide();
   const cancelRecoveryRide = useCancelRide();
-  // Alto real del bottom sheet, para encuadrar los puntos por encima de él.
+  // Real height of the bottom sheet, to frame the points above it.
   const [sheetHeight, setSheetHeight] = useState(0);
   const [headerHeight, setHeaderHeight] = useState(insets.top + 56);
   const [mapReady, setMapReady] = useState(false);
   const [mapSize, setMapSize] = useState({ width: 0, height: 0 });
   const [labelSizes, setLabelSizes] = useState({ A: DEFAULT_LABEL_SIZE, B: DEFAULT_LABEL_SIZE });
-  const reportLabelSize = (kind: 'A' | 'B') => (size: MedidasEtiqueta) =>
-    setLabelSizes((current) => current[kind].ancho === size.ancho && current[kind].alto === size.alto
+  const reportLabelSize = (kind: 'A' | 'B') => (size: LabelSize) =>
+    setLabelSizes((current) => current[kind].width === size.width && current[kind].height === size.height
       ? current : { ...current, [kind]: size });
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [keyboardOffset, setKeyboardOffset] = useState(0);
-  const { estiloMapa, modoMapa } = useEstiloMapa();
+  const { mapStyle, mapMode } = useMapStyle();
   const [confirmExit, setConfirmExit] = useState(false);
   const [manualExit, setAllowExit] = useState(false);
   const [exitAfterSave, setExitAfterSave] = useState(false);
@@ -132,8 +132,8 @@ export function ConfigureTripScreen() {
     const showSubscription = Keyboard.addListener('keyboardDidShow', (event) => {
       const height = event.endCoordinates.height;
       setKeyboardHeight(height);
-      // `screenY` no es estable con adjustResize entre fabricantes. Trasladar
-      // por la altura completa garantiza que la oferta quede sobre el teclado.
+      // `screenY` is not stable with adjustResize across manufacturers. Translating
+      // by the full height guarantees the fare stays above the keyboard.
       setKeyboardOffset(Math.max(height, MIN_KEYBOARD_TRANSLATION));
     });
     const hideSubscription = Keyboard.addListener('keyboardDidHide', () => {
@@ -148,9 +148,9 @@ export function ConfigureTripScreen() {
 
   const createRide = useCreateRide();
 
-  // Modo edición (Modificar solicitud): el llamador (Offers/Searching) ya pausó
-  // la solicitud antes de navegar; aquí solo hidratamos el formulario con los
-  // datos del viaje. La caché ['ride', id] la pobló usePauseForEdit.onSuccess.
+  // Edit mode (Modify request): the caller (Offers/Searching) already paused
+  // the request before navigating; here we only hydrate the form with the
+  // ride's data. usePauseForEdit.onSuccess filled the ['ride', id] cache.
   const editQuery = useRide(rideId ?? null);
   const existingRide = editQuery.ride;
   const editAlreadyPublished = Boolean(isEditing && existingRide
@@ -180,8 +180,8 @@ export function ConfigureTripScreen() {
     setConfirmExit(true);
   };
 
-  // Intercepta flecha, gesto y back de Android. Una solicitud pausada requiere
-  // confirmar la cancelación antes de salir al inicio.
+  // Intercepts the arrow, gesture and Android back. A paused request requires
+  // confirming the cancellation before leaving to home.
   usePreventRemove(isEditing && Boolean(existingRide) && !allowExit, () => {
     if (!editRide.isPending && !cancelRecoveryRide.isPending) requestEditExit();
   });
@@ -241,8 +241,8 @@ export function ConfigureTripScreen() {
     };
   }, [origin, destination]);
 
-  // Para encuadrar la cámara: el trayecto real si existe, si no la recta entre
-  // ambos puntos (así el mapa enmarca el viaje desde el primer instante).
+  // To frame the camera: the real route if it exists, otherwise the straight line between
+  // both points (so the map frames the trip from the very first moment).
   const fitCoordinates = useMemo<Coordinates[]>(() => {
     if (route && route.coordinates.length >= 2) return route.coordinates;
     if (origin && destination) return [origin.coordinates, destination.coordinates];
@@ -252,14 +252,14 @@ export function ConfigureTripScreen() {
   // Never present a straight line as a computed road route.
   const polylineCoordinates = route?.coordinates ?? [];
 
-  // react-native-maps conserva internamente overlays nativos. Una clave basada
-  // en ambos puntos fuerza a reemplazarlos al editar origen o destino, evitando
-  // que se vea la ruta o los pins del trayecto anterior.
+  // react-native-maps keeps native overlays internally. A key based
+  // on both points forces replacing them when editing origin or destination, so
+  // the previous trip's route or pins are not shown.
   const tripMapKey = origin && destination
     ? `${origin.coordinates.latitude},${origin.coordinates.longitude}:${destination.coordinates.latitude},${destination.coordinates.longitude}`
     : '';
 
-  // Encuadra origen + destino dejando libre el área que tapa el bottom sheet.
+  // Frame origin + destination, leaving free the area covered by the bottom sheet.
   const fitToTrip = useCallback(
     (animated: boolean) => {
       if (!mapReady || mapSize.width <= 0 || mapSize.height <= 0 || fitCoordinates.length < 2) return;
@@ -286,7 +286,7 @@ export function ConfigureTripScreen() {
       mapSize.height, headerHeight, labelSizes],
   );
 
-  // Reajusta la cámara cuando llega/cambia el trayecto o se mide el sheet.
+  // Refit the camera when the route arrives/changes or the sheet is measured.
   useEffect(() => {
     fitToTrip(false);
   }, [fitToTrip]);
@@ -437,8 +437,8 @@ export function ConfigureTripScreen() {
           showsIndoorLevelPicker={false}
           style={StyleSheet.absoluteFill}
           initialRegion={region}
-          customMapStyle={estiloMapa}
-          userInterfaceStyle={modoMapa}
+          customMapStyle={mapStyle}
+          userInterfaceStyle={mapMode}
           pitchEnabled={false}
           scrollEnabled={false}
           zoomEnabled={false}
@@ -446,15 +446,15 @@ export function ConfigureTripScreen() {
           zoomTapEnabled={false}
           toolbarEnabled={false}
           moveOnMarkerPress={false}
-          onRegionChangeComplete={actualizarRumbo}
+          onRegionChangeComplete={updateBearing}
           onMapReady={() => { setMapReady(true); fitToTrip(false); }}>
           <RoutePinMarker
             key={`origin-${tripMapKey}`}
             kind="A"
             coordinate={origin.coordinates}
-            ruta={fitCoordinates}
-            rumboMapa={rumboMapa}
-            zoomMapa={zoomMapa}
+            route={fitCoordinates}
+            mapBearing={mapBearing}
+            mapZoom={mapZoom}
             label={`Origen: ${originMapLabel}`}
             onLabelSize={reportLabelSize('A')}
             loading={originMapLoading}
@@ -465,9 +465,9 @@ export function ConfigureTripScreen() {
             key={`destination-${tripMapKey}`}
             kind="B"
             coordinate={destination.coordinates}
-            ruta={fitCoordinates}
-            rumboMapa={rumboMapa}
-            zoomMapa={zoomMapa}
+            route={fitCoordinates}
+            mapBearing={mapBearing}
+            mapZoom={mapZoom}
             label={`Destino: ${destinationMapLabel}`}
             onLabelSize={reportLabelSize('B')}
             loading={destinationMapLoading}
@@ -636,7 +636,7 @@ export function ConfigureTripScreen() {
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceMuted },
   mapViewport: { position: 'absolute', top: 0, left: 0, right: 0 },
   fallback: { alignItems: 'center', justifyContent: 'center', gap: spacing.md, padding: spacing.lg },
@@ -730,7 +730,7 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.bordeControl,
+    borderColor: colors.controlBorder,
     backgroundColor: colors.surface,
   },
   fareCurrency: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.textSecondary },

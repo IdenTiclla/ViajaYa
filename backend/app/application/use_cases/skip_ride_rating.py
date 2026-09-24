@@ -1,4 +1,4 @@
-"""Caso de uso: cerrar un viaje completado sin emitir calificación."""
+"""Use case: close a completed ride without leaving a rating."""
 
 from __future__ import annotations
 

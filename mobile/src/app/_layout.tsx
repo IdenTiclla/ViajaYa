@@ -8,8 +8,8 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { EnvironmentBadge } from '@/core/components/EnvironmentBadge';
 import { LaunchScreen } from '@/core/components/LaunchScreen';
-import { useEstilos as useThemedStyles, type Tema as Theme } from '@/core/theme';
-import { ProveedorTema as ThemeProvider } from '@/core/theme/ProveedorTema';
+import { useThemedStyles, type Theme } from '@/core/theme';
+import { AppThemeProvider as ThemeProvider } from '@/core/theme/AppThemeProvider';
 import { SessionRecoveryScreen } from '@/features/auth/presentation/SessionRecoveryScreen';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
 import { usePassengerToasts } from '@/features/booking/application/usePassengerToasts';
@@ -84,7 +84,7 @@ function RootNavigator() {
           falls back to the first allowed screen, and this one must not catch
           plain passengers. */}
       <Stack.Protected guard={isAuthenticated && modeChoicePending}>
-        <Stack.Screen name="elegir-modo" options={{ gestureEnabled: false }} />
+        <Stack.Screen name="choose-mode" options={{ gestureEnabled: false }} />
       </Stack.Protected>
       <Stack.Protected guard={isAuthenticated && !isDriver}>
         <Stack.Screen name="(app)" />

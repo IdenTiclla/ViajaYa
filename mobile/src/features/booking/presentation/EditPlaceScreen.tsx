@@ -1,9 +1,9 @@
 /**
- * Formulario para crear o editar un lugar guardado.
+ * Form to create or edit a saved place.
  *
- * Recibe por parámetros el punto ya elegido (lat/lng/name/address, fijado en el
- * mapa) más, en modo edición, `id`/`label`/`category`. El usuario pone un nombre
- * y una categoría; al guardar se persiste en el backend (`/saved-places`).
+ * Receives through params the already chosen point (lat/lng/name/address, set on the
+ * map) plus, in edit mode, `id`/`label`/`category`. The user sets a name
+ * and a category; saving persists it in the backend (`/saved-places`).
  */
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -20,8 +20,8 @@ import {
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
-import { useEstiloMapa } from '@/features/booking/presentation/mapStyle';
+import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
+import { useMapStyle } from '@/features/booking/presentation/mapStyle';
 import { useDeletePlace, useSavePlace } from '@/features/booking/application/useSavedPlaces';
 import { getBoliviaPlaceError } from '@/features/booking/domain/bolivia';
 import { Button, ConfirmDialog } from '@/shared/components';
@@ -36,8 +36,8 @@ function isCategory(value: string | undefined): value is SavedPlaceCategory {
 }
 
 export function EditPlaceScreen() {
-  const { colors, styles } = useEstilos(crearEstilos);
-  const { estiloMapa, modoMapa } = useEstiloMapa(false);
+  const { colors, styles } = useThemedStyles(createStyles);
+  const { mapStyle, mapMode } = useMapStyle(false);
   const router = useRouter();
   const params = useLocalSearchParams<{
     id?: string;
@@ -105,7 +105,7 @@ export function EditPlaceScreen() {
     });
   };
 
-  // Reabre el mapa para cambiar el punto, conservando nombre/categoría actuales.
+  // Reopen the map to change the point, keeping the current name/category.
   const onChangeLocation = () => {
     router.replace({
       pathname: '/booking/pick-on-map',
@@ -137,8 +137,8 @@ export function EditPlaceScreen() {
         {hasPoint && (
           <View style={styles.mapPreview}>
             <MapView
-              customMapStyle={estiloMapa}
-              userInterfaceStyle={modoMapa}
+              customMapStyle={mapStyle}
+              userInterfaceStyle={mapMode}
               provider={PROVIDER_GOOGLE}
               showsBuildings={false}
               showsIndoors={false}
@@ -246,7 +246,7 @@ export function EditPlaceScreen() {
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
   header: {
     flexDirection: 'row',

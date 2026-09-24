@@ -1,4 +1,4 @@
-"""Atomicidad y contrato realtime del vencimiento de una oferta."""
+"""Atomicity and realtime contract of an offer's expiry."""
 
 from __future__ import annotations
 
@@ -213,11 +213,11 @@ async def test_fresh_offer_rolls_back_without_recording() -> None:
 async def test_recorder_failure_rolls_back_memory_mutation() -> None:
     offers, offer = await _memory_scenario()
     recorder = InMemoryExpireOfferEventRecorder(
-        error=RuntimeError("falló el recorder")
+        error=RuntimeError("the recorder failed")
     )
     unit_of_work = InMemoryUnitOfWork(offers)
 
-    with pytest.raises(RuntimeError, match="falló el recorder"):
+    with pytest.raises(RuntimeError, match="the recorder failed"):
         await expire_offer_use_case(
             offers,
             unit_of_work=unit_of_work,
@@ -264,7 +264,7 @@ async def test_expiration_and_outbox_persist_in_one_commit(session_factory) -> N
         ) == 2
 
 
-async def test_scheduled_expiration_confirma_negocio_outbox_y_ack_en_un_commit(
+async def test_scheduled_expiration_confirms_business_outbox_and_ack_in_one_commit(
     session_factory,
 ) -> None:
     completed_at = datetime.now(UTC)
@@ -311,7 +311,7 @@ async def test_scheduled_expiration_confirma_negocio_outbox_y_ack_en_un_commit(
     assert outbox_count == 2
 
 
-async def test_scheduler_shadow_publica_legacy_si_gana_la_carrera_al_timer(
+async def test_shadow_scheduler_publishes_legacy_if_it_wins_the_race_to_the_timer(
     session_factory,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -360,7 +360,7 @@ async def test_scheduler_shadow_publica_legacy_si_gana_la_carrera_al_timer(
     assert published == [offer.id]
 
 
-async def test_timer_legacy_expira_y_completa_la_accion_en_un_commit(
+async def test_legacy_timer_expires_and_completes_the_action_in_one_commit(
     session_factory,
 ) -> None:
     completed_at = datetime.now(UTC)
@@ -391,7 +391,7 @@ async def test_timer_legacy_expira_y_completa_la_accion_en_un_commit(
     assert outbox_count == 2
 
 
-async def test_timer_legacy_repara_accion_ausente_del_productor_anterior(
+async def test_legacy_timer_repairs_an_action_missing_from_the_previous_producer(
     session_factory,
 ) -> None:
     completed_at = datetime.now(UTC)
@@ -411,7 +411,7 @@ async def test_timer_legacy_repara_accion_ausente_del_productor_anterior(
     assert outbox_count == 2
 
 
-async def test_timer_legacy_revierte_si_un_worker_ya_reclamo_la_accion(
+async def test_legacy_timer_rolls_back_if_a_worker_already_claimed_the_action(
     session_factory,
 ) -> None:
     now = datetime.now(UTC)
@@ -496,7 +496,7 @@ async def test_failure_after_outbox_flush_rolls_back_offer_and_counters(
         class RecordThenFail:
             async def record(self, expired: Offer) -> None:
                 await recorder.record(expired)
-                raise RuntimeError("fallo después de insertar la outbox")
+                raise RuntimeError("failure after inserting the outbox")
 
         use_case = ExpireOffer(
             SqlAlchemyOfferRepository(
@@ -506,7 +506,7 @@ async def test_failure_after_outbox_flush_rolls_back_offer_and_counters(
             SqlAlchemyUnitOfWork(session),
             RecordThenFail(),
         )
-        with pytest.raises(RuntimeError, match="después de insertar"):
+        with pytest.raises(RuntimeError, match="after inserting"):
             await use_case.execute(offer.id)
 
         row = await session.get(OfferModel, offer.id, populate_existing=True)

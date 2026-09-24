@@ -1,4 +1,4 @@
-"""Crash/restart real en las dos ventanas críticas de la outbox realtime."""
+"""Real crash/restart in the two critical windows of the realtime outbox."""
 
 from __future__ import annotations
 
@@ -145,7 +145,7 @@ async def _wait_ready(
         while True:
             if process.exitcode is not None:
                 pytest.fail(
-                    "El proceso Uvicorn terminó antes de readiness "
+                    "The Uvicorn process exited before readiness "
                     f"(exitcode={process.exitcode})."
                 )
             try:
@@ -162,7 +162,7 @@ async def _wait_ready(
             except httpx.HTTPError:
                 pass
             if time.monotonic() >= deadline:
-                pytest.fail("El proceso Uvicorn no alcanzó readiness.")
+                pytest.fail("The Uvicorn process did not reach readiness.")
             await asyncio.sleep(0.02)
 
 
@@ -171,7 +171,7 @@ async def _wait_event(event, label: str) -> None:
         event.wait,
         _OPERATION_TIMEOUT_SECONDS,
     )
-    assert reached, f"No se alcanzó la compuerta {label}."
+    assert reached, f"Gate not reached: {label}."
 
 
 async def _join(process, *, expected_exitcode: int) -> None:
@@ -179,7 +179,7 @@ async def _join(process, *, expected_exitcode: int) -> None:
     if process.is_alive():
         process.kill()
         await asyncio.to_thread(process.join, 5)
-        pytest.fail("El proceso hijo no terminó dentro del deadline.")
+        pytest.fail("The child process did not exit before the deadline.")
     assert process.exitcode == expected_exitcode
 
 
@@ -283,7 +283,7 @@ async def _wait_published(
         if event.published_at is not None:
             return event
         if time.monotonic() >= deadline:
-            pytest.fail("El replay no confirmó published_at.")
+            pytest.fail("The replay did not confirm published_at.")
         await asyncio.sleep(0.02)
 
 
@@ -297,7 +297,7 @@ async def _assert_process_locks_released(
             acquired = await process_lock.acquire()
         except LiveLocalProcessLockUnavailableError:
             if time.monotonic() >= deadline:
-                pytest.fail("PostgreSQL no liberó el advisory lock tras SIGKILL.")
+                pytest.fail("PostgreSQL did not release the advisory lock after SIGKILL.")
             await asyncio.sleep(0.02)
             continue
         assert acquired is True
@@ -348,7 +348,7 @@ async def _cleanup_business(
 
 
 async def _fallback_cleanup_business(pg_test_db, bootstrap: _Bootstrap) -> None:
-    """Limpia estado propio aun si ninguna instancia live sobrevivió al fallo."""
+    """Clean our own state even if no live instance survived the failure."""
     sessions = async_sessionmaker[AsyncSession](
         pg_test_db.engine,
         expire_on_commit=False,
@@ -388,13 +388,13 @@ async def _exercise_crash_window(
     dispatch_mode: RealtimeDispatchMode,
 ) -> None:
     if os.name != "posix":
-        pytest.skip("El smoke de SIGKILL y socket heredado requiere POSIX.")
+        pytest.skip("The SIGKILL and inherited-socket smoke requires POSIX.")
     redis_url: str | None = None
     redis_channel: str | None = None
     if dispatch_mode == "live_redis":
         redis_url = os.getenv("VIAJAYA_TEST_REDIS_URL")
         if not redis_url:
-            pytest.skip("Define VIAJAYA_TEST_REDIS_URL para certificar el crash live_redis.")
+            pytest.skip("Set VIAJAYA_TEST_REDIS_URL to certify the live_redis crash.")
         redis_channel = f"viajaya:test:crash:{uuid.uuid4().hex}"
     sessions = async_sessionmaker[AsyncSession](
         pg_test_db.engine,
@@ -501,8 +501,8 @@ async def _exercise_crash_window(
             trust_env=False,
         ) as recovery_client:
             if window == "before_publish":
-                # La recuperación publica con el hub vacío. El cliente llega
-                # después y debe converger únicamente con su snapshot.
+                # Recovery publishes with an empty hub. The client arrives
+                # later and must converge only through its snapshot.
                 recovery_release.set()
                 await _wait_event(recovery_published, "recovery published")
                 await network_support._wait_until_drained(recovery_client)
@@ -512,8 +512,8 @@ async def _exercise_crash_window(
                     bootstrap,
                 )
             else:
-                # En la ventana posterior a publish sí conservamos un socket
-                # para comprobar que el retry repite el envelope exacto.
+                # In the post-publish window we do keep a socket
+                # to check that the retry repeats the exact envelope.
                 recovery_websocket, recovered_snapshot = await _connect_snapshot(
                     base_url,
                     bootstrap,
@@ -579,7 +579,7 @@ async def _exercise_crash_window(
         if first_websocket is not None:
             try:
                 await first_websocket.close()
-            except Exception:  # noqa: BLE001 - el proceso murió sin close frame
+            except Exception:  # noqa: BLE001 - the process died without a close frame
                 pass
         if recovery_websocket is not None:
             try:
@@ -597,7 +597,7 @@ async def _exercise_crash_window(
 
 
 @pytest.mark.parametrize("dispatch_mode", ["live_local", "live_redis"])
-async def test_crash_tras_commit_antes_de_publicar_no_pierde_evento(
+async def test_crash_after_commit_before_publish_loses_no_event(
     pg_test_db,
     dispatch_mode: RealtimeDispatchMode,
 ) -> None:
@@ -605,7 +605,7 @@ async def test_crash_tras_commit_antes_de_publicar_no_pierde_evento(
 
 
 @pytest.mark.parametrize("dispatch_mode", ["live_local", "live_redis"])
-async def test_crash_tras_publicar_reentrega_identidad_exacta(
+async def test_crash_after_publish_redelivers_the_exact_identity(
     pg_test_db,
     dispatch_mode: RealtimeDispatchMode,
 ) -> None:

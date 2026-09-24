@@ -1,4 +1,4 @@
-"""Caso de uso: validar presencia y cerrar una búsqueda desde el scheduler."""
+"""Use case: validate presence and close a search from the scheduler."""
 
 from __future__ import annotations
 
@@ -56,7 +56,7 @@ class ExecuteCancelAbsentRideScheduledAction:
             or action.lock_token is None
         ):
             raise InvalidScheduledActionError(
-                "La acción cancel_absent_ride no coincide con su agregado."
+                "The cancel_absent_ride action does not match its aggregate."
             )
         try:
             owned = await self._actions.lock_owned(

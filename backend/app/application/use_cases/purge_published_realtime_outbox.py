@@ -1,4 +1,4 @@
-"""Caso de uso: elimina batches publicados después de su retención."""
+"""Use case: delete published batches after their retention."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from app.application.interfaces import PublishedRealtimeOutboxRetention, UnitOfW
 
 
 class PurgePublishedRealtimeOutbox:
-    """Aplica una política explícita sin tocar pendientes ni cuarentenas."""
+    """Apply an explicit policy without touching pending or quarantined batches."""
 
     def __init__(
         self,
@@ -27,9 +27,9 @@ class PurgePublishedRealtimeOutbox:
         batch_limit: int,
     ) -> PublishedRealtimeOutboxRetentionResult:
         if retention_days <= 0:
-            raise ValueError("La retención publicada debe ser mayor a cero.")
+            raise ValueError("Published retention must be greater than zero.")
         if batch_limit <= 0:
-            raise ValueError("El límite de batches debe ser positivo.")
+            raise ValueError("The batch limit must be positive.")
 
         if now.tzinfo is None:
             now = now.replace(tzinfo=UTC)

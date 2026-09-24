@@ -1,11 +1,11 @@
-"""Endpoints WebSocket de la negociación de ofertas (solo bajada).
+"""WebSocket endpoints of the offer negotiation (downstream only).
 
-Las acciones (crear solicitud/oferta, aceptar, avanzar estado) siguen siendo HTTP
-POST; estos sockets solo **empujan eventos** a quien corresponde. Al conectar se
-envía un *snapshot* del estado actual para que no haya ventana ciega.
+Actions (create request/offer, accept, advance status) are still HTTP
+POST; these sockets only **push events** to whoever they concern. On connect a
+*snapshot* of the current state is sent so there is no blind window.
 
-Auth: el access token viaja como subprotocolo, nunca en la URL. Token inválido o
-usuario no autorizado → cierre con código 1008.
+Auth: the access token travels as a subprotocol, never in the URL. Invalid token or
+unauthorized user → close with code 1008.
 """
 
 from __future__ import annotations
@@ -87,9 +87,9 @@ async def _send_message(websocket: WebSocket, message: NegotiationMessage) -> No
 
 
 async def _drain(websocket: WebSocket) -> None:
-    """Mantiene la conexión abierta hasta que el cliente la cierre.
+    """Keep the connection open until the client closes it.
 
-    El canal es de bajada; cualquier mensaje entrante (p. ej. un ping) se ignora.
+    The channel is downstream only; any incoming message (e.g. a ping) is ignored.
     """
     try:
         while True:
@@ -106,7 +106,7 @@ async def _drain_passenger_with_shared_presence(
     leases: PassengerPresenceLeaseStore,
     renew_interval_seconds: float,
 ) -> None:
-    """Renueva el lease aunque el canal de bajada no reciba mensajes."""
+    """Renew the lease even if the downstream channel receives no messages."""
     async def renew() -> None:
         while True:
             await asyncio.sleep(renew_interval_seconds)
@@ -119,7 +119,7 @@ async def _drain_passenger_with_shared_presence(
                 )
             except Exception as error:  # noqa: BLE001 - cierre fail-safe
                 logger.warning(
-                    "Falló la renovación del lease WebSocket (%s).",
+                    "WebSocket lease renewal failed (%s).",
                     type(error).__name__,
                 )
                 await websocket.close(code=1012)
@@ -164,7 +164,7 @@ async def passenger_ws(
         Depends(get_build_passenger_realtime_snapshot),
     ],
 ) -> None:
-    """El pasajero dueño del viaje recibe ofertas y cambios de estado en vivo."""
+    """The passenger who owns the ride receives offers and status changes live."""
     token = token_from_subprotocol(websocket)
     await websocket.accept(subprotocol=AUTH_SUBPROTOCOL if token else None)
     topic = ride_topic(ride_id)
@@ -207,9 +207,9 @@ async def passenger_ws(
                         OffersSnapshotMessage(data=snapshot),
                     )
 
-        # Presencia: la solicitud aparece en el pool mientras el pasajero esté
-        # presente (conectado o dentro de la ventana de gracia). El ``finally``
-        # también cubre una desconexión durante esta revalidación.
+        # Presence: the request appears in the pool while the passenger is
+        # present (connected or within the grace window). The ``finally``
+        # also covers a disconnection during this re-validation.
         if settings.realtime_shared_presence_enabled:
             if passenger_presence is None:
                 await websocket.close(code=1012)
@@ -224,7 +224,7 @@ async def passenger_ws(
                 )
             except Exception as error:  # noqa: BLE001 - cierre fail-safe
                 logger.warning(
-                    "No se pudo confirmar la presencia WebSocket (%s).",
+                    "Could not confirm WebSocket presence (%s).",
                     type(error).__name__,
                 )
                 await websocket.close(code=1012)
@@ -268,7 +268,7 @@ async def driver_ws(
         Depends(get_build_driver_realtime_snapshot),
     ],
 ) -> None:
-    """El conductor en línea recibe solicitudes nuevas y el aviso de ser elegido."""
+    """The online driver receives new requests and the notice of being chosen."""
     token = token_from_subprotocol(websocket)
     await websocket.accept(subprotocol=AUTH_SUBPROTOCOL if token else None)
     topics: list[str] = []
@@ -286,15 +286,15 @@ async def driver_ws(
                 *(pool_topic(service.value) for service in user.offered_services),
                 driver_topic(user.id),
             ]
-            # Suscribir dentro de la barrera cierra la ventana entre leer el estado
-            # y empezar a recibir eventos. Un broadcast concurrente espera hasta
-            # que los snapshots completos hayan salido.
+            # Subscribing inside the barrier closes the window between reading the state
+            # and starting to receive events. A concurrent broadcast waits until
+            # the full snapshots have gone out.
             async with hub.delivery_barrier(websocket):
                 for topic in topics:
                     hub.subscribe(topic, websocket)
 
-                # Recuperación de estado al (re)conectar:
-                # 1) vencer ofertas que pasaron su TTL y excluirlas del snapshot.
+                # State recovery on (re)connect:
+                # 1) expire offers past their TTL and exclude them from the snapshot.
                 expired_offers = []
                 active_offers = []
                 for offer in await offers.list_active_by_driver(user.id):
@@ -352,10 +352,10 @@ async def driver_ws(
                         OfferResponse.from_detail(OfferDetail(offer=offer, driver=user))
                         for offer in active_offers
                     ]
-                    # 2) viaje activo (recupera un offer_accepted que se perdió).
+                    # 2) active ride (recovers an offer_accepted that was lost).
                     active_detail = await GetDriverActiveRide(ride_reads).execute(user)
 
-                    # Handshake legacy autoritativo, siempre en este orden.
+                    # Authoritative legacy handshake, always in this order.
                     await _send_message(
                         websocket,
                         OpenRidesSnapshotMessage(data=snapshot),
@@ -376,7 +376,7 @@ async def driver_ws(
                             ),
                         )
 
-        # Se difunde tras el handshake; el mismo socket ya está suscrito.
+        # Broadcast after the handshake; the same socket is already subscribed.
         for offer in expired_offers:
             await events.publish_offer_expired(offer)
         await _guarded_drain(websocket, _drain(websocket), token, session_factory, settings)

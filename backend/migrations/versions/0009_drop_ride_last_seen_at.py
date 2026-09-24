@@ -1,4 +1,4 @@
-"""drop ride last_seen_at (búsqueda infinita: la solicitud ya no caduca)
+"""drop ride last_seen_at (infinite search: the request no longer expires)
 
 Revision ID: 0009_drop_ride_last_seen_at
 Revises: 0008_ride_last_seen_at

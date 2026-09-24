@@ -1,4 +1,4 @@
-"""Carreras PostgreSQL de los avances durables del viaje."""
+"""PostgreSQL races of the ride's durable status changes."""
 
 from __future__ import annotations
 
@@ -93,7 +93,7 @@ async def _insert_scenario(sessions):
 
 
 class _BarrierRides(SqlAlchemyRideRequestRepository):
-    """Hace que ambos contendientes validen el mismo estado previo al CAS."""
+    """Make both contenders validate the same state before the CAS."""
 
     def __init__(
         self,

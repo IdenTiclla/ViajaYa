@@ -1,4 +1,4 @@
-"""Caso de uso: vencer una oferta y completar su acción en una sola UoW."""
+"""Use case: expire an offer and complete its action in a single UoW."""
 
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ class ExecuteExpireOfferScheduledAction:
             or action.lock_token is None
         ):
             raise InvalidScheduledActionError(
-                "La acción expire_offer no coincide con su agregado."
+                "The expire_offer action does not match its aggregate."
             )
         try:
             offer = await self._offers.mark_expired_if_pending(action.aggregate_id)

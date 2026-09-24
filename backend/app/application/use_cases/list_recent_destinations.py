@@ -1,4 +1,4 @@
-"""Caso de uso: listar los destinos recientes de un pasajero."""
+"""Use case: list a passenger's recent destinations."""
 
 from __future__ import annotations
 

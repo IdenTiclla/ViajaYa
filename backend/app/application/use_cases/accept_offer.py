@@ -1,10 +1,10 @@
-"""Caso de uso: el pasajero acepta una oferta (asignación directa del viaje).
+"""Use case: the passenger accepts an offer (direct ride assignment).
 
-El pasajero tiene la decisión final: aceptar una oferta ``PENDING`` asigna el
-viaje a ese conductor en una transacción atómica
-(:meth:`OfferRepository.accept_atomically`). Las demás ofertas vivas del viaje
-quedan ``REJECTED`` y las demás ofertas vivas del conductor en otros viajes se
-retiran.
+The passenger has the final say: accepting a ``PENDING`` offer assigns the
+ride to that driver in an atomic transaction
+(:meth:`OfferRepository.accept_atomically`). The ride's other live offers
+become ``REJECTED`` and the driver's other live offers on other rides are
+withdrawn.
 """
 
 from __future__ import annotations
@@ -72,10 +72,10 @@ class AcceptOffer:
             raise InvalidRideTransitionError("La oferta ya no está disponible.")
         if is_offer_expired(offer, await self._clock()):
             raise InvalidRideTransitionError("La oferta expiró; elige otra.")
-        # Asignación atómica: re-verifica bajo lock que la oferta siga PENDING,
-        # el viaje SEARCHING, el conductor libre y el TTL con el reloj de la BD.
-        # Si algo cambió (race con cancel, expiración, retiro o accept previo),
-        # devuelve None → 409.
+        # Atomic assignment: re-checks under lock that the offer is still PENDING,
+        # the ride SEARCHING, the driver free and the TTL against the DB clock.
+        # If anything changed (race with cancel, expiry, withdrawal or an earlier accept),
+        # it returns None → 409.
         acceptance = await self._offers.accept_atomically(offer_id)
         if acceptance is None:
             raise DriverUnavailableError("El viaje ya no está disponible.")

@@ -1,4 +1,4 @@
-"""Orden de entrega entre snapshots WebSocket y eventos concurrentes."""
+"""Delivery order between WebSocket snapshots and concurrent events."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ class _RecordingSocket:
 
 class _FailingSocket(_RecordingSocket):
     async def send_json(self, message: dict) -> None:
-        raise RuntimeError("socket caído")
+        raise RuntimeError("dead socket")
 
 
 async def test_delivery_barrier_sends_snapshot_before_concurrent_event():

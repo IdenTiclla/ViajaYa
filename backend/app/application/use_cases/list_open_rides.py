@@ -37,6 +37,6 @@ class ListOpenRides:
         if has_more and items:
             last = items[-1].ride
             if last.created_at is None:  # pragma: no cover - la BD no permite NULL
-                raise ValueError("Una solicitud persistida debe tener created_at.")
+                raise ValueError("A persisted request must have created_at.")
             next_cursor = PageCursor(created_at=last.created_at, id=last.id)
         return Page(items=items, next_cursor=next_cursor)

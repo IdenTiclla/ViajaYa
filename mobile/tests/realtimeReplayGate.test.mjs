@@ -30,7 +30,7 @@ function establish(gate, stream = 'ride:ride-1', version = 10) {
   gate.commit(decision.ticket);
 }
 
-test('exige snapshot antes del primer evento versionado', () => {
+test('requires a snapshot before the first versioned event', () => {
   const gate = createReplayGate();
 
   assert.deepEqual(gate.decideEvent(event()), {
@@ -39,7 +39,7 @@ test('exige snapshot antes del primer evento versionado', () => {
   });
 });
 
-test('solo avanza cursores después de confirmar el ticket', () => {
+test('only advances cursors after confirming the ticket', () => {
   const gate = createReplayGate();
   establish(gate);
 
@@ -47,7 +47,7 @@ test('solo avanza cursores después de confirmar el ticket', () => {
   assert.equal(first.kind, 'apply');
   assert.equal(gate.state().streams.get('ride:ride-1'), 10);
 
-  // Simula un handler fallido: sin commit, el mismo evento sigue procesable.
+  // Simulates a failed handler: without a commit, the same event can still be processed.
   const retry = gate.decideEvent(event());
   assert.equal(retry.kind, 'apply');
   gate.commit(retry.ticket);
@@ -56,7 +56,7 @@ test('solo avanza cursores después de confirmar el ticket', () => {
   assert.equal(gate.state().aggregates.get('ride:ride-1'), 1);
 });
 
-test('un retry exacto no repite la mutación', () => {
+test('an exact retry does not repeat the mutation', () => {
   const gate = createReplayGate();
   establish(gate);
   const first = gate.decideEvent(event());
@@ -70,7 +70,7 @@ test('un retry exacto no repite la mutación', () => {
   });
 });
 
-test('un hueco de stream fuerza resnapshot y no adelanta el cursor', () => {
+test('a stream gap forces a resnapshot and does not advance the cursor', () => {
   const gate = createReplayGate();
   establish(gate);
 
@@ -81,7 +81,7 @@ test('un hueco de stream fuerza resnapshot y no adelanta el cursor', () => {
   assert.equal(gate.state().streams.get('ride:ride-1'), 10);
 });
 
-test('un evento viejo del agregado en otro stream conserva su delta', () => {
+test('an old aggregate event on another stream keeps its delta', () => {
   const gate = createReplayGate();
   establish(gate, 'ride:ride-1', 10);
   establish(gate, 'driver:driver-1', 20);
@@ -106,7 +106,7 @@ test('un evento viejo del agregado en otro stream conserva su delta', () => {
   assert.equal(gate.state().streams.get('driver:driver-1'), 21);
 });
 
-test('el mismo event_id en otro stream contradice el contrato por entrega', () => {
+test('the same event_id on another stream contradicts the per-delivery contract', () => {
   const gate = createReplayGate();
   establish(gate, 'ride:ride-1', 10);
   establish(gate, 'driver:driver-1', 20);
@@ -125,7 +125,7 @@ test('el mismo event_id en otro stream contradice el contrato por entrega', () =
   assert.equal(gate.state().streams.get('driver:driver-1'), 20);
 });
 
-test('snapshot viejo se rechaza y uno nuevo puede saltar posiciones', () => {
+test('an old snapshot is rejected and a new one can skip positions', () => {
   const gate = createReplayGate();
   establish(gate, 'ride:ride-1', 12);
 
@@ -154,7 +154,7 @@ test('snapshot viejo se rechaza y uno nuevo puede saltar posiciones', () => {
   );
 });
 
-test('snapshot incompleto y event_id contradictorio fuerzan resync', () => {
+test('an incomplete snapshot and a contradictory event_id force a resync', () => {
   const gate = createReplayGate();
   assert.deepEqual(
     gate.decideSnapshot(
@@ -179,7 +179,7 @@ test('snapshot incompleto y event_id contradictorio fuerzan resync', () => {
   );
 });
 
-test('el mismo event_id con otro payload fuerza resync', () => {
+test('the same event_id with another payload forces a resync', () => {
   const gate = createReplayGate();
   establish(gate);
   const first = gate.decideEvent(event());
@@ -197,7 +197,7 @@ test('el mismo event_id con otro payload fuerza resync', () => {
   );
 });
 
-test('la correlación diagnóstica no contradice un retry del mismo evento', () => {
+test('the diagnostic correlation does not contradict a retry of the same event', () => {
   const gate = createReplayGate();
   establish(gate);
   const first = gate.decideEvent(event());
@@ -210,7 +210,7 @@ test('la correlación diagnóstica no contradice un retry del mismo evento', () 
   );
 });
 
-test('reset elimina watermarks y deduplicación al cambiar de sesión', () => {
+test('reset clears watermarks and deduplication when the session changes', () => {
   const gate = createReplayGate();
   establish(gate);
   const first = gate.decideEvent(event());
@@ -224,7 +224,7 @@ test('reset elimina watermarks y deduplicación al cambiar de sesión', () => {
   assert.equal(gate.state().rememberedEventIds, 0);
 });
 
-test('abort consume el ticket sin adelantar cursores', () => {
+test('abort consumes the ticket without advancing cursors', () => {
   const gate = createReplayGate();
   establish(gate);
   const decision = gate.decideEvent(event());
@@ -237,7 +237,7 @@ test('abort consume el ticket sin adelantar cursores', () => {
   assert.throws(() => gate.abort(decision.ticket), /consumido/);
 });
 
-test('reset invalida tickets pendientes de la época anterior', () => {
+test('reset invalidates pending tickets from the previous epoch', () => {
   const gate = createReplayGate();
   const decision = gate.decideSnapshot(
     [{ stream: 'ride:ride-1', version: 10 }],
@@ -250,7 +250,7 @@ test('reset invalida tickets pendientes de la época anterior', () => {
   assert.throws(() => gate.commit(decision.ticket), /consumido/);
 });
 
-test('snapshot rechaza streams adicionales aunque incluya los requeridos', () => {
+test('snapshot rejects additional streams even if it includes the required ones', () => {
   const gate = createReplayGate();
 
   assert.deepEqual(

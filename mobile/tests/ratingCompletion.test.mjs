@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { MutationObserver, QueryClient } from '@tanstack/react-query';
 
-import { actualizarTrasCalificacion } from '../src/features/rides/application/actualizarTrasCalificacion.ts';
+import { refreshAfterRating } from '../src/features/rides/application/refreshAfterRating.ts';
 
 const key = ['pending-rating-ride'];
 
@@ -14,7 +14,7 @@ test('driver rating clears cancelled recovery without leaving an error in the po
     client.setQueryData(queryKey, { id: 'finished', status: 'completed' });
     return client.fetchQuery({ queryKey, queryFn: () => new Promise(() => {}) }).catch(() => undefined);
   });
-  await actualizarTrasCalificacion(client, 'finished');
+  await refreshAfterRating(client, 'finished');
   for (const queryKey of keys) {
     assert.equal(client.getQueryData(queryKey), null);
     assert.equal(client.getQueryState(queryKey).status, 'success');
@@ -23,50 +23,50 @@ test('driver rating clears cancelled recovery without leaving an error in the po
   await Promise.all(reads);
 });
 
-test('una calificación guardada termina aunque la lectura siguiente quede bloqueada', async (t) => {
+test('a saved rating finishes even if the next read stays blocked', async (t) => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   t.after(() => client.clear());
-  let resolver;
-  let consultas = 0;
-  const lecturaAnterior = client.fetchQuery({
+  let release;
+  let queryCount = 0;
+  const previousRead = client.fetchQuery({
     queryKey: key,
     queryFn: () => new Promise((resolve) => {
-      consultas += 1;
-      if (consultas === 1) resolver = resolve;
+      queryCount += 1;
+      if (queryCount === 1) release = resolve;
     }),
   }).catch(() => undefined);
   client.setQueryData(key, { id: 'terminado' });
   const mutation = new MutationObserver(client, {
     mutationFn: async () => undefined,
-    onSuccess: () => actualizarTrasCalificacion(client, 'terminado'),
+    onSuccess: () => refreshAfterRating(client, 'terminado'),
   });
   await mutation.mutate();
   assert.equal(mutation.getCurrentResult().status, 'success');
-  assert.equal(consultas, 2);
+  assert.equal(queryCount, 2);
   assert.equal(client.getQueryData(key), null);
-  resolver({ id: 'terminado' });
-  await lecturaAnterior;
+  release({ id: 'terminado' });
+  await previousRead;
   assert.equal(client.getQueryData(key), null);
 });
 
-test('cerrar una calificación no elimina otro viaje pendiente', async (t) => {
+test('closing a rating does not remove another pending ride', async (t) => {
   const client = new QueryClient();
   t.after(() => client.clear());
   client.setQueryData(key, { id: 'otro' });
-  await actualizarTrasCalificacion(client, 'terminado');
+  await refreshAfterRating(client, 'terminado');
   assert.deepEqual(client.getQueryData(key), { id: 'otro' });
 });
 
-test('cancelar una lectura antigua conserva un pendiente recibido mientras estaba en vuelo', async (t) => {
+test('cancelling an old read keeps a pending item received while it was in flight', async (t) => {
   const client = new QueryClient();
   t.after(() => client.clear());
   client.setQueryData(key, { id: 'terminado' });
-  const lectura = client.fetchQuery({
+  const read = client.fetchQuery({
     queryKey: key,
     queryFn: () => new Promise(() => {}),
   }).catch(() => undefined);
   client.setQueryData(key, { id: 'otro' });
-  await actualizarTrasCalificacion(client, 'terminado');
-  await lectura;
+  await refreshAfterRating(client, 'terminado');
+  await read;
   assert.deepEqual(client.getQueryData(key), { id: 'otro' });
 });

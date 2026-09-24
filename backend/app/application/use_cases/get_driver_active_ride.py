@@ -1,4 +1,4 @@
-"""Caso de uso: viaje activo del conductor (para saber si ya fue elegido)."""
+"""Use case: the driver's active ride (to know whether they were already chosen)."""
 
 from __future__ import annotations
 

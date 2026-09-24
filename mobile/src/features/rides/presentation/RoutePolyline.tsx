@@ -1,19 +1,19 @@
 /**
- * Trayecto visual compartido por los mapas de pasajero y conductor.
- * El contorno claro mantiene la ruta legible sobre calles y etiquetas.
+ * Route visual shared by the passenger and driver maps.
+ * The light outline keeps the route readable over streets and labels.
  */
 import { Fragment } from 'react';
 import { Polyline } from 'react-native-maps';
 
-import { useTema } from '@/core/theme';
+import { useTheme } from '@/core/theme';
 import type { Coordinates } from '@/features/booking/domain/types';
 import {
-  ANCHO_CONTORNO_RUTA,
-  ANCHO_RUTA,
+  ROUTE_OUTLINE_WIDTH,
+  ROUTE_WIDTH,
 } from '@/features/rides/presentation/routeTooltipLayout';
 
 export function RoutePolyline({ coordinates }: { coordinates: Coordinates[] }) {
-  const { colors } = useTema();
+  const { colors } = useTheme();
   if (coordinates.length < 2) return null;
 
   return (
@@ -21,13 +21,13 @@ export function RoutePolyline({ coordinates }: { coordinates: Coordinates[] }) {
       <Polyline
         coordinates={coordinates}
         strokeColor={colors.surface}
-        strokeWidth={ANCHO_CONTORNO_RUTA}
+        strokeWidth={ROUTE_OUTLINE_WIDTH}
         zIndex={1}
       />
       <Polyline
         coordinates={coordinates}
         strokeColor={colors.primary}
-        strokeWidth={ANCHO_RUTA}
+        strokeWidth={ROUTE_WIDTH}
         zIndex={2}
       />
     </Fragment>

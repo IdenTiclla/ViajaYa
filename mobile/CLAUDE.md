@@ -22,7 +22,7 @@ El enrutado (`src/app/`) solo monta pantallas; la lógica vive en `src/features/
 src/
 ├── app/                 # Rutas (expo-router, file-based). Solo composición de pantallas.
 │   ├── _layout.tsx        # Raíz: providers (tema, QueryClient, SafeArea, GestureHandler) + gate por sesión/rol
-│   ├── index.tsx          # Redirect por rol → (auth) | (app)/(tabs) | (driver)/(tabs)/solicitudes
+│   ├── index.tsx          # Redirect por rol → (auth) | (app)/(tabs) | (driver)/(tabs)/requests
 │   ├── (auth)/            # index → PhoneEntryScreen: única vista de acceso (teléfono + OTP, Google).
 │   │                      # Un número nuevo completa nombre + términos ahí mismo. Sin correo/contraseña
 │   ├── (app)/             # Grupo pasajero (guard: authenticated && !driver)
@@ -30,11 +30,11 @@ src/
 │   │   ├── (tabs)/          # Viaje · Historial · Billetera · Perfil  (PillTabBar)
 │   │   ├── booking/         # destination, configure, offers, trip, rating,
 │   │   │                    #   pick-on-map, saved-places, edit-place
-│   │   └── conductor/registro.tsx  # alta/edición de un vehículo (?vehicle=taxi|moto|truck) desde Perfil
-│   ├── elegir-modo.tsx    # tras iniciar sesión un conductor aprobado elige modo y vehículo
+│   │   └── driver/register.tsx  # alta/edición de un vehículo (?vehicle=taxi|moto|truck) desde Perfil
+│   ├── choose-mode.tsx    # tras iniciar sesión un conductor aprobado elige modo y vehículo
 │   └── (driver)/          # Grupo conductor (guard: role === 'driver')
 │       ├── _layout.tsx      # Monta useDriverPoolSocket() + <DriverToaster/>
-│       ├── oferta-enviada.tsx
+│       ├── offer-sent.tsx
 │       └── (tabs)/          # Solicitudes · Historial · Ganancias · Perfil  (PillTabBar)
 │                            #   (index oculto vía tabBarButton: () => null → redirect a Solicitudes)
 ├── features/            # Una carpeta por feature, en capas (Clean Architecture).
@@ -54,9 +54,9 @@ src/
 │       ├── domain/          # DriverVehicle (hasta uno por tipo; MAX_DRIVER_VEHICLES)
 │       ├── data/            # driverAccountRepository (/drivers/me/vehicles · /me/mode)
 │       ├── application/     # useDriverRequests (zustand) · useDriverToasts · useDriverAccount
-│       └── presentation/    # SolicitudesEntrantesScreen · DriverTopBar · RequestCard · DriverSearchMap
-│                            #   · RegistroConductorScreen · DriverAccountCard · SelectorVehiculo
-│                            #   · ElegirModoScreen · PerfilConductorScreen · …
+│       └── presentation/    # IncomingRequestsScreen · DriverTopBar · RequestCard · DriverSearchMap
+│                            #   · DriverRegistrationScreen · DriverAccountCard · VehicleSelector
+│                            #   · ChooseModeScreen · DriverProfileScreen · …
 ├── core/               # Infra transversal
 │   ├── components/       # PillTabBar (bottom bar Stitch: tab activo con pill amarillo)
 │   ├── config/env.ts     # Config tipada desde Constants.expoConfig.extra
@@ -95,20 +95,20 @@ src/
   aparte). Un número nuevo pasa por `ProfileCompletionForm` (nombre + términos) tras el OTP.
   El controlador (`useAuthController()`) conserva el flujo de recuperación aunque hoy no tiene UI.
 - pasajero → `/(app)/(tabs)` (tab inicial: Viaje)
-- conductor → `/(driver)/(tabs)/solicitudes` (cae directo en Solicitudes, no en Inicio)
+- conductor → `/(driver)/(tabs)/requests` (cae directo en Solicitudes, no en Inicio)
 
 **Una cuenta, dos modos, hasta tres vehículos.** `user.role` es el modo activo que devuelve el
 backend. En Perfil (pasajero) `DriverAccountCard` lista los vehículos (`useDriverVehicles`,
 key `['driver-vehicles']`) con su estado y permite agregar/editar/quitar
-(`RegistroConductorScreen`, `?vehicle=` edita ese tipo; al agregar solo se ofrecen los tipos
-libres). Con vehículos aprobados, `SelectorVehiculo` muestra "Conducir con Taxi · placa" por cada
+(`DriverRegistrationScreen`, `?vehicle=` edita ese tipo; al agregar solo se ofrecen los tipos
+libres). Con vehículos aprobados, `VehicleSelector` muestra "Conducir con Taxi · placa" por cada
 uno; elegir llama a `useSwitchAccountMode({mode:'driver', vehicleType})` (`POST /drivers/me/mode`),
 que si el usuario está en línea primero lo desconecta, vacía React Query (`removeQueries`),
 reemplaza `user` (`setUser`) y hace `router.replace('/')` para que los guards reenruten. En modo
 conductor, Perfil permite cambiar de vehículo (otros aprobados) y volver a pasajero.
 
 **Al iniciar sesión** con una cuenta con algún vehículo aprobado, `authStore.modeChoicePending`
-queda en `true` y `index.tsx` redirige a `/elegir-modo` (`ElegirModoScreen`: "Pedir viajes" o
+queda en `true` y `index.tsx` redirige a `/choose-mode` (`ChooseModeScreen`: "Pedir viajes" o
 "Conducir con …" por vehículo). El arranque con sesión guardada (`bootstrap`) no vuelve a
 preguntar. No dupliques ese flujo: la navegación por rol ya existente hace el resto.
 
@@ -214,9 +214,9 @@ permite elegir Claro u Oscuro para pasajero y conductor. La preferencia vive en
 `viajaya.tema` (SecureStore nativo; localStorage web), se conserva al cerrar sesión
 y no modifica la cuenta del backend.
 
-`ProveedorTema` sincroniza colores, Expo Router, StatusBar, Appearance y el fondo
+`AppThemeProvider` sincroniza colores, Expo Router, StatusBar, Appearance y el fondo
 nativo. Cambiar el tema actualiza el contexto sin remontar las pantallas ni perder
-formularios o conexiones. `crearStoreTema` acota la lectura a 5 s, descarta resultados
+formularios o conexiones. `createThemeStore` acota la lectura a 5 s, descarta resultados
 anteriores a una elección y permite reintentar si el almacenamiento falla.
 
 Paleta clara:
@@ -226,8 +226,8 @@ Paleta clara:
   (fijos en ambos temas: el nombre «Viaja» blanco + «Ya» `accent` sobre azul, como logo y splash;
   lo usan el encabezado de Home y `LaunchScreen`) · `success #167347` · `danger #C52C22` ·
   `text #182230` · `textSecondary #536174` · `surfaceMuted #F3F5F8` · `border #DCE2EB`.
-- `bordeControl #7D8796` identifica campos y opciones; `border` se reserva para
-  separadores decorativos. `primarioSuave` y `peligroSuave` acompañan las acciones
+- `controlBorder #7D8796` identifica campos y opciones; `border` se reserva para
+  separadores decorativos. `primarySoft` y `dangerSoft` acompañan las acciones
   secundarias con texto oscuro; los estados deshabilitados usan colores explícitos.
 - `spacing` xs/sm/md/lg/xl/xxl = 4/8/16/24/32/48 · `radius` sm/md/lg/pill = 8/12/16/999 ·
   `fontSize` xs…xxl = 12/14/16/20/24/32 · `fontWeight` regular/medium/semibold/bold.
@@ -238,18 +238,18 @@ texto, controles y estados. `app.config.ts` mantiene `userInterfaceStyle: 'light
 como base nativa; Appearance aplica después la elección explícita de la app.
 
 Importa tokens de tamaño y los hooks desde `@/core/theme`. Dentro del componente,
-usa `useTema()` para colores sueltos o `useEstilos(crearEstilos)` para obtener
-`{ colors, styles, estiloFoco }`. Declara la fábrica fuera del componente:
+usa `useTheme()` para colores sueltos o `useThemedStyles(createStyles)` para obtener
+`{ colors, styles, focusStyle }`. Declara la fábrica fuera del componente:
 
 ```tsx
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   tarjeta: { backgroundColor: colors.surface, padding: spacing.md },
 });
 ```
 
 No captures colores en `StyleSheet.create` ni tablas de iconos a nivel de módulo.
-Los mapas usan `useEstiloMapa` y `userInterfaceStyle` explícito; cambiar tema debe
-redibujar también los marcadores nativos. Usa `textoSobreAcento` sobre el amarillo.
+Los mapas usan `useMapStyle` y `userInterfaceStyle` explícito; cambiar tema debe
+redibujar también los marcadores nativos. Usa `textOnAccent` sobre el amarillo.
 Splash/adaptiveIcon conservan el azul de marca `#16308C`. Logo ("F2", 23/09/2026): «Viaja» blanco +
 «Ya» amarillo sobre un taxi y una mototaxi de perfil. `icon.png` (iOS), `android-icon-foreground/
 monochrome` (dentro del círculo seguro de 66 dp) y `splash-icon.png` (`imageWidth: 200`) lo usan;
@@ -266,12 +266,12 @@ arranque en frío; login, logout y Reintentar muestran el spinner ligero.
   `expo.autolinking.exclude` en `package.json` excluye ambas familias para evitar
   copiarlas también al binario nativo. No añadas imports `/static`, plugins de estas
   familias ni fuentes manuales sin revisar conjuntamente esa configuración.
-- Los símbolos propios del mapa viven en `shared/components/mapa/`: A circular
+- Los símbolos propios del mapa viven en `shared/components/map/`: A circular
   para origen, B circular para destino y vehículos cenitales taxi/moto. Se dibujan
   con vistas nativas y tokens, sin fuentes de iconos. La letra A/B tiene escala
   fija porque forma parte del símbolo; la etiqueta y el nombre accesible conservan
   el significado. El pin de selección ancla el extremo del tallo al 50% del mapa,
-  sin estimar la altura del texto. `MarcadorVehiculo` (32 dp, sin disco de fondo; el vehículo mide ~14×24 dp para caber en la calle) pertenece al mapa nativo:
+  sin estimar la altura del texto. `VehicleMarker` (32 dp, sin disco de fondo; el vehículo mide ~14×24 dp para caber en la calle) pertenece al mapa nativo:
   coordenadas GPS, `flat` y anclaje central; la rotación sigue el norte geográfico
   incluso al girar la cámara. El barrido del radar es solo decorativo. El GPS
   solicita actualizaciones cada segundo; el rumbo de movimiento fiable tiene
@@ -293,13 +293,13 @@ arranque en frío; login, logout y Reintentar muestran el spinner ligero.
 - Reserva `primary` para la acción principal, `secondary` para alternativas,
   `dangerSoft` para iniciar una acción destructiva y `danger` para confirmarla.
   Los botones y campos usan radio 16; `secondary` tiene fondo `surface` y borde
-  `bordeControl`. Los estados pulsado, deshabilitado y cargando conservan su tamaño.
+  `controlBorder`. Los estados pulsado, deshabilitado y cargando conservan su tamaño.
   En el seguimiento/negociación, `TripSecondaryAction` usa la variante `text` de
   `Button` para mantener cancelar u omitir en segundo plano; cancelar sigue
   requiriendo un diálogo destructivo. Conserva el objetivo táctil mínimo de 48.
   `loading` bloquea la acción e informa su estado; `accessibilityState.busy` puede
   comunicar una consulta en segundo plano que permite seguir interactuando.
-- Conserva el foco de teclado visible (`estiloFoco`) y los estados de selección,
+- Conserva el foco de teclado visible (`focusStyle`) y los estados de selección,
   carga y deshabilitado también mediante `aria-*`, compatibles con React Native
   y React Native Web. La selección se distingue además por una marca visible.
 - Los campos mantienen etiquetas al escribir y asocian los errores mediante su
@@ -314,7 +314,7 @@ arranque en frío; login, logout y Reintentar muestran el spinner ligero.
   previsualización web ayuda a comprobar geometría y teclado; TalkBack y
   VoiceOver requieren validación en dispositivo.
 - La búsqueda conserva el acceso al mapa en carga, error y sin resultados.
-  `useSeleccionDestino` invalida resoluciones anteriores al cambiar de búsqueda,
+  `useDestinationSelection` invalida resoluciones anteriores al cambiar de búsqueda,
   elegir otro destino o salir de la pantalla; un fallo de recientes no es una lista vacía.
 - Las ofertas separan precio, llegada estimada y vencimiento, conservando nombres
   y vehículos completos. Calificar permite omitir incluso tras elegir estrellas;
@@ -337,7 +337,7 @@ arranque en frío; login, logout y Reintentar muestran el spinner ligero.
 - El refresh también pasa por `api` con `skipAuth: true` y el timeout de 15 s;
   nunca debe quedar una renovación de sesión sin límite de espera.
 - Home verifica activo y después calificación con un límite total de 30 s en
-  `features/home/application/confirmarRecuperacion.ts`. Un fallo o timeout muestra
+  `features/home/application/confirmRecovery.ts`. Un fallo o timeout muestra
   Reintentar antes que el indicador de carga; reintentar repite la verificación
   completa. Una respuesta tardía no autoriza navegación después del timeout.
 - Leer SecureStore tiene un límite de 5 s. El arranque completo tiene 30 s y
@@ -418,11 +418,17 @@ npm run lint               # expo lint (eslint-config-expo)
   nombres de lugares para ampliar el mapa. Su encuadre reserva la cabecera completa y
   márgenes mínimos; `getLabelAwareFitCoordinates` (`routeTooltipLayout.ts`) añade las
   esquinas de cada tooltip con su tamaño medido (`onLabelSize` de `RoutePinMarker`) y
-  el lado/separación reales de `ubicarTooltipSinCruzarRuta`, así no salen del área
+  el lado/separación reales de `placeTooltipClearOfRoute`, así no salen del área
   visible sin perder zoom en el resto. La proyección Mercator (`mercatorY`,
   `longitudeDelta`) vive solo en ese archivo. No dupliques la polilínea ni
   los estilos del pin en una pantalla. Conserva el contenedor nativo no aplanable,
-  el anclaje al centro del símbolo y el redibujado cancelable tras cambios de layout.
+  el redibujado cancelable tras cambios de layout y el segundo redibujado tardío
+  (400 ms, evita bitmaps en blanco). El pin A/B de ruta tiene la misma forma que el
+  pin de selección (círculo, tallo y punto): la punta del tallo es la coordenada exacta
+  en todas las vistas (pasajero y conductor). `computePinAnchor` recibe la altura
+  derivada de la etiqueta medida (no la del `onLayout` del contenedor, que puede
+  llegar tarde y subir el pin con etiqueta abajo). El `Marker` usa `key={placement}`:
+  Android conserva un bitmap viejo cuando la etiqueta cambia de lado.
   La colocación de tooltips comprueba todos los segmentos en la proyección de
   pantalla y mide el bloque completo (texto y Editar). Los mapas con ruta son
   cenitales y bloqueados (sin arrastre, zoom ni giro), por solicitud del usuario
@@ -469,7 +475,7 @@ para conservar todos los callbacks aunque se solapen, y consulta las mutaciones
 `automatic-driver-offer` para mantener el bloqueo por solicitud al navegar.
 No usar un modal de carga ni un bloqueo global para calcular ETA/enviar una oferta.
 La primera aceptación válida asigna un solo viaje y retira las demás ofertas del
-ganador. `OfertaEnviadaScreen` muestra cualquier viaje asignado, incluso cuando se
+ganador. `OfferSentScreen` muestra cualquier viaje asignado, incluso cuando se
 estaba viendo otra negociación. Ver plan 0015.
 
 

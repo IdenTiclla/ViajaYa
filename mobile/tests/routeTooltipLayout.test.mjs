@@ -2,128 +2,134 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  calcularAnclajePin,
-  elegirPosicionTooltip,
-  proyectarRutaRespectoAlPin,
-  TAMANO_PIN_RUTA,
-  ubicarTooltipSinCruzarRuta,
+  computePinAnchor,
+  labelBaseOffset,
+  chooseTooltipPlacement,
+  projectRouteRelativeToPin,
+  PIN_BLOCK_HEIGHT,
+  PIN_TIP_TO_TOP,
+  ROUTE_PIN_DOT,
+  placeTooltipClearOfRoute,
 } from '../src/features/rides/presentation/routeTooltipLayout.ts';
 
-const sur = { latitude: -16.51, longitude: -68.15 };
-const norte = { latitude: -16.50, longitude: -68.15 };
+const south = { latitude: -16.51, longitude: -68.15 };
+const north = { latitude: -16.50, longitude: -68.15 };
 
-test('las etiquetas quedan fuera del trayecto vertical en ambos sentidos', () => {
-  assert.equal(elegirPosicionTooltip('A', sur, [sur, norte]), 'abajo');
-  assert.equal(elegirPosicionTooltip('B', norte, [sur, norte]), 'arriba');
-  assert.equal(elegirPosicionTooltip('A', norte, [norte, sur]), 'arriba');
-  assert.equal(elegirPosicionTooltip('B', sur, [norte, sur]), 'abajo');
+test('labels stay off the vertical route in both directions', () => {
+  assert.equal(chooseTooltipPlacement('A', south, [south, north]), 'below');
+  assert.equal(chooseTooltipPlacement('B', north, [south, north]), 'above');
+  assert.equal(chooseTooltipPlacement('A', north, [north, south]), 'above');
+  assert.equal(chooseTooltipPlacement('B', south, [north, south]), 'below');
 });
 
-test('el tramo cercano manda aunque la ruta dé un rodeo en sentido opuesto', () => {
-  const rodeoSur = { ...sur, latitude: sur.latitude - 0.001 };
-  const rodeoNorte = { ...norte, latitude: norte.latitude + 0.001 };
-  const ruta = [sur, rodeoSur, rodeoNorte, norte];
-  assert.equal(elegirPosicionTooltip('A', sur, ruta), 'arriba');
-  assert.equal(elegirPosicionTooltip('B', norte, ruta), 'abajo');
+test('the nearby segment rules even if the route detours in the opposite direction', () => {
+  const southDetour = { ...south, latitude: south.latitude - 0.001 };
+  const northDetour = { ...north, latitude: north.latitude + 0.001 };
+  const route = [south, southDetour, northDetour, north];
+  assert.equal(chooseTooltipPlacement('A', south, route), 'above');
+  assert.equal(chooseTooltipPlacement('B', north, route), 'below');
 });
 
-test('girar el mapa invierte el lado libre de las etiquetas', () => {
-  assert.equal(elegirPosicionTooltip('A', sur, [sur, norte], 180), 'arriba');
-  assert.equal(elegirPosicionTooltip('B', norte, [sur, norte], 180), 'abajo');
-  const este = { ...sur, longitude: sur.longitude + 0.01 };
-  assert.equal(elegirPosicionTooltip('A', sur, [sur, este], 90), 'abajo');
-  assert.equal(elegirPosicionTooltip('A', sur, [sur, este], 270), 'arriba');
+test('rotating the map flips the labels\' free side', () => {
+  assert.equal(chooseTooltipPlacement('A', south, [south, north], 180), 'above');
+  assert.equal(chooseTooltipPlacement('B', north, [south, north], 180), 'below');
+  const east = { ...south, longitude: south.longitude + 0.01 };
+  assert.equal(chooseTooltipPlacement('A', south, [south, east], 90), 'below');
+  assert.equal(chooseTooltipPlacement('A', south, [south, east], 270), 'above');
 });
 
-test('puntos duplicados y ajustes mínimos de la calle no invierten la etiqueta', () => {
-  const ajuste = { ...sur, latitude: sur.latitude - 0.000001 };
-  assert.equal(elegirPosicionTooltip('A', sur, [sur, sur, ajuste, norte]), 'abajo');
+test('duplicated points and small street snaps do not flip the label', () => {
+  const snap = { ...south, latitude: south.latitude - 0.000001 };
+  assert.equal(chooseTooltipPlacement('A', south, [south, south, snap, north]), 'below');
 });
 
-test('un trayecto horizontal separa las etiquetas arriba y abajo', () => {
-  const este = { ...sur, longitude: sur.longitude + 0.01 };
-  assert.equal(elegirPosicionTooltip('A', sur, [sur, este]), 'arriba');
-  assert.equal(elegirPosicionTooltip('B', este, [sur, este]), 'abajo');
+test('a horizontal route separates the labels above and below', () => {
+  const east = { ...south, longitude: south.longitude + 0.01 };
+  assert.equal(chooseTooltipPlacement('A', south, [south, east]), 'above');
+  assert.equal(chooseTooltipPlacement('B', east, [south, east]), 'below');
 });
 
-test('sin trayecto o con puntos coincidentes conserva posiciones válidas', () => {
-  assert.equal(elegirPosicionTooltip('A', sur, []), 'arriba');
-  assert.equal(elegirPosicionTooltip('B', sur, [sur, sur]), 'abajo');
+test('without a route or with coincident points it keeps valid placements', () => {
+  assert.equal(chooseTooltipPlacement('A', south, []), 'above');
+  assert.equal(chooseTooltipPlacement('B', south, [south, south]), 'below');
 });
 
-test('el centro del pin no se desplaza al crecer la etiqueta o mostrar Editar', () => {
-  for (const altura of [TAMANO_PIN_RUTA, 44, 62, 92]) {
-    const arriba = calcularAnclajePin(altura, 'arriba');
-    const abajo = calcularAnclajePin(altura, 'abajo');
-    // El centro queda a medio diámetro del borde, sin depender del tooltip.
-    assert.ok(Math.abs(altura - arriba.y * altura - TAMANO_PIN_RUTA / 2) < 0.000001);
-    assert.ok(Math.abs(abajo.y * altura - TAMANO_PIN_RUTA / 2) < 0.000001);
-    assert.equal(arriba.x, 0.5);
-    assert.equal(abajo.x, 0.5);
+test('the stem tip does not move when the label grows or shows Editar', () => {
+  for (const blockHeight of [PIN_BLOCK_HEIGHT, 44, 62, 92]) {
+    const aboveAnchor = computePinAnchor(blockHeight, 'above');
+    const belowAnchor = computePinAnchor(blockHeight, 'below');
+    // Labels above: the tip sits half a dot from the bottom edge.
+    assert.ok(Math.abs(blockHeight - aboveAnchor.y * blockHeight - ROUTE_PIN_DOT / 2) < 0.000001);
+    // Labels below: the tip sits a circle plus a stem from the top edge.
+    assert.ok(Math.abs(belowAnchor.y * blockHeight - PIN_TIP_TO_TOP) < 0.000001);
+    assert.equal(aboveAnchor.x, 0.5);
+    assert.equal(belowAnchor.x, 0.5);
   }
-  assert.deepEqual(calcularAnclajePin(0, 'arriba'), { x: 0.5, y: 0.5 });
+  // Before the first measurement the bare pin block is assumed.
+  assert.deepEqual(computePinAnchor(0, 'above'), computePinAnchor(PIN_BLOCK_HEIGHT, 'above'));
 });
 
-const medidas = { ancho: 140, alto: 32 };
-const ubicar = (ruta, preferida = 'arriba', etiqueta = medidas) =>
-  ubicarTooltipSinCruzarRuta(ruta, etiqueta, preferida);
+const size = { width: 140, height: 32 };
+const place = (route, preferred = 'above', label = size) =>
+  placeTooltipClearOfRoute(route, label, preferred);
 
-test('una curva que regresa por detrás del texto obliga a separarlo más del pin', () => {
-  const resultado = ubicar([
+test('a curve coming back behind the text forces moving it further from the pin', () => {
+  const result = place([
     { x: 0, y: 0 }, { x: 0, y: 90 }, { x: 120, y: 90 },
     { x: 120, y: -30 }, { x: -120, y: -30 },
   ]);
-  assert.equal(resultado.posicion, 'arriba');
-  assert.equal(resultado.visible, true);
-  assert.ok(resultado.separacion > 28, 'Debe superar la calle que cruza a 30 del pin');
+  assert.equal(result.placement, 'above');
+  assert.equal(result.visible, true);
+  assert.ok(labelBaseOffset('above') + result.separation > 30,
+    'Must clear the street crossing 30 from the pin');
 });
 
-test('detecta el cruce de un segmento aunque sus dos vértices estén fuera del tooltip', () => {
-  const resultado = ubicar([{ x: -200, y: -30 }, { x: 200, y: -30 }]);
-  assert.deepEqual(resultado, { posicion: 'abajo', separacion: 8, visible: true });
+test('detects a segment crossing even if both its vertices are outside the tooltip', () => {
+  const result = place([{ x: -200, y: -30 }, { x: 200, y: -30 }]);
+  assert.deepEqual(result, { placement: 'below', separation: 8, visible: true });
 });
 
-test('el tamaño real del bloque cuenta, incluyendo etiquetas largas y Editar', () => {
-  const ruta = [{ x: 60, y: -30 }, { x: 100, y: -30 }];
-  assert.equal(ubicar(ruta, 'arriba', { ancho: 40, alto: 20 }).posicion, 'arriba');
-  assert.equal(ubicar(ruta, 'arriba', { ancho: 170, alto: 70 }).posicion, 'abajo');
+test('the real block size counts, including long labels and Editar', () => {
+  const route = [{ x: 60, y: -30 }, { x: 100, y: -30 }];
+  assert.equal(place(route, 'above', { width: 40, height: 20 }).placement, 'above');
+  assert.equal(place(route, 'above', { width: 170, height: 70 }).placement, 'below');
   const horizontal = [{ x: -100, y: -65 }, { x: 100, y: -65 }];
-  assert.equal(ubicar(horizontal, 'arriba', { ancho: 140, alto: 20 }).posicion, 'arriba');
-  assert.equal(ubicar(horizontal, 'arriba', { ancho: 140, alto: 70 }).posicion, 'abajo');
+  assert.equal(place(horizontal, 'above', { width: 140, height: 20 }).placement, 'above');
+  assert.equal(place(horizontal, 'above', { width: 140, height: 70 }).placement, 'below');
 });
 
-test('la proyección usa la escala del zoom y el rumbo de la cámara', () => {
-  const este = { ...sur, longitude: sur.longitude + 0.01 };
-  const [cerca] = proyectarRutaRespectoAlPin(sur, [este], 0, 15);
-  const [lejos] = proyectarRutaRespectoAlPin(sur, [este], 0, 14);
-  const [girado] = proyectarRutaRespectoAlPin(sur, [este], 90, 15);
-  assert.ok(Math.abs(cerca.x - lejos.x * 2) < 0.000001);
-  assert.ok(Math.abs(girado.x) < 0.000001);
-  assert.ok(Math.abs(girado.y + cerca.x) < 0.000001);
-  assert.equal(Math.abs(cerca.y), 0);
+test('the projection uses the zoom scale and the camera bearing', () => {
+  const east = { ...south, longitude: south.longitude + 0.01 };
+  const [near] = projectRouteRelativeToPin(south, [east], 0, 15);
+  const [far] = projectRouteRelativeToPin(south, [east], 0, 14);
+  const [turned] = projectRouteRelativeToPin(south, [east], 90, 15);
+  assert.ok(Math.abs(near.x - far.x * 2) < 0.000001);
+  assert.ok(Math.abs(turned.x) < 0.000001);
+  assert.ok(Math.abs(turned.y + near.x) < 0.000001);
+  assert.equal(Math.abs(near.y), 0);
 });
 
-test('recalcula las colisiones al acercar y girar el mapa', () => {
-  const ruta = [
-    { latitude: sur.latitude + 0.001, longitude: sur.longitude - 0.01 },
-    { latitude: sur.latitude + 0.001, longitude: sur.longitude + 0.01 },
+test('recomputes collisions when zooming in and rotating the map', () => {
+  const route = [
+    { latitude: south.latitude + 0.0015, longitude: south.longitude - 0.01 },
+    { latitude: south.latitude + 0.0015, longitude: south.longitude + 0.01 },
   ];
-  const normal = proyectarRutaRespectoAlPin(sur, ruta, 0, 15);
-  const cerca = proyectarRutaRespectoAlPin(sur, ruta, 0, 18);
-  const girada = proyectarRutaRespectoAlPin(sur, ruta, 180, 15);
-  assert.equal(ubicar(normal).posicion, 'abajo');
-  assert.equal(ubicar(cerca).posicion, 'arriba');
-  assert.equal(ubicar(girada, 'abajo').posicion, 'arriba');
+  const normal = projectRouteRelativeToPin(south, route, 0, 15);
+  const near = projectRouteRelativeToPin(south, route, 0, 18);
+  const rotated = projectRouteRelativeToPin(south, route, 180, 15);
+  assert.equal(place(normal).placement, 'below');
+  assert.equal(place(near).placement, 'above');
+  assert.equal(place(rotated, 'below').placement, 'above');
 });
 
-test('sin espacio libre no tapa la ruta ni genera un bitmap desmesurado', () => {
-  const resultado = ubicar([{ x: 0, y: -10000 }, { x: 0, y: 10000 }]);
-  assert.deepEqual(resultado, { posicion: 'arriba', separacion: 8, visible: false });
+test('without free room it neither covers the route nor creates an oversized bitmap', () => {
+  const result = place([{ x: 0, y: -10000 }, { x: 0, y: 10000 }]);
+  assert.deepEqual(result, { placement: 'above', separation: 8, visible: false });
 });
 
-test('rutas vacías, duplicados y calles fuera de la etiqueta mantienen la posición', () => {
-  for (const ruta of [[], [{ x: 0, y: 0 }, { x: 0, y: 0 }],
+test('empty routes, duplicates and streets outside the label keep the placement', () => {
+  for (const route of [[], [{ x: 0, y: 0 }, { x: 0, y: 0 }],
     [{ x: 100, y: -100 }, { x: 100, y: 100 }]]) {
-    assert.deepEqual(ubicar(ruta), { posicion: 'arriba', separacion: 8, visible: true });
+    assert.deepEqual(place(route), { placement: 'above', separation: 8, visible: true });
   }
 });

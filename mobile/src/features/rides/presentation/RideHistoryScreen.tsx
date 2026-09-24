@@ -1,9 +1,9 @@
 /**
- * Historial de viajes (pasajero o conductor) — diseño Stitch "Historial de Viajes".
+ * Ride history (passenger or driver) — Stitch "Historial de Viajes" design.
  *
- * Tabs Completados / Cancelados; cada tarjeta muestra la ruta, la fecha, la
- * contraparte y el importe. El backend infiere el rol desde el token,
- * así que la misma pantalla sirve para ambos roles.
+ * Completados / Cancelados tabs; each card shows the route, the date, the
+ * counterpart and the amount. The backend infers the role from the token,
+ * so the same screen works for both roles.
  */
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useState } from 'react';
@@ -19,7 +19,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
-import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import { SERVICE_META } from '@/features/booking/domain/serviceCatalog';
 import { useRideHistory } from '@/features/rides/application/useCloseFlow';
 import { formatBolivianos } from '@/features/rides/domain/money';
@@ -45,7 +45,7 @@ function formatDate(iso: string | null): string {
 }
 
 export function RideHistoryScreen() {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   const [tab, setTab] = useState<'completed' | 'cancelled'>('completed');
   const {
     data,
@@ -163,7 +163,7 @@ export function RideHistoryScreen() {
 }
 
 function HistoryCard({ item }: { item: RideHistoryItem }) {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   const cp = item.counterpart;
   const vehicle = cp
     ? [vehicleLabel(cp.vehicleType), cp.vehicleModel]
@@ -226,7 +226,7 @@ function HistoryCard({ item }: { item: RideHistoryItem }) {
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
   header: {
     fontSize: fontSize.xl,

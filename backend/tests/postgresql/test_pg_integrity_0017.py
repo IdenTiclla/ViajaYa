@@ -1,4 +1,4 @@
-"""Certificación de la migración 0017 sobre una base PostgreSQL desechable."""
+"""Certification of migration 0017 on a disposable PostgreSQL database."""
 
 from __future__ import annotations
 
@@ -190,7 +190,7 @@ async def _assert_integrity_error(
         await savepoint.rollback()
 
 
-async def test_upgrade_downgrade_y_reupgrade_0017(pg_test_db) -> None:
+async def test_upgrade_downgrade_and_reupgrade_0017(pg_test_db) -> None:
     await pg_test_db.migrate_async("downgrade", _REVISION_0016)
     try:
         async with pg_test_db.engine.connect() as connection:
@@ -218,7 +218,7 @@ async def test_upgrade_downgrade_y_reupgrade_0017(pg_test_db) -> None:
         await pg_test_db.migrate_async("upgrade", "head")
 
 
-async def test_restricciones_rechazan_valores_invalidos(pg_test_db) -> None:
+async def test_constraints_reject_invalid_values(pg_test_db) -> None:
     async with pg_test_db.engine.connect() as connection:
         transaction = await connection.begin()
         try:
@@ -339,7 +339,7 @@ async def test_restricciones_rechazan_valores_invalidos(pg_test_db) -> None:
             await transaction.rollback()
 
 
-async def test_eliminar_oferta_aceptada_pone_fk_en_null(pg_test_db) -> None:
+async def test_deleting_the_accepted_offer_sets_the_fk_to_null(pg_test_db) -> None:
     async with pg_test_db.engine.connect() as connection:
         transaction = await connection.begin()
         try:
@@ -385,7 +385,7 @@ async def test_eliminar_oferta_aceptada_pone_fk_en_null(pg_test_db) -> None:
             await transaction.rollback()
 
 
-async def test_indice_unico_rechaza_dos_rides_activos_del_conductor(pg_test_db) -> None:
+async def test_unique_index_rejects_two_active_rides_for_a_driver(pg_test_db) -> None:
     async with pg_test_db.engine.connect() as connection:
         transaction = await connection.begin()
         try:
@@ -419,7 +419,7 @@ async def test_indice_unico_rechaza_dos_rides_activos_del_conductor(pg_test_db) 
             await transaction.rollback()
 
 
-async def test_aceptaciones_concurrentes_dejan_un_solo_ride_activo(pg_test_db) -> None:
+async def test_concurrent_acceptances_leave_a_single_active_ride(pg_test_db) -> None:
     driver_id = uuid.uuid4()
     rider_a = uuid.uuid4()
     rider_b = uuid.uuid4()

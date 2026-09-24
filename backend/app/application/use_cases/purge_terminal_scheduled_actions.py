@@ -8,7 +8,7 @@ from app.application.interfaces import TerminalScheduledActionsRetention, UnitOf
 
 
 class PurgeTerminalScheduledActions:
-    """Aplica retención solo a éxitos y cancelaciones; conserva fallos ``dead``."""
+    """Apply retention only to successes and cancellations; keep ``dead`` failures."""
 
     def __init__(
         self,
@@ -26,9 +26,9 @@ class PurgeTerminalScheduledActions:
         action_limit: int,
     ) -> int:
         if retention_days <= 0:
-            raise ValueError("La retención de acciones debe ser mayor a cero.")
+            raise ValueError("Action retention must be greater than zero.")
         if action_limit <= 0:
-            raise ValueError("El límite de acciones debe ser positivo.")
+            raise ValueError("The action limit must be positive.")
 
         if now.tzinfo is None:
             now = now.replace(tzinfo=UTC)

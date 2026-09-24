@@ -92,7 +92,7 @@ async def set_online(
     current_user: CurrentUserDep,
     use_case: Annotated[SetDriverOnline, Depends(get_set_driver_online)],
 ) -> UserResponse:
-    """Alterna la disponibilidad del conductor (en línea/desconectado)."""
+    """Toggle the driver's availability (online/offline)."""
     result = await use_case.execute(current_user, body.is_online)
     await events.publish_driver_offline_offers(result)
     return UserResponse.from_entity(result.driver)
@@ -113,6 +113,6 @@ async def earnings(
     current_user: CurrentUserDep,
     use_case: Annotated[GetDriverEarnings, Depends(get_get_driver_earnings)],
 ) -> DriverEarningsResponse:
-    """Resumen de ganancias del conductor (hoy, histórico y viajes recientes)."""
+    """The driver's earnings summary (today, all-time and recent rides)."""
     summary = await use_case.execute(current_user)
     return DriverEarningsResponse.from_dto(summary)

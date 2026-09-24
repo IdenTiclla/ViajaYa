@@ -1,4 +1,4 @@
-"""Pruebas de retención segura de batches publicados."""
+"""Tests of the safe retention of published batches."""
 
 from __future__ import annotations
 
@@ -233,5 +233,5 @@ async def test_retention_preflight_requires_0021_index(
         await session.execute(text("DROP INDEX ix_realtime_outbox_published_retention"))
         await session.commit()
 
-    with pytest.raises(RuntimeError, match="índice.*0021"):
+    with pytest.raises(RuntimeError, match="index.*0021"):
         await worker.preflight()

@@ -1,4 +1,4 @@
-"""Caso de uso: listar los lugares guardados de un usuario."""
+"""Use case: list a user's saved places."""
 
 from __future__ import annotations
 

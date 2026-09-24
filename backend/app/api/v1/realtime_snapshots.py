@@ -1,4 +1,4 @@
-"""Adaptadores API para snapshots realtime v2 ya capturados por aplicación."""
+"""API adapters for v2 realtime snapshots already captured by the application."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ def _watermarks(
 def build_passenger_snapshot_message_v2(
     snapshot: PassengerRealtimeSnapshot,
 ) -> RideSnapshotMessageV2:
-    """Traduce una captura de aplicación sin realizar nuevas lecturas."""
+    """Translate an application capture without doing new reads."""
     return RideSnapshotMessageV2(
         schema_version=2,
         kind="snapshot",
@@ -47,7 +47,7 @@ def build_passenger_snapshot_message_v2(
 def build_driver_snapshot_message_v2(
     snapshot: DriverRealtimeSnapshot,
 ) -> DriverSnapshotMessageV2:
-    """Traduce el estado unificado del conductor sin IO ni reglas de negocio."""
+    """Translate the driver's unified state without IO or business rules."""
     return DriverSnapshotMessageV2(
         schema_version=2,
         kind="snapshot",

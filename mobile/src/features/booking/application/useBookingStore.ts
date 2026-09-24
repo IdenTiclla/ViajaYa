@@ -1,30 +1,30 @@
 /**
- * Estado del flujo de reserva (zustand), compartido entre las pantallas:
- * Home (origen) → Búsqueda de destino → Seleccionar en mapa → Configurar viaje.
+ * Booking flow state (zustand), shared across the screens:
+ * Home (origin) → Destination search → Pick on map → Configure trip.
  *
- * Sigue el mismo patrón que `authStore`: un único store global con setters.
+ * Follows the same pattern as `authStore`: a single global store with setters.
  */
 import { create } from 'zustand';
 
 import type { PaymentMethod, Place, ServiceType } from '@/features/booking/domain/types';
 
 type BookingState = {
-  /** Origen; lo fija el mapa del Home al mover la cámara. */
+  /** Origin; set by the Home map when the camera moves. */
   origin: Place | null;
-  /** Destino; lo fija la lista de recientes o el selector en mapa. */
+  /** Destination; set by the recents list or the map picker. */
   destination: Place | null;
-  /** Servicio elegido para la solicitud. */
+  /** Service chosen for the request. */
   service: ServiceType;
-  /** Forma de pago elegida para la solicitud. */
+  /** Payment method chosen for the request. */
   payment: PaymentMethod;
-  /** Oferta del usuario (texto editable; se valida al buscar ofertas). */
+  /** The user's fare (editable text; validated when searching for offers). */
   fare: string;
   setOrigin: (origin: Place) => void;
   setDestination: (destination: Place) => void;
   setService: (service: ServiceType) => void;
   setPayment: (payment: PaymentMethod) => void;
   setFare: (fare: string) => void;
-  /** Limpia el destino/oferta al iniciar una nueva búsqueda (conserva el origen). */
+  /** Clear the destination/fare when starting a new search (keeps the origin). */
   resetTrip: () => void;
   /** Limpia todo dato sensible al cambiar de cuenta. */
   resetAll: () => void;

@@ -1,4 +1,4 @@
-"""Unidad de trabajo SQLAlchemy sobre una sesión ya inyectada."""
+"""SQLAlchemy unit of work over an already injected session."""
 
 from __future__ import annotations
 
@@ -8,10 +8,10 @@ from app.application.interfaces import UnitOfWork
 
 
 class SqlAlchemyUnitOfWork(UnitOfWork):
-    """Delega la frontera transaccional en la misma sesión de los repositorios.
+    """Delegate the transactional boundary to the repositories' same session.
 
-    No abre una transacción anidada: una lectura previa de autenticación puede
-    haber iniciado ya el ``autobegin`` de SQLAlchemy en el request actual.
+    It does not open a nested transaction: an earlier authentication read may
+    already have started SQLAlchemy's ``autobegin`` in the current request.
     """
 
     def __init__(self, session: AsyncSession) -> None:

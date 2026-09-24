@@ -1,4 +1,4 @@
-"""Contrato rápido del repositorio durable de acciones programadas."""
+"""Fast contract of the durable scheduled actions repository."""
 
 from __future__ import annotations
 
@@ -56,7 +56,7 @@ def _pending(
     )
 
 
-async def test_schedule_deduplica_y_solo_una_generacion_mayor_renueva(
+async def test_schedule_deduplicates_and_only_a_greater_generation_renews(
     action_sessions: async_sessionmaker[AsyncSession],
 ) -> None:
     now = datetime.now(UTC)
@@ -90,7 +90,7 @@ async def test_schedule_deduplica_y_solo_una_generacion_mayor_renueva(
     assert renewed.attempts == 0
 
 
-async def test_schedule_next_incrementa_generacion_y_revoca_un_lease_vigente(
+async def test_schedule_next_increments_generation_and_revokes_a_current_lease(
     action_sessions: async_sessionmaker[AsyncSession],
 ) -> None:
     now = datetime.now(UTC)
@@ -148,7 +148,7 @@ async def test_schedule_next_incrementa_generacion_y_revoca_un_lease_vigente(
         )
 
 
-async def test_claim_respeta_deadline_y_recupera_lease_con_token_nuevo(
+async def test_claim_respects_deadline_and_recovers_lease_with_a_new_token(
     action_sessions: async_sessionmaker[AsyncSession],
 ) -> None:
     now = datetime.now(UTC)
@@ -223,7 +223,7 @@ async def test_claim_respeta_deadline_y_recupera_lease_con_token_nuevo(
         assert row.terminal_at is not None
 
 
-async def test_failure_reprograma_y_puede_agotarse_sin_perder_fencing(
+async def test_failure_reschedules_and_can_exhaust_without_losing_fencing(
     action_sessions: async_sessionmaker[AsyncSession],
 ) -> None:
     now = datetime.now(UTC)

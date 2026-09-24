@@ -1,4 +1,4 @@
-"""Atomicidad y contrato realtime del retiro voluntario de una oferta."""
+"""Atomicity and realtime contract of an offer's voluntary withdrawal."""
 
 from __future__ import annotations
 
@@ -156,11 +156,11 @@ async def test_use_case_mutates_records_and_then_commits() -> None:
 async def test_recorder_failure_rolls_back_memory_mutation() -> None:
     offers, driver, offer = await _memory_scenario()
     recorder = InMemoryWithdrawOfferEventRecorder(
-        error=RuntimeError("falló el recorder")
+        error=RuntimeError("the recorder failed")
     )
     unit_of_work = InMemoryUnitOfWork(offers)
 
-    with pytest.raises(RuntimeError, match="falló el recorder"):
+    with pytest.raises(RuntimeError, match="the recorder failed"):
         await withdraw_offer_use_case(
             offers,
             unit_of_work=unit_of_work,
@@ -263,7 +263,7 @@ async def test_failure_after_outbox_flush_rolls_back_offer_and_counters(
         class RecordThenFail:
             async def record(self, withdrawn: Offer) -> None:
                 await recorder.record(withdrawn)
-                raise RuntimeError("fallo después de insertar la outbox")
+                raise RuntimeError("failure after inserting the outbox")
 
         use_case = WithdrawOffer(
             SqlAlchemyOfferRepository(
@@ -273,7 +273,7 @@ async def test_failure_after_outbox_flush_rolls_back_offer_and_counters(
             SqlAlchemyUnitOfWork(session),
             RecordThenFail(),
         )
-        with pytest.raises(RuntimeError, match="después de insertar"):
+        with pytest.raises(RuntimeError, match="after inserting"):
             await use_case.execute(driver, offer.id)
 
         row = await session.get(OfferModel, offer.id, populate_existing=True)
@@ -293,8 +293,8 @@ async def test_sql_lost_compare_and_set_leaves_rollback_to_unit_of_work(
     async with session_factory() as session:
         driver, offer = await _sql_scenario(session)
 
-        # Otra transacción gana. En modo UoW, el CAS debe devolver ``None`` sin
-        # cerrar por su cuenta la transacción que pertenece a la aplicación.
+        # Another transaction wins. In UoW mode, the CAS must return ``None`` without
+        # closing on its own the transaction that belongs to the application.
         async with session_factory() as competing_session:
             rejected = await SqlAlchemyOfferRepository(
                 competing_session

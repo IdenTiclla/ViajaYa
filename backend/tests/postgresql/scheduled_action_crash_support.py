@@ -1,4 +1,4 @@
-"""Proceso hijo coordinado para el smoke de crash de scheduled_actions."""
+"""Coordinated child process for the scheduled_actions crash smoke."""
 
 from __future__ import annotations
 
@@ -19,9 +19,9 @@ def _validate_test_database_url(database_url: str) -> None:
     url = make_url(database_url)
     database = url.database or ""
     if url.drivername != "postgresql+asyncpg":
-        raise RuntimeError("El smoke de scheduler requiere postgresql+asyncpg.")
+        raise RuntimeError("The scheduler smoke requires postgresql+asyncpg.")
     if not (database.startswith("test_") or database.endswith("_test")):
-        raise RuntimeError("El smoke de scheduler requiere una base desechable.")
+        raise RuntimeError("The scheduler smoke requires a disposable database.")
 
 
 def run_claim_process(
@@ -30,7 +30,7 @@ def run_claim_process(
     reached: Any,
     release: Any,
 ) -> None:
-    """Confirma un claim y espera para que el padre termine el proceso."""
+    """Confirm a claim and wait so the parent kills the process."""
     _validate_test_database_url(database_url)
 
     async def run() -> None:
@@ -44,12 +44,12 @@ def run_claim_process(
                     claim_at - timedelta(minutes=1),
                 )
                 if action is None:
-                    raise RuntimeError("No había una acción vencida para reclamar.")
+                    raise RuntimeError("There was no due action to claim.")
                 await session.commit()
             reached.set()
             released = await asyncio.to_thread(release.wait, 30)
             if not released:
-                raise TimeoutError("La coordinación del smoke de scheduler venció.")
+                raise TimeoutError("The scheduler smoke coordination timed out.")
         finally:
             await engine.dispose()
 

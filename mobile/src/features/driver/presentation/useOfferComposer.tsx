@@ -1,14 +1,14 @@
 import { StyleSheet, Text, View } from 'react-native';
 
 import { getApiErrorMessage, getApiErrorStatus } from '@/core/errors/apiError';
-import { fontSize, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { fontSize, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import { useConcurrentOffers } from '../application/useConcurrentOffers';
 import { Button } from '@/shared/components';
 
 /** Nonblocking feedback lets other negotiations continue during GPS and HTTP. */
 export function useOfferComposer() {
   const offers = useConcurrentOffers();
-  const { styles } = useEstilos(createStyles);
+  const { styles } = useThemedStyles(createStyles);
   return {
     ...offers,
     offerFeedback: offers.failures.length > 0 ? (
@@ -29,7 +29,7 @@ export function useOfferComposer() {
   };
 }
 
-const createStyles = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   errors: { gap: spacing.xs, paddingHorizontal: spacing.sm },
   error: { backgroundColor: colors.surface, borderRadius: radius.md, padding: spacing.sm, gap: spacing.xs },
   message: { color: colors.danger, fontSize: fontSize.sm },

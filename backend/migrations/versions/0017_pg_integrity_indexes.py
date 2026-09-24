@@ -1,9 +1,9 @@
-"""Refuerza integridad e índices de lectura en PostgreSQL.
+"""Strengthen integrity and read indexes on PostgreSQL.
 
-La migración no intenta reparar filas incompatibles: el preflight enumera los
-problemas y aborta antes de modificar el esquema. Las restricciones que exigen
-examinar tablas existentes se crean ``NOT VALID`` y se validan de forma
-explícita para reducir el bloqueo del DDL en PostgreSQL.
+The migration does not try to repair incompatible rows: the preflight lists the
+problems and aborts before modifying the schema. Constraints that require
+scanning existing tables are created ``NOT VALID`` and validated
+explicitly to reduce DDL locking on PostgreSQL.
 
 Revision ID: 0017_pg_integrity_indexes
 Revises: 0016_driver_ride_dismissals
@@ -29,7 +29,7 @@ _ACTIVE_DRIVER_PREDICATE = sa.text(
 
 _PREFLIGHT_CHECKS: tuple[tuple[str, str], ...] = (
     (
-        "ride_requests.accepted_offer_id es huérfano o no coincide con ride/conductor/estado",
+        "ride_requests.accepted_offer_id is orphaned or does not match ride/driver/status",
         """
         SELECT COUNT(*)
         FROM ride_requests AS ride
@@ -44,7 +44,7 @@ _PREFLIGHT_CHECKS: tuple[tuple[str, str], ...] = (
         """,
     ),
     (
-        "ride_requests.fare no es positivo o no es finito",
+        "ride_requests.fare is not positive or not finite",
         """
         SELECT COUNT(*)
         FROM ride_requests
@@ -53,15 +53,15 @@ _PREFLIGHT_CHECKS: tuple[tuple[str, str], ...] = (
         """,
     ),
     (
-        "ride_requests.pool_version es menor que 1",
+        "ride_requests.pool_version is lower than 1",
         "SELECT COUNT(*) FROM ride_requests WHERE pool_version < 1",
     ),
     (
-        "driver_ride_dismissals.pool_version es menor que 1",
+        "driver_ride_dismissals.pool_version is lower than 1",
         "SELECT COUNT(*) FROM driver_ride_dismissals WHERE pool_version < 1",
     ),
     (
-        "offers.price no es positivo o no es finito",
+        "offers.price is not positive or not finite",
         """
         SELECT COUNT(*)
         FROM offers
@@ -70,19 +70,19 @@ _PREFLIGHT_CHECKS: tuple[tuple[str, str], ...] = (
         """,
     ),
     (
-        "offers.eta_min está fuera del rango 0..240",
+        "offers.eta_min is outside the 0..240 range",
         "SELECT COUNT(*) FROM offers WHERE eta_min IS NOT NULL AND eta_min NOT BETWEEN 0 AND 240",
     ),
     (
-        "ride_ratings.score está fuera del rango 1..5",
+        "ride_ratings.score is outside the 1..5 range",
         "SELECT COUNT(*) FROM ride_ratings WHERE score NOT BETWEEN 1 AND 5",
     ),
     (
-        "users.rating está fuera del rango 1..5",
+        "users.rating is outside the 1..5 range",
         "SELECT COUNT(*) FROM users WHERE rating IS NOT NULL AND rating NOT BETWEEN 1 AND 5",
     ),
     (
-        "hay conductores asignados a más de un ride activo",
+        "there are drivers assigned to more than one active ride",
         """
         SELECT COUNT(*)
         FROM (
@@ -141,8 +141,8 @@ def _run_preflight() -> None:
     if problems:
         details = "\n".join(f"- {problem}" for problem in problems)
         raise RuntimeError(
-            "La migración 0017 se detuvo sin modificar el esquema. "
-            f"Corrige los datos incompatibles y vuelve a ejecutarla:\n{details}"
+            "Migration 0017 stopped without modifying the schema. "
+            f"Fix the incompatible data and run it again:\n{details}"
         )
 
 
@@ -216,8 +216,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Primero se recuperan los índices simples para no dejar las FK sin soporte
-    # durante la eliminación de sus reemplazos compuestos.
+    # The simple indexes are restored first so the FKs are not left without support
+    # while their composite replacements are dropped.
     op.create_index("ix_ride_requests_rider_id", "ride_requests", ["rider_id"])
     op.create_index("ix_ride_requests_driver_id", "ride_requests", ["driver_id"])
     op.create_index("ix_offers_ride_id", "offers", ["ride_id"])

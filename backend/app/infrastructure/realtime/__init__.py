@@ -1,6 +1,6 @@
-"""Infraestructura de tiempo real (WebSocket) compartida.
+"""Shared realtime (WebSocket) infrastructure.
 
-Mantiene las conexiones en memoria del proceso ``uvicorn`` y las agrupa por
-*topic* (canal lógico). La negociación de ofertas (plan 0004) y la ubicación en
-vivo (plan 0003) reutilizan este mismo hub.
+Keeps connections in the ``uvicorn`` process memory and groups them by
+*topic* (logical channel). The offer negotiation (plan 0004) and live
+location (plan 0003) reuse this same hub.
 """

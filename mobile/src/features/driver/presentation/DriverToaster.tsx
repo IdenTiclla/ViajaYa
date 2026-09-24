@@ -1,7 +1,7 @@
 /**
- * Muestra los toasts del conductor (desenlaces de oferta) en la parte superior,
- * estilo Material-You glass, con auto-descarte a los 3.5 s. Se monta en el layout
- * del conductor para aparecer sobre cualquier pantalla (lista, mapa, inicio).
+ * Show the driver's toasts (offer outcomes) at the top,
+ * Material You glass style, auto-dismissed after 3.5 s. Mounted in the driver's
+ * layout so it appears over any screen (list, map, home).
  */
 import { Ionicons, type IoniconsIconName } from '@react-native-vector-icons/ionicons';
 import { useEffect } from 'react';
@@ -9,7 +9,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInDown, FadeOutUp, LinearTransition } from 'react-native-reanimated';
 
-import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import {
   type DriverToast,
   type DriverToastKind,
@@ -17,14 +17,14 @@ import {
 } from '@/features/driver/application/useDriverToasts';
 
 function ToastItem({ toast, onDismiss }: { toast: DriverToast; onDismiss: () => void }) {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   useEffect(() => {
     const timer = setTimeout(onDismiss, 3500);
     return () => clearTimeout(timer);
   }, [toast.id, onDismiss]);
 
   const META: Record<DriverToastKind, { icon: IoniconsIconName; color: string }> = {
-    expired: { icon: 'time-outline', color: colors.aviso },
+    expired: { icon: 'time-outline', color: colors.warning },
     rejected: { icon: 'close-circle', color: colors.danger },
     taken: { icon: 'car-sport', color: colors.danger },
     cancelled: { icon: 'ban-outline', color: colors.danger },
@@ -57,7 +57,7 @@ function ToastItem({ toast, onDismiss }: { toast: DriverToast; onDismiss: () => 
 }
 
 export function DriverToaster() {
-  const { styles } = useEstilos(crearEstilos);
+  const { styles } = useThemedStyles(createStyles);
   const toasts = useDriverToasts((s) => s.toasts);
   const dismiss = useDriverToasts((s) => s.dismiss);
 
@@ -73,7 +73,7 @@ export function DriverToaster() {
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   wrap: {
     position: 'absolute',
     top: 0,

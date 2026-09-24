@@ -1,15 +1,15 @@
 import { TripProgress } from '@/features/rides/presentation/TripProgress';
 /**
- * Buscando ofertas (pasajero) — diseño Stitch "Searching for Offers".
+ * Searching for offers (passenger) — Stitch "Searching for Offers" design.
  *
- * Mapa de fondo con el trayecto y un pulso sobre el origen; abajo una tarjeta
- * con el estado de búsqueda, los controles para **ajustar la oferta** y la acción de
- * cancelar la solicitud. Se muestra mientras el viaje sigue
- * `searching` y aún no llegan ofertas; al recibir la primera, `OffersScreen`
- * pasa a la lista.
+ * Background map with the route and a pulse on the origin; at the bottom a card
+ * with the search status, the controls to **adjust the fare** and the action to
+ * cancel the request. Shown while the ride is still
+ * `searching` and no offers have arrived yet; when the first one arrives, `OffersScreen`
+ * switches to the list.
  *
- * La búsqueda no caduca. Al ajustar la oferta, el nuevo monto se anuncia a los
- * conductores en vivo.
+ * The search does not expire. When the fare is adjusted, the new amount is announced to the
+ * drivers live.
  */
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useEffect, useRef, useState } from 'react';
@@ -29,7 +29,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
-import { fontSize, fontWeight, radius, spacing, useEstilos, useTema, type Tema } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useThemedStyles, useTheme, type Theme } from '@/core/theme';
 import type { Place, ServiceType } from '@/features/booking/domain/types';
 import {
   usePauseForEdit,
@@ -40,7 +40,7 @@ import { TripRouteMap } from '@/features/rides/presentation/TripRouteMap';
 import { MotorcycleRouteNotice } from '@/features/rides/presentation/MotorcycleRouteNotice';
 import { ConfirmDialog } from '@/shared/components';
 
-const PASO_OFERTA = 1;
+const OFFER_STEP = 1;
 
 export function SearchingDriversScreen({
   rideId,
@@ -68,7 +68,7 @@ export function SearchingDriversScreen({
   onEditReady: (rideId?: string) => void;
   onRetry?: () => void;
 }) {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   const insets = useSafeAreaInsets();
   const updateFare = useUpdateRideFare();
   const pauseForEdit = usePauseForEdit();
@@ -81,8 +81,8 @@ export function SearchingDriversScreen({
   const [headerHeight, setHeaderHeight] = useState(insets.top + 80);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const hasConnectionError = connectionError != null;
-  // La hoja no tiene una altura fija: medirla evita que el trayecto quede
-  // descentrado o cubierto en pantallas pequeñas y grandes.
+  // The sheet has no fixed height: measuring it keeps the route from being
+  // off-center or covered on small and large screens.
   const mapBottomPadding = sheetHeight > 0 ? sheetHeight : 440;
 
   useEffect(() => {
@@ -148,7 +148,7 @@ export function SearchingDriversScreen({
       onEditReady();
       return;
     }
-    // Pausa la búsqueda antes de editar: así se oculta del pool sin cancelarla.
+    // Pause the search before editing: this hides it from the pool without cancelling it.
     pauseForEdit.mutate(rideId, {
       onSuccess: () => onEditReady(rideId),
     });
@@ -203,7 +203,7 @@ export function SearchingDriversScreen({
               bounces={false}>
               <View style={styles.sheetHandle} />
 
-          {/* Estado de búsqueda */}
+          {/* Search status */}
           <View style={styles.statusRow}>
             <View style={styles.statusText}>
               <View style={styles.statusTitleRow}>
@@ -224,7 +224,7 @@ export function SearchingDriversScreen({
               disabled={!hasConnectionError || !onRetry}
               accessibilityRole={hasConnectionError ? 'button' : undefined}
               accessibilityLabel={hasConnectionError ? 'Reintentar conexión' : undefined}>
-              <IconoSincronizacionGiratorio conError={hasConnectionError} />
+              <SpinningSyncIcon hasError={hasConnectionError} />
             </TouchableOpacity>
           </View>
 
@@ -237,8 +237,8 @@ export function SearchingDriversScreen({
           <View style={[styles.fareStepper, fareLocked && styles.disabled]}>
             <TouchableOpacity
               style={styles.fareStepButton}
-              onPress={() => adjustFare(-PASO_OFERTA)}
-              disabled={fareLocked || !typedFareIsValid || typedFare <= PASO_OFERTA}
+              onPress={() => adjustFare(-OFFER_STEP)}
+              disabled={fareLocked || !typedFareIsValid || typedFare <= OFFER_STEP}
               accessibilityRole="button"
               accessibilityLabel="Reducir oferta en un boliviano">
               <Ionicons name="remove" size={22} color={colors.primary} />
@@ -263,7 +263,7 @@ export function SearchingDriversScreen({
             </View>
             <TouchableOpacity
               style={styles.fareStepButton}
-              onPress={() => adjustFare(PASO_OFERTA)}
+              onPress={() => adjustFare(OFFER_STEP)}
               disabled={fareLocked}
               accessibilityRole="button"
               accessibilityLabel="Aumentar oferta en un boliviano">
@@ -318,25 +318,25 @@ export function SearchingDriversScreen({
   );
 }
 
-/** Indicador de sincronización activo durante toda la búsqueda de ofertas. */
-function IconoSincronizacionGiratorio({ conError }: { conError: boolean }) {
-  const { colors } = useTema();
-  const [giro] = useState(() => new Animated.Value(0));
+/** Sync indicator active during the whole offer search. */
+function SpinningSyncIcon({ hasError }: { hasError: boolean }) {
+  const { colors } = useTheme();
+  const [turn] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
-    const animacion = Animated.loop(
-      Animated.timing(giro, {
+    const animation = Animated.loop(
+      Animated.timing(turn, {
         toValue: 1,
         duration: 1_200,
         easing: Easing.linear,
         useNativeDriver: true,
       }),
     );
-    animacion.start();
-    return () => animacion.stop();
-  }, [giro]);
+    animation.start();
+    return () => animation.stop();
+  }, [turn]);
 
-  const rotate = giro.interpolate({
+  const rotate = turn.interpolate({
     inputRange: [0, 1],
     outputRange: ['0deg', '360deg'],
   });
@@ -347,17 +347,17 @@ function IconoSincronizacionGiratorio({ conError }: { conError: boolean }) {
       pointerEvents="none"
       accessibilityElementsHidden>
       <Ionicons
-        name={conError ? 'refresh' : 'sync'}
+        name={hasError ? 'refresh' : 'sync'}
         size={18}
-        color={conError ? colors.danger : colors.primary}
+        color={hasError ? colors.danger : colors.primary}
       />
     </Animated.View>
   );
 }
 
-/** Barra de progreso indeterminada: un segmento que recorre la pista en bucle. */
+/** Indeterminate progress bar: a segment that loops along the track. */
 function ProgressBar() {
-  const { styles } = useEstilos(crearEstilos);
+  const { styles } = useThemedStyles(createStyles);
   const [progress] = useState(() => new Animated.Value(0));
   const [width, setWidth] = useState(0);
 
@@ -386,7 +386,7 @@ function ProgressBar() {
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceMuted },
   mapFallback: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: colors.surfaceMuted },
   scrim: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
@@ -521,9 +521,9 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: radius.md,
-    backgroundColor: colors.peligroSuave,
+    backgroundColor: colors.dangerSoft,
     borderWidth: 1,
-    borderColor: colors.bordePeligro,
+    borderColor: colors.dangerBorder,
   },
   cancelText: { flexShrink: 1, textAlign: 'center', fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.danger },
   disabled: { opacity: 0.5 },

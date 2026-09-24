@@ -22,8 +22,8 @@ export type PassengerOffersReduction = {
 };
 
 /**
- * Reduce el estado de ofertas del pasajero sin acceder a caché, stores ni UI.
- * La notificación describe el efecto que el hook debe emitir después.
+ * Reduce the passenger's offer state without touching cache, stores or UI.
+ * The notification describes the effect the hook must emit afterwards.
  */
 export function reducePassengerOffers(
   current: Offer[],
@@ -53,8 +53,8 @@ export function reducePassengerOffers(
       };
     }
     case 'withdrawn': {
-      // Una mejora llega como retiro + creación. Mantener la anterior durante
-      // ese intervalo evita un parpadeo a "Buscando".
+      // An improvement arrives as withdrawal + creation. Keeping the previous one during
+      // that interval avoids flickering back to "Buscando".
       if (event.reason === 'superseded') {
         return { offers: current, notice: null };
       }

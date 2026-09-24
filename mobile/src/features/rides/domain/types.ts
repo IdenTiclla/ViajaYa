@@ -1,6 +1,6 @@
 /**
- * Tipos del dominio del flujo de viaje con ofertas (pasajero ↔ conductor).
- * Reutiliza `Place`, `ServiceType` y `PaymentMethod` del feature `booking`.
+ * Domain types of the ride flow with offers (passenger ↔ driver).
+ * Reuses `Place`, `ServiceType` and `PaymentMethod` from the `booking` feature.
  */
 import type { PaymentMethod, Place, ServiceType } from '@/features/booking/domain/types';
 import type { VehicleType } from '@/features/auth/domain/types';
@@ -14,13 +14,13 @@ export type RideStatus =
   | 'cancelled';
 
 /**
- * Estado de una oferta: `pending` (esperando al pasajero) → `accepted` (el
- * pasajero la aceptó y se le asignó el viaje). Las demás ofertas del viaje
- * quedan `rejected`; `expired` si venció su ventana de 30 s sin ser aceptada.
+ * Status of an offer: `pending` (waiting for the passenger) → `accepted` (the
+ * passenger accepted it and was assigned the ride). The ride's other offers
+ * become `rejected`; `expired` if its 30 s window ran out without being accepted.
  */
 export type OfferStatus = 'pending' | 'accepted' | 'rejected' | 'expired';
 
-/** Datos públicos del conductor que hace una oferta. */
+/** Public data of the driver making an offer. */
 export type OfferDriver = {
   id: string;
   fullName: string;
@@ -30,7 +30,7 @@ export type OfferDriver = {
   vehicleModel: string | null;
 };
 
-/** Oferta recibida por el pasajero (o emitida por el conductor). */
+/** Offer received by the passenger (or sent by the driver). */
 export type Offer = {
   id: string;
   rideId: string;
@@ -40,13 +40,13 @@ export type Offer = {
   driver: OfferDriver;
   createdAt: string | null;
   /**
-   * Instante ISO en que vence la oferta; alimenta el contador
+   * ISO instant when the offer expires; drives the countdown
    * (`created_at + 30 s`).
    */
   expiresAt: string | null;
 };
 
-/** Datos públicos del pasajero que el conductor ve en una solicitud abierta. */
+/** Public passenger data the driver sees on an open request. */
 export type OpenRideRider = {
   id: string;
   fullName: string;
@@ -54,7 +54,7 @@ export type OpenRideRider = {
   tripsCompleted: number;
 };
 
-/** Solicitud abierta tal como la ve un conductor en su lista. */
+/** Open request as a driver sees it in their list. */
 export type OpenRide = {
   id: string;
   service: ServiceType;
@@ -63,12 +63,12 @@ export type OpenRide = {
   origin: Place;
   destination: Place;
   rider: OpenRideRider;
-  /** Cambia cuando se modifican las condiciones visibles de la solicitud. */
+  /** Changes when the request's visible terms are modified. */
   poolVersion: number;
   createdAt: string | null;
 };
 
-/** Conductor asignado, visible para el pasajero durante el viaje. */
+/** Assigned driver, visible to the passenger during the ride. */
 export type RideDriver = {
   id: string;
   fullName: string;
@@ -79,7 +79,7 @@ export type RideDriver = {
   vehicleModel: string | null;
 };
 
-/** Datos del pasajero asignado, visibles para el conductor durante el viaje. */
+/** The assigned passenger's data, visible to the driver during the ride. */
 export type RideRider = {
   id: string;
   fullName: string;
@@ -87,13 +87,13 @@ export type RideRider = {
   rating: number | null;
 };
 
-/** Detalle completo de un viaje (polling de estado para ambos lados). */
+/** Full ride detail (status polling for both sides). */
 export type Ride = {
   id: string;
   riderId: string;
   rider: RideRider;
   status: RideStatus;
-  /** La solicitud sigue buscando, pero esta oculta mientras el pasajero la edita. */
+  /** The request is still searching, but hidden while the passenger edits it. */
   paused: boolean;
   service: ServiceType;
   payment: PaymentMethod;
@@ -107,13 +107,13 @@ export type Ride = {
   riderOnTheWayAt: string | null;
 };
 
-/** Calificación que una parte deja a la otra al terminar el viaje. */
+/** Rating one party leaves for the other when the ride ends. */
 export type RatingInput = {
   score: number;
   comment?: string | null;
 };
 
-/** La otra parte del viaje en una tarjeta de historial. */
+/** The other party of the ride on a history card. */
 export type HistoryCounterpart = {
   id: string;
   fullName: string;
@@ -137,7 +137,7 @@ export type RideHistoryItem = {
   createdAt: string | null;
 };
 
-/** Una línea del desglose de ganancias del conductor. */
+/** One line of the driver's earnings breakdown. */
 export type EarningsItem = {
   rideId: string;
   destinationName: string;
@@ -145,7 +145,7 @@ export type EarningsItem = {
   completedAt: string | null;
 };
 
-/** Resumen de ganancias del conductor. */
+/** The driver's earnings summary. */
 export type DriverEarnings = {
   totalToday: number;
   tripsToday: number;
@@ -154,7 +154,7 @@ export type DriverEarnings = {
   recent: EarningsItem[];
 };
 
-/** Oferta del conductor: aceptar al precio del pasajero o contraofertar. */
+/** The driver's offer: accept at the passenger's price or counter-offer. */
 export type CreateOfferInput = {
   acceptAtFare: boolean;
   expectedPoolVersion?: number;
@@ -162,7 +162,7 @@ export type CreateOfferInput = {
   etaMin?: number;
 };
 
-/** Cambios para modificar una solicitud pausada (Modificar solicitud). */
+/** Changes to modify a paused request (Modify request). */
 export type EditRideInput = {
   origin: Place;
   destination: Place;

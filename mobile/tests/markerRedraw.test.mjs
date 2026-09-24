@@ -1,61 +1,61 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { programarRedibujadoMarcador } from '../src/features/rides/presentation/routeTooltipLayout.ts';
+import { scheduleMarkerRedraw } from '../src/features/rides/presentation/routeTooltipLayout.ts';
 
 function frames() {
-  let siguiente = 0;
-  const pendientes = new Map();
+  let next = 0;
+  const pendingItems = new Map();
   return {
-    pedir(callback) { const id = ++siguiente; pendientes.set(id, callback); return id; },
-    cancelar(id) { pendientes.delete(id); },
-    avanzar() {
-      const actuales = [...pendientes.values()];
-      pendientes.clear();
-      actuales.forEach((callback) => callback());
+    request(callback) { const id = ++next; pendingItems.set(id, callback); return id; },
+    cancel(id) { pendingItems.delete(id); },
+    advance() {
+      const currentItems = [...pendingItems.values()];
+      pendingItems.clear();
+      currentItems.forEach((callback) => callback());
     },
-    cantidad: () => pendientes.size,
+    count: () => pendingItems.size,
   };
 }
 
-test('espera dos frames antes de solicitar la captura del marcador', () => {
-  const reloj = frames();
+test('waits two frames before requesting the marker capture', () => {
+  const clock = frames();
   let layout = 'incompleto';
-  const capturas = [];
-  programarRedibujadoMarcador(() => capturas.push(layout), reloj.pedir, reloj.cancelar);
-  assert.deepEqual(capturas, []);
-  reloj.avanzar();
-  assert.deepEqual(capturas, []);
+  const captures = [];
+  scheduleMarkerRedraw(() => captures.push(layout), clock.request, clock.cancel);
+  assert.deepEqual(captures, []);
+  clock.advance();
+  assert.deepEqual(captures, []);
   layout = 'pin y tooltip completos';
-  reloj.avanzar();
-  assert.deepEqual(capturas, ['pin y tooltip completos']);
-  assert.equal(reloj.cantidad(), 0);
+  clock.advance();
+  assert.deepEqual(captures, ['pin y tooltip completos']);
+  assert.equal(clock.count(), 0);
 });
 
-for (const transcurridos of [0, 1]) {
-  test(`desmontar tras ${transcurridos} frames cancela el redibujado pendiente`, () => {
-    const reloj = frames();
-    const cancelar = programarRedibujadoMarcador(
-      () => assert.fail('No debe tocar un marcador desmontado'), reloj.pedir, reloj.cancelar,
+for (const elapsed of [0, 1]) {
+  test(`unmounting after ${elapsed} frames cancels the pending redraw`, () => {
+    const clock = frames();
+    const cancel = scheduleMarkerRedraw(
+      () => assert.fail('Must not touch an unmounted marker'), clock.request, clock.cancel,
     );
-    if (transcurridos) reloj.avanzar();
-    cancelar();
-    reloj.avanzar();
-    reloj.avanzar();
-    assert.equal(reloj.cantidad(), 0);
+    if (elapsed) clock.advance();
+    cancel();
+    clock.advance();
+    clock.advance();
+    assert.equal(clock.count(), 0);
   });
 }
 
-test('una etiqueta nueva reemplaza el redibujado anterior sin volver a la pantalla', () => {
-  const reloj = frames();
-  const capturas = [];
-  const cancelar = programarRedibujadoMarcador(
-    () => capturas.push('anterior'), reloj.pedir, reloj.cancelar,
+test('a new label replaces the previous redraw without going back to the screen', () => {
+  const clock = frames();
+  const captures = [];
+  const cancel = scheduleMarkerRedraw(
+    () => captures.push('anterior'), clock.request, clock.cancel,
   );
-  reloj.avanzar();
-  cancelar();
-  programarRedibujadoMarcador(() => capturas.push('nueva'), reloj.pedir, reloj.cancelar);
-  reloj.avanzar();
-  reloj.avanzar();
-  assert.deepEqual(capturas, ['nueva']);
+  clock.advance();
+  cancel();
+  scheduleMarkerRedraw(() => captures.push('nueva'), clock.request, clock.cancel);
+  clock.advance();
+  clock.advance();
+  assert.deepEqual(captures, ['nueva']);
 });

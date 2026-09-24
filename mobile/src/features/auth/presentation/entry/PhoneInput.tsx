@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { controles, fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { controls, fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import { TextField } from '@/shared/components';
 import type { PhoneCapabilities } from '../../domain/phoneAccess';
 import { getPhoneInputError, normalizePhoneInput } from '../../domain/phoneNumberInput';
@@ -29,7 +29,7 @@ function flag(region: string) {
 /** Country chips (only when there is more than one) + national number with the calling code as prefix. */
 export function PhoneInput({ countries, callingCode, onChangeCallingCode, number, onChangeNumber,
   label = 'Número de teléfono', editable = true }: Props) {
-  const { styles, estiloFoco } = useEstilos(createStyles);
+  const { styles, focusStyle } = useThemedStyles(createStyles);
   const [focusedRegion, setFocusedRegion] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
   const error = getPhoneInputError(number, callingCode);
@@ -47,7 +47,7 @@ export function PhoneInput({ countries, callingCode, onChangeCallingCode, number
                 onPress={() => onChangeCallingCode(country.callingCode)}
                 onFocus={() => setFocusedRegion(country.region)} onBlur={() => setFocusedRegion(null)}
                 style={[styles.chip, selected && styles.chipSelected, !editable && styles.disabled,
-                  focusedRegion === country.region && estiloFoco]}>
+                  focusedRegion === country.region && focusStyle]}>
                 <Text style={styles.chipFlag}>{flag(country.region)}</Text>
                 <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
                   {COUNTRY_NAMES[country.region] ?? country.region} · {country.callingCode}
@@ -71,15 +71,15 @@ export function PhoneInput({ countries, callingCode, onChangeCallingCode, number
   );
 }
 
-const createStyles = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   wrapper: { gap: spacing.sm },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   chip: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.xs, minHeight: controles.altoMinimo,
+    flexDirection: 'row', alignItems: 'center', gap: spacing.xs, minHeight: controls.minHeight,
     maxWidth: '100%', paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.pill, borderWidth: 1,
-    borderColor: colors.bordeControl, backgroundColor: colors.surfaceMuted,
+    borderColor: colors.controlBorder, backgroundColor: colors.surfaceMuted,
   },
-  chipSelected: { borderColor: colors.primary, backgroundColor: colors.primarioSuave },
+  chipSelected: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
   chipFlag: { fontSize: fontSize.md },
   chipText: { flexShrink: 1, fontSize: fontSize.sm, color: colors.textSecondary },
   disabled: { opacity: 0.6 },

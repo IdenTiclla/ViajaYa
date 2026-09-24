@@ -1,4 +1,4 @@
-"""Caso de uso: reprogramar o agotar una acción reclamada."""
+"""Use case: reschedule or exhaust a claimed action."""
 
 from __future__ import annotations
 
@@ -19,11 +19,11 @@ class RecordScheduledActionFailure:
         retry_max_seconds: float,
     ) -> None:
         if max_attempts < 1:
-            raise ValueError("La cantidad máxima de intentos debe ser positiva.")
+            raise ValueError("The maximum number of attempts must be positive.")
         if retry_base_seconds <= 0:
-            raise ValueError("El backoff base debe ser positivo.")
+            raise ValueError("The base backoff must be positive.")
         if retry_max_seconds < retry_base_seconds:
-            raise ValueError("El backoff máximo no puede ser menor al base.")
+            raise ValueError("The maximum backoff cannot be lower than the base.")
         self._actions = actions
         self._unit_of_work = unit_of_work
         self._max_attempts = max_attempts
@@ -39,7 +39,7 @@ class RecordScheduledActionFailure:
         force_terminal: bool = False,
     ) -> DispatchScheduledActionResult:
         if action.lock_token is None:
-            raise ValueError("La acción no tiene un lease reclamado.")
+            raise ValueError("The action has no claimed lease.")
         terminal = force_terminal or action.attempts >= self._max_attempts
         delay = min(
             self._retry_max_seconds,

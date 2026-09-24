@@ -1,4 +1,4 @@
-"""Atomicidad y contrato realtime del anuncio de presencia."""
+"""Atomicity and realtime contract of the presence announcement."""
 
 from __future__ import annotations
 
@@ -131,7 +131,7 @@ async def test_ineligible_ride_does_not_record(status: RideStatus, paused: bool)
 
     class UnexpectedRecorder:
         async def record(self, _detail) -> None:
-            pytest.fail("No debía registrar un anuncio")
+            pytest.fail("Must not record an announcement")
 
     result = await AnnounceOpenRide(
         rides,
@@ -150,7 +150,7 @@ async def test_missing_ride_rolls_back_without_recording() -> None:
 
     class UnexpectedRecorder:
         async def record(self, _detail) -> None:
-            pytest.fail("No debía registrar un anuncio")
+            pytest.fail("Must not record an announcement")
 
     result = await AnnounceOpenRide(
         rides,
@@ -218,14 +218,14 @@ async def test_failure_after_outbox_flush_rolls_back_events_and_counters(
         class RecordThenFail:
             async def record(self, detail) -> None:
                 await recorder.record(detail)
-                raise RuntimeError("fallo después de insertar la outbox")
+                raise RuntimeError("failure after inserting the outbox")
 
         use_case = AnnounceOpenRide(
             SqlAlchemyRideRequestRepository(session),
             SqlAlchemyUnitOfWork(session),
             RecordThenFail(),
         )
-        with pytest.raises(RuntimeError, match="después de insertar"):
+        with pytest.raises(RuntimeError, match="after inserting"):
             await use_case.execute(ride.id)
 
         assert await session.scalar(select(func.count(RealtimeOutboxModel.id))) == 0

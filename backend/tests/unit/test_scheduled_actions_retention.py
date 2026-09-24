@@ -1,4 +1,4 @@
-"""Pruebas de retención segura de acciones programadas terminales."""
+"""Tests of the safe retention of terminal scheduled actions."""
 
 from __future__ import annotations
 
@@ -69,7 +69,7 @@ def _action(status: str, terminal_at: datetime | None) -> ScheduledActionModel:
     )
 
 
-async def test_purge_elimina_por_chunks_solo_exitos_y_cancelaciones_antiguas(
+async def test_purge_deletes_in_chunks_only_old_successes_and_cancellations(
     action_sessions: async_sessionmaker[AsyncSession],
 ) -> None:
     now = datetime(2026, 7, 22, tzinfo=UTC)
@@ -106,7 +106,7 @@ async def test_purge_elimina_por_chunks_solo_exitos_y_cancelaciones_antiguas(
     assert remaining == {"dead", "succeeded", "pending"}
 
 
-async def test_purge_normaliza_reloj_naive_como_utc(
+async def test_purge_normalizes_a_naive_clock_as_utc(
     action_sessions: async_sessionmaker[AsyncSession],
 ) -> None:
     now = datetime(2026, 7, 22, tzinfo=UTC)
@@ -127,7 +127,7 @@ async def test_purge_normaliza_reloj_naive_como_utc(
     assert deleted_count == 1
 
 
-async def test_retention_worker_se_detiene_durante_intervalo_largo(
+async def test_retention_worker_stops_during_a_long_interval(
     action_sessions: async_sessionmaker[AsyncSession],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -152,7 +152,7 @@ async def test_retention_worker_se_detiene_durante_intervalo_largo(
     assert worker.running is False
 
 
-async def test_retention_preflight_exige_indice_0022(
+async def test_retention_preflight_requires_index_0022(
     action_sessions: async_sessionmaker[AsyncSession],
 ) -> None:
     worker = TerminalScheduledActionsRetentionWorker(
@@ -167,5 +167,5 @@ async def test_retention_preflight_exige_indice_0022(
         await session.execute(text("DROP INDEX ix_scheduled_actions_terminal_retention"))
         await session.commit()
 
-    with pytest.raises(RuntimeError, match="índice.*0022"):
+    with pytest.raises(RuntimeError, match="index.*0022"):
         await worker.preflight()

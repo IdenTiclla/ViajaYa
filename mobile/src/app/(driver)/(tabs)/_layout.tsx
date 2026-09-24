@@ -4,32 +4,32 @@ import { Tabs } from 'expo-router/js-tabs';
 import { PillTabBar } from '@/core/components/PillTabBar';
 
 /**
- * Navegación principal del conductor: Solicitudes / Historial / Ganancias / Perfil.
+ * Driver's main navigation: Solicitudes / Historial / Ganancias / Perfil.
  *
- * El tab activo lleva el pill amarillo Stitch (ver PillTabBar). "Solicitudes" es
- * la pantalla inicial al ingresar (redirect en app/index.tsx). "index" queda como
- * redirect oculto (`tabBarButton: () => null`) del segmento base hacia Solicitudes.
+ * The active tab carries the Stitch yellow pill (see PillTabBar). "Solicitudes" is
+ * the initial screen on entry (redirect in app/index.tsx). "index" stays as a
+ * hidden redirect (`tabBarButton: () => null`) from the base segment to Solicitudes.
  */
 export default function DriverTabsLayout() {
   return (
     <Tabs tabBar={(props) => <PillTabBar {...props} />} screenOptions={{ headerShown: false }}>
       <Tabs.Screen name="index" options={{ tabBarButton: () => null }} />
       <Tabs.Screen
-        name="solicitudes"
+        name="requests"
         options={{
           title: 'Solicitudes',
           tabBarIcon: ({ color, size }) => <Ionicons name="list" size={size} color={color} />,
         }}
       />
       <Tabs.Screen
-        name="historial"
+        name="history"
         options={{
           title: 'Historial',
           tabBarIcon: ({ color, size }) => <Ionicons name="time" size={size} color={color} />,
         }}
       />
       <Tabs.Screen
-        name="ganancias"
+        name="earnings"
         options={{
           title: 'Ganancias',
           tabBarIcon: ({ color, size }) => <Ionicons name="cash" size={size} color={color} />,

@@ -1,4 +1,4 @@
-"""Pruebas focales de las garantías de persistencia de solicitudes."""
+"""Focused tests of the request persistence guarantees."""
 
 from __future__ import annotations
 

@@ -1,9 +1,9 @@
 /**
- * Gate puro para entrega realtime al menos una vez.
+ * Pure gate for at-least-once realtime delivery.
  *
- * No muta cursores al decidir: el consumidor confirma el ticket únicamente
- * después de actualizar React Query/Zustand con éxito. Así un handler fallido
- * puede procesar de nuevo el mismo evento al reconectar.
+ * It does not mutate cursors when deciding: the consumer confirms the ticket only
+ * after successfully updating React Query/Zustand. This way a failed handler
+ * can process the same event again on reconnect.
  */
 
 export type RealtimeEventMetadata = {
@@ -159,7 +159,7 @@ export function createReplayGate(options: ReplayGateOptions = {}): ReplayGate {
   const decideEvent = (
     metadata: RealtimeEventMetadata | null,
   ): ReplayDecision => {
-    // El modo legacy conserva el comportamiento actual y no promete cursores.
+    // Legacy mode keeps the current behavior and promises no cursors.
     if (metadata == null) {
       return { kind: 'apply', ticket: ticket([], []) };
     }

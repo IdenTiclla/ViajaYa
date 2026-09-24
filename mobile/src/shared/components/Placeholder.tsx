@@ -2,7 +2,7 @@ import { Ionicons, type IoniconsIconName } from '@react-native-vector-icons/ioni
 import { StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { fontSize, fontWeight, spacing, useEstilos, type Tema } from '@/core/theme';
+import { fontSize, fontWeight, spacing, useThemedStyles, type Theme } from '@/core/theme';
 
 type Props = {
   icon: IoniconsIconName;
@@ -10,9 +10,9 @@ type Props = {
   message?: string;
 };
 
-/** Pantalla de marcador de posición para secciones aún no implementadas. */
+/** Placeholder screen for sections not implemented yet. */
 export function Placeholder({ icon, title, message = 'Disponible próximamente.' }: Props) {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.content}>
@@ -24,7 +24,7 @@ export function Placeholder({ icon, title, message = 'Disponible próximamente.'
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   content: {
     flex: 1,

@@ -1,4 +1,4 @@
-"""Entidades del dominio. Sin dependencias de framework."""
+"""Domain entities. No framework dependencies."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from decimal import Decimal
 
 
 class AuthProvider(enum.StrEnum):
-    """Origen de la identidad del usuario."""
+    """Where the user's identity comes from."""
 
     LOCAL = "local"
     GOOGLE = "google"
@@ -18,10 +18,10 @@ class AuthProvider(enum.StrEnum):
 
 
 class UserRole(enum.StrEnum):
-    """Rol del usuario en la plataforma.
+    """User role on the platform.
 
-    Define qué navegación y acciones ve la app: el pasajero publica solicitudes,
-    el conductor responde con ofertas. ``DELIVERY`` se reserva para repartos.
+    Defines which navigation and actions the app shows: the passenger publishes requests,
+    the driver answers with offers. ``DELIVERY`` is reserved for deliveries.
     """
 
     PASSENGER = "passenger"
@@ -191,9 +191,9 @@ class User:
 
 
 class PaymentMethod(enum.StrEnum):
-    """Forma de pago elegida para el viaje.
+    """Payment method chosen for the ride.
 
-    Por ahora la app soporta pago por QR y pago en efectivo.
+    For now the app supports QR payment and cash.
     """
 
     QR = "qr"
@@ -201,12 +201,12 @@ class PaymentMethod(enum.StrEnum):
 
 
 class RideStatus(enum.StrEnum):
-    """Estado del ciclo de vida de una solicitud de viaje.
+    """Lifecycle status of a ride request.
 
-    Flujo: ``SEARCHING`` (publicada, esperando ofertas) → ``ACCEPTED`` (el
-    pasajero eligió una oferta y hay conductor asignado) → ``ARRIVING`` (el
-    conductor va al origen) → ``IN_PROGRESS`` (viaje en curso) → ``COMPLETED``.
-    ``CANCELLED`` es posible antes de ``IN_PROGRESS``.
+    Flow: ``SEARCHING`` (published, waiting for offers) → ``ACCEPTED`` (the
+    passenger picked an offer and a driver is assigned) → ``ARRIVING`` (the
+    driver is heading to the origin) → ``IN_PROGRESS`` (ride underway) → ``COMPLETED``.
+    ``CANCELLED`` is possible before ``IN_PROGRESS``.
     """
 
     SEARCHING = "searching"
@@ -219,7 +219,7 @@ class RideStatus(enum.StrEnum):
 
 @dataclass(frozen=True)
 class Location:
-    """Un punto del viaje: coordenadas + etiqueta legible (nombre y dirección)."""
+    """A point of the ride: coordinates + human-readable label (name and address)."""
 
     latitude: float
     longitude: float
@@ -228,7 +228,7 @@ class Location:
 
 
 class SavedPlaceCategory(enum.StrEnum):
-    """Categoría de un lugar guardado; define el ícono en la app."""
+    """Category of a saved place; sets the icon in the app."""
 
     HOME = "home"
     WORK = "work"
@@ -238,10 +238,10 @@ class SavedPlaceCategory(enum.StrEnum):
 
 @dataclass
 class SavedPlace:
-    """Lugar favorito del pasajero, persistido para sincronizar entre dispositivos.
+    """Passenger's favorite place, persisted to sync across devices.
 
-    Reutiliza ``Location`` para el punto (coordenadas + etiquetas) y añade el
-    nombre que pone el usuario (``label``) y su ``category`` (casa, trabajo…).
+    Reuses ``Location`` for the point (coordinates + labels) and adds the
+    name the user gives it (``label``) and its ``category`` (home, work…).
     """
 
     user_id: uuid.UUID
@@ -265,15 +265,15 @@ class RideVehicleSnapshot:
 
 @dataclass
 class RideRequest:
-    """Solicitud de viaje creada por un pasajero.
+    """Ride request created by a passenger.
 
-    Captura lo que produce el flujo móvil de origen/destino: de dónde a dónde,
-    con qué servicio y cuánto ofrece pagar. Nace en estado ``SEARCHING``. Cuando
-    el pasajero acepta una oferta se fijan ``driver_id`` y ``accepted_offer_id``.
+    Captures what the mobile origin/destination flow produces: from where to where,
+    with which service and how much they offer to pay. Starts in ``SEARCHING``. When
+    the passenger accepts an offer, ``driver_id`` and ``accepted_offer_id`` are set.
 
-    ``paused`` oculta temporalmente la solicitud del pool de conductores mientras
-    el pasajero la edita (Modificar solicitud): sigue ``SEARCHING``, pero no
-    recibe ofertas nuevas y las vivas se retiran al pausar.
+    ``paused`` temporarily hides the request from the driver pool while the
+    passenger edits it (Modify request): it stays ``SEARCHING`` but receives no
+    new offers, and live ones are withdrawn when pausing.
     """
 
     rider_id: uuid.UUID
@@ -288,8 +288,8 @@ class RideRequest:
     vehicle_snapshot: RideVehicleSnapshot | None = None
     rider_on_the_way_at: datetime | None = None
     paused: bool = False
-    # Generación de la publicación que el conductor evalúa antes de ofertar.
-    # Avanza al cambiar la propuesta y en cada reapertura tras una pausa.
+    # Generation of the listing the driver evaluates before offering.
+    # It advances when the proposal changes and on every reopening after a pause.
     pool_version: int = 1
     id: uuid.UUID = field(default_factory=uuid.uuid4)
     created_at: datetime | None = None
@@ -298,12 +298,12 @@ class RideRequest:
 
 
 class OfferStatus(enum.StrEnum):
-    """Estado de una oferta de un conductor sobre una solicitud de viaje.
+    """Status of a driver's offer on a ride request.
 
-    El pasajero tiene la decisión final: al aceptar una oferta ``PENDING`` esta
-    pasa a ``ACCEPTED`` y el viaje se asigna a ese conductor (transacción
-    atómica); las demás ofertas vivas del viaje quedan ``REJECTED``. ``EXPIRED``
-    aplica cuando vence el TTL de 30 s sin que el pasajero la aceptara.
+    The passenger has the final say: accepting a ``PENDING`` offer moves it
+    to ``ACCEPTED`` and assigns the ride to that driver (atomic
+    transaction); the ride's other live offers become ``REJECTED``. ``EXPIRED``
+    applies when the 30 s TTL runs out without the passenger accepting it.
     """
 
     PENDING = "pending"
@@ -312,19 +312,19 @@ class OfferStatus(enum.StrEnum):
     EXPIRED = "expired"
 
 
-# Estado en el que una oferta sigue "viva" en la negociación.
+# Status in which an offer is still "live" in the negotiation.
 ACTIVE_OFFER_STATUSES = frozenset({OfferStatus.PENDING})
 
 
 @dataclass
 class Offer:
-    """Oferta de un conductor sobre una solicitud de viaje.
+    """A driver's offer on a ride request.
 
-    El conductor puede **aceptar** al precio del pasajero (``price == ride.fare``)
-    o **contraofertar** con su propio ``price`` y un ``eta_min`` estimado. Nace en
-    ``PENDING`` y vive 30 s (``OFFER_TTL`` desde ``created_at``); cuando el
-    pasajero la acepta se asigna el viaje (pasa a ``ACCEPTED``) y las demás
-    ofertas del viaje se rechazan en la misma transacción.
+    The driver can **accept** at the passenger's price (``price == ride.fare``)
+    or **counter-offer** with their own ``price`` and an estimated ``eta_min``. It starts
+    ``PENDING`` and lives 30 s (``OFFER_TTL`` from ``created_at``); when the
+    passenger accepts it the ride is assigned (it becomes ``ACCEPTED``) and the ride's
+    other offers are rejected in the same transaction.
     """
 
     ride_id: uuid.UUID
@@ -338,12 +338,12 @@ class Offer:
 
 @dataclass
 class RideRating:
-    """Calificación de una parte del viaje hacia la otra, tras completarse.
+    """Rating from one party of the ride to the other, once completed.
 
-    Cuando un viaje llega a ``COMPLETED``, el pasajero califica al conductor y el
-    conductor al pasajero (``score`` 1–5 + comentario opcional). Solo se admite una
-    calificación por ``(ride_id, rater_id)``. Cada voto recalcula el
-    ``User.rating`` promedio de la persona calificada.
+    When a ride reaches ``COMPLETED``, the passenger rates the driver and the
+    driver rates the passenger (``score`` 1–5 + optional comment). Only one
+    rating per ``(ride_id, rater_id)`` is allowed. Each vote recalculates the
+    average ``User.rating`` of the rated person.
     """
 
     ride_id: uuid.UUID
@@ -357,7 +357,7 @@ class RideRating:
 
 @dataclass
 class RideRatingSkip:
-    """Decisión de un participante de cerrar el viaje sin calificarlo."""
+    """A participant's decision to close the ride without rating it."""
 
     ride_id: uuid.UUID
     rater_id: uuid.UUID

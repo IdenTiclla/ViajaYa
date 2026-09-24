@@ -9,7 +9,7 @@ import {
   View,
 } from 'react-native';
 
-import { controles, fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { controls, fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 
 type Variant = 'primary' | 'secondary' | 'danger' | 'dangerSoft' | 'text';
 
@@ -18,9 +18,9 @@ type Props = PressableProps & {
   loading?: boolean;
   loadingLabel?: string;
   variant?: Variant;
-  /** Nombre de un ícono de Ionicons mostrado antes del título. */
+  /** Name of an Ionicons icon shown before the title. */
   leadingIcon?: IoniconsIconName;
-  /** Nombre de un ícono de Ionicons mostrado a la derecha del título. */
+  /** Name of an Ionicons icon shown to the right of the title. */
   trailingIcon?: IoniconsIconName;
 };
 
@@ -40,12 +40,12 @@ export function Button({
   onBlur,
   ...rest
 }: Props) {
-  const { colors, styles, estiloFoco } = useEstilos(crearEstilos);
+  const { colors, styles, focusStyle } = useThemedStyles(createStyles);
   const isDisabled = disabled || loading;
-  const [enfocado, setEnfocado] = useState(false);
-  const textoVisible = loading ? (loadingLabel ?? `${title}…`) : title;
-  const colorTexto = isDisabled && !loading
-    ? colors.textoDeshabilitado
+  const [focused, setFocused] = useState(false);
+  const visibleText = loading ? (loadingLabel ?? `${title}…`) : title;
+  const textColor = isDisabled && !loading
+    ? colors.disabledText
     : variant === 'primary' || variant === 'danger'
       ? colors.textOnPrimary
       : variant === 'dangerSoft' ? colors.danger : variant === 'text' ? colors.textSecondary : colors.primary;
@@ -54,14 +54,14 @@ export function Button({
     <Pressable
       {...rest}
       accessibilityRole="button"
-      accessibilityLabel={loading ? textoVisible : (accessibilityLabel ?? title)}
+      accessibilityLabel={loading ? visibleText : (accessibilityLabel ?? title)}
       accessibilityState={{ ...accessibilityState, disabled: !!isDisabled, busy: loading || accessibilityState?.busy }}
       aria-disabled={!!isDisabled}
       aria-busy={loading || accessibilityState?.busy}
       disabled={isDisabled}
       hitSlop={hitSlop}
-      onFocus={(event) => { setEnfocado(true); onFocus?.(event); }}
-      onBlur={(event) => { setEnfocado(false); onBlur?.(event); }}
+      onFocus={(event) => { setFocused(true); onFocus?.(event); }}
+      onBlur={(event) => { setFocused(false); onBlur?.(event); }}
       style={(state) => [
         styles.base,
         styles[variant],
@@ -71,29 +71,29 @@ export function Button({
         typeof style === 'function' ? style(state) : style,
         isDisabled && !loading && styles.disabled,
         variant === 'text' && styles.text,
-        enfocado && estiloFoco,
+        focused && focusStyle,
       ]}>
       <View style={styles.content} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
         {loading ? (
           <ActivityIndicator
             size="small"
-            color={colorTexto}
+            color={textColor}
           />
         ) : leadingIcon ? (
           <Ionicons
             name={leadingIcon}
             size={20}
-            color={colorTexto}
+            color={textColor}
           />
         ) : null}
-        <Text style={[styles.label, variant === 'text' && styles.textLabel, { color: colorTexto }]}>
-          {textoVisible}
+        <Text style={[styles.label, variant === 'text' && styles.textLabel, { color: textColor }]}>
+          {visibleText}
         </Text>
         {!loading && trailingIcon ? (
           <Ionicons
             name={trailingIcon}
             size={20}
-            color={colorTexto}
+            color={textColor}
           />
         ) : null}
       </View>
@@ -101,9 +101,9 @@ export function Button({
   );
 }
 
-const crearEstilos = ({ colors, modo }: Tema) => StyleSheet.create({
+const createStyles = ({ colors, mode }: Theme) => StyleSheet.create({
   base: {
-    minHeight: controles.altoMinimo,
+    minHeight: controls.minHeight,
     borderRadius: radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
@@ -113,20 +113,20 @@ const crearEstilos = ({ colors, modo }: Tema) => StyleSheet.create({
     borderColor: 'transparent',
   },
   primary: { backgroundColor: colors.primary, borderColor: colors.primary,
-    shadowColor: colors.primary, shadowOpacity: modo === 'light' ? 0.16 : 0,
-    shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: modo === 'light' ? 2 : 0 },
+    shadowColor: colors.primary, shadowOpacity: mode === 'light' ? 0.16 : 0,
+    shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: mode === 'light' ? 2 : 0 },
   primaryPressed: { backgroundColor: colors.primaryDark, borderColor: colors.primaryDark },
-  secondaryPressed: { backgroundColor: colors.primarioSuave, borderColor: colors.primary },
+  secondaryPressed: { backgroundColor: colors.primarySoft, borderColor: colors.primary },
   secondary: {
     backgroundColor: colors.surface,
-    borderColor: colors.bordeControl,
+    borderColor: colors.controlBorder,
   },
   danger: { backgroundColor: colors.danger },
-  dangerSoft: { backgroundColor: colors.peligroSuave, borderColor: colors.danger },
+  dangerSoft: { backgroundColor: colors.dangerSoft, borderColor: colors.danger },
   text: { backgroundColor: 'transparent', borderColor: 'transparent' },
   textLabel: { textDecorationLine: 'underline' },
   pressed: { transform: [{ translateY: 1 }], shadowOpacity: 0, elevation: 0 },
-  disabled: { backgroundColor: colors.fondoDeshabilitado, borderColor: 'transparent', shadowOpacity: 0, elevation: 0 },
+  disabled: { backgroundColor: colors.disabledBackground, borderColor: 'transparent', shadowOpacity: 0, elevation: 0 },
   content: { maxWidth: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   label: { flexShrink: 1, fontSize: fontSize.sm, fontWeight: fontWeight.semibold, textAlign: 'center' },
 });

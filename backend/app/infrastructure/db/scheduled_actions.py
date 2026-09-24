@@ -60,18 +60,18 @@ def _to_action(
 
 
 class SqlAlchemyScheduledActionRepository(ScheduledActionQueue):
-    """Agenda, reclama y finaliza acciones sin confirmar la sesión recibida."""
+    """Schedule, claim and finalize actions without committing the given session."""
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
     async def schedule(self, action: PendingScheduledAction) -> ScheduledAction:
         if action.generation < 1:
-            raise ValueError("La generación debe ser positiva.")
+            raise ValueError("The generation must be positive.")
         if not 1 <= len(action.dedupe_key.strip()) <= 255:
-            raise ValueError("La clave de deduplicación no es válida.")
+            raise ValueError("The deduplication key is not valid.")
         if not 1 <= len(action.action_type.strip()) <= 64:
-            raise ValueError("El tipo de acción no es válido.")
+            raise ValueError("The action type is not valid.")
 
         values = {
             "id": uuid.uuid4(),
@@ -94,8 +94,8 @@ class SqlAlchemyScheduledActionRepository(ScheduledActionQueue):
             statement = postgresql_insert(ScheduledActionModel).values(**values)
         elif dialect_name == "sqlite":
             statement = sqlite_insert(ScheduledActionModel).values(**values)
-        else:  # pragma: no cover - solo soportamos los motores del proyecto
-            raise RuntimeError(f"Dialect de scheduler no soportado: {dialect_name}")
+        else:  # pragma: no cover - we only support the project's engines
+            raise RuntimeError(f"Unsupported scheduler dialect: {dialect_name}")
 
         excluded = statement.excluded
         statement = statement.on_conflict_do_update(
@@ -132,11 +132,11 @@ class SqlAlchemyScheduledActionRepository(ScheduledActionQueue):
         return _to_action(row)
 
     async def schedule_next(self, action: RenewableScheduledAction) -> ScheduledAction:
-        """Renueva una acción sin calcular su generación fuera de PostgreSQL."""
+        """Renew an action without computing its generation outside PostgreSQL."""
         if not 1 <= len(action.dedupe_key.strip()) <= 255:
-            raise ValueError("La clave de deduplicación no es válida.")
+            raise ValueError("The deduplication key is not valid.")
         if not 1 <= len(action.action_type.strip()) <= 64:
-            raise ValueError("El tipo de acción no es válido.")
+            raise ValueError("The action type is not valid.")
 
         values = {
             "id": uuid.uuid4(),
@@ -161,8 +161,8 @@ class SqlAlchemyScheduledActionRepository(ScheduledActionQueue):
         elif dialect_name == "sqlite":
             statement = sqlite_insert(ScheduledActionModel).values(**values)
             written_at = datetime.now(UTC)
-        else:  # pragma: no cover - solo soportamos los motores del proyecto
-            raise RuntimeError(f"Dialect de scheduler no soportado: {dialect_name}")
+        else:  # pragma: no cover - we only support the project's engines
+            raise RuntimeError(f"Unsupported scheduler dialect: {dialect_name}")
 
         excluded = statement.excluded
         statement = statement.on_conflict_do_update(
@@ -297,7 +297,7 @@ class SqlAlchemyScheduledActionRepository(ScheduledActionQueue):
         terminal_at: datetime,
     ) -> bool:
         if not 1 <= len(error_code.strip()) <= 64:
-            raise ValueError("El código de error no es válido.")
+            raise ValueError("The error code is not valid.")
         written_at = (
             func.clock_timestamp()
             if self._session.get_bind().dialect.name == "postgresql"

@@ -1,10 +1,10 @@
 /**
- * Tags de oferta derivados client-side (no vienen del backend).
+ * Offer tags derived client-side (they do not come from the backend).
  *
- * A partir de la lista de ofertas vigentes se marcan: la más barata (ECONÓMICO),
- * la de menor ETA (RÁPIDO) y la de mejor calificación (MEJOR VALORADO). Una tarjeta
- * puede tener varios tags; al render se prioriza precio, llegada y valoración.
- * Los extremos se aplican a todas las ofertas que compartan el valor (empates).
+ * From the list of current offers we mark: the cheapest (ECONÓMICO),
+ * the lowest ETA (RÁPIDO) and the best rated (MEJOR VALORADO). A card
+ * can have several tags; when rendering, price, arrival and rating take priority.
+ * The extremes apply to every offer that shares the value (ties).
  */
 import type { Offer } from '@/features/rides/domain/types';
 
@@ -22,12 +22,12 @@ const TAG_INFO: Record<OfferTagKind, { label: string; subLabel: string }> = {
   bestRated: { label: 'MEJOR VALORADO', subLabel: 'Mejor calificado' },
 };
 
-/** Orden de prioridad de display cuando una tarjeta tiene varios tags. */
+/** Display priority order when a card has several tags. */
 const PRIORITY: OfferTagKind[] = ['cheapest', 'fastest', 'bestRated'];
 
 /**
- * Para cada offerId, devuelve sus tags (puede ser ninguno, uno o varios).
- * Devuelve un mapa offerId → tags. Con listas vacías devuelve {}.
+ * For each offerId, return its tags (none, one or several).
+ * Returns an offerId → tags map. With empty lists it returns {}.
  */
 export function deriveOfferTags(offers: Offer[]): Record<string, OfferTag[]> {
   const result: Record<string, OfferTag[]> = {};

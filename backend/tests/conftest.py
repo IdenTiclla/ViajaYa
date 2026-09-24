@@ -1,4 +1,4 @@
-"""Fixtures e2e: app FastAPI con DB SQLite en memoria, OTP simulado y OAuth simulado."""
+"""E2E fixtures: FastAPI app with an in-memory SQLite DB, simulated OTP and simulated OAuth."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from tests.fakes import FakeVerifier
 
 @pytest_asyncio.fixture
 async def session_factory() -> AsyncIterator[async_sessionmaker]:
-    """Engine SQLite en memoria compartido (StaticPool) con las tablas creadas."""
+    """Shared in-memory SQLite engine (StaticPool) with the tables created."""
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:",
         future=True,
@@ -65,9 +65,9 @@ async def client(request, session_factory) -> AsyncIterator[AsyncClient]:
         async with AsyncClient(transport=transport, base_url="http://test") as ac:
             yield ac
     finally:
-        # Los heartbeats de presencia dejan cierres diferidos. Cada prueba usa
-        # su propia base SQLite: se cancelan antes de desechar ese engine para
-        # que una tarea vieja no opere sobre la base de la prueba siguiente.
+        # Presence heartbeats leave deferred closes behind. Each test uses
+        # its own SQLite database: they are cancelled before disposing of that engine so
+        # an old task does not operate on the next test's database.
         tasks = set(presence._CANCEL_TASKS)
         tasks.update(presence._pending_cancels.values())
         tasks.update(presence._critical_cancels.values())

@@ -2,19 +2,19 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 
-import { spacing, useEstilos, type Tema } from '@/core/theme';
+import { spacing, useThemedStyles, type Theme } from '@/core/theme';
 import { Button, FeedbackState } from '@/shared/components';
 import { useAuthStore } from '@/store/authStore';
 
-/** Permite reintentar conservando credenciales o salir explícitamente al login. */
+/** Allows retrying while keeping credentials, or explicitly going back to login. */
 export function SessionRecoveryScreen() {
-  const { styles } = useEstilos(crearEstilos);
+  const { styles } = useThemedStyles(createStyles);
   const error = useAuthStore((s) => s.startupError);
   const bootstrap = useAuthStore((s) => s.bootstrap);
   const signOut = useAuthStore((s) => s.signOut);
-  const [saliendo, setSaliendo] = useState(false);
-  const volverAlLogin = async () => {
-    setSaliendo(true);
+  const [leaving, setLeaving] = useState(false);
+  const backToLogin = async () => {
+    setLeaving(true);
     await signOut();
   };
   return (
@@ -31,14 +31,14 @@ export function SessionRecoveryScreen() {
             title="Reintentar"
             variant="secondary"
             leadingIcon="refresh"
-            disabled={saliendo}
+            disabled={leaving}
             onPress={() => void bootstrap()}
           />
           <Button
             title="Volver a iniciar sesión"
-            loading={saliendo}
+            loading={leaving}
             loadingLabel="Cerrando sesión…"
-            onPress={() => void volverAlLogin()}
+            onPress={() => void backToLogin()}
           />
         </View>
       </ScrollView>
@@ -46,7 +46,7 @@ export function SessionRecoveryScreen() {
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
   content: { flexGrow: 1, justifyContent: 'center', paddingVertical: spacing.xl },
   actions: {

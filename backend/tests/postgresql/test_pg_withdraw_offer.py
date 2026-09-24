@@ -1,4 +1,4 @@
-"""Carrera PostgreSQL entre retirar y aceptar la misma oferta."""
+"""PostgreSQL race between withdrawing and accepting the same offer."""
 
 from __future__ import annotations
 

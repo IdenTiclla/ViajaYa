@@ -1,4 +1,4 @@
-/** Tipos del dominio de autenticación (independientes del transporte HTTP). */
+/** Authentication domain types (independent of the HTTP transport). */
 import type { ServiceType } from '@/features/booking/domain/types';
 
 export type AuthProvider = 'local' | 'google' | 'facebook';
@@ -6,7 +6,7 @@ export type AuthProvider = 'local' | 'google' | 'facebook';
 /** Active mode of the account; an approved driver switches between both. */
 export type UserRole = 'passenger' | 'driver';
 
-/** Vehiculo fisico del conductor; un mismo vehiculo puede atender varios servicios. */
+/** The driver's physical vehicle; one vehicle can serve several services. */
 export type VehicleType = 'taxi' | 'moto' | 'truck';
 
 /** Outcome of the driver application; only `approved` may enter driver mode. */

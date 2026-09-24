@@ -1,9 +1,9 @@
-"""Tests de la "regla de oro": despacho atómico al aceptar una oferta.
+"""Tests of the "golden rule": atomic dispatch when accepting an offer.
 
-El pasajero tiene la decisión final: al aceptar una oferta ``PENDING`` se asigna
-el viaje al conductor en una transacción atómica. Las demás ofertas vivas del
-conductor en **otros** viajes se retiran, y si el viaje ya fue asignado (carrera)
-el despacho devuelve ``None`` → 409.
+The passenger has the final say: accepting a ``PENDING`` offer assigns
+the ride to the driver in an atomic transaction. The driver's other live offers
+on **other** rides are withdrawn, and if the ride was already assigned (race)
+the dispatch returns ``None`` → 409.
 """
 
 from __future__ import annotations
@@ -68,7 +68,7 @@ def _wire() -> tuple:
 
 
 async def test_accept_withdraws_drivers_other_offers():
-    """El conductor oferta a dos pasajeros; al ganar uno, su oferta al otro se retira."""
+    """The driver offers to two passengers; when one wins, their offer to the other is withdrawn."""
     rides, users, offers = _wire()
     rider_a, rider_b, driver = _passenger(), _passenger(), _driver()
     await users.add(driver)
@@ -82,14 +82,14 @@ async def test_accept_withdraws_drivers_other_offers():
         driver, ride_b.id, CreateOfferInput(accept_at_fare=True)
     )
 
-    # El pasajero A acepta: el conductor se le asigna.
+    # Passenger A accepts: the driver is assigned to them.
     result = await accept_offer_use_case(rides, offers).execute(
         rider_a,
         offer_a.detail.offer.id,
     )
 
     assert result.detail.ride.driver_id == driver.id
-    # La oferta del conductor al pasajero B se retiró y B aparece en la lista.
+    # The driver's offer to passenger B was withdrawn and B shows up in the list.
     assert ride_b.id in result.withdrawn_ride_ids
     assert [(item.ride_id, item.offer_id) for item in result.withdrawn_offers] == [
         (ride_b.id, offer_b.detail.offer.id)
@@ -98,7 +98,7 @@ async def test_accept_withdraws_drivers_other_offers():
 
 
 async def test_accept_returns_none_when_ride_already_assigned():
-    """Carrera: el ride ya fue asignado por un accept previo; el segundo aborta."""
+    """Race: the ride was already assigned by an earlier accept; the second one aborts."""
     rides, users, offers = _wire()
     rider, d1, d2 = _passenger(), _driver(), _driver()
     await users.add(d1)
@@ -112,11 +112,11 @@ async def test_accept_returns_none_when_ride_already_assigned():
         d2, ride.id, CreateOfferInput(accept_at_fare=True)
     )
 
-    # El primer accept asigna el ride (y rechaza o2 en la misma transacción).
+    # The first accept assigns the ride (and rejects o2 in the same transaction).
     await accept_offer_use_case(rides, offers).execute(rider, o1.detail.offer.id)
 
-    # Reabrimos o2 como PENDING para simular la ventana previa al check atómico:
-    # el ride ya está ACCEPTED → accept_atomically devuelve None.
+    # We reopen o2 as PENDING to simulate the window before the atomic check:
+    # the ride is already ACCEPTED → accept_atomically returns None.
     (await offers.get_by_id(o2.detail.offer.id)).status = OfferStatus.PENDING
 
     acceptance = await offers.accept_atomically(o2.detail.offer.id)

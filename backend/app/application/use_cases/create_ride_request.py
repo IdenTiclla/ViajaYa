@@ -1,4 +1,4 @@
-"""Caso de uso: crear una solicitud de viaje."""
+"""Use case: create a ride request."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ class CreateRideRequest:
         passenger_presence_grace_seconds: float = 120.0,
     ) -> None:
         if passenger_presence_grace_seconds <= 0:
-            raise ValueError("La gracia de presencia debe ser positiva.")
+            raise ValueError("The presence grace period must be positive.")
         self._rides = rides
         self._unit_of_work = unit_of_work
         self._scheduled_actions = scheduled_actions
@@ -48,7 +48,7 @@ class CreateRideRequest:
         if rider.role is not UserRole.PASSENGER:
             raise NotAuthorizedActionError("Solo los pasajeros pueden solicitar viajes.")
 
-        # Valida rango, país operativo y oferta positiva.
+        # Validates range, operating country and a positive fare.
         origin_point = ServiceAreaPoint(
             data.origin.latitude, data.origin.longitude, data.origin.country_code
         )
@@ -83,11 +83,11 @@ class CreateRideRequest:
         return created
 
     async def _schedule_initial_absence_check(self, ride: RideRequest) -> None:
-        """Cubre la ventana entre crear la búsqueda y abrir su primer canal."""
+        """Covers the window between creating the search and opening its first channel."""
         if self._scheduled_actions is None:
             return
         if ride.created_at is None:  # pragma: no cover - persistencia exige timestamp
-            raise RuntimeError("La solicitud persistida no tiene fecha de creación.")
+            raise RuntimeError("The persisted request has no creation date.")
         created_at = (
             ride.created_at.replace(tzinfo=UTC)
             if ride.created_at.tzinfo is None

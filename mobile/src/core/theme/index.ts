@@ -1,2 +1,2 @@
 export * from './tokens';
-export { useTema, useEstilos } from './useTema';
+export { useTheme, useThemedStyles } from './useTheme';

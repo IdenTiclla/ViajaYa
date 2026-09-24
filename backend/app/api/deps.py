@@ -1,8 +1,8 @@
-"""Inyección de dependencias de la capa API.
+"""API-layer dependency injection.
 
-Construye repositorios, servicios y casos de uso, y resuelve el usuario actual
-a partir del token Bearer. Este es el único lugar donde se "cablea" la
-infraestructura concreta con la aplicación.
+Builds repositories, services and use cases, and resolves the current user
+from the Bearer token. This is the only place where the concrete
+infrastructure is "wired" to the application.
 """
 
 from __future__ import annotations
@@ -181,12 +181,12 @@ SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
 
 def get_session_factory() -> async_sessionmaker[AsyncSession]:
-    """Fábrica de sesiones para conexiones WebSocket (sesión corta por handshake).
+    """Session factory for WebSocket connections (short session per handshake).
 
-    Los endpoints WS no usan ``get_session`` (que ata la sesión al ciclo de un
-    request HTTP): abren una sesión breve para autenticar y armar el snapshot, y
-    la cierran antes de quedarse escuchando. Se inyecta como dependencia para
-    poder sustituirla en tests por la BD en memoria.
+    WS endpoints do not use ``get_session`` (which ties the session to an HTTP
+    request's lifecycle): they open a brief session to authenticate and build the snapshot, and
+    close it before they start listening. It is injected as a dependency so
+    tests can replace it with the in-memory DB.
     """
     return async_session_factory
 
@@ -200,7 +200,7 @@ SessionFactoryDep = Annotated[
 def get_passenger_presence_lease_store(
     connection: HTTPConnection,
 ) -> PassengerPresenceLeaseStore | None:
-    """Expone la instancia creada por el lifespan tanto a HTTP como a WS."""
+    """Expose the instance created by the lifespan to both HTTP and WS."""
     return connection.app.state.passenger_presence_store
 
 
@@ -213,7 +213,7 @@ PassengerPresenceLeaseStoreDep = Annotated[
 def get_realtime_snapshot_reader(
     session_factory: SessionFactoryDep,
 ) -> RealtimeSnapshotReader:
-    """Reader dueño de una sesión corta y consistente por snapshot."""
+    """Reader that owns a short, consistent session per snapshot."""
     return SqlAlchemyRealtimeSnapshotReader(session_factory)
 
 
@@ -565,7 +565,7 @@ def get_reject_offer(
 
 
 def build_expire_offer(session: AsyncSession, settings: Settings) -> ExpireOffer:
-    """Cablea la expiración usada por tareas y handshakes fuera de HTTP DI."""
+    """Wire the expiry used by tasks and handshakes outside HTTP DI."""
     recorder = (
         OutboxExpireOfferEventRecorder(SqlAlchemyRealtimeOutbox(session))
         if settings.realtime_outbox_recording_enabled
@@ -585,7 +585,7 @@ def build_expire_offer_and_complete_scheduled_action(
     session: AsyncSession,
     settings: Settings,
 ) -> ExpireOfferAndCompleteScheduledAction:
-    """Cablea timer/barrido legacy con el ack durable en la misma UoW."""
+    """Wire the legacy timer/sweep with the durable ack in the same UoW."""
     recorder = (
         OutboxExpireOfferEventRecorder(SqlAlchemyRealtimeOutbox(session))
         if settings.realtime_outbox_recording_enabled
@@ -606,7 +606,7 @@ def build_execute_expire_offer_scheduled_action(
     session: AsyncSession,
     settings: Settings,
 ) -> ExecuteExpireOfferScheduledAction:
-    """Cablea expiración y ack durable sobre una única sesión/UoW."""
+    """Wire expiry and durable ack over a single session/UoW."""
     recorder = (
         OutboxExpireOfferEventRecorder(SqlAlchemyRealtimeOutbox(session))
         if settings.realtime_outbox_recording_enabled
@@ -629,7 +629,7 @@ def build_execute_cancel_absent_ride_scheduled_action(
     settings: Settings,
     leases: PassengerPresenceLeaseStore,
 ) -> ExecuteCancelAbsentRideScheduledAction:
-    """Cablea presencia Redis, cierre de búsqueda, outbox y ack en una UoW."""
+    """Wire Redis presence, search close, outbox and ack in one UoW."""
     actions = SqlAlchemyScheduledActionRepository(session)
     return ExecuteCancelAbsentRideScheduledAction(
         SqlAlchemyOfferRepository(session, commit_cancel=False),
@@ -646,7 +646,7 @@ def build_renew_passenger_presence(
     session: AsyncSession,
     leases: PassengerPresenceLeaseStore,
 ) -> RenewPassengerPresence:
-    """Cablea lease Redis y generación durable en una transacción corta."""
+    """Wire the Redis lease and durable generation in a short transaction."""
     return RenewPassengerPresence(
         leases,
         SqlAlchemyScheduledActionRepository(session),
@@ -658,7 +658,7 @@ def build_disconnect_passenger_presence(
     session: AsyncSession,
     leases: PassengerPresenceLeaseStore,
 ) -> DisconnectPassengerPresence:
-    """Cablea la desconexión de un lease y su nueva generación durable."""
+    """Wire a lease disconnection and its new durable generation."""
     return DisconnectPassengerPresence(
         leases,
         SqlAlchemyScheduledActionRepository(session),
@@ -754,7 +754,7 @@ def build_cancel_ride_on_disconnect(
     session: AsyncSession,
     settings: Settings,
 ) -> CancelRideOnDisconnect:
-    """Cablea el cierre de presencia sobre una única sesión/UoW."""
+    """Wire the presence close over a single session/UoW."""
     return CancelRideOnDisconnect(
         SqlAlchemyOfferRepository(session, commit_cancel=False),
         SqlAlchemyUserRepository(session),
@@ -767,7 +767,7 @@ def build_announce_open_ride(
     session: AsyncSession,
     settings: Settings,
 ) -> AnnounceOpenRide:
-    """Cablea el anuncio de presencia sobre una única sesión/UoW."""
+    """Wire the presence announcement over a single session/UoW."""
     recorder = (
         OutboxAnnounceOpenRideEventRecorder(SqlAlchemyRealtimeOutbox(session))
         if settings.realtime_outbox_recording_enabled

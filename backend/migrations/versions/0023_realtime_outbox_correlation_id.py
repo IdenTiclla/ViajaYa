@@ -1,4 +1,4 @@
-"""Correlaciona cada evento durable con su solicitud o acción productora.
+"""Correlate each durable event with its producing request or action.
 
 Revision ID: 0023_outbox_correlation_id
 Revises: 0022_scheduled_actions
@@ -27,8 +27,8 @@ def upgrade() -> None:
             nullable=True,
         ),
     )
-    # Para el histórico, batch_id es un identificador estable que agrupa el
-    # mismo efecto de negocio sin inventar vínculos entre batches distintos.
+    # For historical rows, batch_id is a stable identifier that groups the
+    # same business effect without inventing links between different batches.
     op.execute(
         sa.text(
             "UPDATE realtime_outbox "
@@ -36,9 +36,9 @@ def upgrade() -> None:
             "WHERE correlation_id IS NULL"
         )
     )
-    # Un default no puede referenciar ``batch_id`` y ``gen_random_uuid()`` se
-    # evaluaría una vez por fila. El trigger mantiene compatible al productor
-    # anterior y asigna la misma correlación estable a todo su fanout.
+    # A default cannot reference ``batch_id``, and ``gen_random_uuid()`` would be
+    # evaluated once per row. The trigger keeps the previous producer compatible
+    # and assigns the same stable correlation to its whole fan-out.
     op.execute(
         sa.text(
             """

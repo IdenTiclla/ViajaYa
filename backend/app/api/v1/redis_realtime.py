@@ -1,4 +1,4 @@
-"""Bridge Redis entre la outbox durable y los hubs WebSocket de cada proceso."""
+"""Redis bridge between the durable outbox and each process's WebSocket hubs."""
 
 from __future__ import annotations
 
@@ -60,7 +60,7 @@ class _RedisClient(Protocol):
 
 
 class RedisRealtimeUnavailableError(RuntimeError):
-    """Redis no puede confirmar fanout a ningún suscriptor activo."""
+    """Redis cannot confirm fan-out to any active subscriber."""
 
 
 class _WireMessage(BaseModel):
@@ -108,7 +108,7 @@ class _BatchWireMessageV2(_WireMessageV2):
                 for event in events
             ):
                 raise ValueError(
-                    "El wire correlacionado requiere correlation_id explícito."
+                    "The correlated wire requires an explicit correlation_id."
                 )
         return value
 
@@ -122,15 +122,15 @@ def _validate_wire_batch(
     message: _BatchWireMessageV1 | _BatchWireMessageV2,
 ) -> None:
     if message.batch_size != len(message.events):
-        raise ValueError("La cardinalidad Redis no coincide con el batch.")
+        raise ValueError("The Redis cardinality does not match the batch.")
     if any(event.batch_id != message.batch_id for event in message.events):
-        raise ValueError("Todos los eventos deben pertenecer al batch declarado.")
+        raise ValueError("Every event must belong to the declared batch.")
     if [event.sequence for event in message.events] != list(
         range(len(message.events))
     ):
-        raise ValueError("La secuencia Redis del batch no es contigua.")
+        raise ValueError("The Redis batch sequence is not contiguous.")
     if len({event.event_id for event in message.events}) != len(message.events):
-        raise ValueError("El batch Redis repite event_id.")
+        raise ValueError("The Redis batch repeats an event_id.")
 
 
 class _ResyncWireMessage(_WireMessageV1):
@@ -140,9 +140,9 @@ class _ResyncWireMessage(_WireMessageV1):
     @model_validator(mode="after")
     def validate_streams(self) -> _ResyncWireMessage:
         if len(set(self.streams)) != len(self.streams):
-            raise ValueError("La orden de resnapshot repite streams.")
-        # El envelope aplica la misma validación canónica a streams. Para una
-        # orden de control basta restringir los tres namespaces productivos.
+            raise ValueError("The resnapshot command repeats streams.")
+        # The envelope applies the same canonical validation to streams. For a
+        # control command it is enough to restrict the three production namespaces.
         for stream in self.streams:
             prefix, separator, suffix = stream.partition(":")
             if (
@@ -150,18 +150,18 @@ class _ResyncWireMessage(_WireMessageV1):
                 or prefix not in {"ride", "driver", "pool"}
                 or not suffix
             ):
-                raise ValueError("La orden de resnapshot contiene un stream inválido.")
+                raise ValueError("The resnapshot command contains an invalid stream.")
             if prefix == "pool" and suffix not in {"taxi", "moto", "delivery"}:
-                raise ValueError("La orden de resnapshot contiene un pool inválido.")
+                raise ValueError("The resnapshot command contains an invalid pool.")
             if prefix in {"ride", "driver"}:
                 try:
                     stream_id = uuid.UUID(suffix)
                 except ValueError:
                     raise ValueError(
-                        "La orden de resnapshot contiene un UUID inválido."
+                        "The resnapshot command contains an invalid UUID."
                     ) from None
                 if suffix.lower() != str(stream_id):
-                    raise ValueError("El UUID del stream no es canónico.")
+                    raise ValueError("The stream UUID is not canonical.")
         return self
 
 
@@ -169,10 +169,10 @@ def _parse_wire_message(
     raw_message: str,
 ) -> _BatchWireMessageV1 | _BatchWireMessageV2 | _ResyncWireMessage:
     if len(raw_message.encode("utf-8")) > _MAX_WIRE_MESSAGE_BYTES:
-        raise ValueError("El mensaje Redis excede el límite permitido.")
+        raise ValueError("The Redis message exceeds the allowed limit.")
     decoded = json.loads(raw_message)
     if not isinstance(decoded, dict):
-        raise ValueError("El mensaje Redis debe ser un objeto.")
+        raise ValueError("The Redis message must be an object.")
     kind = decoded.get("kind")
     if kind == "batch":
         wire_version = decoded.get("wire_version")
@@ -180,18 +180,18 @@ def _parse_wire_message(
             return _BatchWireMessageV1.model_validate(decoded)
         if wire_version == _CORRELATED_WIRE_VERSION:
             return _BatchWireMessageV2.model_validate(decoded)
-        raise ValueError("El batch Redis tiene una versión desconocida.")
+        raise ValueError("The Redis batch has an unknown version.")
     if kind == "resync":
         return _ResyncWireMessage.model_validate(decoded)
-    raise ValueError("El mensaje Redis tiene un tipo desconocido.")
+    raise ValueError("The Redis message has an unknown type.")
 
 
 class RedisRealtimeBridge(RealtimeDeliveryBridge):
-    """Publica batches y mantiene una suscripción de fanout por proceso.
+    """Publish batches and keep one fan-out subscription per process.
 
-    Redis Pub/Sub no conserva mensajes. Si esta suscripción se interrumpe, el
-    bridge cierra todos los sockets locales con 1012; su reconexión creará un
-    snapshot nuevo desde PostgreSQL y no continuará sobre un stream incompleto.
+    Redis Pub/Sub does not keep messages. If this subscription is interrupted, the
+    bridge closes all local sockets with 1012; their reconnection builds a
+    new snapshot from PostgreSQL and does not continue over an incomplete stream.
     """
 
     def __init__(
@@ -205,13 +205,13 @@ class RedisRealtimeBridge(RealtimeDeliveryBridge):
         local_hub: RealtimeHub = hub,
     ) -> None:
         if not channel:
-            raise ValueError("El canal Redis no puede estar vacío.")
+            raise ValueError("The Redis channel cannot be empty.")
         if connect_timeout_seconds <= 0:
-            raise ValueError("El timeout de Redis debe ser positivo.")
+            raise ValueError("The Redis timeout must be positive.")
         if reconnect_base_seconds <= 0:
-            raise ValueError("El backoff base de Redis debe ser positivo.")
+            raise ValueError("The Redis base backoff must be positive.")
         if reconnect_max_seconds < reconnect_base_seconds:
-            raise ValueError("El backoff máximo de Redis no puede ser menor al base.")
+            raise ValueError("The Redis maximum backoff cannot be lower than the base.")
         self._client = client
         self._channel = channel
         self._correlated_channel = f"{channel}{_CORRELATED_CHANNEL_SUFFIX}"
@@ -305,17 +305,17 @@ class RedisRealtimeBridge(RealtimeDeliveryBridge):
     async def preflight(self) -> None:
         async with asyncio.timeout(self._connect_timeout_seconds):
             if not await self._client.ping():
-                raise RedisRealtimeUnavailableError("Redis no respondió PONG.")
+                raise RedisRealtimeUnavailableError("Redis did not answer PONG.")
 
     async def wait_until_ready(self, timeout_seconds: float) -> None:
         if timeout_seconds <= 0:
-            raise ValueError("El timeout de readiness debe ser positivo.")
+            raise ValueError("The readiness timeout must be positive.")
         await asyncio.wait_for(self._ready_event.wait(), timeout=timeout_seconds)
 
     async def publish(self, events: Sequence[RealtimeOutboxEvent]) -> None:
         if not self._connected:
             raise RedisRealtimeUnavailableError(
-                "El proceso no mantiene una suscripción Redis confirmada."
+                "The process does not keep a confirmed Redis subscription."
             )
         envelopes = serialize_realtime_outbox_batch_v2(events)
         correlated_message = _BatchWireMessageV2(
@@ -337,10 +337,10 @@ class RedisRealtimeBridge(RealtimeDeliveryBridge):
                 for envelope in envelopes
             ],
         )
-        # Las réplicas antiguas solo están suscritas al canal original. El
-        # consumidor nuevo omite la copia legacy si ya observó la correlacionada;
-        # si Redis invierte el orden, el gate mobile tolera la segunda entrega
-        # porque la correlación diagnóstica no forma parte de su identidad.
+        # Old replicas are only subscribed to the original channel. The
+        # new consumer skips the legacy copy if it already saw the correlated one;
+        # if Redis reverses the order, the mobile gate tolerates the second delivery
+        # because the diagnostic correlation is not part of its identity.
         correlated_subscribers = await self._publish_wire(
             correlated_message,
             channel=self._correlated_channel,
@@ -365,9 +365,9 @@ class RedisRealtimeBridge(RealtimeDeliveryBridge):
 
     async def run(self) -> None:
         if self._running:
-            raise RuntimeError("El bridge Redis ya está en ejecución.")
+            raise RuntimeError("The Redis bridge is already running.")
         if self._closed:
-            raise RuntimeError("El bridge Redis ya fue cerrado.")
+            raise RuntimeError("The Redis bridge was already closed.")
         self._running = True
         self._hub.set_shared_transport_healthy(False)
         failures = 0
@@ -397,7 +397,7 @@ class RedisRealtimeBridge(RealtimeDeliveryBridge):
                                 await self._consume(message)
                 except asyncio.CancelledError:
                     raise
-                except Exception as error:  # noqa: BLE001 - reconexión resiliente
+                except Exception as error:  # noqa: BLE001 - resilient reconnection
                     had_active_subscription = self._connected
                     self._connected = False
                     self._ready_event.clear()
@@ -407,7 +407,7 @@ class RedisRealtimeBridge(RealtimeDeliveryBridge):
                     if had_active_subscription:
                         await self._hub.force_resync_all()
                     logger.error(
-                        "El bridge Redis perdió su suscripción (%s).",
+                        "The Redis bridge lost its subscription (%s).",
                         self._last_error,
                     )
                     failures += 1
@@ -441,16 +441,16 @@ class RedisRealtimeBridge(RealtimeDeliveryBridge):
             if isinstance(message, (_BatchWireMessageV1, _BatchWireMessageV2)):
                 raise InvalidRealtimeOutboxBatchError(
                     "transport_limit",
-                    "El batch realtime excede el límite seguro del transporte.",
+                    "The realtime batch exceeds the transport's safe limit.",
                 )
-            raise ValueError("La orden Redis excede el límite permitido.")
+            raise ValueError("The Redis command exceeds the allowed limit.")
         async with asyncio.timeout(self._connect_timeout_seconds):
             subscriber_count = int(
                 await self._client.publish(channel, payload)
             )
         if subscriber_count < 1:
             raise RedisRealtimeUnavailableError(
-                "Redis no confirmó ningún suscriptor realtime."
+                "Redis did not confirm any realtime subscriber."
             )
         return subscriber_count
 
@@ -510,7 +510,7 @@ class RedisRealtimeBridge(RealtimeDeliveryBridge):
         self._invalid_message_count += 1
         self._last_error = "InvalidRedisRealtimeMessage"
         self._hub.set_shared_transport_healthy(False)
-        logger.error("Redis entregó un mensaje realtime inválido; se fuerza resnapshot.")
+        logger.error("Redis delivered an invalid realtime message; forcing a resnapshot.")
         await self._hub.force_resync_all()
 
     async def _wait_before_reconnect(self, failures: int) -> None:

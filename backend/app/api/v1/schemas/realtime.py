@@ -1,4 +1,4 @@
-"""Contrato validado de mensajes WebSocket de negociación."""
+"""Validated contract of negotiation WebSocket messages."""
 
 from __future__ import annotations
 
@@ -28,8 +28,8 @@ RideClosedReason: TypeAlias = Literal["paused", "terminal"]
 
 class RideClosedData(_StrictPayload):
     ride_id: uuid.UUID
-    # Opcionales únicamente para leer frames legacy y filas históricas de
-    # outbox. Todo productor actual los completa y el envelope v2 los exige.
+    # Optional only to read legacy frames and historical outbox rows.
+    # Every current producer fills them and the v2 envelope requires them.
     pool_version: int | None = Field(default=None, strict=True, ge=1)
     reason: RideClosedReason | None = None
 
@@ -80,8 +80,8 @@ class WithdrawnOfferReferenceData(_StrictPayload):
 
 class OffersWithdrawnData(_StrictPayload):
     ride_ids: list[uuid.UUID]
-    # Opcional solo para leer frames legacy y filas históricas de outbox. Los
-    # productores actuales lo completan y el envelope v2 lo exige.
+    # Optional only to read legacy frames and historical outbox rows. Current
+    # producers fill it and the v2 envelope requires it.
     offers: list[WithdrawnOfferReferenceData] | None = None
     reason: OffersWithdrawnReason | None = None
 
@@ -91,7 +91,7 @@ class OffersWithdrawnData(_StrictPayload):
             offer.ride_id for offer in self.offers
         ]:
             raise ValueError(
-                "ride_ids debe coincidir en orden con offers[*].ride_id."
+                "ride_ids must match offers[*].ride_id in order."
             )
         return self
 
@@ -205,16 +205,16 @@ negotiation_message_adapter = TypeAdapter(NegotiationMessage)
 
 
 def parse_negotiation_message(value: object) -> NegotiationMessage:
-    """Valida un valor externo contra la unión discriminada del protocolo."""
+    """Validate an external value against the protocol's discriminated union."""
     return negotiation_message_adapter.validate_python(value)
 
 
 def dump_negotiation_message(message: NegotiationMessage) -> dict[str, object]:
-    """Serializa un mensaje ya tipado sin añadir campos opcionales ausentes."""
+    """Serialize an already typed message without adding absent optional fields."""
     validated = negotiation_message_adapter.validate_python(message)
     payload = validated.model_dump(mode="json", exclude_unset=True)
-    # ``type`` tiene un default Literal para construir mensajes con ergonomía;
-    # se fija siempre en la salida aunque ``exclude_unset`` omita ese default.
+    # ``type`` has a Literal default so messages are ergonomic to build;
+    # it is always set on output even though ``exclude_unset`` omits that default.
     payload["type"] = validated.type
     return payload
 
@@ -265,13 +265,13 @@ def _validate_canonical_stream(value: str) -> str:
 
     prefix, separator, raw_id = value.partition(":")
     if separator != ":" or prefix not in {"ride", "driver"}:
-        raise ValueError("El stream realtime no es canónico.")
+        raise ValueError("The realtime stream is not canonical.")
     try:
         stream_id = uuid.UUID(raw_id)
     except (ValueError, AttributeError) as error:
-        raise ValueError("El stream realtime no es canónico.") from error
+        raise ValueError("The realtime stream is not canonical.") from error
     if raw_id.lower() != str(stream_id):
-        raise ValueError("El stream realtime no es canónico.")
+        raise ValueError("The realtime stream is not canonical.")
     return value
 
 
@@ -283,31 +283,31 @@ def validate_realtime_event_semantics(
     aggregate_id: uuid.UUID,
     message: NegotiationMessage,
 ) -> None:
-    """Correlaciona routing y agregado con el payload ya validado."""
+    """Correlate routing and aggregate with the already validated payload."""
     stream_prefix, _, raw_stream_id = stream.partition(":")
     if stream_prefix not in _EVENT_STREAM_PREFIXES[event_type]:
-        raise ValueError("event_type no admite el stream indicado")
+        raise ValueError("event_type does not allow the given stream")
 
     expected_aggregate_type = "driver" if event_type == "offers_withdrawn" else "ride"
     if aggregate_type != expected_aggregate_type:
-        raise ValueError("aggregate_type no coincide con event_type")
+        raise ValueError("aggregate_type does not match event_type")
 
     if stream_prefix == aggregate_type and uuid.UUID(raw_stream_id) != aggregate_id:
-        raise ValueError("el stream no coincide con aggregate_id")
+        raise ValueError("the stream does not match aggregate_id")
 
     ride_id_field = _RIDE_ID_FIELD_BY_EVENT.get(event_type)
     if aggregate_type == "ride" and ride_id_field is not None:
         if getattr(message.data, ride_id_field) != aggregate_id:
-            raise ValueError("el payload no coincide con aggregate_id")
+            raise ValueError("the payload does not match aggregate_id")
 
     if event_type == "ride_created":
         expected_pool = f"pool:{message.data.service_type.value}"
         if stream != expected_pool:
-            raise ValueError("el servicio del payload no coincide con el pool")
+            raise ValueError("the payload service does not match the pool")
 
 
 class StreamWatermark(_Message):
-    """Última posición incluida en un snapshot para un stream concreto."""
+    """Last position included in a snapshot for a given stream."""
 
     stream: str = Field(min_length=1, max_length=255)
     stream_version: int = Field(strict=True, ge=0, le=_MAX_SAFE_JSON_INTEGER)
@@ -323,11 +323,11 @@ def _validate_unique_watermarks(
 ) -> None:
     streams = [watermark.stream for watermark in watermarks]
     if len(streams) != len(set(streams)):
-        raise ValueError("Los watermarks no pueden repetir un stream.")
+        raise ValueError("Watermarks cannot repeat a stream.")
 
 
 class _RealtimeEventEnvelopeV2Base(_Message):
-    """Campos v2 estables antes y después de añadir correlación."""
+    """v2 fields that stay stable before and after adding correlation."""
 
     schema_version: Literal[2]
     kind: Literal["event"]
@@ -350,11 +350,11 @@ class _RealtimeEventEnvelopeV2Base(_Message):
 
     @model_validator(mode="after")
     def validate_type_and_data(self) -> _RealtimeEventEnvelopeV2Base:
-        """Mantiene correlacionados el discriminador y su payload canónico."""
+        """Keep the discriminator and its canonical payload correlated."""
         try:
             message = parse_negotiation_message({"type": self.type, "data": self.data})
         except (TypeError, ValueError) as error:
-            raise ValueError("type y data no cumplen el contrato de negociación.") from error
+            raise ValueError("type and data do not meet the negotiation contract.") from error
 
         if self.type == "ride_closed" and (
             message.data.pool_version is None or message.data.reason is None
@@ -363,7 +363,7 @@ class _RealtimeEventEnvelopeV2Base(_Message):
                 "ride_closed v2 requiere pool_version y reason."
             )
         if self.type == "offers_withdrawn" and message.data.offers is None:
-            raise ValueError("offers_withdrawn v2 requiere offers.")
+            raise ValueError("offers_withdrawn v2 requires offers.")
 
         validate_realtime_event_semantics(
             event_type=self.type,
@@ -374,22 +374,22 @@ class _RealtimeEventEnvelopeV2Base(_Message):
         )
 
         normalized = dump_negotiation_message(message)["data"]
-        if not isinstance(normalized, dict):  # pragma: no cover - los deltas son objetos
-            raise ValueError("data debe ser un objeto para los eventos realtime.")
+        if not isinstance(normalized, dict):  # pragma: no cover - deltas are objects
+            raise ValueError("data must be an object for realtime events.")
         self.data = normalized
         return self
 
 
 class LegacyRealtimeEventEnvelopeV2(_RealtimeEventEnvelopeV2Base):
-    """Envelope exacto aceptado por réplicas anteriores durante el rollout."""
+    """Exact envelope accepted by older replicas during the rollout."""
 
 
 class RealtimeEventEnvelopeV2(_RealtimeEventEnvelopeV2Base):
-    """Envelope v2 con correlación y lectura compatible del formato anterior.
+    """v2 envelope with correlation and compatible reading of the previous format.
 
-    El productor nuevo siempre envía ``correlation_id``. Durante un rolling
-    deploy, un consumidor nuevo puede recibir una copia anterior sin el campo;
-    ``batch_id`` es entonces el fallback estable y compartido por todo el lote.
+    The new producer always sends ``correlation_id``. During a rolling
+    deploy, a new consumer may receive an older copy without the field;
+    ``batch_id`` is then the stable fallback shared by the whole batch.
     """
 
     correlation_id: uuid.UUID | None = None
@@ -408,7 +408,7 @@ class RideSnapshotDataV2(_StrictPayload):
     @model_validator(mode="after")
     def validate_offer_ride(self) -> RideSnapshotDataV2:
         if any(offer.ride_id != self.ride.id for offer in self.offers):
-            raise ValueError("Todas las ofertas deben pertenecer al ride del snapshot.")
+            raise ValueError("Every offer must belong to the snapshot's ride.")
         return self
 
 
@@ -428,7 +428,7 @@ class RideSnapshotMessageV2(_Message):
         _validate_unique_watermarks(self.watermarks)
         expected_stream = f"ride:{self.data.ride.id}"
         if len(self.watermarks) != 1 or self.watermarks[0].stream != expected_stream:
-            raise ValueError("El snapshot requiere exactamente el watermark del ride.")
+            raise ValueError("The snapshot requires exactly the ride watermark.")
         return self
 
 
@@ -440,7 +440,7 @@ class DriverSnapshotDataV2(_StrictPayload):
 
 
 class DriverSnapshotMessageV2(_Message):
-    """Estado unificado del conductor y vector de posiciones observadas."""
+    """The driver's unified state and vector of observed positions."""
 
     schema_version: Literal[2]
     kind: Literal["snapshot"]
@@ -463,7 +463,7 @@ class DriverSnapshotMessageV2(_Message):
             or "pool:delivery" not in streams
         ):
             raise ValueError(
-                "El snapshot del conductor requiere su stream, delivery y un pool de vehículo."
+                "The driver snapshot requires its stream, delivery and a vehicle pool."
             )
 
         vehicle_service = next(iter(vehicle_pools)).partition(":")[2]
@@ -475,14 +475,14 @@ class DriverSnapshotMessageV2(_Message):
         if self.data.active_ride is not None:
             visible_rides.append(self.data.active_ride)
         if any(ride.service_type.value not in allowed_services for ride in visible_rides):
-            raise ValueError("Los rides del snapshot no pertenecen a los pools declarados.")
+            raise ValueError("The snapshot rides do not belong to the declared pools.")
 
         driver_id = uuid.UUID(next(iter(driver_streams)).partition(":")[2])
         if any(offer.driver.id != driver_id for offer in self.data.offers):
-            raise ValueError("Las ofertas no pertenecen al conductor del snapshot.")
+            raise ValueError("The offers do not belong to the snapshot's driver.")
         active_driver = self.data.active_ride.driver if self.data.active_ride is not None else None
         if self.data.active_ride is not None and (
             active_driver is None or active_driver.id != driver_id
         ):
-            raise ValueError("El ride activo no pertenece al conductor del snapshot.")
+            raise ValueError("The active ride does not belong to the snapshot's driver.")
         return self

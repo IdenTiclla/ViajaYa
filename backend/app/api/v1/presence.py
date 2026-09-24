@@ -1,9 +1,9 @@
-"""Presencia del pasajero en una solicitud (capa realtime de la API).
+"""Passenger presence on a request (the API's realtime layer).
 
-Una solicitud está activa mientras su pasajero mantiene el WebSocket del viaje.
-Una desconexión abre una gracia breve para tolerar cambios de red o de pantalla.
-Si no reconecta, la búsqueda se cancela de forma atómica y se notifica a los
-conductores. Las solicitudes pausadas para editar quedan fuera de este cierre.
+A request is active while its passenger keeps the ride's WebSocket.
+A disconnection opens a short grace period to tolerate network or screen changes.
+If they do not reconnect, the search is cancelled atomically and the
+drivers are notified. Requests paused for editing are excluded from this close.
 """
 
 from __future__ import annotations
@@ -36,29 +36,29 @@ from app.infrastructure.realtime.hub import hub, ride_topic
 
 logger = logging.getLogger(__name__)
 
-# Cuánto sigue "presente" una solicitud tras caerse la conexión del pasajero.
-# En redes móviles un WebSocket puede tardar varios intentos en recuperarse aunque
-# la app siga abierta. La consulta HTTP de viaje activo renueva esta ventana, por
-# lo que solo se cancela cuando desaparecen ambos canales durante dos minutos.
+# How long a request stays "present" after the passenger's connection drops.
+# On mobile networks a WebSocket may take several attempts to recover even though
+# the app is still open. The active-ride HTTP query renews this window, so
+# it is only cancelled when both channels disappear for two minutes.
 PRESENCE_GRACE_SECONDS = 120.0
-# Un timer live_redis nunca interpreta una caída del transporte como abandono.
-# El polling corto permanece cancelable por una reconexión real del pasajero.
+# A live_redis timer never treats a transport outage as abandonment.
+# Short polling stays cancellable by a real passenger reconnection.
 TRANSPORT_HEALTH_RECHECK_SECONDS = 1.0
 
-# Instante (reloj monótono) de la última desconexión por ``ride_id``. Mientras
-# haya conexión viva no se usa (``has_subscribers`` manda).
+# Instant (monotonic clock) of the last disconnection per ``ride_id``. While
+# there is a live connection it is not used (``has_subscribers`` rules).
 _last_seen: dict[uuid.UUID, float] = {}
-# Solo contiene tareas que siguen dentro de ``asyncio.sleep`` y por tanto pueden
-# cancelarse cuando el pasajero reconecta.
+# Only holds tasks that are still inside ``asyncio.sleep`` and can therefore
+# be cancelled when the passenger reconnects.
 _pending_cancels: dict[uuid.UUID, asyncio.Task[None]] = {}
-# Una tarea pasa aquí antes de tocar la base. Reconectar espera esta fase, nunca
-# la cancela: incluye tanto la transacción como la publicación de sus eventos.
+# A task moves here before touching the database. Reconnecting waits for this phase, never
+# cancels it: it covers both the transaction and the publication of its events.
 _critical_cancels: dict[uuid.UUID, asyncio.Task[None]] = {}
 _CANCEL_TASKS: set[asyncio.Task[None]] = set()
 
 
 async def shutdown_presence_tasks() -> None:
-    """Detiene timers y espera cierres críticos antes de apagar la API."""
+    """Stop timers and wait for critical closes before shutting down the API."""
     pending_tasks = set(_pending_cancels.values())
     for task in pending_tasks:
         task.cancel()
@@ -75,7 +75,7 @@ async def shutdown_presence_tasks() -> None:
 
 
 def is_ride_present(ride: RideRequest) -> bool:
-    """``True`` si el pasajero está conectado o dentro de la ventana de gracia."""
+    """``True`` if the passenger is connected or within the grace window."""
     if hub.has_subscribers(ride_topic(ride.id)):
         return True
     ts = _last_seen.get(ride.id)
@@ -83,13 +83,13 @@ def is_ride_present(ride: RideRequest) -> bool:
         return False
     if (time.monotonic() - ts) < PRESENCE_GRACE_SECONDS:
         return True
-    # Pasó la gracia sin reconectar: se considera ausente (app cerrada).
+    # The grace period passed without reconnecting: considered absent (app closed).
     _last_seen.pop(ride.id, None)
     return False
 
 
 def present_rides(page: Page[OpenRideDetail]) -> Page[OpenRideDetail]:
-    """Filtra los items presentes sin alterar la posición de continuación SQL."""
+    """Filter the present items without changing the SQL continuation position."""
     return Page(
         items=[detail for detail in page.items if is_ride_present(detail.ride)],
         next_cursor=page.next_cursor,
@@ -100,13 +100,13 @@ async def present_rides_shared(
     page: Page[OpenRideDetail],
     leases: PassengerPresenceLeaseStore,
 ) -> Page[OpenRideDetail]:
-    """Filtra con Redis; ante duda conserva el pool para no ocultar búsquedas."""
+    """Filter with Redis; when in doubt keep the pool so searches are not hidden."""
     try:
         present_ids = await leases.present_ride_ids(
             [detail.ride.id for detail in page.items]
         )
     except PassengerPresenceUnavailableError:
-        logger.warning("No se pudo filtrar el pool por presencia compartida.")
+        logger.warning("Could not filter the pool by shared presence.")
         return page
     return Page(
         items=[
@@ -123,7 +123,7 @@ async def on_shared_passenger_connect(
     leases: PassengerPresenceLeaseStore,
     settings: Settings,
 ) -> None:
-    """Confirma el lease antes de anunciar una búsqueda en cualquier proceso."""
+    """Confirm the lease before announcing a search in any process."""
     await renew_shared_passenger_connection(
         ride_id,
         connection_id,
@@ -139,7 +139,7 @@ async def renew_shared_passenger_connection(
     session_factory: Callable[[], Any],
     leases: PassengerPresenceLeaseStore,
 ) -> None:
-    """Renueva lease y generación durable desde el heartbeat del gateway."""
+    """Renew the lease and durable generation from the gateway heartbeat."""
     async with session_factory() as session:
         observed_at = await database_utc_now(session)
         await build_renew_passenger_presence(session, leases).execute(
@@ -155,7 +155,7 @@ async def on_shared_passenger_activity(
     session_factory: Callable[[], Any],
     leases: PassengerPresenceLeaseStore,
 ) -> None:
-    """Renueva el miembro HTTP y mueve su generación durable."""
+    """Renew the HTTP member and move its durable generation."""
     async with session_factory() as session:
         observed_at = await database_utc_now(session)
         await build_renew_passenger_presence(session, leases).execute(
@@ -171,7 +171,7 @@ async def on_shared_passenger_disconnect(
     session_factory: Callable[[], Any],
     leases: PassengerPresenceLeaseStore,
 ) -> None:
-    """Cierra solo una conexión y abre la gracia durable que aún corresponda."""
+    """Close only one connection and open the durable grace that still applies."""
     try:
         async with session_factory() as session:
             observed_at = await database_utc_now(session)
@@ -180,11 +180,11 @@ async def on_shared_passenger_disconnect(
                 connection_id,
                 observed_at,
             )
-    except Exception as error:  # noqa: BLE001 - desconexión fail-safe y sanitizada
-        # Una caída Redis no demuestra ausencia. La acción previa se aplazará
-        # por salud/recovery y el lease expirado conserva la decisión fail-safe.
+    except Exception as error:  # noqa: BLE001 - fail-safe, sanitized disconnection
+        # A Redis outage does not prove absence. The previous action will be postponed
+        # by health/recovery and the expired lease keeps the fail-safe decision.
         logger.warning(
-            "No se pudo registrar una desconexión de presencia compartida (%s).",
+            "Could not record a shared presence disconnection (%s).",
             type(error).__name__,
         )
 
@@ -202,7 +202,7 @@ async def _announce_present_ride(
 
             await events.publish_ride_created(detail)
     except Exception:
-        logger.exception("No se pudo anunciar la presencia del viaje %s", ride_id)
+        logger.exception("Could not announce presence for ride %s", ride_id)
 
 
 async def on_passenger_connect(
@@ -210,15 +210,15 @@ async def on_passenger_connect(
     session_factory: Callable[[], Any],
     settings: Settings | None = None,
 ) -> None:
-    """El pasajero abrió/recuperó su conexión.
+    """The passenger opened/recovered their connection.
 
-    Cancela únicamente una espera de gracia. Si el cierre ya entró en su fase
-    crítica, espera a que termine y vuelve a leer el viaje antes de decidir si lo
-    publica; así nunca revive en el pool un snapshot anterior a la cancelación.
+    It only cancels a grace wait. If the close already entered its critical
+    phase, it waits for it to finish and re-reads the ride before deciding whether to
+    publish it; this way a snapshot older than the cancellation never revives in the pool.
     """
-    # El transporte puede cancelar el scope del handler apenas el peer cierra.
-    # Esta revalidación debe cerrar su sesión antes de propagar ese cierre; dura
-    # solo una lectura y no mantiene viva la conexión WebSocket.
+    # The transport may cancel the handler's scope as soon as the peer closes.
+    # This re-validation must close its session before propagating that close; it lasts
+    # only one read and does not keep the WebSocket connection alive.
     with CancelScope(shield=True):
         await _revalidate_passenger_connect(
             ride_id,
@@ -232,12 +232,12 @@ async def on_passenger_activity(
     session_factory: Callable[[], Any],
     settings: Settings | None = None,
 ) -> None:
-    """Renueva la presencia desde el polling HTTP de una app todavía activa.
+    """Renew presence from the HTTP polling of an app that is still active.
 
-    El WebSocket puede caer de forma transitoria en Android mientras HTTP sigue
-    funcionando. Ese caso no es abandono: cancela el temporizador anterior y
-    abre una ventana nueva. Si el cierre ya entró en su fase crítica, primero
-    espera su resultado para no revivir una solicitud cancelada.
+    The WebSocket may drop transiently on Android while HTTP keeps
+    working. That case is not abandonment: it cancels the previous timer and
+    opens a new window. If the close already entered its critical phase, it first
+    waits for its result so it does not revive a cancelled request.
     """
     with CancelScope(shield=True):
         await _revalidate_passenger_activity(
@@ -273,10 +273,10 @@ async def _revalidate_passenger_connect(
 
             await events.publish_ride_created(detail)
     except Exception:
-        # La conexión viva sigue siendo una señal válida de presencia. Un fallo
-        # del anuncio no debe cerrar el socket y convertirlo en una ausencia;
-        # snapshots/polling conservan la convergencia mientras la outbox alerta.
-        logger.exception("No se pudo anunciar la presencia del viaje %s", ride_id)
+        # The live connection is still a valid presence signal. A failed
+        # announcement must not close the socket and turn it into an absence;
+        # snapshots/polling keep convergence while the outbox alerts.
+        logger.exception("Could not announce presence for ride %s", ride_id)
 
 
 async def _revalidate_passenger_activity(
@@ -306,9 +306,9 @@ async def _revalidate_passenger_activity(
         and not detail.ride.paused
         and not hub.has_subscribers(ride_topic(ride_id))
     ):
-        # Reutiliza el mismo cierre diferido que una desconexión. Cada respuesta
-        # HTTP exitosa mueve la ventana; si el polling también desaparece, este
-        # último temporizador termina limpiando la búsqueda abandonada.
+        # Reuses the same deferred close as a disconnection. Every successful HTTP
+        # response moves the window; if polling also disappears, this
+        # last timer ends up cleaning up the abandoned search.
         on_passenger_disconnect(ride_id, session_factory, settings)
 
 
@@ -317,10 +317,10 @@ def on_passenger_disconnect(
     session_factory: Callable[[], Any],
     settings: Settings | None = None,
 ) -> None:
-    """El pasajero se desconectó: arranca la ventana de gracia.
+    """The passenger disconnected: the grace window starts.
 
-    Si el pasajero no vuelve dentro de la gracia, una tarea con sesión propia
-    cancela la búsqueda. La operación final vuelve a comprobar estado y pausa.
+    If the passenger does not come back within the grace period, a task with its own session
+    cancels the search. The final operation re-checks status and pause.
     """
     if hub.has_subscribers(ride_topic(ride_id)):
         return
@@ -333,9 +333,9 @@ def on_passenger_disconnect(
     if ride_id in _critical_cancels:
         return
 
-    # La creación se difiere hasta que termine la limpieza del handler WebSocket.
-    # ``disconnected_at`` invalida el callback si hubo otra desconexión o una
-    # reconexión antes de que llegue a ejecutarse.
+    # Creation is deferred until the WebSocket handler's cleanup finishes.
+    # ``disconnected_at`` invalidates the callback if there was another disconnection or a
+    # reconnection before it runs.
     asyncio.get_running_loop().call_soon(
         _start_cancel_timer,
         ride_id,
@@ -359,9 +359,9 @@ def _start_cancel_timer(
     ):
         return
 
-    # El estado recibido durante el handshake puede haber cambiado. La decisión
-    # final se toma bajo lock en la base después de la gracia. El contexto vacío
-    # desacopla el worker del cancel-scope del transporte que lo originó.
+    # The state received during the handshake may have changed. The final
+    # decision is made under a database lock after the grace period. The empty context
+    # decouples the worker from the cancel scope of the transport that started it.
     task = asyncio.create_task(
         _cancel_after_grace(ride_id, session_factory, settings),
         context=contextvars.Context(),
@@ -376,9 +376,9 @@ async def _cancel_after_grace(
     session_factory: Callable[[], Any],
     settings: Settings,
 ) -> None:
-    # El worker vive más que el handler WS que lo originó. El shield bloquea la
-    # cancelación del scope AnyIO del transporte; ``Task.cancel()`` directo (la
-    # reconexión durante el sleep) sigue atravesándolo.
+    # The worker outlives the WS handler that started it. The shield blocks the
+    # cancellation of the transport's AnyIO scope; a direct ``Task.cancel()`` (the
+    # reconnection during the sleep) still goes through it.
     with CancelScope(shield=True):
         await _run_cancel_after_grace(ride_id, session_factory, settings)
 
@@ -388,13 +388,13 @@ async def _run_cancel_after_grace(
     session_factory: Callable[[], Any],
     settings: Settings,
 ) -> None:
-    """Cancela la búsqueda si la ausencia persiste y publica su desenlace."""
+    """Cancel the search if the absence persists and publish its outcome."""
     current = asyncio.current_task()
     assert current is not None
     try:
         await asyncio.sleep(PRESENCE_GRACE_SECONDS)
     except asyncio.CancelledError:
-        # Reconectar solo puede llegar aquí, durante la espera cancelable.
+        # Reconnecting can only get here, during the cancellable wait.
         return
 
     transport_was_unhealthy = False
@@ -404,14 +404,14 @@ async def _run_cancel_after_grace(
             try:
                 await asyncio.sleep(TRANSPORT_HEALTH_RECHECK_SECONDS)
             except asyncio.CancelledError:
-                # Una reconexión/actividad HTTP gana incluso durante una caída larga.
+                # A reconnection/HTTP activity wins even during a long outage.
                 return
             continue
         if not transport_was_unhealthy:
             break
 
-        # Al volver Redis no se cancela de inmediato: el cliente recibe una
-        # ventana completa para atravesar readiness/LB y renovar su presencia.
+        # When Redis comes back the search is not cancelled right away: the client gets a
+        # full window to get through readiness/LB and renew its presence.
         transport_was_unhealthy = False
         _last_seen[ride_id] = time.monotonic()
         try:
@@ -419,8 +419,8 @@ async def _run_cancel_after_grace(
         except asyncio.CancelledError:
             return
 
-    # No hay ``await`` entre quitar la tarea cancelable y registrar la fase
-    # crítica: otra coroutine nunca observa una ventana intermedia.
+    # There is no ``await`` between removing the cancellable task and recording the critical
+    # phase: another coroutine never observes an intermediate window.
     if _pending_cancels.get(ride_id) is not current:
         return
     _pending_cancels.pop(ride_id, None)
@@ -441,8 +441,8 @@ async def _run_cancel_after_grace(
     except asyncio.CancelledError:
         raise
     except Exception:
-        # Notificación best-effort: el polling conserva la convergencia del cliente.
-        logger.exception("No se pudo cerrar el viaje ausente %s", ride_id)
+        # Best-effort notification: polling keeps the client converging.
+        logger.exception("Could not close absent ride %s", ride_id)
         return
     finally:
         if _critical_cancels.get(ride_id) is current:

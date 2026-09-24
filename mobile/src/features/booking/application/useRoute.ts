@@ -1,6 +1,6 @@
 /**
- * Trayecto (ruta por calles + distancia/duración) entre origen y destino,
- * cacheado con react-query y keyed por las coordenadas de ambos puntos.
+ * Route (street route + distance/duration) between origin and destination,
+ * cached with react-query and keyed by both points' coordinates.
  */
 import { useQuery } from '@tanstack/react-query';
 

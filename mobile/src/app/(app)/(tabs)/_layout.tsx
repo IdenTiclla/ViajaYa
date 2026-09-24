@@ -3,7 +3,7 @@ import { Tabs } from 'expo-router/js-tabs';
 
 import { PillTabBar } from '@/core/components/PillTabBar';
 
-/** Navegación principal autenticada (diseño Stitch): Viaje / Historial / Billetera / Perfil. */
+/** Main authenticated navigation (Stitch design): Viaje / Historial / Billetera / Perfil. */
 export default function TabsLayout() {
   return (
     <Tabs tabBar={(props) => <PillTabBar {...props} />} screenOptions={{ headerShown: false }}>

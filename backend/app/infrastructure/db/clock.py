@@ -1,4 +1,4 @@
-"""Reloj autoritativo respaldado por la base de datos."""
+"""Authoritative clock backed by the database."""
 
 from __future__ import annotations
 
@@ -12,22 +12,22 @@ DatabaseClock = Callable[[AsyncSession], Awaitable[datetime]]
 
 
 def _as_utc(moment: datetime) -> datetime:
-    """Normaliza el ``CURRENT_TIMESTAMP`` sin zona que devuelve SQLite."""
+    """Normalize the timezone-less ``CURRENT_TIMESTAMP`` SQLite returns."""
     return moment.replace(tzinfo=UTC) if moment.tzinfo is None else moment.astimezone(UTC)
 
 
 async def database_utc_now(session: AsyncSession) -> datetime:
-    """Lee tiempo real de la base, no el inicio de la transacción.
+    """Read the database's real time, not the start of the transaction.
 
-    PostgreSQL mantiene ``now()`` estable durante toda la transacción. Eso no
-    sirve después de esperar un bloqueo de fila: ``clock_timestamp()`` devuelve el
-    instante efectivo en que se ejecuta la consulta. SQLite solo participa en
-    pruebas locales y usa su ``CURRENT_TIMESTAMP``.
+    PostgreSQL keeps ``now()`` stable for the whole transaction. That is no
+    use after waiting on a row lock: ``clock_timestamp()`` returns the
+    actual instant the query runs. SQLite only takes part in
+    local tests and uses its ``CURRENT_TIMESTAMP``.
     """
     if session.get_bind().dialect.name == "postgresql":
         moment = await session.scalar(select(func.clock_timestamp()))
     else:
         moment = await session.scalar(select(func.current_timestamp()))
-    if moment is None:  # pragma: no cover - una base sana siempre devuelve un valor
-        raise RuntimeError("La base de datos no devolvió su reloj.")
+    if moment is None:  # pragma: no cover - a healthy database always returns a value
+        raise RuntimeError("The database did not return its clock.")
     return _as_utc(moment)

@@ -49,6 +49,6 @@ def test_neighbouring_cities_are_rejected_even_if_client_claims_bolivia(
 
 
 def test_service_area_includes_country_border() -> None:
-    # Vertice exacto del contorno versionado: la operacion debe ser covers, no contains.
+    # Exact vertex of the versioned outline: the operation must be covers, not contains.
     assert bolivia_covers(-17.506588, -69.510089)
     ServiceAreaPoint(-17.506588, -69.510089)

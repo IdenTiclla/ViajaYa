@@ -1,19 +1,19 @@
-"""offers: retirar el estado rider_accepted (el pasajero decide, no el conductor)
+"""offers: remove the rider_accepted status (the passenger decides, not the driver)
 
 Revision ID: 0011_drop_offer_rider_accepted
 Revises: 0010_offer_rider_accepted_at
 Create Date: 2026-06-20
 
-Aceptación = asignación directa: el pasajero tiene la decisión final, así que el
-estado intermedio ``rider_accepted`` (y su ventana de confirmación del conductor)
-desaparecen. ``OfferStatus`` es un enum *no nativo* (``String`` con
-``values_callable``), por lo que quitar el valor de Python **no** requiere un
-``ALTER TYPE`` en Postgres. La columna física ``rider_accepted_at`` (creada en
-0010) se conserva sin tocar y solo se mapea como almacenamiento legado, para no
-perder datos históricos (drop de columna es destructivo).
+Acceptance = direct assignment: the passenger has the final say, so the
+intermediate ``rider_accepted`` status (and its driver confirmation window)
+go away. ``OfferStatus`` is a *non-native* enum (``String`` with
+``values_callable``), so removing the Python value does **not** require an
+``ALTER TYPE`` in Postgres. The physical ``rider_accepted_at`` column (created in
+0010) is kept untouched and only mapped as legacy storage, so no
+historical data is lost (dropping a column is destructive).
 
-Como saneamiento, marcamos ``rejected`` cualquier oferta que hubiera quedado en
-``rider_accepted`` (ya no es un estado aceptable y rompería la negociación).
+As a cleanup, we mark ``rejected`` any offer left in
+``rider_accepted`` (it is no longer an acceptable status and would break the negotiation).
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Nada que revertir en el esquema: el valor lógico ``rider_accepted`` se
-    # reintegraría en entidades/modelo, y la columna ``rider_accepted_at`` sigue
-    # existiendo (no se tocó). Sin DDL.
+    # Nothing to revert in the schema: the logical ``rider_accepted`` value would be
+    # reinstated in the entities/model, and the ``rider_accepted_at`` column still
+    # exists (it was not touched). No DDL.
     pass

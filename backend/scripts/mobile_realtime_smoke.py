@@ -1,8 +1,8 @@
-"""Runner interactivo para certificar realtime en un dev build móvil.
+"""Interactive runner to certify realtime on a mobile dev build.
 
-Arranca una API ``live_local`` sobre una base PostgreSQL desechable y conserva
-los controles de fallo dentro del proceso. No agrega endpoints ni configuración
-de corrupción al artefacto productivo.
+Starts a ``live_local`` API on a disposable PostgreSQL database and keeps
+the fault controls inside the process. It adds no endpoints or corruption
+settings to the production artifact.
 """
 
 from __future__ import annotations
@@ -62,12 +62,12 @@ class OpenRide:
 
 def _arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Inyecta fallos realtime one-shot para un dev build.",
+        description="Inject one-shot realtime faults for a dev build.",
     )
     parser.add_argument(
         "--database-url",
         default=os.getenv("VIAJAYA_TEST_DATABASE_URL"),
-        help="URL postgresql+asyncpg de una base cuyo nombre sea test_* o *_test.",
+        help="postgresql+asyncpg URL of a database named test_* or *_test.",
     )
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=8002)
@@ -80,9 +80,9 @@ def _validate_database_url(database_url: str | None) -> str:
     parsed = make_url(database_url)
     database = parsed.database or ""
     if parsed.drivername != "postgresql+asyncpg":
-        raise RuntimeError("El runner requiere postgresql+asyncpg.")
+        raise RuntimeError("The runner requires postgresql+asyncpg.")
     if not (database.startswith("test_") or database.endswith("_test")):
-        raise RuntimeError("La base desechable debe empezar por test_ o terminar en _test.")
+        raise RuntimeError("The disposable database must start with test_ or end with _test.")
     return database_url
 
 
@@ -99,9 +99,9 @@ async def _wait_server(server: uvicorn.Server) -> None:
     deadline = time.monotonic() + _OPERATION_TIMEOUT_SECONDS
     while not server.started:
         if server.should_exit:
-            raise RuntimeError("Uvicorn terminó antes de quedar listo.")
+            raise RuntimeError("Uvicorn exited before becoming ready.")
         if time.monotonic() >= deadline:
-            raise TimeoutError("Uvicorn no quedó listo dentro del plazo.")
+            raise TimeoutError("Uvicorn did not become ready in time.")
         await asyncio.sleep(0.05)
 
 
@@ -113,12 +113,12 @@ async def _wait_fault(controller: RealtimeFaultController) -> None:
             await asyncio.sleep(0.25)
             return
         if time.monotonic() >= deadline:
-            raise TimeoutError("El fallo armado no encontró su evento objetivo.")
+            raise TimeoutError("The armed fault did not find its target event.")
         await asyncio.sleep(0.02)
 
 
 class MobileRealtimeSmoke:
-    """Orquesta datos reales y fallos sin exponer controles por red."""
+    """Orchestrate real data and faults without exposing controls over the network."""
 
     def __init__(
         self,
@@ -264,7 +264,7 @@ async def _interactive(smoke: MobileRealtimeSmoke) -> None:
         action = command
         print(f"Armando {action}...", flush=True)
         await smoke.inject(action)
-        print(f"OK {action}: fallo consumido por el dispatcher.", flush=True)
+        print(f"OK {action}: fault consumed by the dispatcher.", flush=True)
 
 
 async def _run(args: argparse.Namespace) -> None:
@@ -336,12 +336,12 @@ async def _run(args: argparse.Namespace) -> None:
                 driver_token=driver_token,
             )
             print(
-                f"\nAPI del emulador: http://10.0.2.2:{args.port}/api/v1",
+                f"\nEmulator API: http://10.0.2.2:{args.port}/api/v1",
                 flush=True,
             )
-            print(f"Teléfono del conductor: {driver_phone} (OTP simulado)", flush=True)
+            print(f"Driver phone: {driver_phone} (OTP simulado)", flush=True)
             print(
-                "Inicia sesión en el dev build y espera snapshot_applied antes de inyectar.",
+                "Sign in on the dev build and wait for snapshot_applied before injecting.",
                 flush=True,
             )
             try:

@@ -1,4 +1,4 @@
-"""Añade cuarentena terminal para batches inválidos de la outbox.
+"""Add a terminal quarantine for invalid outbox batches.
 
 Revision ID: 0020_realtime_outbox_quarantine
 Revises: 0019_realtime_stream_versions
@@ -91,7 +91,7 @@ def downgrade() -> None:
     )
     if quarantined_count:
         raise RuntimeError(
-            "No se puede revertir 0020: existen eventos de outbox en cuarentena."
+            "Cannot revert 0020: there are quarantined outbox events."
         )
 
     op.drop_index("ix_realtime_outbox_quarantined", table_name="realtime_outbox")

@@ -209,7 +209,7 @@ async def test_failure_after_pause_outbox_flush_rolls_back_everything(
         class RecordThenFail:
             async def record(self, result):
                 await recorder.record(result)
-                raise RuntimeError("fallo después de insertar la outbox")
+                raise RuntimeError("failure after inserting the outbox")
 
         use_case = PauseRideForEdit(
             rides,
@@ -217,7 +217,7 @@ async def test_failure_after_pause_outbox_flush_rolls_back_everything(
             SqlAlchemyUnitOfWork(session),
             RecordThenFail(),  # type: ignore[arg-type]
         )
-        with pytest.raises(RuntimeError, match="después de insertar"):
+        with pytest.raises(RuntimeError, match="after inserting"):
             await use_case.execute(rider, ride.id)
 
         ride_row = await session.get(RideRequestModel, ride.id)

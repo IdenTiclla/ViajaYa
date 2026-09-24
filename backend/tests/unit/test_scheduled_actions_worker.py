@@ -1,4 +1,4 @@
-"""Lifecycle, retries y apagado del worker de acciones programadas."""
+"""Lifecycle, retries and shutdown of the scheduled actions worker."""
 
 from __future__ import annotations
 
@@ -96,7 +96,7 @@ class _FailingExecutor(ScheduledActionExecutor):
         action: ScheduledAction,
     ) -> Literal["succeeded", "lost_lease"]:
         del action
-        raise TimeoutError("detalle que no debe persistirse")
+        raise TimeoutError("detail that must not be persisted")
 
 
 def _fixed_clock(moment: datetime):
@@ -127,7 +127,7 @@ def _worker(
     )
 
 
-async def test_dispatch_once_confirma_efecto_y_ack_durable(
+async def test_dispatch_once_confirms_effect_and_durable_ack(
     action_sessions: async_sessionmaker[AsyncSession],
 ) -> None:
     now = datetime.now(UTC)
@@ -147,7 +147,7 @@ async def test_dispatch_once_confirma_efecto_y_ack_durable(
     assert executor.actions[0].id == row.id
 
 
-async def test_error_transitorio_solo_persiste_codigo_y_backoff(
+async def test_transient_error_only_persists_code_and_backoff(
     action_sessions: async_sessionmaker[AsyncSession],
 ) -> None:
     now = datetime.now(UTC)
@@ -166,7 +166,7 @@ async def test_error_transitorio_solo_persiste_codigo_y_backoff(
     assert worker.retried_count == 1
 
 
-async def test_claim_y_retry_usan_instantes_leidos_en_sesiones_distintas(
+async def test_claim_and_retry_use_instants_read_in_separate_sessions(
     action_sessions: async_sessionmaker[AsyncSession],
 ) -> None:
     claim_at = datetime.now(UTC)
@@ -204,7 +204,7 @@ async def test_claim_y_retry_usan_instantes_leidos_en_sesiones_distintas(
     assert sessions_seen[0] is not sessions_seen[1]
 
 
-async def test_ultimo_intento_termina_dead(
+async def test_last_attempt_ends_dead(
     action_sessions: async_sessionmaker[AsyncSession],
 ) -> None:
     now = datetime.now(UTC)
@@ -226,7 +226,7 @@ async def test_ultimo_intento_termina_dead(
     assert worker.dead_count == 1
 
 
-async def test_cancelacion_deja_running_para_recuperacion_por_lease(
+async def test_cancellation_leaves_running_for_lease_recovery(
     action_sessions: async_sessionmaker[AsyncSession],
 ) -> None:
     now = datetime.now(UTC)
@@ -258,7 +258,7 @@ async def test_cancelacion_deja_running_para_recuperacion_por_lease(
     assert row.lock_token is not None
 
 
-async def test_run_se_detiene_durante_polling_sin_tarea_huerfana(
+async def test_run_stops_during_polling_without_an_orphaned_task(
     action_sessions: async_sessionmaker[AsyncSession],
 ) -> None:
     now = datetime.now(UTC)
@@ -281,7 +281,7 @@ async def test_run_se_detiene_durante_polling_sin_tarea_huerfana(
     assert worker.running is False
 
 
-async def test_reconciliacion_se_limita_al_intervalo_de_polling(
+async def test_reconciliation_is_limited_to_the_polling_interval(
     action_sessions: async_sessionmaker[AsyncSession],
 ) -> None:
     now = datetime.now(UTC)
@@ -315,7 +315,7 @@ async def test_reconciliacion_se_limita_al_intervalo_de_polling(
     assert calls == 1
 
 
-def test_settings_define_rollout_independiente_y_seguro() -> None:
+def test_settings_define_an_independent_and_safe_rollout() -> None:
     defaults = Settings(_env_file=None)
     assert defaults.scheduled_actions_mode == "off"
     assert defaults.scheduled_actions_terminal_retention_days == 30
@@ -361,7 +361,7 @@ def test_settings_define_rollout_independiente_y_seguro() -> None:
         )
 
 
-async def test_lifecycle_live_inicia_y_detiene_scheduler_antes_del_dispatcher(
+async def test_live_lifecycle_starts_and_stops_the_scheduler_before_the_dispatcher(
     session_factory,
 ) -> None:
     settings = Settings(
@@ -392,7 +392,7 @@ async def test_lifecycle_live_inicia_y_detiene_scheduler_antes_del_dispatcher(
     assert app.state.realtime_outbox_dispatcher.running is False
 
 
-async def test_lifecycle_shadow_ejecuta_scheduler_y_conserva_timer_legacy(
+async def test_shadow_lifecycle_runs_the_scheduler_and_keeps_the_legacy_timer(
     session_factory,
 ) -> None:
     settings = Settings(

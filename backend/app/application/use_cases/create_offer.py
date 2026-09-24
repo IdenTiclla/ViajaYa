@@ -1,8 +1,8 @@
-"""Caso de uso: un conductor crea una oferta (aceptar, contraofertar o mejorar).
+"""Use case: a driver creates an offer (accept, counter-offer or improve).
 
-Si el conductor ya tiene una oferta ``PENDING`` en el viaje, la nueva la
-**reemplaza** (mejorar la oferta): la anterior pasa a ``REJECTED`` y se devuelve
-su id para que la capa API retire la tarjeta vieja de la pantalla del pasajero.
+If the driver already has a ``PENDING`` offer on the ride, the new one
+**replaces** it (improving the offer): the previous one becomes ``REJECTED`` and its
+id is returned so the API layer removes the old card from the passenger's screen.
 """
 
 from __future__ import annotations
@@ -67,7 +67,7 @@ class CreateOffer:
         offer = result.detail.offer
         execute_at = offer_expires_at(offer)
         if execute_at is None:  # pragma: no cover - persistencia exige created_at
-            raise RuntimeError("La oferta persistida no tiene fecha de creación.")
+            raise RuntimeError("The persisted offer has no creation date.")
         await self._scheduled_actions.schedule(
             PendingScheduledAction(
                 dedupe_key=f"expire_offer:{offer.id}",
@@ -112,7 +112,7 @@ class CreateOffer:
             raise DriverUnavailableError("Ya tienes un viaje activo.")
 
         if data.accept_at_fare:
-            # Aceptar al precio del pasajero.
+            # Accept at the passenger's price.
             price = ride.fare
         else:
             # Contraoferta: precio propio validado (> 0).

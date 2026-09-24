@@ -1,4 +1,4 @@
-"""Caso de uso: obtener el detalle de un viaje (polling de estado)."""
+"""Use case: get a ride's detail (status polling)."""
 
 from __future__ import annotations
 

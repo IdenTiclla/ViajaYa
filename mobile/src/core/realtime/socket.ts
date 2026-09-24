@@ -1,14 +1,14 @@
 /**
- * Cliente WebSocket genérico con reconexión (compartido por los puentes de
- * negociación y, a futuro, la ubicación en vivo).
+ * Generic WebSocket client with reconnection (shared by the negotiation
+ * bridges and, in the future, live location).
  *
- * - El access token viaja como subprotocolo WebSocket (fuera de la URL y de los
- *   access logs); se toma de `tokenStorage`.
- * - Reconexión con backoff exponencial (máx. 5 s) salvo cierre intencional.
- * - Reconecta al volver la app a primer plano (`AppState`).
+ * - The access token travels as a WebSocket subprotocol (out of the URL and the
+ *   access logs); it is read from `tokenStorage`.
+ * - Reconnection with exponential backoff (max 5 s) unless closed on purpose.
+ * - Reconnects when the app returns to the foreground (`AppState`).
  *
- * Es solo de bajada: parsea cada mensaje `{ type, data }` y lo entrega al
- * callback. No envía mensajes (las acciones siguen por HTTP).
+ * It is downstream only: it parses each `{ type, data }` message and hands it to the
+ * callback. It sends no messages (actions still go over HTTP).
  */
 import { AppState, type AppStateStatus } from 'react-native';
 
@@ -19,11 +19,11 @@ import { createGenerationMessageQueue } from '@/core/realtime/socketQueue';
 export type SocketMessage = { type: string; data: unknown };
 export type SocketHandle = {
   close: () => void;
-  /** Descarta la generación actual y fuerza un handshake nuevo. */
+  /** Discard the current generation and force a new handshake. */
   resync: () => void;
 };
 
-/** Identidad viva de la conexión física que entregó un mensaje. */
+/** Live identity of the physical connection that delivered a message. */
 export type SocketDeliveryContext = {
   isCurrent: () => boolean;
 };
@@ -61,8 +61,8 @@ export type SocketFrameResult<T extends SocketMessage> =
   | { success: true; data: T }
   | { success: false; issue: SanitizedSocketIssue };
 
-// Debe quedar holgadamente por debajo de la gracia de presencia del backend.
-// En el peor caso visible reintentamos cada 5 s, no justo cuando vence la gracia.
+// It must stay well below the backend's presence grace period.
+// In the worst visible case we retry every 5 s, not right when the grace period runs out.
 const MAX_BACKOFF_MS = 5_000;
 const BASE_BACKOFF_MS = 1_000;
 const AUTH_SUBPROTOCOL = 'viajaya.auth';
@@ -110,7 +110,7 @@ function safeIssueMessage(code: string | undefined): string {
   }
 }
 
-/** Valida un frame de texto sin incluir su contenido en el error retornado. */
+/** Validate a text frame without including its content in the returned error. */
 export function parseSocketFrame<T extends SocketMessage>(
   frame: unknown,
   parser: SocketMessageParser<T>,
@@ -155,8 +155,8 @@ export function parseSocketFrame<T extends SocketMessage>(
 }
 
 /**
- * Abre un socket al `path` indicado (p. ej. `/ws/rides/123`) y entrega cada
- * mensaje al callback. Devuelve un handle para cerrarlo.
+ * Open a socket to the given `path` (e.g. `/ws/rides/123`) and hand each
+ * message to the callback. Returns a handle to close it.
  */
 export function openSocket<T extends SocketMessage>(
   path: string,
@@ -172,9 +172,9 @@ export function openSocket<T extends SocketMessage>(
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let closedByUser = false;
   const messageQueue = createGenerationMessageQueue();
-  // Cada reemplazo intencional invalida callbacks y aperturas en curso de la
-  // generacion anterior. Esto evita dos sockets vivos si SecureStore tarda y la
-  // app vuelve a foreground mientras el primer connect aun esta pendiente.
+  // Every intentional replacement invalidates the previous generation's callbacks and
+  // in-flight opens. This avoids two live sockets if SecureStore is slow and the
+  // app comes back to the foreground while the first connect is still pending.
   let generation = messageQueue.currentGeneration();
   let connectingGeneration: number | null = null;
 
@@ -211,7 +211,7 @@ export function openSocket<T extends SocketMessage>(
       const tokens = await tokenStorage.get();
       if (closedByUser || ownGeneration !== generation) return;
       if (!tokens?.accessToken) {
-        // Sin sesión todavía: reintenta más tarde.
+        // No session yet: retry later.
         scheduleReconnect(ownGeneration);
         return;
       }
@@ -237,16 +237,16 @@ export function openSocket<T extends SocketMessage>(
         if (ws !== socket || ownGeneration !== generation) return;
         const parsed = parseSocketFrame(event.data, parser);
         if (!parsed.success) {
-          // Solo registra metadatos derivados del schema. Nunca el frame, el
-          // payload ni la URL (que puede identificar un ride concreto).
+          // Only logs metadata derived from the schema. Never the frame, the
+          // payload or the URL (which may identify a specific ride).
           console.warn('Mensaje WebSocket descartado.', parsed.issue);
           callbacks.onInvalidFrame?.(parsed.issue);
           return;
         }
 
-        // Snapshot y deltas forman un stream ordenado. Serializar los handlers
-        // evita que un snapshot con un `await` termine despues de un evento
-        // posterior y pise una oferta recien recibida.
+        // Snapshot and deltas form an ordered stream. Serializing the handlers
+        // keeps a snapshot with an `await` from finishing after a later
+        // event and overwriting a freshly received offer.
         messageQueue.enqueue(
           ownGeneration,
           () => {
@@ -269,8 +269,8 @@ export function openSocket<T extends SocketMessage>(
         });
         if (ws === socket) ws = null;
         if (!closedByUser && ownGeneration === generation) {
-          // Cada transporte físico delimita una generación: un handler que
-          // seguía esperando IO no puede completar dentro de la reconexión.
+          // Each physical transport delimits a generation: a handler that
+          // was still waiting on IO cannot complete inside the reconnection.
           generation = messageQueue.advanceGeneration();
           scheduleReconnect(generation);
         }
@@ -289,9 +289,9 @@ export function openSocket<T extends SocketMessage>(
   const onAppStateChange = (state: AppStateStatus) => {
     if (state !== 'active' || closedByUser) return;
 
-    // Android puede conservar un objeto OPEN/CONNECTING aunque el transporte
-    // haya muerto mientras JS estuvo suspendido. Al volver, reemplazamos siempre
-    // la conexion: el backend cancela la gracia en cuanto entra el nuevo socket.
+    // Android may keep an OPEN/CONNECTING object even though the transport
+    // died while JS was suspended. On return, we always replace
+    // the connection: the backend cancels the grace period as soon as the new socket comes in.
     generation = messageQueue.advanceGeneration();
     clearTimer();
     attempt = 0;

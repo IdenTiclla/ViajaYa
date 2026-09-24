@@ -17,11 +17,11 @@ from app.application.interfaces import (
 
 
 class DispatchRealtimeOutboxBatch:
-    """Reclama un lote y opcionalmente lo entrega antes de confirmarlo.
+    """Claim a batch and optionally deliver it before confirming it.
 
-    Sin publisher conserva el modo sombra: valida y marca sin producir efectos
-    visibles. Con publisher ofrece entrega al menos una vez: una caída después
-    de publicar y antes del commit repetirá el mismo ``event_id``.
+    Without a publisher it keeps shadow mode: it validates and marks without producing
+    visible effects. With a publisher it offers at-least-once delivery: a crash after
+    publishing and before the commit will repeat the same ``event_id``.
     """
 
     def __init__(
@@ -36,9 +36,9 @@ class DispatchRealtimeOutboxBatch:
         completion_clock: Callable[[], datetime] | None = None,
     ) -> None:
         if retry_base_seconds <= 0:
-            raise ValueError("El backoff base debe ser positivo.")
+            raise ValueError("The base backoff must be positive.")
         if retry_max_seconds < retry_base_seconds:
-            raise ValueError("El backoff máximo no puede ser menor al base.")
+            raise ValueError("The maximum backoff cannot be lower than the base.")
         self._outbox = outbox
         self._unit_of_work = unit_of_work
         self._validator = validator
@@ -51,8 +51,8 @@ class DispatchRealtimeOutboxBatch:
         try:
             events = await self._outbox.claim_next_batch(now)
             if not events:
-                # Incluso una lectura abre transacción en SQLAlchemy. Se cierra
-                # explícitamente para que cada iteración use una frontera limpia.
+                # Even a read opens a transaction in SQLAlchemy. It is closed
+                # explicitly so that each iteration uses a clean boundary.
                 await self._unit_of_work.rollback()
                 return DispatchRealtimeOutboxResult(status="empty")
 
@@ -114,13 +114,13 @@ class DispatchRealtimeOutboxBatch:
         )
         if quarantined_count != len(events):
             raise RuntimeError(
-                "La cuarentena no alcanzó a todos los eventos del batch reclamado."
+                "The quarantine did not reach every event of the claimed batch."
             ) from error
         await self._unit_of_work.commit()
         if self._publisher is not None:
-            # El contador del stream ya contiene la versión apartada. Cerrar
-            # después del commit obliga a capturar un watermark que salte el hueco,
-            # incluso si nunca llega un evento N+2 que permita detectarlo.
+            # The stream counter already includes the set-aside version. Closing
+            # after the commit forces capturing a watermark that skips the gap,
+            # even if an N+2 event that would reveal it never arrives.
             resync_task = asyncio.create_task(
                 self._publisher.force_resync(affected_streams),
                 name="realtime-outbox-quarantine-resync",
@@ -128,8 +128,8 @@ class DispatchRealtimeOutboxBatch:
             try:
                 await asyncio.shield(resync_task)
             except asyncio.CancelledError:
-                # La cuarentena ya quedó confirmada y no volverá a reclamarse.
-                # Completar el cierre es parte de esa confirmación terminal.
+                # The quarantine is already confirmed and will not be claimed again.
+                # Completing the close is part of that terminal confirmation.
                 await resync_task
                 raise
         return DispatchRealtimeOutboxResult(
@@ -148,11 +148,11 @@ class DispatchRealtimeOutboxBatch:
         )
 
     def _completed_at(self, fallback: datetime) -> datetime:
-        """Toma el reloj después del intento, no antes de publicar.
+        """Read the clock after the attempt, not before publishing.
 
-        Los tests y adaptadores que todavía no inyectan reloj conservan el
-        instante recibido por compatibilidad. El dispatcher operativo siempre
-        inyecta su reloj real.
+        Tests and adapters that do not inject a clock yet keep the
+        received instant for compatibility. The operational dispatcher always
+        injects its real clock.
         """
         if self._completion_clock is None:
             return fallback

@@ -1,6 +1,6 @@
-"""Schemas Pydantic de la API de autenticación (capa de presentación).
+"""Pydantic schemas of the authentication API (presentation layer).
 
-Separados de las entidades de dominio: definen el contrato HTTP.
+Separate from the domain entities: they define the HTTP contract.
 """
 
 from __future__ import annotations

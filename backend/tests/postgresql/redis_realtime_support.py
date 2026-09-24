@@ -1,4 +1,4 @@
-"""Proceso Uvicorn live_redis para el smoke multiworker."""
+"""live_redis Uvicorn process for the multi-worker smoke."""
 
 from __future__ import annotations
 
@@ -26,12 +26,12 @@ async def _wait_release(release: Any) -> None:
     deadline = asyncio.get_running_loop().time() + _COORDINATION_TIMEOUT_SECONDS
     while not release.is_set():
         if asyncio.get_running_loop().time() >= deadline:
-            raise TimeoutError("La coordinación del restart Redis venció.")
+            raise TimeoutError("The Redis restart coordination timed out.")
         await asyncio.sleep(0.01)
 
 
 class RestartGateRedisRealtimeBridge(RedisRealtimeBridge):
-    """Retiene el primer fallo y el replay de un evento exclusivo de tests."""
+    """Hold the first failure and the replay of a test-only event."""
 
     def __init__(
         self,
@@ -74,7 +74,7 @@ class RestartGateRedisRealtimeBridge(RedisRealtimeBridge):
             except BaseException:
                 self._first_failed.set()
                 raise
-            raise RuntimeError("Redis publicó durante la ventana de caída del test.")
+            raise RuntimeError("Redis published during the test's outage window.")
 
         if self._target_attempts == 2:
             self._replay_reached.set()
@@ -95,10 +95,10 @@ def run_redis_realtime_server_process(
     shutdown: Any,
     shared_presence_enabled: bool = False,
 ) -> None:
-    """Punto de entrada picklable de una réplica API con hub local propio."""
+    """Picklable entry point of an API replica with its own local hub."""
     _validate_test_database_url(database_url)
     if not redis_url.startswith(("redis://", "rediss://")):
-        raise RuntimeError("El smoke multiworker requiere una URL Redis aislada.")
+        raise RuntimeError("The multi-worker smoke requires an isolated Redis URL.")
 
     engine = create_async_engine(database_url, poolclass=NullPool)
     sessions = async_sessionmaker[AsyncSession](engine, expire_on_commit=False)
@@ -176,7 +176,7 @@ def run_redis_restart_server_process(
     """Instancia live_redis con compuertas alrededor de un publish durable."""
     _validate_test_database_url(database_url)
     if not redis_url.startswith(("redis://", "rediss://")):
-        raise RuntimeError("El smoke de restart requiere una URL Redis aislada.")
+        raise RuntimeError("The restart smoke requires an isolated Redis URL.")
 
     engine = create_async_engine(database_url, poolclass=NullPool)
     sessions = async_sessionmaker[AsyncSession](engine, expire_on_commit=False)

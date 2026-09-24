@@ -1,10 +1,10 @@
 /**
- * Segundos restantes hasta un instante objetivo (ISO), actualizado cada segundo.
+ * Seconds left until a target instant (ISO), updated every second.
  *
- * Devuelve `null` si no hay objetivo; nunca baja de 0. Útil para contadores de
- * vida (p. ej. la ventana de negociación de una solicitud de viaje). El valor se
- * calcula en render a partir de un reloj que tickea, para no llamar a setState
- * de forma síncrona dentro del efecto.
+ * Returns `null` when there is no target; never goes below 0. Useful for lifetime
+ * countdowns (e.g. a ride request's negotiation window). The value is
+ * computed during render from a ticking clock, so setState is not called
+ * synchronously inside the effect.
  */
 import { useEffect, useState } from 'react';
 import { AppState } from 'react-native';
@@ -15,8 +15,8 @@ export function useCountdown(target: string | null): number | null {
   useEffect(() => {
     if (!target) return;
     const id = setInterval(() => setNow(Date.now()), 1000);
-    // Al volver a primer plano el intervalo pudo haberse congelado: recalcula
-    // para no mostrar un contador atrasado.
+    // When returning to the foreground the interval may have been frozen: recompute
+    // so a stale countdown is not shown.
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') setNow(Date.now());
     });

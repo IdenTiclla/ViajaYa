@@ -1,4 +1,4 @@
-"""Tests unitarios de los casos de uso de cierre del viaje."""
+"""Unit tests of the ride-closing use cases."""
 
 from __future__ import annotations
 
@@ -44,7 +44,7 @@ from tests.fakes import (
 
 
 class _BarrierRatingRepository(InMemoryRatingRepository):
-    """Hace que dos altas alcancen juntas el límite transaccional del puerto."""
+    """Make two inserts reach the port's transactional limit together."""
 
     def __init__(self, users: InMemoryUserRepository) -> None:
         super().__init__(users)
@@ -265,7 +265,7 @@ async def test_driver_earnings_aggregates_completed():
     await users.add(rider)
     await users.add(driver)
 
-    # Dos viajes completados: uno al fare, otro con oferta aceptada de 30.
+    # Two completed rides: one at the fare, another with an accepted offer of 30.
     r1 = _ride(rider.id, driver.id)
     await rides.add(r1)
     r2 = _ride(rider.id, driver.id)

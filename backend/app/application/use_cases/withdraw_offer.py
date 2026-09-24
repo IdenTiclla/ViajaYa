@@ -1,8 +1,8 @@
-"""Caso de uso: el conductor retira su propia oferta pendiente.
+"""Use case: the driver withdraws their own pending offer.
 
-El conductor desiste de una oferta ``PENDING`` (ya no quiere ese viaje, o la
-quiso mejorar con otra). La oferta muere (pasa a ``REJECTED``) y el pasajero
-deja de verla en vivo por WebSocket.
+The driver gives up a ``PENDING`` offer (they no longer want that ride, or they
+wanted to improve it with another one). The offer dies (it becomes ``REJECTED``) and the passenger
+stops seeing it live over WebSocket.
 """
 
 from __future__ import annotations

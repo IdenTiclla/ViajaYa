@@ -1,4 +1,4 @@
-"""Loops operativos de outbox para los modos sombra y live local."""
+"""Operational outbox loops for the shadow and local live modes."""
 
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ def _utc_now() -> datetime:
 
 
 class ShadowRealtimeOutboxDispatcher:
-    """Drena batches válidos sin enviarlos al hub local ni a Redis."""
+    """Drain valid batches without sending them to the local hub or to Redis."""
 
     def __init__(
         self,
@@ -48,20 +48,20 @@ class ShadowRealtimeOutboxDispatcher:
         process_guard: Callable[[], Awaitable[bool]] | None = None,
     ) -> None:
         if poll_interval_seconds <= 0:
-            raise ValueError("El intervalo de polling debe ser positivo.")
+            raise ValueError("The polling interval must be positive.")
         if retry_base_seconds <= 0:
-            raise ValueError("El backoff base debe ser positivo.")
+            raise ValueError("The base backoff must be positive.")
         if retry_max_seconds < retry_base_seconds:
-            raise ValueError("El backoff máximo no puede ser menor al base.")
+            raise ValueError("The maximum backoff cannot be lower than the base.")
         self._session_factory = session_factory
         self._validator = validator
         self._poll_interval_seconds = poll_interval_seconds
-        # Se conserva para clasificar fallos transitorios cuando exista un
-        # transporte live; los errores de contrato nunca consumen backoff.
+        # Kept to classify transient failures once there is a
+        # live transport; contract errors never consume backoff.
         self._retry_base_seconds = retry_base_seconds
         self._retry_max_seconds = retry_max_seconds
         self._publisher: RealtimeOutboxBatchPublisher | None = None
-        self._mode_label = "sombra"
+        self._mode_label = "shadow"
         self._clock = clock
         self._process_guard = process_guard
         self._stop_event = asyncio.Event()
@@ -77,30 +77,30 @@ class ShadowRealtimeOutboxDispatcher:
 
     @property
     def last_error(self) -> str | None:
-        """Nombre sanitizado del último fallo operativo, si lo hubo."""
+        """Sanitized name of the latest operational failure, if any."""
         return self._last_error
 
     @property
     def quarantined_batch_count(self) -> int:
-        """Cantidad de batches apartados terminalmente desde el arranque."""
+        """Number of batches terminally set aside since startup."""
         return self._quarantined_batch_count
 
     @property
     def last_quarantined_batch_id(self) -> str | None:
-        """Último batch apartado, sin incluir topic ni payload."""
+        """Latest set-aside batch, without topic or payload."""
         return self._last_quarantined_batch_id
 
     @property
     def last_quarantine_code(self) -> str | None:
-        """Código estable del último batch apartado."""
+        """Stable code of the latest set-aside batch."""
         return self._last_quarantine_code
 
     async def preflight(self) -> None:
-        """Falla al arrancar si alguna migración 0018–0021 no está aplicada."""
+        """Fail on startup if any of the 0018–0021 migrations is not applied."""
         async with self._session_factory() as session:
             try:
-                # Seleccionar los modelos completos detecta también una tabla
-                # parcial a la que le falte alguna columna hasta la revisión 0020.
+                # Selecting the full models also detects a partial table
+                # missing any column up to revision 0020.
                 await session.execute(select(RealtimeOutboxModel).limit(1))
                 await session.execute(select(RealtimeAggregateVersionModel).limit(1))
                 await session.execute(select(RealtimeStreamVersionModel).limit(1))
@@ -126,13 +126,13 @@ class ShadowRealtimeOutboxDispatcher:
                 )
                 if incomplete_batch_id is not None:
                     raise RuntimeError(
-                        "La outbox contiene un batch pendiente incompleto."
+                        "The outbox contains an incomplete pending batch."
                     )
             finally:
                 await session.rollback()
 
     async def dispatch_once(self) -> DispatchRealtimeOutboxResult:
-        """Procesa como máximo un batch dentro de una sesión nueva."""
+        """Process at most one batch within a new session."""
         async with self._session_factory() as session:
             use_case = DispatchRealtimeOutboxBatch(
                 SqlAlchemyRealtimeOutbox(session),
@@ -146,11 +146,11 @@ class ShadowRealtimeOutboxDispatcher:
             return await use_case.execute(self._clock())
 
     async def run(self) -> None:
-        """Drena el backlog y espera de forma cancelable cuando queda vacío."""
+        """Drain the backlog and wait cancellably when it is empty."""
         if self._running:
-            raise RuntimeError(f"El dispatcher {self._mode_label} ya está en ejecución.")
+            raise RuntimeError(f"The dispatcher {self._mode_label} is already running.")
         self._running = True
-        logger.info("Dispatcher de outbox iniciado en modo %s.", self._mode_label)
+        logger.info("Outbox dispatcher started in %s mode.", self._mode_label)
         try:
             while not self._stop_event.is_set():
                 if (
@@ -159,7 +159,7 @@ class ShadowRealtimeOutboxDispatcher:
                 ):
                     self._last_error = "RealtimeProcessLockLost"
                     logger.critical(
-                        "El dispatcher %s perdió su lock de proceso y se detendrá.",
+                        "Dispatcher %s lost its process lock and will stop.",
                         self._mode_label,
                     )
                     break
@@ -171,7 +171,7 @@ class ShadowRealtimeOutboxDispatcher:
                 except Exception as error:  # noqa: BLE001 - loop resiliente
                     self._last_error = type(error).__name__
                     logger.error(
-                        "Falló una iteración del dispatcher %s (%s).",
+                        "A dispatcher %s iteration failed (%s).",
                         self._mode_label,
                         self._last_error,
                     )
@@ -185,22 +185,22 @@ class ShadowRealtimeOutboxDispatcher:
                     self._last_quarantined_batch_id = str(result.batch_id)
                     self._last_quarantine_code = result.quarantine_code
                     logger.error(
-                        "El dispatcher %s puso en cuarentena terminal "
-                        "el batch %s (%s).",
+                        "Dispatcher %s terminally quarantined "
+                        "batch %s (%s).",
                         self._mode_label,
                         self._last_quarantined_batch_id,
                         self._last_quarantine_code,
                     )
                 elif result.status == "failed":
                     logger.warning(
-                        "El dispatcher %s reprogramó el batch %s (%s eventos).",
+                        "Dispatcher %s rescheduled batch %s (%s events).",
                         self._mode_label,
                         result.batch_id,
                         result.event_count,
                     )
         finally:
             self._running = False
-            logger.info("Dispatcher de outbox %s detenido.", self._mode_label)
+            logger.info("Outbox dispatcher %s stopped.", self._mode_label)
 
     def stop(self) -> None:
         """Solicita un cierre coordinado y despierta el polling actual."""
@@ -217,7 +217,7 @@ class ShadowRealtimeOutboxDispatcher:
 
 
 class LocalRealtimeOutboxDispatcher(ShadowRealtimeOutboxDispatcher):
-    """Publica envelopes v2 al hub local antes de confirmar cada batch."""
+    """Publish v2 envelopes to the local hub before confirming each batch."""
 
     def __init__(
         self,

@@ -1,4 +1,4 @@
-"""Certificación PostgreSQL de correlación durable y rolling deploy 0023."""
+"""PostgreSQL certification of durable correlation and the 0023 rolling deploy."""
 
 from __future__ import annotations
 

@@ -176,7 +176,7 @@ async def _scenario(app, sessions) -> AsyncIterator[_FaultScenario]:
                     )
                     if cancelled.status_code != 200:
                         cleanup_errors.append(
-                            f"cancel devolvió {cancelled.status_code}"
+                            f"cancel returned {cancelled.status_code}"
                         )
                 offline = await client.post(
                     "/api/v1/drivers/me/online",
@@ -184,17 +184,17 @@ async def _scenario(app, sessions) -> AsyncIterator[_FaultScenario]:
                     json={"is_online": False},
                 )
                 if offline.status_code != 200:
-                    cleanup_errors.append(f"offline devolvió {offline.status_code}")
+                    cleanup_errors.append(f"offline returned {offline.status_code}")
                 try:
                     await network_support._wait_until_drained(client)
                 except BaseException as error:
-                    cleanup_errors.append(f"drenado falló: {type(error).__name__}")
+                    cleanup_errors.append(f"drain failed: {type(error).__name__}")
                 for ride_id in scenario.created_ride_ids:
                     try:
                         await _delete_test_quarantines(sessions, ride_id)
                     except BaseException as error:
                         cleanup_errors.append(
-                            "limpieza de cuarentena falló: "
+                            "quarantine cleanup failed: "
                             f"{type(error).__name__}"
                         )
                 if cleanup_errors and primary_error is None:
@@ -243,7 +243,7 @@ async def _delete_test_quarantines(
     sessions: async_sessionmaker[AsyncSession],
     ride_id: str,
 ) -> None:
-    """Retira cuarentenas del ride propio para permitir el downgrade de tests."""
+    """Remove our ride's quarantines to allow the test downgrade."""
     async with sessions() as session:
         await session.execute(
             delete(RealtimeOutboxModel).where(
@@ -277,7 +277,7 @@ def _assert_background_state_clean() -> None:
     assert not presence._last_seen
 
 
-async def test_duplicate_repite_identidad_y_snapshot_no_duplica_estado(
+async def test_duplicate_repeats_identity_and_snapshot_does_not_duplicate_state(
     pg_test_db,
 ) -> None:
     app, sessions, controller = _fault_app(pg_test_db)
@@ -323,7 +323,7 @@ async def test_duplicate_repite_identidad_y_snapshot_no_duplica_estado(
     _assert_background_state_clean()
 
 
-async def test_gap_omite_n_mas_uno_y_snapshot_recupera_n_mas_tres(
+async def test_gap_skips_n_plus_one_and_snapshot_recovers_n_plus_three(
     pg_test_db,
 ) -> None:
     app, sessions, controller = _fault_app(pg_test_db)
@@ -373,7 +373,7 @@ async def test_gap_omite_n_mas_uno_y_snapshot_recupera_n_mas_tres(
     _assert_background_state_clean()
 
 
-async def test_quarantine_cierra_1012_y_snapshot_salta_evento_terminal(
+async def test_quarantine_closes_1012_and_snapshot_skips_the_terminal_event(
     pg_test_db,
 ) -> None:
     app, sessions, controller = _fault_app(pg_test_db)

@@ -1,4 +1,4 @@
-"""Migración, backfill y concurrencia real de ``scheduled_actions``."""
+"""Migration, backfill and real concurrency of ``scheduled_actions``."""
 
 from __future__ import annotations
 
@@ -47,7 +47,7 @@ async def _table_exists(pg_test_db) -> bool:
         )
 
 
-async def test_upgrade_backfill_y_downgrade_seguro_0022(pg_test_db) -> None:
+async def test_upgrade_backfill_and_safe_downgrade_0022(pg_test_db) -> None:
     await pg_test_db.purge_accounts()
     await pg_test_db.migrate_async("downgrade", _REVISION_0021)
     user_ids: list[uuid.UUID] = []
@@ -223,7 +223,7 @@ async def test_upgrade_backfill_y_downgrade_seguro_0022(pg_test_db) -> None:
 
         with pytest.raises(
             RuntimeError,
-            match="trabajo pendiente o reclamado",
+            match="pending or claimed work",
         ):
             await pg_test_db.migrate_async("downgrade", _REVISION_0021)
         assert await _table_exists(pg_test_db)
@@ -256,7 +256,7 @@ def _pending(key: str, execute_at: datetime) -> PendingScheduledAction:
     )
 
 
-async def test_skip_locked_reparte_acciones_sin_solaparlas(pg_test_db) -> None:
+async def test_skip_locked_splits_actions_without_overlap(pg_test_db) -> None:
     sessions = async_sessionmaker(pg_test_db.engine, expire_on_commit=False)
     now = datetime.now(UTC)
     keys = [f"expire_offer:{uuid.uuid4()}" for _ in range(2)]
@@ -296,7 +296,7 @@ async def test_skip_locked_reparte_acciones_sin_solaparlas(pg_test_db) -> None:
     assert len(set(action_ids)) == 2
 
 
-async def test_reclaim_invalida_el_token_del_worker_anterior(pg_test_db) -> None:
+async def test_reclaim_invalidates_the_previous_worker_token(pg_test_db) -> None:
     sessions = async_sessionmaker(pg_test_db.engine, expire_on_commit=False)
     now = datetime.now(UTC)
     key = f"expire_offer:{uuid.uuid4()}"
@@ -347,7 +347,7 @@ async def test_reclaim_invalida_el_token_del_worker_anterior(pg_test_db) -> None
             )
 
 
-async def test_snapshot_operativo_cuenta_due_y_lease_stale_en_postgresql(
+async def test_operational_snapshot_counts_due_and_stale_leases_on_postgresql(
     pg_test_db,
 ) -> None:
     sessions = async_sessionmaker(pg_test_db.engine, expire_on_commit=False)

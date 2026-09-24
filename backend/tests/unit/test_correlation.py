@@ -1,4 +1,4 @@
-"""Contrato de correlación HTTP y aislamiento entre solicitudes concurrentes."""
+"""HTTP correlation contract and isolation between concurrent requests."""
 
 from __future__ import annotations
 
@@ -65,7 +65,7 @@ async def test_replaces_invalid_request_id_without_logging_query(caplog) -> None
     with caplog.at_level(logging.INFO, logger="app.infrastructure.correlation"):
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             response = await client.get(
-                "/probe?token=no-debe-loguearse",
+                "/probe?token=must-not-be-logged",
                 headers={REQUEST_ID_HEADER: "valor-invalido"},
             )
 
@@ -74,7 +74,7 @@ async def test_replaces_invalid_request_id_without_logging_query(caplog) -> None
         "context": str(generated),
         "state": str(generated),
     }
-    assert "no-debe-loguearse" not in caplog.text
+    assert "must-not-be-logged" not in caplog.text
     assert "valor-invalido" not in caplog.text
 
 

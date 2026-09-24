@@ -71,7 +71,7 @@ def _row(
         aggregate_id=aggregate_id,
         generation=1,
         execute_at=now + timedelta(seconds=execute_offset),
-        payload={"dato_privado": "no-exponer"},
+        payload={"dato_privado": "do-not-expose"},
         status=status,
         attempts=attempts,
         next_attempt_at=now
@@ -121,7 +121,7 @@ async def _get(app, path: str):
         return await client.get(path)
 
 
-async def test_snapshot_cuenta_due_retries_leases_y_dead_sin_payloads(
+async def test_snapshot_counts_due_retries_leases_and_dead_without_payloads(
     sessions,
 ) -> None:
     now = datetime.now(UTC)
@@ -146,7 +146,7 @@ async def test_snapshot_cuenta_due_retries_leases_y_dead_sin_payloads(
     assert "dato_privado" not in repr(snapshot)
 
 
-async def test_next_due_respeta_el_backoff_y_no_el_deadline_original(sessions) -> None:
+async def test_next_due_respects_the_backoff_not_the_original_deadline(sessions) -> None:
     now = datetime.now(UTC)
     async with sessions() as session:
         session.add(
@@ -169,7 +169,7 @@ async def test_next_due_respeta_el_backoff_y_no_el_deadline_original(sessions) -
     assert snapshot.next_due_at == now + timedelta(seconds=45)
 
 
-async def test_health_scheduled_actions_off_no_exige_tabla() -> None:
+async def test_health_scheduled_actions_off_does_not_require_the_table() -> None:
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     try:
@@ -185,7 +185,7 @@ async def test_health_scheduled_actions_off_no_exige_tabla() -> None:
     assert response.json() == {"status": "disabled", "mode": "off"}
 
 
-async def test_health_shadow_expone_solo_agregados(sessions) -> None:
+async def test_health_shadow_exposes_only_aggregates(sessions) -> None:
     now = datetime.now(UTC)
     await _seed(sessions, now)
     app = create_app(
@@ -216,7 +216,7 @@ async def test_health_shadow_expone_solo_agregados(sessions) -> None:
     assert "dato_privado" not in response.text
 
 
-async def test_health_falla_cerrado_sin_filtrar_error(sessions, caplog) -> None:
+async def test_health_fails_closed_without_leaking_the_error(sessions, caplog) -> None:
     secret = "payload-super-secreto"
 
     class FailingUseCase:

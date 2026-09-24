@@ -1,4 +1,4 @@
-/** Cola serial por generación para descartar callbacks de sockets reemplazados. */
+/** Serial queue per generation to discard callbacks of replaced sockets. */
 
 export type GenerationMessageQueue = {
   currentGeneration: () => number;
@@ -33,8 +33,8 @@ export function createGenerationMessageQueue(): GenerationMessageQueue {
     currentGeneration: () => generation,
     advanceGeneration: () => {
       generation += 1;
-      // La conexión nueva no espera a un handler viejo que podría quedar
-      // bloqueado en IO. Su cadena continúa aislada y los guards la descartan.
+      // The new connection does not wait for an old handler that could stay
+      // blocked on IO. Its chain continues in isolation and the guards discard it.
       queue = Promise.resolve();
       return generation;
     },

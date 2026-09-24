@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
-import { fontSize, fontWeight, spacing, useEstilos, type Tema } from '@/core/theme';
+import { fontSize, fontWeight, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import { Button, TextField } from '@/shared/components';
 import { useAuthStore } from '@/store/authStore';
 import { getInstallationId } from '../data/installationId';
@@ -11,7 +11,7 @@ import type { AccountSession } from '../domain/phoneAccess';
 import { PhoneCodeForm } from './PhoneCodeForm';
 
 export function AccountSecurityPanel() {
-  const { styles } = useEstilos(createStyles);
+  const { styles } = useThemedStyles(createStyles);
   const user = useAuthStore((state) => state.user);
   const [sessions, setSessions] = useState<AccountSession[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -98,7 +98,7 @@ export function AccountSecurityPanel() {
   );
 }
 
-const createStyles = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   container: { alignSelf: 'stretch', gap: spacing.md, marginTop: spacing.lg },
   title: { fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.text },
   text: { fontSize: fontSize.sm, color: colors.textSecondary },

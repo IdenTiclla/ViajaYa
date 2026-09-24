@@ -15,7 +15,7 @@ class CreateSavedPlace:
         self._places = places
 
     async def execute(self, user_id: uuid.UUID, data: SaveSavedPlaceInput) -> SavedPlace:
-        # Valida el rango de las coordenadas (regla de dominio).
+        # Validates the coordinates' range (domain rule).
         point = ServiceAreaPoint(
             data.location.latitude,
             data.location.longitude,

@@ -103,13 +103,13 @@ class ScheduledActionsHealthResponse(BaseModel):
 
 @router.get("/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
-    """Contrato de liveness histórico, conservado sin cambios."""
+    """Historical liveness contract, kept unchanged."""
     return HealthResponse()
 
 
 @router.get("/health/live", response_model=HealthResponse)
 async def liveness() -> HealthResponse:
-    """Solo certifica que el proceso puede responder; no consulta dependencias."""
+    """Only certifies that the process can respond; it does not query dependencies."""
     return HealthResponse()
 
 
@@ -123,7 +123,7 @@ async def readiness(
     settings: SettingsDep,
     session_factory: SessionFactoryDep,
 ) -> ReadinessResponse | JSONResponse:
-    """Comprueba PostgreSQL y los workers habilitados, sin filtrar errores."""
+    """Check PostgreSQL and the enabled workers without leaking errors."""
     database_ready = True
     try:
         async with asyncio.timeout(2):
@@ -133,7 +133,7 @@ async def readiness(
     except Exception as error:  # noqa: BLE001 - probe sanitario
         database_ready = False
         logger.warning(
-            "Falló el probe de readiness de PostgreSQL (%s).",
+            "PostgreSQL readiness probe failed (%s).",
             type(error).__name__,
         )
 
@@ -173,7 +173,7 @@ async def readiness(
         presence_store = request.app.state.passenger_presence_store
         try:
             if presence_store is None:
-                raise RuntimeError("Presencia compartida no inicializada.")
+                raise RuntimeError("Shared presence is not initialized.")
             await asyncio.wait_for(presence_store.check(), timeout=2)
             presence_ready = presence_store.healthy
         except Exception:  # noqa: BLE001 - probe sanitario fail-closed
@@ -193,8 +193,8 @@ async def readiness(
             process_lock_ready = False
         process_lock_status = "ok" if process_lock_ready else "error"
         if not process_lock_ready and dispatcher is not None:
-            # La pérdida de la sesión libera el advisory lock en PostgreSQL.
-            # Detener el consumidor evita dos claims mientras el pod se repone.
+            # Losing the session releases the advisory lock in PostgreSQL.
+            # Stopping the consumer avoids two claims while the pod recovers.
             dispatcher.stop()
 
     retention_ready = True
@@ -274,7 +274,7 @@ async def realtime_health(
     settings: SettingsDep,
     use_case: RealtimeOutboxOperationalSnapshotDep,
 ) -> RealtimeHealthResponse | JSONResponse:
-    """Expone métricas acotadas de outbox sin topics, payloads ni errores."""
+    """Expose bounded outbox metrics without topics, payloads or errors."""
     mode = settings.realtime_outbox_dispatch_mode
     retention_days = settings.realtime_outbox_published_retention_days
     if mode == "off" and retention_days == 0:
@@ -289,7 +289,7 @@ async def realtime_health(
             snapshot = await use_case.execute(datetime.now(UTC))
     except Exception as error:  # noqa: BLE001 - probe sanitario
         logger.warning(
-            "Falló el snapshot operativo de la outbox (%s).",
+            "Outbox operational snapshot failed (%s).",
             type(error).__name__,
         )
         response = RealtimeHealthResponse(
@@ -399,7 +399,7 @@ async def scheduled_actions_health(
     settings: SettingsDep,
     use_case: ScheduledActionsOperationalSnapshotDep,
 ) -> ScheduledActionsHealthResponse | JSONResponse:
-    """Expone backlog y leases agregados, nunca payloads ni identificadores."""
+    """Expose aggregated backlog and leases, never payloads or identifiers."""
     mode = settings.scheduled_actions_mode
     if mode == "off":
         return ScheduledActionsHealthResponse(status="disabled", mode=mode)
@@ -412,7 +412,7 @@ async def scheduled_actions_health(
             )
     except Exception as error:  # noqa: BLE001 - probe sanitario
         logger.warning(
-            "Falló el snapshot operativo de scheduled_actions (%s).",
+            "scheduled_actions operational snapshot failed (%s).",
             type(error).__name__,
         )
         response = ScheduledActionsHealthResponse(

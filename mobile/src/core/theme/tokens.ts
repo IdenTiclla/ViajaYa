@@ -1,9 +1,9 @@
 /**
- * Design tokens de ViajaYa, derivados del diseño en Stitch.
- * Única fuente de verdad de colores, espaciado, tipografía y radios (DRY).
+ * ViajaYa design tokens, derived from the Stitch design.
+ * Single source of truth for colors, spacing, typography and radii (DRY).
  */
 
-export const coloresClaros = {
+export const lightColors = {
   // Marca
   primary: '#16308C', // azul principal (botones, marca)
   primaryDark: '#0F2266',
@@ -17,36 +17,36 @@ export const coloresClaros = {
   surface: '#FFFFFF',
   surfaceMuted: '#F3F5F8', // fondo de inputs / tarjetas
   border: '#DCE2EB', // separadores decorativos
-  bordeControl: '#7D8796', // contorno visible de campos y controles sin seleccionar
-  primarioSuave: '#EDF2FF',
+  controlBorder: '#7D8796', // contorno visible de campos y controles sin seleccionar
+  primarySoft: '#EDF2FF',
 
   // Texto
   text: '#182230',
   textSecondary: '#536174',
   textOnPrimary: '#FFFFFF',
   placeholder: '#667085',
-  fondoDeshabilitado: '#E5E9F0',
-  textoDeshabilitado: '#536174',
+  disabledBackground: '#E5E9F0',
+  disabledText: '#536174',
 
   // Estado
   danger: '#C52C22',
   success: '#167347',
-  peligroSuave: '#FFF0EE',
-  bordePeligro: '#F5C6C2',
-  exitoSuave: '#E8F5EE',
-  aviso: '#806000',
-  avisoSuave: '#FFF7DA',
-  textoSobreAcento: '#352900',
-  mapaTierra: '#EEF1F5',
-  mapaAgua: '#BEDDEC',
-  mapaCalle: '#FFFFFF',
-  mapaPrincipal: '#DDE4EC',
-  mapaEtiqueta: '#536174',
-  mapaContorno: '#FFFFFF',
-  mapaParque: '#D8E8DE',
-  // Detalles del vehículo: conservan su identidad sobre ambos estilos de mapa.
-  vehiculoContorno: '#162238',
-  vehiculoReflejo: '#E8F7FF',
+  dangerSoft: '#FFF0EE',
+  dangerBorder: '#F5C6C2',
+  successSoft: '#E8F5EE',
+  warning: '#806000',
+  warningSoft: '#FFF7DA',
+  textOnAccent: '#352900',
+  mapLand: '#EEF1F5',
+  mapWater: '#BEDDEC',
+  mapStreet: '#FFFFFF',
+  mapMainRoad: '#DDE4EC',
+  mapLabel: '#536174',
+  mapOutline: '#FFFFFF',
+  mapPark: '#D8E8DE',
+  // Vehicle details: they keep their identity on both map styles.
+  vehicleOutline: '#162238',
+  vehicleReflection: '#E8F7FF',
 
   // Social
   google: '#FFFFFF',
@@ -54,59 +54,59 @@ export const coloresClaros = {
   facebook: '#1877F2',
 } as const;
 
-export type Colors = { [Clave in keyof typeof coloresClaros]: string };
-export type ModoTema = 'light' | 'dark';
+export type Colors = { [Clave in keyof typeof lightColors]: string };
+export type ThemeMode = 'light' | 'dark';
 
-export const coloresOscuros: Colors = {
-  ...coloresClaros,
+export const darkColors: Colors = {
+  ...lightColors,
   primary: '#A8BDFF',
   primaryDark: '#8DA8F7',
   background: '#10151F',
   surface: '#192230',
   surfaceMuted: '#222D3D',
   border: '#3B485C',
-  bordeControl: '#8999AF',
-  primarioSuave: '#273856',
+  controlBorder: '#8999AF',
+  primarySoft: '#273856',
   text: '#F3F6FC',
   textSecondary: '#B9C5D6',
   textOnPrimary: '#10204E',
   placeholder: '#AAB8CC',
-  fondoDeshabilitado: '#2D3849',
-  textoDeshabilitado: '#ADBACD',
+  disabledBackground: '#2D3849',
+  disabledText: '#ADBACD',
   danger: '#FFAAA2',
   success: '#83DEAE',
-  peligroSuave: '#43292D',
-  bordePeligro: '#885057',
-  exitoSuave: '#193C31',
-  aviso: '#F5D76B',
-  avisoSuave: '#382F15',
+  dangerSoft: '#43292D',
+  dangerBorder: '#885057',
+  successSoft: '#193C31',
+  warning: '#F5D76B',
+  warningSoft: '#382F15',
   facebook: '#85BAFF',
-  mapaTierra: '#172231',
-  mapaAgua: '#0D1725',
-  mapaCalle: '#334155',
-  mapaPrincipal: '#43536A',
-  mapaEtiqueta: '#CBD5E1',
-  mapaContorno: '#172231',
-  mapaParque: '#203A34',
+  mapLand: '#172231',
+  mapWater: '#0D1725',
+  mapStreet: '#334155',
+  mapMainRoad: '#43536A',
+  mapLabel: '#CBD5E1',
+  mapOutline: '#172231',
+  mapPark: '#203A34',
 };
 
-/** Claro es el valor inicial de la app, independiente del teléfono. */
-export const TEMA_PREDETERMINADO: ModoTema = 'light';
+/** Light is the app's initial value, independent of the phone. */
+export const DEFAULT_THEME_MODE: ThemeMode = 'light';
 
-export function resolverModoTema(valor: unknown): ModoTema {
-  return valor === 'dark' ? 'dark' : TEMA_PREDETERMINADO;
+export function resolveThemeMode(valor: unknown): ThemeMode {
+  return valor === 'dark' ? 'dark' : DEFAULT_THEME_MODE;
 }
 
-export function obtenerTema(modo: ModoTema) {
-  const colors: Colors = modo === 'dark' ? coloresOscuros : coloresClaros;
+export function getTheme(mode: ThemeMode) {
+  const colors: Colors = mode === 'dark' ? darkColors : lightColors;
   return {
-    modo,
+    mode,
     colors,
-    estiloFoco: { outlineColor: colors.primary, outlineWidth: 2, outlineOffset: 2 } as const,
+    focusStyle: { outlineColor: colors.primary, outlineWidth: 2, outlineOffset: 2 } as const,
   };
 }
 
-export type Tema = ReturnType<typeof obtenerTema>;
+export type Theme = ReturnType<typeof getTheme>;
 
 export const spacing = {
   xs: 4,
@@ -140,7 +140,7 @@ export const fontWeight = {
   bold: '700',
 } as const;
 
-/** Tamaño táctil mínimo; la altura puede crecer con el texto del sistema. */
-export const controles = { altoMinimo: 48 } as const;
+/** Minimum touch size; the height can grow with the system text. */
+export const controls = { minHeight: 48 } as const;
 
 export type Spacing = typeof spacing;

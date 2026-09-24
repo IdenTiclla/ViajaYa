@@ -1,11 +1,11 @@
 /**
- * Hooks de consulta del flujo de viaje (React Query).
+ * Query hooks of the ride flow (React Query).
  *
- * El tiempo real lo empuja el **WebSocket** (ver `useNegotiationSocket` /
- * `useDriverPoolSocket`), que muta esta misma caché. El `refetchInterval` queda
- * solo como **respaldo lento** por si el socket se cae (resiliencia), no como la
- * vía principal. Las consultas de un viaje concreto dejan de refrescarse cuando
- * el viaje llega a un estado terminal (`completed`/`cancelled`).
+ * Real time is pushed by the **WebSocket** (see `useNegotiationSocket` /
+ * `useDriverPoolSocket`), which mutates this same cache. `refetchInterval` remains
+ * only as a **slow fallback** in case the socket drops (resilience), not as the
+ * main path. Queries for a specific ride stop refreshing once
+ * the ride reaches a terminal status (`completed`/`cancelled`).
  */
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
@@ -17,7 +17,7 @@ import {
 import { ridesRepository } from '@/features/rides/data/ridesRepository';
 import type { Ride } from '@/features/rides/domain/types';
 
-// Respaldo lento: el WebSocket es la vía principal de actualización.
+// Slow fallback: the WebSocket is the main update path.
 const POLL_OFFERS_MS = 15000;
 const POLL_RIDE_MS = 15000;
 const POLL_OPEN_MS = 20000;
@@ -31,7 +31,7 @@ function isTerminal(status: Ride['status'] | undefined): boolean {
   return status === 'completed' || status === 'cancelled';
 }
 
-/** Conductor: solicitudes abiertas de su tipo de vehículo. */
+/** Driver: open requests for their vehicle type. */
 export function useOpenRides(enabled = true) {
   const query = useInfiniteQuery({
     queryKey: ['open-rides'],
@@ -55,7 +55,7 @@ export function useOpenRides(enabled = true) {
   };
 }
 
-/** Pasajero: ofertas pendientes recibidas para su viaje. */
+/** Passenger: pending offers received for their ride. */
 export function useRideOffers(
   rideId: string | null,
   enabled = true,
@@ -95,7 +95,7 @@ export function useRide(rideId: string | null) {
   };
 }
 
-/** Pasajero: solicitud o viaje vigente, incluso si esta pausado para editar. */
+/** Passenger: current request or ride, even if it is paused for editing. */
 export function usePassengerActiveRide() {
   const queryClient = useQueryClient();
   const query = useQuery({
@@ -106,8 +106,8 @@ export function usePassengerActiveRide() {
       isTerminal(q.state.data?.status) ? false : POLL_ACTIVE_MS,
   });
 
-  // El endpoint activo devuelve el mismo contrato que el detalle. Compartirlo
-  // evita una segunda carga al recuperar Offers, Configure o Trip.
+  // The active endpoint returns the same contract as the detail. Sharing it
+  // avoids a second load when recovering Offers, Configure or Trip.
   useEffect(() => {
     if (query.data) {
       copyPassengerActiveRideToDetail(
@@ -128,7 +128,7 @@ export function usePassengerActiveRide() {
   };
 }
 
-/** Conductor: viaje activo asignado (para saber si ya fue elegido). */
+/** Driver: assigned active ride (to know whether they were already chosen). */
 export function useDriverActiveRide(
   enabled = true,
 ) {

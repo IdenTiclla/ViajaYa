@@ -1,10 +1,10 @@
 /**
- * Pantalla "¿A dónde vamos?" — primer paso tras fijar el origen.
+ * "¿A dónde vamos?" screen — first step after setting the origin.
  *
- * La barra de búsqueda autocompleta lugares con Google Places (sesgados hacia
- * el origen) en cuanto se escriben ≥ 3 caracteres. Sin término buscable se
- * muestran los atajos a lugares guardados (Casa/Trabajo + favoritos), el acceso
- * para fijar la ubicación en el mapa y los destinos recientes.
+ * The search bar autocompletes places with Google Places (biased toward
+ * the origin) as soon as ≥ 3 characters are typed. Without a searchable term it
+ * shows the shortcuts to saved places (Casa/Trabajo + favorites), the entry
+ * to set the location on the map, and the recent destinations.
  */
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -25,12 +25,12 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
-import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
 import { usePlaceSearch } from '@/features/booking/application/usePlaceSearch';
 import { useRecentDestinations } from '@/features/booking/application/useRecentDestinations';
 import { findByCategory, useSavedPlaces } from '@/features/booking/application/useSavedPlaces';
-import { useSeleccionDestino } from '@/features/booking/application/useSeleccionDestino';
+import { useDestinationSelection } from '@/features/booking/application/useDestinationSelection';
 import type {
   Place,
   PlaceSuggestion,
@@ -47,15 +47,15 @@ function placeErrorMessage(error: unknown): string {
 }
 
 export function DestinationSearchScreen() {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { fontScale } = useWindowDimensions();
-  const buscador = useRef<TextInput>(null);
+  const searchBar = useRef<TextInput>(null);
   const { rideId } = useLocalSearchParams<{ rideId?: string }>();
   const origin = useBookingStore((s) => s.origin);
   const setDestination = useBookingStore((s) => s.setDestination);
-  const { places, isLoading, isError: recientesError, error: errorRecientes, refetch: reintentarRecientes } = useRecentDestinations();
+  const { places, isLoading, isError: recentsError, error: recentsLoadError, refetch: retryRecents } = useRecentDestinations();
   const {
     places: saved,
     isLoading: savedPlacesLoading,
@@ -64,7 +64,7 @@ export function DestinationSearchScreen() {
     refetch: refetchSavedPlaces,
   } = useSavedPlaces();
   const [query, setQuery] = useState('');
-  const [buscadorEnfocado, setBuscadorEnfocado] = useState(false);
+  const [searchFocused, setSearchFocused] = useState(false);
 
   const {
     suggestions,
@@ -79,8 +79,8 @@ export function DestinationSearchScreen() {
   const goToConfigure = (place: Place) => {
     Keyboard.dismiss();
     setDestination(place);
-    // En edición cierra las pantallas auxiliares hacia el Configure original;
-    // en creación, dismissTo reemplaza la pantalla actual si aún no existe.
+    // In edit mode it closes the auxiliary screens back to the original Configure;
+    // when creating, dismissTo replaces the current screen if it does not exist yet.
     router.dismissTo({
       pathname: '/booking/configure',
       params: rideId ? { rideId } : {},
@@ -88,35 +88,35 @@ export function DestinationSearchScreen() {
   };
 
   const {
-    resolviendoId: resolvingId,
-    errorSeleccion: selectionError,
-    seleccionarSugerencia: selectSuggestion,
-    seleccionarLugar,
-    cancelarSeleccion,
-  } = useSeleccionDestino(resolve, goToConfigure);
+    resolvingId,
+    selectionError,
+    selectSuggestion,
+    selectPlace,
+    cancelSelection,
+  } = useDestinationSelection(resolve, goToConfigure);
 
-  // También invalida la selección al salir con el gesto o botón del sistema.
-  useFocusEffect(useCallback(() => () => cancelarSeleccion(), [cancelarSeleccion]));
+  // Also invalidates the selection when leaving with the system gesture or button.
+  useFocusEffect(useCallback(() => () => cancelSelection(), [cancelSelection]));
 
-  const abrirMapa = () => {
-    cancelarSeleccion();
+  const openMap = () => {
+    cancelSelection();
     Keyboard.dismiss();
     router.push({ pathname: '/booking/pick-on-map', params: rideId ? { rideId } : {} });
   };
 
-  const cambiarBusqueda = (texto: string) => {
-    cancelarSeleccion();
-    setQuery(texto);
+  const changeSearch = (text: string) => {
+    cancelSelection();
+    setQuery(text);
   };
 
-  // Atajo Casa/Trabajo: si ya está guardado, lo usa como destino; si no, abre
-  // el flujo para fijarlo (mapa → nombrar/guardar) con la categoría puesta.
+  // Casa/Trabajo shortcut: if it is already saved, use it as the destination; if not, open
+  // the flow to set it (map → name/save) with the category preset.
   const onShortcut = (category: SavedPlaceCategory) => {
     if (savedPlacesError || savedPlacesLoading) return;
-    cancelarSeleccion();
+    cancelSelection();
     const existing = findByCategory(saved, category);
     if (existing) {
-      seleccionarLugar(existing.place);
+      selectPlace(existing.place);
     } else {
       router.push({
         pathname: '/booking/pick-on-map',
@@ -131,22 +131,22 @@ export function DestinationSearchScreen() {
         <View style={styles.header}>
           <TouchableOpacity
             style={styles.back}
-            onPress={() => { cancelarSeleccion(); router.back(); }}
+            onPress={() => { cancelSelection(); router.back(); }}
             accessibilityRole="button"
             accessibilityLabel="Volver">
             <Ionicons name="arrow-back" size={24} color={colors.text} />
           </TouchableOpacity>
-          <View style={[styles.searchBar, buscadorEnfocado && styles.searchBarFocused]}>
+          <View style={[styles.searchBar, searchFocused && styles.searchBarFocused]}>
             <Ionicons name="search" size={20} color={colors.placeholder} />
             <TextInput
-              ref={buscador}
+              ref={searchBar}
               style={styles.searchInput}
               placeholder="Buscar destino"
               placeholderTextColor={colors.placeholder}
               value={query}
-              onChangeText={cambiarBusqueda}
-              onFocus={() => setBuscadorEnfocado(true)}
-              onBlur={() => setBuscadorEnfocado(false)}
+              onChangeText={changeSearch}
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => setSearchFocused(false)}
               accessibilityLabel="Buscar destino"
               accessibilityHint="Escribe al menos 3 caracteres para buscar lugares."
               autoCorrect={false}
@@ -156,7 +156,7 @@ export function DestinationSearchScreen() {
             {query.length > 0 && (
               <TouchableOpacity
                 style={styles.clearSearch}
-                onPress={() => { cambiarBusqueda(''); buscador.current?.focus(); }}
+                onPress={() => { changeSearch(''); searchBar.current?.focus(); }}
                 accessibilityRole="button"
                 accessibilityLabel="Borrar búsqueda">
                 <Ionicons name="close-circle" size={20} color={colors.placeholder} />
@@ -172,7 +172,7 @@ export function DestinationSearchScreen() {
 
         {isActive && (
           <View style={styles.mapAction}>
-            <Button title="Elegir en el mapa" variant="secondary" leadingIcon="map-outline" onPress={abrirMapa} />
+            <Button title="Elegir en el mapa" variant="secondary" leadingIcon="map-outline" onPress={openMap} />
           </View>
         )}
 
@@ -201,7 +201,7 @@ export function DestinationSearchScreen() {
             ) : null}
             <TouchableOpacity
               style={[styles.wideCard, fontScale > 1.3 && styles.wideCardColumn]}
-              onPress={abrirMapa}
+              onPress={openMap}
               accessibilityRole="button"
               accessibilityLabel="Seleccionar en el mapa, fija la ubicación manualmente">
               <View style={[styles.cardIcon, styles.mapIcon]}>
@@ -234,7 +234,7 @@ export function DestinationSearchScreen() {
                 place={findByCategory(saved, 'home')}
                 disabled={savedPlacesError || savedPlacesLoading}
                 loading={savedPlacesLoading}
-                enColumna={fontScale > 1.3}
+                inColumn={fontScale > 1.3}
                 onPress={() => onShortcut('home')}
               />
               <ShortcutCard
@@ -242,7 +242,7 @@ export function DestinationSearchScreen() {
                 place={findByCategory(saved, 'work')}
                 disabled={savedPlacesError || savedPlacesLoading}
                 loading={savedPlacesLoading}
-                enColumna={fontScale > 1.3}
+                inColumn={fontScale > 1.3}
                 onPress={() => onShortcut('work')}
               />
             </View>
@@ -250,7 +250,7 @@ export function DestinationSearchScreen() {
             <TouchableOpacity
               style={[styles.wideCard, fontScale > 1.3 && styles.wideCardColumn]}
               onPress={() => {
-                cancelarSeleccion();
+                cancelSelection();
                 router.push({
                   pathname: '/booking/saved-places',
                   params: rideId ? { rideId } : {},
@@ -272,7 +272,7 @@ export function DestinationSearchScreen() {
               {fontScale <= 1.3 && <Ionicons name="chevron-forward" size={20} color={colors.placeholder} />}
             </TouchableOpacity>
 
-            <RecentDestinations places={places} isLoading={isLoading} error={recientesError ? getApiErrorMessage(errorRecientes) : null} onRetry={reintentarRecientes} onSelect={seleccionarLugar} />
+            <RecentDestinations places={places} isLoading={isLoading} error={recentsError ? getApiErrorMessage(recentsLoadError) : null} onRetry={retryRecents} onSelect={selectPlace} />
           </ScrollView>
         )}
       </KeyboardAvoidingView>
@@ -285,22 +285,22 @@ function ShortcutCard({
   place,
   disabled,
   loading,
-  enColumna,
+  inColumn,
   onPress,
 }: {
   category: Extract<SavedPlaceCategory, 'home' | 'work'>;
   place: SavedPlace | undefined;
   disabled: boolean;
   loading: boolean;
-  enColumna: boolean;
+  inColumn: boolean;
   onPress: () => void;
 }) {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   const meta = CATEGORY_META[category];
   const tint = colors.primary;
   return (
     <TouchableOpacity
-      style={[styles.bentoCard, !enColumna && styles.shortcutRow, disabled && styles.disabled]}
+      style={[styles.bentoCard, !inColumn && styles.shortcutRow, disabled && styles.disabled]}
       onPress={onPress}
       disabled={disabled}
       accessibilityRole="button"
@@ -337,7 +337,7 @@ function SearchResults({
   onSelect: (suggestion: PlaceSuggestion) => void;
   bottomInset: number;
 }) {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   if (suggestions.length === 0) {
     return (
       <ScrollView contentContainerStyle={[styles.feedbackScroll, { paddingBottom: bottomInset + spacing.lg }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
@@ -419,7 +419,7 @@ function RecentDestinations({
   error: string | null;
   onRetry: () => void;
 }) {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   return (
     <>
       <Text style={styles.sectionTitle}>Destinos recientes</Text>
@@ -465,7 +465,7 @@ function RecentDestinations({
   );
 }
 
-const crearEstilos = ({ colors, estiloFoco }: Tema) => StyleSheet.create({
+const createStyles = ({ colors, focusStyle }: Theme) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
   header: {
     flexDirection: 'row',
@@ -489,11 +489,11 @@ const crearEstilos = ({ colors, estiloFoco }: Tema) => StyleSheet.create({
     paddingHorizontal: spacing.sm,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.bordeControl,
+    borderColor: colors.controlBorder,
     backgroundColor: colors.surfaceMuted,
   },
   searchInput: { flex: 1, minWidth: 0, fontSize: fontSize.md, color: colors.text, paddingVertical: spacing.sm, outlineWidth: 0 },
-  searchBarFocused: { borderColor: colors.primary, backgroundColor: colors.surface, ...estiloFoco },
+  searchBarFocused: { borderColor: colors.primary, backgroundColor: colors.surface, ...focusStyle },
   clearSearch: { width: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
   searchHint: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm, fontSize: fontSize.sm, color: colors.textSecondary },
   mapAction: { paddingHorizontal: spacing.lg, paddingBottom: spacing.md },
@@ -545,7 +545,7 @@ const crearEstilos = ({ colors, estiloFoco }: Tema) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     marginBottom: spacing.md,
     borderRadius: radius.md,
-    backgroundColor: colors.peligroSuave,
+    backgroundColor: colors.dangerSoft,
   },
   savedWarningText: { flex: 1, color: colors.danger, fontSize: fontSize.sm },
   disabled: { opacity: 0.5 },
@@ -581,7 +581,7 @@ const crearEstilos = ({ colors, estiloFoco }: Tema) => StyleSheet.create({
     gap: spacing.sm,
     padding: spacing.md,
     borderRadius: radius.md,
-    backgroundColor: colors.peligroSuave,
+    backgroundColor: colors.dangerSoft,
   },
   selectionErrorText: { flex: 1, color: colors.danger, fontSize: fontSize.sm },
   recentError: { gap: spacing.sm, marginBottom: spacing.md },

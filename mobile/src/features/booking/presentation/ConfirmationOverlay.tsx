@@ -1,14 +1,14 @@
 /**
- * Overlay de confirmación: se muestra al aceptar una oferta (el viaje quedó
- * asignado). Ícono verde con rebote; avanza al **tap** del usuario (tras un
- * mínimo de ~500 ms para evitar un toque accidental) o, como respaldo, se
- * auto-oculta a los 3 s. Al terminar llama a `onDone` (navega al viaje).
+ * Confirmation overlay: shown when accepting an offer (the ride was
+ * assigned). Green icon with a bounce; it advances on the user's **tap** (after a
+ * minimum of ~500 ms to avoid an accidental touch) or, as a fallback,
+ * auto-hides after 3 s. When done it calls `onDone` (navigates to the ride).
  */
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 
 const MIN_DISPLAY_MS = 500;
 const FALLBACK_MS = 3000;
@@ -20,9 +20,9 @@ export function ConfirmationOverlay({
   visible: boolean;
   onDone: () => void;
 }) {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   const [scale] = useState(() => new Animated.Value(0));
-  // Ref (no state): el onPress la lee al tap; evita re-renders en cascada.
+  // Ref (not state): onPress reads it on tap; avoids cascading re-renders.
   const canDismissRef = useRef(false);
 
   useEffect(() => {
@@ -79,7 +79,7 @@ export function ConfirmationOverlay({
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   overlay: {
     position: 'absolute',
     top: 0,
@@ -108,7 +108,7 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     width: 88,
     height: 88,
     borderRadius: radius.pill,
-    backgroundColor: colors.exitoSuave,
+    backgroundColor: colors.successSoft,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.xs,

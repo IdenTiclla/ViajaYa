@@ -88,7 +88,7 @@ function setup({ failEvent = false } = {}) {
   return { consumer, gate, mutations, resyncs };
 }
 
-test('snapshot, delta y duplicado mutan una sola vez', async () => {
+test('snapshot, delta and duplicate mutate only once', async () => {
   const { consumer, mutations, resyncs } = setup();
 
   assert.deepEqual(await consumer.consume(snapshot()), { kind: 'applied' });
@@ -102,7 +102,7 @@ test('snapshot, delta y duplicado mutan una sola vez', async () => {
   assert.deepEqual(resyncs, []);
 });
 
-test('un hueco no muta y solicita resync conservando el cursor', async () => {
+test('a gap does not mutate and requests a resync keeping the cursor', async () => {
   const { consumer, gate, mutations, resyncs } = setup();
   await consumer.consume(snapshot());
 
@@ -115,7 +115,7 @@ test('un hueco no muta y solicita resync conservando el cursor', async () => {
   assert.equal(gate.state().streams.get('ride:ride-1'), 10);
 });
 
-test('un fallo del handler aborta el ticket y fuerza resync', async () => {
+test('a handler failure aborts the ticket and forces a resync', async () => {
   const { consumer, gate, mutations, resyncs } = setup({ failEvent: true });
   await consumer.consume(snapshot());
 
@@ -128,7 +128,7 @@ test('un fallo del handler aborta el ticket y fuerza resync', async () => {
   assert.equal(gate.state().streams.get('ride:ride-1'), 10);
 });
 
-test('ejecuta los efectos visuales solo después de confirmar el cursor', async () => {
+test('runs the visual effects only after confirming the cursor', async () => {
   const gate = createReplayGate();
   const observed = [];
   const consumer = createRealtimeReplayConsumer({
@@ -175,7 +175,7 @@ test('ejecuta los efectos visuales solo después de confirmar el cursor', async 
   assert.deepEqual(observed, [11]);
 });
 
-test('un evento v2 antes del snapshot fuerza resync', async () => {
+test('a v2 event before the snapshot forces a resync', async () => {
   const { consumer, mutations, resyncs } = setup();
 
   assert.deepEqual(await consumer.consume(event(1)), {
@@ -186,7 +186,7 @@ test('un evento v2 antes del snapshot fuerza resync', async () => {
   assert.deepEqual(resyncs, ['event_before_snapshot']);
 });
 
-test('mezclar protocolos en una conexión no duplica mutaciones', async () => {
+test('mixing protocols in one connection does not duplicate mutations', async () => {
   const { consumer, mutations, resyncs } = setup();
   await consumer.consume(legacySnapshot());
   await consumer.consume(legacyEvent());
@@ -199,7 +199,7 @@ test('mezclar protocolos en una conexión no duplica mutaciones', async () => {
   assert.deepEqual(resyncs, ['protocol_mismatch']);
 });
 
-test('una conexión nueva puede volver de v2 a legacy durante un rollback', async () => {
+test('a new connection can go back from v2 to legacy during a rollback', async () => {
   const { consumer, mutations, resyncs } = setup();
   await consumer.consume(snapshot());
   consumer.beginConnection();
@@ -211,7 +211,7 @@ test('una conexión nueva puede volver de v2 a legacy durante un rollback', asyn
   assert.deepEqual(resyncs, []);
 });
 
-test('una conexión nueva invalida el snapshot anterior mientras su handler espera', async () => {
+test('a new connection invalidates the previous snapshot while its handler waits', async () => {
   const gate = createReplayGate();
   const release = deferred();
   const started = deferred();
@@ -253,7 +253,7 @@ test('una conexión nueva invalida el snapshot anterior mientras su handler espe
   assert.deepEqual(effects, []);
 });
 
-test('invalidar durante un evento aborta su ticket y suprime el efecto', async () => {
+test('invalidating during an event aborts its ticket and suppresses the effect', async () => {
   const gate = createReplayGate();
   const release = deferred();
   const started = deferred();
@@ -314,7 +314,7 @@ test('invalidar durante un evento aborta su ticket y suprime el efecto', async (
   assert.deepEqual(effects, []);
 });
 
-test('un guard externo obsoleto no confirma ni emite efectos', async () => {
+test('a stale external guard neither confirms nor emits effects', async () => {
   const gate = createReplayGate();
   const release = deferred();
   const started = deferred();
@@ -357,7 +357,7 @@ test('un guard externo obsoleto no confirma ni emite efectos', async () => {
   assert.deepEqual(effects, []);
 });
 
-test('un handler viejo que falla no invalida la conexión nueva', async () => {
+test('an old failing handler does not invalidate the new connection', async () => {
   const gate = createReplayGate();
   const release = deferred();
   const started = deferred();
@@ -376,7 +376,7 @@ test('un handler viejo que falla no invalida la conexión nueva', async () => {
     async applySnapshot() {
       started.resolve();
       await release.promise;
-      throw new Error('fallo tardío');
+      throw new Error('late failure');
     },
     async applyEvent() {},
     onResync(reason) {
@@ -399,7 +399,7 @@ test('un handler viejo que falla no invalida la conexión nueva', async () => {
   assert.deepEqual(resyncs, []);
 });
 
-test('un snapshot legacy obsoleto tampoco cambia el protocolo ni emite efecto', async () => {
+test('a stale legacy snapshot does not change the protocol or emit an effect either', async () => {
   const gate = createReplayGate();
   const release = deferred();
   const started = deferred();

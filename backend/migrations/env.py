@@ -1,4 +1,4 @@
-"""Entorno de Alembic con engine asíncrono."""
+"""Alembic environment with an async engine."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from sqlalchemy.pool import NullPool
 
 from app.infrastructure.config import get_settings
 
-# Importar los modelos registra las tablas en Base.metadata.
+# Importing the models registers the tables in Base.metadata.
 from app.infrastructure.db import models  # noqa: F401
 from app.infrastructure.db.base import Base
 
@@ -46,6 +46,6 @@ def run_migrations_online() -> None:
 
 
 if context.is_offline_mode():
-    raise RuntimeError("Offline mode no soportado para este proyecto.")
+    raise RuntimeError("Offline mode is not supported for this project.")
 else:
     run_migrations_online()

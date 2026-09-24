@@ -2,7 +2,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { env } from '@/core/config/env';
-import { useEstilos as useThemedStyles, type Tema as Theme } from '@/core/theme';
+import { useThemedStyles, type Theme } from '@/core/theme';
 import { fontSize, radius, spacing } from '@/core/theme/tokens';
 
 /** Keep lower environments identifiable without intercepting trip controls. */

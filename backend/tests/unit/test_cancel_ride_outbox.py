@@ -1,4 +1,4 @@
-"""Frontera transaccional y contrato realtime de las cancelaciones."""
+"""Transactional boundary and realtime contract of cancellations."""
 
 from __future__ import annotations
 
@@ -263,10 +263,10 @@ async def test_cancel_records_before_commit_and_rolls_back_on_recorder_failure()
     )
     recorder = InMemoryCancelRideEventRecorder(
         operations=operations,
-        error=RuntimeError("falló la outbox"),
+        error=RuntimeError("the outbox failed"),
     )
 
-    with pytest.raises(RuntimeError, match="falló la outbox"):
+    with pytest.raises(RuntimeError, match="the outbox failed"):
         await cancel_ride_use_case(
             rides,
             offers,
@@ -384,7 +384,7 @@ async def test_failure_after_cancel_outbox_flush_rolls_back_everything(
         class RecordThenFail:
             async def record(self, result: CancelRideResult) -> None:
                 await recorder.record(result)
-                raise RuntimeError("fallo después de insertar la outbox")
+                raise RuntimeError("failure after inserting the outbox")
 
         use_case = CancelRide(
             rides,
@@ -393,7 +393,7 @@ async def test_failure_after_cancel_outbox_flush_rolls_back_everything(
             SqlAlchemyUnitOfWork(session),
             RecordThenFail(),
         )
-        with pytest.raises(RuntimeError, match="después de insertar"):
+        with pytest.raises(RuntimeError, match="after inserting"):
             await use_case.execute(rider, ride.id)
 
         ride_row = await session.get(RideRequestModel, ride.id)

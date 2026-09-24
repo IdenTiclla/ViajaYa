@@ -97,7 +97,7 @@ function deferred() {
   return { promise, resolve };
 }
 
-test('ride_snapshot reemplaza detalle, ofertas y activo del pasajero', async () => {
+test('ride_snapshot replaces the passenger\'s detail, offers and active ride', async () => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -120,7 +120,7 @@ test('ride_snapshot reemplaza detalle, ofertas y activo del pasajero', async () 
   queryClient.clear();
 });
 
-test('driver_snapshot reemplaza open, paused, offers y active_ride null', async () => {
+test('driver_snapshot replaces open, paused, offers and active_ride null', async () => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -181,7 +181,7 @@ test('driver_snapshot reemplaza open, paused, offers y active_ride null', async 
   });
   assert.equal(state.offerSnapshotAttemptSequence, 2);
   assert.equal(state.offerSnapshotAppliedAttemptSequence, 3);
-  // La oferta HTTP local ausente se limpia y pide una segunda confirmación.
+  // The missing local HTTP offer is cleared and a second confirmation is requested.
   assert.equal(state.realtimeResyncSequence, 1);
   assert.equal(notifications, 1);
   assert.equal(queryStateObservedFromStore.active, null);
@@ -193,7 +193,7 @@ test('driver_snapshot reemplaza open, paused, offers y active_ride null', async 
   queryClient.clear();
 });
 
-test('driver_snapshot conserva la tarifa local de una oferta fuera de la página', async () => {
+test('driver_snapshot keeps the local fare of an offer outside the page', async () => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -232,7 +232,7 @@ test('driver_snapshot conserva la tarifa local de una oferta fuera de la página
   queryClient.clear();
 });
 
-test('driver_snapshot asignado limpia la oferta en una sola transición', async () => {
+test('an assigned driver_snapshot clears the offer in a single transition', async () => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -279,7 +279,7 @@ test('driver_snapshot asignado limpia la oferta en una sola transición', async 
   queryClient.clear();
 });
 
-test('una generación invalidada durante el snapshot no muta ninguna proyección', async () => {
+test('a generation invalidated during the snapshot mutates no projection', async () => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -323,7 +323,7 @@ test('una generación invalidada durante el snapshot no muta ninguna proyección
   queryClient.clear();
 });
 
-test('driver_snapshot detecta un 201 aplicado mientras cancela queries', async () => {
+test('driver_snapshot detects a 201 applied while cancelling queries', async () => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -368,7 +368,7 @@ test('driver_snapshot detecta un 201 aplicado mientras cancela queries', async (
   queryClient.clear();
 });
 
-test('snapshot y delta v2 duplicado actualizan una caché real una sola vez', async () => {
+test('snapshot and a duplicated v2 delta update a real cache only once', async () => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -407,7 +407,7 @@ test('snapshot y delta v2 duplicado actualizan una caché real una sola vez', as
           };
     },
     async applyLegacy() {
-      throw new Error('No se esperaba legacy.');
+      throw new Error('Legacy was not expected.');
     },
     async applySnapshot() {
       await applyPassengerRealtimeSnapshot(

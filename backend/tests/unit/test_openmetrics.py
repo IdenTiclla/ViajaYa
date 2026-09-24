@@ -64,12 +64,12 @@ async def _get(app, path: str):
 
 
 def _assert_valid_openmetrics(content: str) -> None:
-    """Exige que el parser oficial acepte el documento completo."""
+    """Require the official parser to accept the whole document."""
     assert list(text_string_to_metric_families(content))
     assert content.endswith("# EOF\n")
 
 
-async def test_metrics_off_no_exige_migraciones_de_outbox(sessions) -> None:
+async def test_metrics_off_does_not_require_outbox_migrations(sessions) -> None:
     settings = Settings(_env_file=None, openmetrics_enabled=True)
     app = create_app(settings=settings, session_factory=sessions)
 
@@ -88,7 +88,7 @@ async def test_metrics_off_no_exige_migraciones_de_outbox(sessions) -> None:
     _assert_valid_openmetrics(response.text)
 
 
-async def test_metrics_shadow_expone_corte_persistido_sanitizado(
+async def test_metrics_shadow_exposes_a_sanitized_persisted_cut(
     outbox_sessions,
 ) -> None:
     settings = Settings(
@@ -112,7 +112,7 @@ async def test_metrics_shadow_expone_corte_persistido_sanitizado(
     assert "topic=" not in response.text
 
 
-async def test_metrics_falla_cerrado_sin_filtrar_error(sessions, caplog) -> None:
+async def test_metrics_fails_closed_without_leaking_the_error(sessions, caplog) -> None:
     secret = "postgresql://usuario:clave-super-secreta@db/viajaya"
 
     class FailingUseCase:
@@ -139,7 +139,7 @@ async def test_metrics_falla_cerrado_sin_filtrar_error(sessions, caplog) -> None
     assert "RuntimeError" in caplog.text
 
 
-def test_renderer_exporta_labels_y_contadores_sin_campos_sensibles() -> None:
+def test_renderer_exports_labels_and_counters_without_sensitive_fields() -> None:
     snapshot = RealtimeOutboxOperationalSnapshot(
         captured_at=datetime(2026, 7, 22, tzinfo=UTC),
         pending_event_count=3,
@@ -252,7 +252,7 @@ def test_renderer_exporta_labels_y_contadores_sin_campos_sensibles() -> None:
     _assert_valid_openmetrics(content)
 
 
-async def test_metrics_no_se_publica_sin_opt_in(sessions) -> None:
+async def test_metrics_are_not_published_without_opt_in(sessions) -> None:
     settings = Settings(_env_file=None, openmetrics_enabled=False)
     app = create_app(settings=settings, session_factory=sessions)
 

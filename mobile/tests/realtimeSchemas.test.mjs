@@ -129,7 +129,7 @@ function eventMetadata(overrides = {}) {
   };
 }
 
-test('conserva el contrato legacy sin añadir metadatos', () => {
+test('keeps the legacy contract without adding metadata', () => {
   const result = passengerRealtimeMessageParser.safeParse({
     type: 'offers_snapshot',
     data: [offer()],
@@ -139,7 +139,7 @@ test('conserva el contrato legacy sin añadir metadatos', () => {
   assert.equal('schema_version' in result.data, false);
 });
 
-test('conserva los mensajes legacy de pasajero y conductor tras el refactor', () => {
+test('keeps the passenger and driver legacy messages after the refactor', () => {
   const expired = {
     ride_id: rideId,
     offer_id: offerId,
@@ -188,7 +188,7 @@ test('conserva los mensajes legacy de pasajero y conductor tras el refactor', ()
   );
 });
 
-test('ride_closed legacy tolera temporalmente los campos versionados ausentes', () => {
+test('legacy ride_closed temporarily tolerates missing versioned fields', () => {
   const result = driverRealtimeMessageParser.safeParse({
     type: 'ride_closed',
     data: { ride_id: rideId },
@@ -210,7 +210,7 @@ test('ride_closed legacy rechaza metadata versionada parcial', () => {
   }
 });
 
-test('ride_closed v2 exige pool_version y reason aunque legacy los permita omitir', () => {
+test('v2 ride_closed requires pool_version and reason even though legacy allows omitting them', () => {
   const metadata = eventMetadata({ stream: 'pool:taxi' });
   const missingMetadata = driverRealtimeMessageParser.safeParse({
     ...metadata,
@@ -227,7 +227,7 @@ test('ride_closed v2 exige pool_version y reason aunque legacy los permita omiti
   assert.equal(complete.success, true);
 });
 
-test('offers_withdrawn legacy tolera la ausencia de identidades exactas', () => {
+test('legacy offers_withdrawn tolerates missing exact identities', () => {
   const result = driverRealtimeMessageParser.safeParse({
     type: 'offers_withdrawn',
     data: { ride_ids: [rideId] },
@@ -236,7 +236,7 @@ test('offers_withdrawn legacy tolera la ausencia de identidades exactas', () => 
   assert.equal(result.success, true);
 });
 
-test('offers_withdrawn valida pares exactos y v2 los exige', () => {
+test('offers_withdrawn validates exact pairs and v2 requires them', () => {
   const metadata = eventMetadata({
     aggregate_type: 'driver',
     aggregate_id: driverId,
@@ -264,7 +264,7 @@ test('offers_withdrawn valida pares exactos y v2 los exige', () => {
   assert.equal(complete.data.data.offers.length, 2);
 });
 
-test('offers_withdrawn rechaza ride_ids que no coincide exactamente con offers', () => {
+test('offers_withdrawn rejects ride_ids that do not exactly match offers', () => {
   for (const rideIds of [[rideId], [riderId, rideId]]) {
     const result = driverRealtimeMessageParser.safeParse({
       type: 'offers_withdrawn',
@@ -281,7 +281,7 @@ test('offers_withdrawn rechaza ride_ids que no coincide exactamente con offers',
   }
 });
 
-test('acepta un evento v2 completo y conserva sus campos wire', () => {
+test('accepts a complete v2 event and keeps its wire fields', () => {
   const result = passengerRealtimeMessageParser.safeParse({
     ...eventMetadata(),
     type: 'offer_created',
@@ -304,7 +304,7 @@ test('acepta un evento v2 completo y conserva sus campos wire', () => {
   assert.match(metadata.payloadFingerprint, /offer_created/);
 });
 
-test('acepta el evento del backend anterior y usa batch_id como correlación', () => {
+test('accepts the previous backend\'s event and uses batch_id as correlation', () => {
   const { correlation_id: _correlationId, ...legacyMetadata } = eventMetadata();
   const result = passengerRealtimeMessageParser.safeParse({
     ...legacyMetadata,
@@ -317,7 +317,7 @@ test('acepta el evento del backend anterior y usa batch_id como correlación', (
   assert.equal(metadata.correlationId, batchId);
 });
 
-test('evento v2 correlaciona tipo, agregado, stream y payload', () => {
+test('a v2 event correlates type, aggregate, stream and payload', () => {
   const message = { type: 'offer_created', data: offer() };
   const wrongAggregateType = passengerRealtimeMessageParser.safeParse({
     ...eventMetadata({ aggregate_type: 'driver' }),
@@ -337,7 +337,7 @@ test('evento v2 correlaciona tipo, agregado, stream y payload', () => {
   assert.equal(wrongAggregateId.success, false);
 });
 
-test('una sola clave v2 obliga validar v2 completo y no cae a legacy', () => {
+test('a single v2 key forces validating the full v2 schema and does not fall back to legacy', () => {
   const result = passengerRealtimeMessageParser.safeParse({
     event_id: eventId,
     type: 'offer_created',
@@ -347,7 +347,7 @@ test('una sola clave v2 obliga validar v2 completo y no cae a legacy', () => {
   assert.equal(result.success, false);
 });
 
-test('una versión desconocida no puede degradarse a un snapshot legacy válido', () => {
+test('an unknown version cannot be downgraded to a valid legacy snapshot', () => {
   const result = passengerRealtimeMessageParser.safeParse({
     schema_version: 3,
     type: 'offers_snapshot',
@@ -357,7 +357,7 @@ test('una versión desconocida no puede degradarse a un snapshot legacy válido'
   assert.equal(result.success, false);
 });
 
-test('rechaza versiones que JavaScript no puede representar con precisión', () => {
+test('rejects versions JavaScript cannot represent precisely', () => {
   const result = passengerRealtimeMessageParser.safeParse({
     ...eventMetadata({ stream_version: Number.MAX_SAFE_INTEGER + 1 }),
     type: 'offer_created',
@@ -367,7 +367,7 @@ test('rechaza versiones que JavaScript no puede representar con precisión', () 
   assert.equal(result.success, false);
 });
 
-test('ride_snapshot v2 incluye ride y ofertas con su watermark', () => {
+test('v2 ride_snapshot includes ride and offers with its watermark', () => {
   const result = passengerRealtimeMessageParser.safeParse({
     schema_version: 2,
     kind: 'snapshot',
@@ -387,7 +387,7 @@ test('ride_snapshot v2 incluye ride y ofertas con su watermark', () => {
   ]);
 });
 
-test('ride_snapshot exige metadata completa y el watermark de su ride', () => {
+test('ride_snapshot requires complete metadata and its ride\'s watermark', () => {
   const missingCapturedAt = passengerRealtimeMessageParser.safeParse({
     schema_version: 2,
     kind: 'snapshot',
@@ -410,7 +410,7 @@ test('ride_snapshot exige metadata completa y el watermark de su ride', () => {
   assert.equal(missingRideWatermark.success, false);
 });
 
-test('driver_snapshot v2 unifica el estado y admite active_ride null', () => {
+test('v2 driver_snapshot unifies the state and allows active_ride null', () => {
   const result = driverRealtimeMessageParser.safeParse({
     schema_version: 2,
     kind: 'snapshot',
@@ -435,7 +435,7 @@ test('driver_snapshot v2 unifica el estado y admite active_ride null', () => {
   assert.equal(result.data.data.active_ride, null);
 });
 
-test('rechaza snapshots con streams repetidos o estado driver incompleto', () => {
+test('rejects snapshots with repeated streams or incomplete driver state', () => {
   const duplicatedWatermark = driverRealtimeMessageParser.safeParse({
     schema_version: 2,
     kind: 'snapshot',
@@ -475,7 +475,7 @@ test('rechaza snapshots con streams repetidos o estado driver incompleto', () =>
   assert.equal(missingActiveRide.success, false);
 });
 
-test('driver_snapshot exige un pool por servicio ofrecido y pertenencia al conductor', () => {
+test('driver_snapshot requires one pool per offered service and belonging to the driver', () => {
   const snapshot = (watermarks, data = {}) => driverRealtimeMessageParser.safeParse({
     schema_version: 2,
     kind: 'snapshot',

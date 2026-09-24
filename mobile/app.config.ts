@@ -75,11 +75,12 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       [
         'expo-splash-screen',
         {
+          // Logo F2 (wordmark + taxi + mototaxi) inside Android 12+'s circular icon mask;
+          // LaunchScreen then shows the full art with the slogan while the session loads.
           backgroundColor: '#16308C',
-          android: {
-            image: './assets/images/splash-icon.png',
-            imageWidth: 76,
-          },
+          image: './assets/images/splash-icon.png',
+          imageWidth: 200,
+          resizeMode: 'contain',
         },
       ],
       [

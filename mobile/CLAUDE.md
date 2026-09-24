@@ -248,7 +248,12 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
 No captures colores en `StyleSheet.create` ni tablas de iconos a nivel de módulo.
 Los mapas usan `useEstiloMapa` y `userInterfaceStyle` explícito; cambiar tema debe
 redibujar también los marcadores nativos. Usa `textoSobreAcento` sobre el amarillo.
-Splash/adaptiveIcon conservan el azul de marca `#16308C`.
+Splash/adaptiveIcon conservan el azul de marca `#16308C`. Logo ("F2", 23/09/2026): «Viaja» blanco +
+«Ya» amarillo sobre un taxi y una mototaxi de perfil. `icon.png` (iOS), `android-icon-foreground/
+monochrome` (dentro del círculo seguro de 66 dp) y `splash-icon.png` (`imageWidth: 200`) lo usan;
+cambiarlos exige prebuild + recompilar el APK. Tras el splash nativo, `core/components/LaunchScreen`
+muestra `launch-screen.png` (ruta amarilla con taxi y mototaxi, nombre y lema «Taxi o moto, tú pones
+el precio.») mientras `bootstrap` restaura la sesión, con un mínimo de 1,2 s (`LAUNCH_MIN_MS`).
 
 ### Controles y accesibilidad
 
@@ -263,7 +268,7 @@ Splash/adaptiveIcon conservan el azul de marca `#16308C`.
   con vistas nativas y tokens, sin fuentes de iconos. La letra A/B tiene escala
   fija porque forma parte del símbolo; la etiqueta y el nombre accesible conservan
   el significado. El pin de selección ancla el extremo del tallo al 50% del mapa,
-  sin estimar la altura del texto. `MarcadorVehiculo` pertenece al mapa nativo:
+  sin estimar la altura del texto. `MarcadorVehiculo` (32 dp, sin disco de fondo; el vehículo mide ~14×24 dp para caber en la calle) pertenece al mapa nativo:
   coordenadas GPS, `flat` y anclaje central; la rotación sigue el norte geográfico
   incluso al girar la cámara. El barrido del radar es solo decorativo. El GPS
   solicita actualizaciones cada segundo; el rumbo de movimiento fiable tiene
@@ -405,15 +410,18 @@ npm run lint               # expo lint (eslint-config-expo)
   `RoutePinMarker`; seguimiento y negociación usan además `TripRouteMap`.
   `routeTooltipLayout.ts` concentra las medidas lógicas comunes: trazo 3,
   contorno 5 y pin A/B de 16, sin variantes de tamaño por rol. Configuración
-  conserva la edición al tocar los marcadores y permite activar nombres de
-  lugares; se retiraron los dos bloques A/B superiores para ampliar el mapa. No dupliques la polilínea ni
+  conserva la edición al tocar los marcadores y muestra siempre los tooltips
+  Origen/Destino; se retiraron los dos bloques A/B superiores y el toggle de
+  nombres de lugares para ampliar el mapa. Su encuadre usa márgenes mínimos y
+  `getTooltipFitCoordinates` (`tripMapLayout.ts`) añade las esquinas de cada
+  tooltip para que no salgan del área visible sin perder zoom en el resto. No dupliques la polilínea ni
   los estilos del pin en una pantalla. Conserva el contenedor nativo no aplanable,
   el anclaje al centro del símbolo y el redibujado cancelable tras cambios de layout.
   La colocación de tooltips comprueba todos los segmentos en la proyección de
   pantalla y mide el bloque completo (texto y Editar). Los mapas con ruta son
   cenitales y bloqueados (sin arrastre, zoom ni giro), por solicitud del usuario
   del 19/09/2026. Configuración mantiene un panel de alto estable entre servicios
-  y mapa desde el borde superior, con Volver/lugares flotantes y cabecera medida;
+  y mapa desde el borde superior, con Volver flotante y cabecera medida;
   seguimiento usa márgenes compactos de 40/44 y reserva más espacio solo para
   direcciones largas. Búsqueda mide cabecera/panel, limita la hoja al 64 % y
   muestra el aviso de moto dentro del panel para no cubrir la ruta con letra grande.

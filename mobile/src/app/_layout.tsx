@@ -2,12 +2,13 @@ import '@/features/tracking/application/driverLocationTask';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { EnvironmentBadge } from '@/core/components/EnvironmentBadge';
-import { useEstilos as useThemedStyles, type Tema as Theme } from '@/core/theme';
+import { LaunchScreen } from '@/core/components/LaunchScreen';
+import { useEstilos as useThemedStyles } from '@/core/theme';
 import { ProveedorTema as ThemeProvider } from '@/core/theme/ProveedorTema';
 import { SessionRecoveryScreen } from '@/features/auth/presentation/SessionRecoveryScreen';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
@@ -16,19 +17,27 @@ import { useDriverRequests } from '@/features/driver/application/useDriverReques
 import { useDriverToasts } from '@/features/driver/application/useDriverToasts';
 import { useAuthStore } from '@/store/authStore';
 
+// Keep the launch screen up briefly so a fast restore doesn't flash it.
+const LAUNCH_MIN_MS = 1200;
+
 // Reuse one query client for the entire application.
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 30_000 } },
 });
 
 function RootNavigator() {
-  const { colors, styles } = useThemedStyles(createStyles);
   const status = useAuthStore((s) => s.status);
   const user = useAuthStore((s) => s.user);
   const modeChoicePending = useAuthStore((s) => s.modeChoicePending);
   const bootstrap = useAuthStore((s) => s.bootstrap);
   const identity = user?.id ?? null;
   const [readyIdentity, setReadyIdentity] = useState<string | null | undefined>(undefined);
+  const [launchHeld, setLaunchHeld] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setLaunchHeld(false), LAUNCH_MIN_MS);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Restore the stored session at startup.
   useEffect(() => {
@@ -49,13 +58,7 @@ function RootNavigator() {
 
   if (status === 'error') return <SessionRecoveryScreen />;
 
-  if (status === 'loading' || readyIdentity !== identity) {
-    return (
-      <View style={styles.splash}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    );
-  }
+  if (status === 'loading' || readyIdentity !== identity || launchHeld) return <LaunchScreen />;
 
   const isAuthenticated = status === 'authenticated';
   const isDriver = isAuthenticated && user?.role === 'driver';
@@ -99,12 +102,6 @@ export default function RootLayout() {
   return <ThemeProvider><RootContent /></ThemeProvider>;
 }
 
-const createStyles = ({ colors }: Theme) => StyleSheet.create({
+const createStyles = () => StyleSheet.create({
   root: { flex: 1 },
-  splash: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.background,
-  },
 });

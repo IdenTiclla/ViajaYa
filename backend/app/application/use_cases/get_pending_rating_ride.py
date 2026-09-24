@@ -1,4 +1,4 @@
-"""Caso de uso: recuperar el último viaje completado pendiente de calificar."""
+"""Use case: recover the latest completed ride still pending a rating."""
 
 from __future__ import annotations
 

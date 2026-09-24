@@ -18,9 +18,9 @@ type Props = PressableProps & {
   loading?: boolean;
   loadingLabel?: string;
   variant?: Variant;
-  /** Nombre de un ícono de Ionicons mostrado antes del título. */
+  /** Name of an Ionicons icon shown before the title. */
   leadingIcon?: IoniconsIconName;
-  /** Nombre de un ícono de Ionicons mostrado a la derecha del título. */
+  /** Name of an Ionicons icon shown to the right of the title. */
   trailingIcon?: IoniconsIconName;
 };
 

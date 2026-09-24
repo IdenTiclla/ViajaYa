@@ -1,4 +1,4 @@
-"""Atomicidad y contrato realtime del anuncio de presencia."""
+"""Atomicity and realtime contract of the presence announcement."""
 
 from __future__ import annotations
 

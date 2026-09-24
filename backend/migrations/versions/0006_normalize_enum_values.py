@@ -1,9 +1,9 @@
 """normalize enum columns to lowercase values
 
-Las columnas enum (``native_enum=False``) deben guardar el *valor* del enum
-(minúscula: ``cash``, ``taxi``, ``driver``…), no su nombre (``CASH``, ``TAXI``…).
-Filas creadas por el ORM habían quedado en mayúscula; esta migración las
-normaliza con ``LOWER`` (idempotente: en nuestros enums ``value == name.lower()``).
+Enum columns (``native_enum=False``) must store the enum's *value*
+(lowercase: ``cash``, ``taxi``, ``driver``…), not its name (``CASH``, ``TAXI``…).
+Rows created by the ORM had been left uppercase; this migration
+normalizes them with ``LOWER`` (idempotent: in our enums ``value == name.lower()``).
 
 Revision ID: 0006_normalize_enum_values
 Revises: 0005_drivers_and_offers
@@ -21,7 +21,7 @@ down_revision: str | None = "0005_drivers_and_offers"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-# (tabla, columna) de cada enum almacenado como texto.
+# (table, column) of each enum stored as text.
 _ENUM_COLUMNS: list[tuple[str, str]] = [
     ("users", "auth_provider"),
     ("users", "role"),
@@ -42,5 +42,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # No se revierte: los nombres en mayúscula eran un estado inconsistente.
+    # Not reverted: uppercase names were an inconsistent state.
     pass

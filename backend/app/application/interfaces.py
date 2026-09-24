@@ -1,7 +1,7 @@
-"""Puertos de la capa de aplicación.
+"""Application-layer ports.
 
-Abstracciones de servicios técnicos (hash, tokens, verificación OAuth) que la
-infraestructura implementa. Los casos de uso dependen solo de estas interfaces.
+Abstractions of technical services (hashing, tokens, OAuth verification) that the
+infrastructure implements. Use cases depend only on these interfaces.
 """
 
 from __future__ import annotations
@@ -43,27 +43,27 @@ from app.domain.repositories import OpenRideDetail
 
 
 class UnitOfWork(ABC):
-    """Frontera transaccional decidida por la capa de aplicación."""
+    """Transactional boundary decided by the application layer."""
 
     @abstractmethod
     async def commit(self) -> None:
-        """Confirma la mutación de negocio y sus eventos pendientes."""
+        """Commit the business mutation and its pending events."""
 
     @abstractmethod
     async def rollback(self) -> None:
-        """Descarta todo lo realizado por la operación actual."""
+        """Discard everything done by the current operation."""
 
 
 class ScheduledActionScheduler(ABC):
-    """Persiste acciones diferidas dentro de la transacción productora."""
+    """Persist deferred actions inside the producing transaction."""
 
     @abstractmethod
     async def schedule(self, action: PendingScheduledAction) -> ScheduledAction:
-        """Inserta o renueva una acción por una generación estrictamente mayor."""
+        """Insert or renew an action with a strictly greater generation."""
 
     @abstractmethod
     async def schedule_next(self, action: RenewableScheduledAction) -> ScheduledAction:
-        """Inserta la primera generación o incrementa la vigente bajo un único CAS."""
+        """Insert the first generation or increment the current one under a single CAS."""
 
 
 class ScheduledActionQueue(ScheduledActionScheduler):
@@ -75,7 +75,7 @@ class ScheduledActionQueue(ScheduledActionScheduler):
         now: datetime,
         stale_before: datetime,
     ) -> ScheduledAction | None:
-        """Reclama una acción vencida o recupera un lease abandonado."""
+        """Claim a due action or recover an abandoned lease."""
 
     @abstractmethod
     async def lock_owned(
@@ -84,7 +84,7 @@ class ScheduledActionQueue(ScheduledActionScheduler):
         generation: int,
         lock_token: uuid.UUID,
     ) -> bool:
-        """Bloquea la fila solo si el caller conserva generación y fencing."""
+        """Lock the row only if the caller still holds generation and fencing."""
 
     @abstractmethod
     async def mark_succeeded(
@@ -94,7 +94,7 @@ class ScheduledActionQueue(ScheduledActionScheduler):
         lock_token: uuid.UUID,
         terminal_at: datetime,
     ) -> bool:
-        """Confirma el éxito solo si el caller todavía posee el lease."""
+        """Confirm success only if the caller still owns the lease."""
 
     @abstractmethod
     async def mark_succeeded_if_pending(
@@ -103,7 +103,7 @@ class ScheduledActionQueue(ScheduledActionScheduler):
         generation: int,
         terminal_at: datetime,
     ) -> bool:
-        """Completa el timer legacy solo si ningún worker reclamó la acción."""
+        """Complete the legacy timer only if no worker claimed the action."""
 
     @abstractmethod
     async def mark_failed(
@@ -117,22 +117,22 @@ class ScheduledActionQueue(ScheduledActionScheduler):
         terminal: bool,
         terminal_at: datetime,
     ) -> bool:
-        """Reprograma o agota una acción conservando ownership por CAS."""
+        """Reschedule or exhaust an action, keeping ownership via CAS."""
 
 
 class ScheduledActionExecutor(ABC):
-    """Ejecuta el caso de uso asociado y confirma la acción en su misma UoW."""
+    """Run the associated use case and confirm the action in the same UoW."""
 
     @abstractmethod
     async def execute(
         self,
         action: ScheduledAction,
     ) -> Literal["succeeded", "deferred", "lost_lease"]:
-        """Procesa una acción reclamada sin exponer detalles de infraestructura."""
+        """Process a claimed action without exposing infrastructure details."""
 
 
 class PassengerPresenceLeaseStore(ABC):
-    """Coordina leases de presencia compartidos sin convertir Redis en negocio."""
+    """Coordinate shared presence leases without turning Redis into business logic."""
 
     @abstractmethod
     async def renew_websocket(
@@ -140,7 +140,7 @@ class PassengerPresenceLeaseStore(ABC):
         ride_id: uuid.UUID,
         connection_id: uuid.UUID,
     ) -> float:
-        """Renueva una conexión y devuelve segundos hasta su cancelación segura."""
+        """Renew a connection and return the seconds until its safe cancellation."""
 
     @abstractmethod
     async def disconnect_websocket(
@@ -148,22 +148,22 @@ class PassengerPresenceLeaseStore(ABC):
         ride_id: uuid.UUID,
         connection_id: uuid.UUID,
     ) -> float:
-        """Cierra solo ese lease y devuelve la fecha límite global restante."""
+        """Close only that lease and return the remaining global deadline."""
 
     @abstractmethod
     async def renew_http(self, ride_id: uuid.UUID) -> float:
-        """Registra el heartbeat HTTP y devuelve su gracia restante."""
+        """Record the HTTP heartbeat and return its remaining grace."""
 
     @abstractmethod
     async def observe(self, ride_id: uuid.UUID) -> PassengerPresenceObservation:
-        """Comprueba leases y gracia usando un corte atómico del transporte."""
+        """Check leases and grace using an atomic cut of the transport."""
 
     @abstractmethod
     async def present_ride_ids(
         self,
         ride_ids: Sequence[uuid.UUID],
     ) -> set[uuid.UUID]:
-        """Devuelve qué solicitudes siguen visibles bajo lease o gracia."""
+        """Return which requests remain visible under a lease or grace."""
 
 
 class ScheduledActionsOperationalReader(ABC):
@@ -179,7 +179,7 @@ class ScheduledActionsOperationalReader(ABC):
 
 
 class TerminalScheduledActionsRetention(ABC):
-    """Elimina acciones exitosas o canceladas después de su retención."""
+    """Delete succeeded or cancelled actions after their retention."""
 
     @abstractmethod
     async def purge(
@@ -187,30 +187,30 @@ class TerminalScheduledActionsRetention(ABC):
         cutoff: datetime,
         action_limit: int,
     ) -> int:
-        """Marca para borrado un chunk acotado y devuelve cuántas filas eliminó."""
+        """Mark a bounded chunk for deletion and return how many rows it deleted."""
 
 
 class MissingScheduledActionsReconciler(ABC):
-    """Repara agregados legacy que todavía no tienen su acción durable."""
+    """Repair legacy aggregates that do not have their durable action yet."""
 
     @abstractmethod
     async def reconcile(self, action_limit: int) -> int:
-        """Agenda un chunk de acciones ausentes y devuelve cuántas creó."""
+        """Schedule a chunk of missing actions and return how many it created."""
 
 
 class RealtimeOutbox(ABC):
-    """Persistencia y reclamación transaccional de eventos de tiempo real."""
+    """Transactional persistence and claiming of realtime events."""
 
     @abstractmethod
     async def add_batch(
         self,
         events: Sequence[PendingRealtimeEvent],
     ) -> list[RealtimeOutboxEvent]:
-        """Añade un lote y asigna versiones de agregado y stream."""
+        """Append a batch and assign aggregate and stream versions."""
 
     @abstractmethod
     async def claim_next_batch(self, now: datetime) -> list[RealtimeOutboxEvent]:
-        """Bloquea y devuelve el siguiente lote listo para publicarse."""
+        """Lock and return the next batch ready to be published."""
 
     @abstractmethod
     async def mark_batch_published(
@@ -227,7 +227,7 @@ class RealtimeOutbox(ABC):
         error: str,
         next_attempt_at: datetime,
     ) -> None:
-        """Registra el fallo y programa el siguiente intento del lote."""
+        """Record the failure and schedule the batch's next attempt."""
 
     @abstractmethod
     async def mark_batch_quarantined(
@@ -236,15 +236,15 @@ class RealtimeOutbox(ABC):
         code: RealtimeOutboxQuarantineCode,
         quarantined_at: datetime,
     ) -> int:
-        """Aparta de forma terminal un lote inválido todavía pendiente.
+        """Terminally set aside an invalid batch that is still pending.
 
-        Devuelve la cantidad de filas que hicieron la transición. La operación
-        es idempotente y nunca revive lotes publicados o apartados.
+        Return the number of rows that made the transition. The operation
+        is idempotent and never revives published or set-aside batches.
         """
 
 
 class RealtimeOutboxOperationalReader(ABC):
-    """Puerto de lectura para observar la salud durable de la outbox."""
+    """Read port to observe the durable health of the outbox."""
 
     @abstractmethod
     async def read(self) -> RealtimeOutboxOperationalState:
@@ -252,7 +252,7 @@ class RealtimeOutboxOperationalReader(ABC):
 
 
 class PublishedRealtimeOutboxRetention(ABC):
-    """Elimina únicamente batches publicados, completos y antiguos."""
+    """Delete only published, complete and old batches."""
 
     @abstractmethod
     async def purge(
@@ -260,15 +260,15 @@ class PublishedRealtimeOutboxRetention(ABC):
         cutoff: datetime,
         batch_limit: int,
     ) -> PublishedRealtimeOutboxRetentionResult:
-        """Marca para borrado hasta ``batch_limit`` batches completos."""
+        """Mark up to ``batch_limit`` complete batches for deletion."""
 
 
 class RealtimeSnapshotReader(ABC):
-    """Captura proyecciones y watermarks bajo un único corte de lectura.
+    """Capture projections and watermarks under a single read cut.
 
-    El adaptador concreto es dueño de la sesión y de la transacción consistente.
-    Los streams siempre los decide el caso de uso para no trasladar reglas de
-    autorización o routing a infraestructura.
+    The concrete adapter owns the session and the consistent transaction.
+    Streams are always decided by the use case so that authorization or
+    routing rules do not move into the infrastructure.
     """
 
     @abstractmethod
@@ -277,7 +277,7 @@ class RealtimeSnapshotReader(ABC):
         ride_id: uuid.UUID,
         streams: Sequence[str],
     ) -> PassengerRealtimeSnapshot | None:
-        """Captura ride, ofertas y posiciones, o ``None`` si el ride desapareció."""
+        """Capture the ride, offers and positions, or ``None`` if the ride disappeared."""
 
     @abstractmethod
     async def read_driver(
@@ -285,15 +285,15 @@ class RealtimeSnapshotReader(ABC):
         driver_id: uuid.UUID,
         streams: Sequence[str],
     ) -> DriverRealtimeSnapshot | None:
-        """Captura el estado del conductor o ``None`` si ya no existe."""
+        """Capture the driver's state, or ``None`` if it no longer exists."""
 
 
 class RealtimeOutboxBatchValidator(ABC):
-    """Valida metadatos y payloads antes de despachar un lote durable."""
+    """Validate metadata and payloads before dispatching a durable batch."""
 
     @abstractmethod
     def validate(self, events: Sequence[RealtimeOutboxEvent]) -> None:
-        """Lanza un error de aplicación si el lote no es canónico."""
+        """Raise an application error if the batch is not canonical."""
 
 
 class RealtimeOutboxBatchPublisher(ABC):
@@ -301,42 +301,42 @@ class RealtimeOutboxBatchPublisher(ABC):
 
     @abstractmethod
     async def publish(self, events: Sequence[RealtimeOutboxEvent]) -> None:
-        """Publica el lote completo conservando su orden de secuencia."""
+        """Publish the whole batch keeping its sequence order."""
 
     @abstractmethod
     async def force_resync(self, streams: Sequence[str]) -> None:
-        """Fuerza otro snapshot a los sockets afectados por un hueco terminal."""
+        """Force another snapshot on the sockets affected by a terminal gap."""
 
 
 class RealtimeDeliveryBridge(RealtimeOutboxBatchPublisher):
-    """Fanout entre procesos y sus sockets locales durante el modo live."""
+    """Fan-out between processes and their local sockets in live mode."""
 
     @property
     @abstractmethod
     def running(self) -> bool:
-        """Indica si el loop suscriptor continúa activo."""
+        """Whether the subscriber loop is still running."""
 
     @property
     @abstractmethod
     def connected(self) -> bool:
-        """Indica si este proceso mantiene su suscripción al transporte."""
+        """Whether this process keeps its subscription to the transport."""
 
     @property
     @abstractmethod
     def last_error(self) -> str | None:
-        """Código sanitizado del último fallo todavía no recuperado."""
+        """Sanitized code of the latest failure not yet recovered."""
 
     @abstractmethod
     async def preflight(self) -> None:
-        """Comprueba conectividad antes de admitir tráfico."""
+        """Check connectivity before admitting traffic."""
 
     @abstractmethod
     async def wait_until_ready(self, timeout_seconds: float) -> None:
-        """Espera hasta confirmar que la suscripción ya recibe fanout."""
+        """Wait until the subscription is confirmed to receive fan-out."""
 
     @abstractmethod
     async def run(self) -> None:
-        """Mantiene la suscripción y reconecta mientras no se solicite cierre."""
+        """Keep the subscription and reconnect until shutdown is requested."""
 
     @abstractmethod
     def stop(self) -> None:
@@ -348,91 +348,91 @@ class RealtimeDeliveryBridge(RealtimeOutboxBatchPublisher):
 
 
 class CreateOfferEventRecorder(ABC):
-    """Registra los eventos durables producidos al crear o mejorar una oferta."""
+    """Record the durable events produced when creating or improving an offer."""
 
     @abstractmethod
     async def record(self, result: CreateOfferResult) -> None:
-        """Añade a la outbox el desenlace completo de la operación."""
+        """Append the operation's full outcome to the outbox."""
 
 
 class AcceptOfferEventRecorder(ABC):
-    """Registra los eventos durables producidos al aceptar una oferta."""
+    """Record the durable events produced when accepting an offer."""
 
     @abstractmethod
     async def record(self, result: AcceptOfferResult) -> None:
-        """Añade a la outbox todo el fanout atómico de la aceptación."""
+        """Append the acceptance's full atomic fan-out to the outbox."""
 
 
 class PauseRideEventRecorder(ABC):
-    """Registra los eventos durables producidos al pausar una solicitud."""
+    """Record the durable events produced when pausing a request."""
 
     @abstractmethod
     async def record(self, result: RidePausedResult) -> None:
-        """Añade a la outbox el cierre, retiros y avisos de pausa."""
+        """Append the close, withdrawals and pause notices to the outbox."""
 
 
 class RepublishRideEventRecorder(ABC):
-    """Registra los eventos durables al renovar una solicitud en el pool."""
+    """Record the durable events when renewing a request in the pool."""
 
     @abstractmethod
     async def record(self, result: RideRepublishedResult) -> None:
-        """Añade a la outbox el detalle del pasajero y la proyección del pool."""
+        """Append the passenger detail and the pool projection to the outbox."""
 
 
 class CancelRideEventRecorder(ABC):
-    """Registra los eventos durables producidos al cancelar un viaje."""
+    """Record the durable events produced when cancelling a ride."""
 
     @abstractmethod
     async def record(self, result: CancelRideResult) -> None:
-        """Añade a la outbox el estado terminal, cierre y rechazos."""
+        """Append the terminal state, close and rejections to the outbox."""
 
 
 class AnnounceOpenRideEventRecorder(ABC):
-    """Registra el anuncio de presencia de una solicitud abierta."""
+    """Record the presence announcement of an open request."""
 
     @abstractmethod
     async def record(self, detail: OpenRideDetail) -> None:
-        """Añade a la outbox el ``ride_created`` ya revalidado bajo lock."""
+        """Append the ``ride_created`` already re-validated under lock to the outbox."""
 
 
 class WithdrawOfferEventRecorder(ABC):
-    """Registra el retiro voluntario de una oferta por su conductor."""
+    """Record a driver voluntarily withdrawing their offer."""
 
     @abstractmethod
     async def record(self, offer: Offer) -> None:
-        """Añade a la outbox el ``offer_withdrawn`` de la oferta mutada."""
+        """Append the mutated offer's ``offer_withdrawn`` to the outbox."""
 
 
 class RejectOfferEventRecorder(ABC):
-    """Registra el rechazo explícito de una oferta por el pasajero."""
+    """Record the passenger explicitly rejecting an offer."""
 
     @abstractmethod
     async def record(self, offer: Offer) -> None:
-        """Añade a la outbox el ``offer_rejected`` de la oferta mutada."""
+        """Append the mutated offer's ``offer_rejected`` to the outbox."""
 
 
 class ExpireOfferEventRecorder(ABC):
-    """Registra los eventos durables producidos al vencer una oferta."""
+    """Record the durable events produced when an offer expires."""
 
     @abstractmethod
     async def record(self, offer: Offer) -> None:
-        """Añade a la outbox el fanout ``offer_expired`` de la oferta vencida."""
+        """Append the expired offer's ``offer_expired`` fan-out to the outbox."""
 
 
 class UpdateRideStatusEventRecorder(ABC):
-    """Registra los eventos durables al avanzar el estado de un viaje."""
+    """Record the durable events when a ride's status advances."""
 
     @abstractmethod
     async def record(self, detail: RideDetail) -> None:
-        """Añade a la outbox el estado exacto visto por ambos participantes."""
+        """Append the exact status seen by both participants to the outbox."""
 
 
 class DriverAvailabilityEventRecorder(ABC):
-    """Registra los eventos durables al cambiar la disponibilidad del conductor."""
+    """Record the durable events when the driver's availability changes."""
 
     @abstractmethod
     async def record(self, result: DriverAvailabilityResult) -> None:
-        """Añade los retiros producidos al quedar offline; online no emite."""
+        """Append the withdrawals produced when going offline; going online emits nothing."""
 
 
 class TokenService(ABC):
@@ -452,28 +452,28 @@ class TokenService(ABC):
 
 
 class SocialIdentityVerifier(ABC):
-    """Verifica el token de un proveedor OAuth y devuelve un perfil normalizado."""
+    """Verify an OAuth provider token and return a normalized profile."""
 
     provider: AuthProvider
 
     @abstractmethod
     async def verify(self, token: str) -> SocialProfile:
-        """Valida el token contra el proveedor o lanza ``InvalidTokenError``."""
+        """Validate the token against the provider or raise ``InvalidTokenError``."""
 
 
 class RideReadRepository(ABC):
-    """Proyecciones de lectura para viajes, separadas de sus mutaciones.
+    """Read projections for rides, separate from their mutations.
 
-    El adaptador concreto resuelve participantes, oferta aceptada y calificación
-    en la misma consulta que recupera los viajes. Así los casos de uso no
-    reconstruyen vistas mediante consultas por cada fila.
+    The concrete adapter resolves participants, accepted offer and rating
+    in the same query that loads the rides. This way use cases do not
+    rebuild views with one query per row.
     """
 
     @abstractmethod
     async def get_active_for_driver(self, driver_id: uuid.UUID) -> RideDetail | None:
-        """Último viaje activo del conductor, enriquecido, o ``None``.
+        """The driver's latest active ride, enriched, or ``None``.
 
-        La consulta debe filtrar estados activos y aplicar ``LIMIT 1``.
+        The query must filter active statuses and apply ``LIMIT 1``.
         """
 
     @abstractmethod
@@ -485,7 +485,7 @@ class RideReadRepository(ABC):
         cursor: PageCursor | None,
         limit: int,
     ) -> Page[RideHistoryItem]:
-        """Historial con contraparte, precio y voto del usuario en una consulta."""
+        """History with counterpart, price and the user's vote in one query."""
 
     @abstractmethod
     async def get_driver_earnings_summary(
@@ -495,4 +495,4 @@ class RideReadRepository(ABC):
         day_end_utc: datetime,
         recent_limit: int,
     ) -> DriverEarnings:
-        """Totales históricos/diarios y desglose reciente del conductor."""
+        """The driver's all-time/daily totals and recent breakdown."""

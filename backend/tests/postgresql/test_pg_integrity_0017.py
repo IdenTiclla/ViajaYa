@@ -1,4 +1,4 @@
-"""Certificación de la migración 0017 sobre una base PostgreSQL desechable."""
+"""Certification of migration 0017 on a disposable PostgreSQL database."""
 
 from __future__ import annotations
 

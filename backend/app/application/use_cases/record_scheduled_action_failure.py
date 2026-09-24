@@ -1,4 +1,4 @@
-"""Caso de uso: reprogramar o agotar una acción reclamada."""
+"""Use case: reschedule or exhaust a claimed action."""
 
 from __future__ import annotations
 

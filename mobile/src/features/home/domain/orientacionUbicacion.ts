@@ -12,7 +12,7 @@ export function rumboValido(rumbo: number | null): rumbo is number {
   return rumbo != null && Number.isFinite(rumbo) && rumbo >= 0 && rumbo < 360;
 }
 
-/** A baja velocidad el rumbo GPS puede ser cero o conservar un valor antiguo. */
+/** At low speed the GPS heading may be zero or keep an old value. */
 export function rumboDelMovimiento(anterior: MuestraMovimiento | null, actual: MuestraMovimiento): number | null {
   if (actual.velocidad != null && actual.velocidad >= 1 && rumboValido(actual.rumbo)) {
     return actual.rumbo;
@@ -27,7 +27,7 @@ export function rumboDelMovimiento(anterior: MuestraMovimiento | null, actual: M
   const haverseno = Math.sin((lat2 - lat1) / 2) ** 2
     + Math.cos(lat1) * Math.cos(lat2) * Math.sin(longitud / 2) ** 2;
   const distancia = 6371000 * 2 * Math.asin(Math.min(1, Math.sqrt(haverseno)));
-  // Exige un desplazamiento mayor que la incertidumbre para no orientar por ruido.
+  // Require a displacement larger than the uncertainty so noise does not set the orientation.
   const margen = Math.max(4, anterior.precision ?? 8, actual.precision ?? 8);
   if (distancia < margen) return null;
   const y = Math.sin(longitud) * Math.cos(lat2);

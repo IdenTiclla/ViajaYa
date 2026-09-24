@@ -1,9 +1,9 @@
 /**
- * Hook de ubicación actual: orquesta el permiso y la posición del dispositivo,
- * exponiendo estados de carga / permiso denegado / error para la UI del mapa.
+ * Current location hook: orchestrates the permission and the device position,
+ * exposing loading / permission denied / error states for the map UI.
  *
- * Se apoya en react-query (ya usado en la app) para manejar carga/error sin
- * efectos manuales con setState.
+ * Relies on react-query (already used in the app) to handle loading/error without
+ * manual setState effects.
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef } from 'react';
@@ -17,9 +17,9 @@ export type CurrentLocation = {
   status: LocationStatus;
   coordinates: Coordinates | null;
   canAskAgain: boolean;
-  /** Indica que se muestra temporalmente una última posición conocida. */
+  /** Signals that a last known position is being shown temporarily. */
   isEstimated: boolean;
-  /** Reintenta la solicitud (útil tras denegar o ante un error transitorio). */
+  /** Retry the request (useful after a denial or a transient error). */
   retry: () => void;
 };
 
@@ -46,8 +46,8 @@ export function useCurrentLocation(): CurrentLocation {
         queryClient.setQueryData(CURRENT_LOCATION_KEY, updatedLocation);
       });
     },
-    // Evita reutilizar durante horas una posición que ya no representa el punto
-    // de partida actual, pero tampoco consulta el GPS en cada render.
+    // Avoids reusing for hours a position that no longer represents the current
+    // starting point, but also does not query the GPS on every render.
     staleTime: 60_000,
     refetchOnMount: true,
     retry: false,

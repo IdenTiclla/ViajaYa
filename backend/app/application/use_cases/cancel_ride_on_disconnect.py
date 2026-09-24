@@ -1,4 +1,4 @@
-"""Caso de uso: cancelar una búsqueda abandonada tras la gracia de presencia."""
+"""Use case: cancel an abandoned search after the presence grace period."""
 
 from __future__ import annotations
 

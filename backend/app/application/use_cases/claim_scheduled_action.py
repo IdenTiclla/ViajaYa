@@ -1,4 +1,4 @@
-"""Caso de uso: reclamar una acción programada mediante un lease durable."""
+"""Use case: claim a scheduled action through a durable lease."""
 
 from __future__ import annotations
 

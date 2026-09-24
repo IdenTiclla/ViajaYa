@@ -1,4 +1,4 @@
-"""Contrato entre tipos fisicos de vehiculo y servicios solicitables."""
+"""Contract between physical vehicle types and requestable services."""
 
 from __future__ import annotations
 

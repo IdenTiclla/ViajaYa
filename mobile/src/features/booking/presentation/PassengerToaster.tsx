@@ -1,7 +1,7 @@
 /**
- * Muestra los toasts del pasajero (desenlaces de oferta) en la parte superior,
- * estilo Material-You glass, con auto-descarte a los 3.5 s. Se monta en el layout
- * autenticado del pasajero para aparecer sobre cualquier pantalla.
+ * Show the passenger's toasts (offer outcomes) at the top,
+ * Material You glass style, auto-dismissed after 3.5 s. Mounted in the passenger's
+ * authenticated layout so it appears over any screen.
  */
 import { Ionicons, type IoniconsIconName } from '@react-native-vector-icons/ionicons';
 import { useEffect } from 'react';

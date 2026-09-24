@@ -17,7 +17,7 @@ type EstadoTema = {
   elegir: (modo: ModoTema) => Promise<void>;
 };
 
-/** Preferencia local: no depende de la sesión ni se borra al cerrar sesión. */
+/** Local preference: it does not depend on the session and is not cleared on sign-out. */
 export function crearStoreTema(almacen: AlmacenTema) {
   let lectura: Promise<void> | null = null;
   let revision = 0;

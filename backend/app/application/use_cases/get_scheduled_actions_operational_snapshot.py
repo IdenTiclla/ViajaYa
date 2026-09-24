@@ -1,4 +1,4 @@
-"""Caso de uso: obtiene el snapshot operativo de acciones programadas."""
+"""Use case: get the operational snapshot of scheduled actions."""
 
 from __future__ import annotations
 

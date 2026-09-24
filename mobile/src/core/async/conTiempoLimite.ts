@@ -1,4 +1,4 @@
-/** Acota una espera; una resolución tardía ya no modifica su resultado. */
+/** Bound a wait; a late resolution no longer changes its result. */
 export function conTiempoLimite<T>(
   operacion: Promise<T>,
   limiteMs: number,

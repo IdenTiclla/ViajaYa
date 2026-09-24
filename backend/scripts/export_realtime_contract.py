@@ -1,12 +1,12 @@
-"""Genera y verifica ejemplos versionados del contrato realtime backend → mobile.
+"""Generate and verify versioned examples of the backend → mobile realtime contract.
 
-Uso::
+Usage::
 
     python -m scripts.export_realtime_contract
     python -m scripts.export_realtime_contract --check
 
-Los ejemplos se construyen con los schemas y serializadores productivos. El
-modo ``--check`` solo compara el contrato actual con el snapshot; nunca escribe.
+The examples are built with the production schemas and serializers. ``--check``
+mode only compares the current contract with the snapshot; it never writes.
 """
 
 from __future__ import annotations
@@ -482,7 +482,7 @@ def _v2_snapshot_cases() -> list[_ContractCase]:
 
 
 def construir_contrato_realtime() -> dict[str, object]:
-    """Construye la matriz canónica con serializadores productivos."""
+    """Build the canonical matrix with the production serializers."""
     messages = _messages()
     cases = [
         *_legacy_cases(messages),
@@ -496,7 +496,7 @@ def construir_contrato_realtime() -> dict[str, object]:
 
 
 def serializar_contrato_realtime() -> str:
-    """Devuelve el contrato como JSON estable terminado en salto de línea."""
+    """Return the contract as stable JSON ending with a newline."""
     return json.dumps(
         construir_contrato_realtime(),
         ensure_ascii=False,
@@ -511,7 +511,7 @@ def snapshot_esta_actualizado(
     *,
     esperado: str | None = None,
 ) -> bool:
-    """Compara el snapshot sin escribir en disco."""
+    """Compare the snapshot without writing to disk."""
     if esperado is None:
         esperado = serializar_contrato_realtime()
     try:
@@ -549,7 +549,7 @@ def main(
     *,
     destino: Path = REALTIME_CONTRACT_SNAPSHOT,
 ) -> int:
-    """Ejecuta la exportación o comprobación solicitada."""
+    """Run the requested export or check."""
     args = _crear_parser().parse_args(argv)
     esperado = serializar_contrato_realtime()
 

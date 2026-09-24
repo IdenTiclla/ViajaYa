@@ -13,11 +13,11 @@ import { controles, fontSize, fontWeight, radius, spacing, useEstilos, type Tema
 
 type Props = TextInputProps & {
   label?: string;
-  /** Ícono de Ionicons a la izquierda (sobre el diseño Stitch: mail, lock-closed…). */
+  /** Ionicons icon on the left (per the Stitch design: mail, lock-closed…). */
   leadingIcon?: IoniconsIconName;
-  /** Activa el toggle de mostrar/ocultar contraseña. */
+  /** Enable the show/hide password toggle. */
   password?: boolean;
-  /** Texto fijo antes del valor (p. ej. el código de país "+591"). */
+  /** Fixed text before the value (e.g. the country code "+591"). */
   prefix?: string;
   error?: string;
   /** Visible guidance below the field; an error takes precedence. */

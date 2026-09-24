@@ -1,4 +1,4 @@
-/** Etiquetas de ubicaciones, priorizando la calle para orientar al usuario. */
+/** Location labels, prioritizing the street to help the user find their way. */
 import type { Place } from '@/features/booking/domain/types';
 
 const STREET_PREFIX = /^(?:av(?:enida)?\.?|calle|c\.?|pasaje|pje\.?|ruta|carretera|anillo)\b/i;
@@ -28,7 +28,7 @@ function isUsefulText(value: string | null | undefined): boolean {
   );
 }
 
-/** Impide que una etiqueta provisional o heredada llegue al conductor. */
+/** Keep a provisional or inherited label from reaching the driver. */
 export function isPlaceLabelResolved(place: Pick<Place, 'name' | 'address' | 'labelStatus'>): boolean {
   if (place.labelStatus === 'provisional') return false;
   return isUsefulText(place.name) || isUsefulText(place.address);
@@ -43,8 +43,8 @@ export function assertPlaceLabelResolved(
 }
 
 /**
- * Devuelve la referencia más útil para llegar a un punto: calle y número cuando
- * están disponibles; de lo contrario, conserva el nombre del lugar.
+ * Return the most useful reference to reach a point: street and number when
+ * available; otherwise, keep the place name.
  */
 export function getPlaceStreetName({
   name,
@@ -64,7 +64,7 @@ export function getPlaceStreetName({
   return 'Dirección no disponible';
 }
 
-/** Dirección secundaria final; nunca devuelve placeholders ni coordenadas solas. */
+/** Final secondary address; never returns placeholders or bare coordinates. */
 export function getPlaceReadableAddress(place: Pick<Place, 'name' | 'address' | 'labelStatus'>): string {
   const address = place.address.trim();
   if (isUsefulText(address)) return address;

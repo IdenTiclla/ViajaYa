@@ -1,15 +1,15 @@
 import { TripProgress } from '@/features/rides/presentation/TripProgress';
 /**
- * Buscando ofertas (pasajero) — diseño Stitch "Searching for Offers".
+ * Searching for offers (passenger) — Stitch "Searching for Offers" design.
  *
- * Mapa de fondo con el trayecto y un pulso sobre el origen; abajo una tarjeta
- * con el estado de búsqueda, los controles para **ajustar la oferta** y la acción de
- * cancelar la solicitud. Se muestra mientras el viaje sigue
- * `searching` y aún no llegan ofertas; al recibir la primera, `OffersScreen`
- * pasa a la lista.
+ * Background map with the route and a pulse on the origin; at the bottom a card
+ * with the search status, the controls to **adjust the fare** and the action to
+ * cancel the request. Shown while the ride is still
+ * `searching` and no offers have arrived yet; when the first one arrives, `OffersScreen`
+ * switches to the list.
  *
- * La búsqueda no caduca. Al ajustar la oferta, el nuevo monto se anuncia a los
- * conductores en vivo.
+ * The search does not expire. When the fare is adjusted, the new amount is announced to the
+ * drivers live.
  */
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useEffect, useRef, useState } from 'react';
@@ -81,8 +81,8 @@ export function SearchingDriversScreen({
   const [headerHeight, setHeaderHeight] = useState(insets.top + 80);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const hasConnectionError = connectionError != null;
-  // La hoja no tiene una altura fija: medirla evita que el trayecto quede
-  // descentrado o cubierto en pantallas pequeñas y grandes.
+  // The sheet has no fixed height: measuring it keeps the route from being
+  // off-center or covered on small and large screens.
   const mapBottomPadding = sheetHeight > 0 ? sheetHeight : 440;
 
   useEffect(() => {
@@ -148,7 +148,7 @@ export function SearchingDriversScreen({
       onEditReady();
       return;
     }
-    // Pausa la búsqueda antes de editar: así se oculta del pool sin cancelarla.
+    // Pause the search before editing: this hides it from the pool without cancelling it.
     pauseForEdit.mutate(rideId, {
       onSuccess: () => onEditReady(rideId),
     });
@@ -203,7 +203,7 @@ export function SearchingDriversScreen({
               bounces={false}>
               <View style={styles.sheetHandle} />
 
-          {/* Estado de búsqueda */}
+          {/* Search status */}
           <View style={styles.statusRow}>
             <View style={styles.statusText}>
               <View style={styles.statusTitleRow}>
@@ -318,7 +318,7 @@ export function SearchingDriversScreen({
   );
 }
 
-/** Indicador de sincronización activo durante toda la búsqueda de ofertas. */
+/** Sync indicator active during the whole offer search. */
 function IconoSincronizacionGiratorio({ conError }: { conError: boolean }) {
   const { colors } = useTema();
   const [giro] = useState(() => new Animated.Value(0));
@@ -355,7 +355,7 @@ function IconoSincronizacionGiratorio({ conError }: { conError: boolean }) {
   );
 }
 
-/** Barra de progreso indeterminada: un segmento que recorre la pista en bucle. */
+/** Indeterminate progress bar: a segment that loops along the track. */
 function ProgressBar() {
   const { styles } = useEstilos(crearEstilos);
   const [progress] = useState(() => new Animated.Value(0));

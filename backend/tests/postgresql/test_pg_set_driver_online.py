@@ -1,4 +1,4 @@
-"""Carreras PostgreSQL de la desconexión durable del conductor."""
+"""PostgreSQL races of the driver's durable disconnection."""
 
 from __future__ import annotations
 

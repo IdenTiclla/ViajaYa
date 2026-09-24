@@ -1,10 +1,10 @@
 /**
- * Overlay efímero "Oferta enviada" (conductor): feedback animado al enviar una
- * oferta (Aceptar / +Bs / monto del keypad). Auto-ocultado a los ~1.2 s; no
- * captura toques (`pointerEvents="none"`) para no bloquear la siguiente oferta.
+ * Ephemeral "Oferta enviada" overlay (driver): animated feedback when sending an
+ * offer (Aceptar / +Bs / keypad amount). Auto-hidden after ~1.2 s; it does not
+ * capture touches (`pointerEvents="none"`) so it does not block the next offer.
  *
- * Usa `react-native-reanimated` (corre en el hilo nativo). Análogo visual al
- * `ConfirmationOverlay` del pasajero, pero para el gesto de ofertar.
+ * Uses `react-native-reanimated` (runs on the native thread). Visual counterpart of the
+ * passenger's `ConfirmationOverlay`, but for the offer gesture.
  */
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useEffect } from 'react';

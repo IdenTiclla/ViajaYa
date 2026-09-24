@@ -12,17 +12,17 @@ type Props = {
   message?: string;
   confirmText?: string;
   cancelText?: string;
-  /** Resalta la acción de confirmar en rojo (p. ej. eliminar). */
+  /** Highlight the confirm action in red (e.g. delete). */
   destructive?: boolean;
-  /** Ícono de Ionicons mostrado sobre el título. */
+  /** Ionicons icon shown above the title. */
   icon?: IoniconsIconName;
   onConfirm: () => void;
   onCancel: () => void;
 };
 
 /**
- * Diálogo de confirmación con el estilo de la app (en vez del `Alert` nativo).
- * Controlado por `visible`; el padre decide qué hacer en confirmar/cancelar.
+ * Confirmation dialog with the app's style (instead of the native `Alert`).
+ * Controlled by `visible`; the parent decides what to do on confirm/cancel.
  */
 export function ConfirmDialog({
   visible,
@@ -50,7 +50,7 @@ export function ConfirmDialog({
       animationType="fade"
       statusBarTranslucent
       onShow={() => {
-        // En web el Modal administra el foco mediante su contenedor de diálogo.
+        // On web the Modal manages focus through its dialog container.
         if (Platform.OS === 'web') return;
         const titulo = findNodeHandle(tituloRef.current);
         if (titulo != null) AccessibilityInfo.setAccessibilityFocus(titulo);
@@ -60,7 +60,7 @@ export function ConfirmDialog({
       <Pressable style={[styles.backdrop, mobileLayout && styles.mobileBackdrop,
         { paddingTop: Math.max(insets.top, spacing.md), paddingBottom: Math.max(insets.bottom, spacing.md) }]}
         onPress={onCancel} accessible={false}>
-        {/* Tarjeta: detiene la propagación para no cancelar al tocarla. */}
+        {/* Card: stops propagation so tapping it does not cancel. */}
         <Pressable
           style={styles.card}
           onPress={event => event.stopPropagation()}

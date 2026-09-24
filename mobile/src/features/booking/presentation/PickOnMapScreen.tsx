@@ -1,11 +1,11 @@
 /**
- * Selección de un punto (origen o destino) moviendo el mapa: el pin queda fijo
- * en el centro y el usuario desplaza el mapa hasta el punto deseado. Al
- * confirmar, ese centro se guarda en el store y se vuelve a configurar el viaje.
+ * Pick a point (origin or destination) by moving the map: the pin stays fixed
+ * at the center and the user pans the map to the desired point. On
+ * confirm, that center is saved in the store and the user goes back to configure the trip.
  *
- * El punto a fijar lo decide el parámetro de ruta `target` ('origin' |
- * 'destination'); por defecto, destino. El pin es azul para el origen y rojo
- * para el destino. El `Place` vive en estado local hasta que se confirma.
+ * The point to set is decided by the `target` route param ('origin' |
+ * 'destination'); destination by default. The pin is blue for the origin and red
+ * for the destination. The `Place` lives in local state until confirmed.
  */
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -64,8 +64,8 @@ export function PickOnMapScreen() {
     label?: string;
     rideId?: string;
   }>();
-  // Modo "guardar lugar": el confirmar lleva al formulario de lugar guardado en
-  // vez de a configurar el viaje. Conserva categoría/id/label para reenviarlos.
+  // "Save place" mode: confirming leads to the saved place form instead of
+  // configuring the trip. Keeps category/id/label to forward them.
   const isSaveAs = saveAs === '1';
   const isOrigin = target === 'origin';
   const isDestination = !isSaveAs && !isOrigin;
@@ -89,13 +89,13 @@ export function PickOnMapScreen() {
   const usableOrigin = origin && isPlaceInBolivia(origin) ? origin : null;
   const usableCoordinates =
     coordinates && isCoordinatesInBolivia(coordinates) ? coordinates : null;
-  // Solo seguimos al GPS tardío si de verdad no había origen ni GPS al iniciar.
+  // Only follow a late GPS fix if there really was no origin or GPS at start.
   const startedWithoutPreferredCenter = useRef(
     !usableOrigin && (!usableCoordinates || isEstimated),
   );
 
-  // El destino B siempre comienza desde el origen A. Origen y lugares guardados
-  // también priorizan el origen vigente antes de recurrir al GPS.
+  // Destination B always starts from origin A. Origin and saved places
+  // also prefer the current origin before falling back to GPS.
   const initialRegion = useMemo<Region>(() => {
     const center =
       usableOrigin?.coordinates ??
@@ -149,20 +149,20 @@ export function PickOnMapScreen() {
     ? `Origen: ${getPlaceStreetName(usableOrigin)}`
     : 'Origen: Sin definir';
 
-  // Siembra la dirección del centro inicial. Solo dispara trabajo asíncrono
-  // (el setState ocurre en el `.then`, no de forma síncrona dentro del efecto).
+  // Seed the address of the initial center. It only fires async work
+  // (the setState happens in `.then`, not synchronously inside the effect).
   const seeded = useRef(false);
   useEffect(() => {
     if (seeded.current) return;
     seeded.current = true;
-    // El centro nacional es solo una referencia visual mientras llega el GPS:
-    // no debe ocupar el geocoder con una dirección que el usuario no eligió.
+    // The national center is only a visual reference while GPS arrives:
+    // it must not keep the geocoder busy with an address the user did not choose.
     if (isDestination || (!usableOrigin && !usableCoordinates)) return;
     handleRegionChange(initialRegion);
   }, [handleRegionChange, initialRegion, isDestination, usableCoordinates, usableOrigin]);
 
-  // Si el permiso llega después de mostrar la región de respaldo, centra una
-  // sola vez en la ubicación recién obtenida sin interrumpir ajustes posteriores.
+  // If the permission arrives after showing the fallback region, center once
+  // on the newly obtained location without interrupting later adjustments.
   useEffect(() => {
     if (!usableCoordinates || !startedWithoutPreferredCenter.current) return;
     const nextRegion = { ...usableCoordinates, latitudeDelta: 0.01, longitudeDelta: 0.01 };
@@ -217,8 +217,8 @@ export function PickOnMapScreen() {
       handleRegionChange(nextRegion);
       return;
     }
-    // Los centros automáticos ya se envían explícitamente al hook. MapView los
-    // vuelve a notificar al terminar la animación y no deben duplicar la consulta.
+    // Automatic centers are already sent explicitly to the hook. MapView
+    // notifies them again when the animation ends and they must not duplicate the query.
     if (!centerAdjustedByUser.current) return;
     if (coordenadasCasiIguales(nextRegion, automaticCenterCoordinates.current)) return;
     handleRegionChange(nextRegion);
@@ -260,8 +260,8 @@ export function PickOnMapScreen() {
   const confirm = () => {
     if (!place || confirmDisabled) return;
     if (isSaveAs) {
-      // Reemplaza el mapa por el formulario para nombrar/categorizar el lugar,
-      // reenviando id/label/category (edición) y el punto elegido.
+      // Replace the map with the form to name/categorize the place,
+      // forwarding id/label/category (edit) and the chosen point.
       router.replace({
         pathname: '/booking/edit-place',
         params: {

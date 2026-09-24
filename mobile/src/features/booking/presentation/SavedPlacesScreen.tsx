@@ -1,8 +1,8 @@
 /**
- * "Mis lugares guardados": lista los favoritos del pasajero (Casa, Trabajo,
- * Gimnasio, Otros). Permite agregar uno nuevo, editar cada uno, y tocar uno
- * para usarlo como destino del viaje. También ofrece guardar rápido un destino
- * reciente.
+ * "Mis lugares guardados": lists the passenger's favorites (Casa, Trabajo,
+ * Gimnasio, Otros). Allows adding a new one, editing each one, and tapping one
+ * to use it as the ride's destination. It also offers quick-saving a recent
+ * destination.
  */
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -84,8 +84,8 @@ export function SavedPlacesScreen() {
     });
   };
 
-  // Guarda rápido un destino reciente: ya tiene coordenadas, así que va directo
-  // al formulario sin pasar por el mapa.
+  // Quick-save a recent destination: it already has coordinates, so it goes straight
+  // to the form without going through the map.
   const quickSave = (place: Place) => {
     const locationError = getBoliviaPlaceError(place);
     if (locationError) {
@@ -107,7 +107,7 @@ export function SavedPlacesScreen() {
     });
   };
 
-  // Recientes que aún no están guardados (compara por coordenadas).
+  // Recents that are not saved yet (compared by coordinates).
   const savedKeys = new Set(
     saved.map(
       (s) => `${s.place.coordinates.latitude.toFixed(5)},${s.place.coordinates.longitude.toFixed(5)}`,

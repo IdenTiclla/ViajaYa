@@ -1,4 +1,4 @@
-"""Gate legacy y negociación real entre dos procesos live_redis."""
+"""Legacy gate and real negotiation between two live_redis processes."""
 
 from __future__ import annotations
 
@@ -110,7 +110,7 @@ async def _receive_event_for_aggregate(
     event_type: str,
     aggregate_id: uuid.UUID,
 ) -> RealtimeEventEnvelopeV2:
-    """Ignora backlog legítimo de otros agregados sobre un topic compartido."""
+    """Ignore legitimate backlog of other aggregates on a shared topic."""
     async with asyncio.timeout(10):
         while True:
             event = RealtimeEventEnvelopeV2.model_validate(

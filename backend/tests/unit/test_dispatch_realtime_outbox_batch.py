@@ -1,4 +1,4 @@
-"""Pruebas de la frontera transaccional del dispatcher sombra."""
+"""Tests of the shadow dispatcher's transactional boundary."""
 
 from __future__ import annotations
 

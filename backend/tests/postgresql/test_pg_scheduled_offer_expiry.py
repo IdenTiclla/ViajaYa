@@ -1,4 +1,4 @@
-"""Expiración durable de ofertas sobre PostgreSQL y recuperación de restart."""
+"""Durable offer expiry on PostgreSQL and restart recovery."""
 
 from __future__ import annotations
 
@@ -154,7 +154,7 @@ async def test_restart_despues_del_claim_recupera_y_expira_una_sola_vez(
     claim_at = datetime.now(UTC)
     await _make_due(sessions, offer.id, claim_at)
     try:
-        # El primer proceso confirma el claim y muere antes de ejecutar.
+        # The first process confirms the claim and dies before running it.
         async with sessions() as session:
             claimed = await SqlAlchemyScheduledActionRepository(session).claim_due(
                 claim_at,
@@ -186,7 +186,7 @@ async def test_restart_despues_del_claim_recupera_y_expira_una_sola_vez(
         assert offer_status is OfferStatus.EXPIRED
         assert action is not None and action.status == "succeeded"
         assert action.attempts == 2
-        # 1 evento de creación + fanout de 2 eventos de expiración.
+        # 1 creation event + a fan-out of 2 expiry events.
         assert outbox_count == 3
     finally:
         await _delete_action(sessions, offer.id)
@@ -209,7 +209,7 @@ async def test_timer_shadow_y_worker_compiten_sin_duplicar_outbox(
             ).execute(offer.id, now)
             assert expired is not None
 
-        # El worker ya no reclama la acción completada por el timer.
+        # The worker no longer claims the action completed by the timer.
         result = await _worker(sessions, settings, now).dispatch_once()
 
         async with sessions() as session:

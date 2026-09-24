@@ -1,4 +1,4 @@
-"""Worker cancelable para retención opt-in de la outbox publicada."""
+"""Cancellable worker for the opt-in retention of the published outbox."""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ def _utc_now() -> datetime:
 
 
 class PublishedRealtimeOutboxRetentionWorker:
-    """Drena en chunks sin compartir sesión ni transacción con el dispatcher."""
+    """Drain in chunks without sharing a session or transaction with the dispatcher."""
 
     def __init__(
         self,
@@ -73,7 +73,7 @@ class PublishedRealtimeOutboxRetentionWorker:
         return self._deleted_event_count
 
     async def preflight(self) -> None:
-        """Exige la columna y el índice de 0021 antes de limpiar."""
+        """Require the 0021 column and index before cleaning up."""
         async with self._session_factory() as session:
             try:
                 await session.execute(
@@ -142,8 +142,8 @@ class PublishedRealtimeOutboxRetentionWorker:
                         result.event_count,
                     )
 
-                # Un solo chunk por intervalo evita que un backlog histórico
-                # compita indefinidamente con publicación y tráfico de negocio.
+                # A single chunk per interval keeps a historical backlog from
+                # competing indefinitely with publishing and business traffic.
                 await self._wait_for_cycle()
         finally:
             self._running = False

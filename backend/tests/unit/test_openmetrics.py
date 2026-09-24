@@ -64,7 +64,7 @@ async def _get(app, path: str):
 
 
 def _assert_valid_openmetrics(content: str) -> None:
-    """Exige que el parser oficial acepte el documento completo."""
+    """Require the official parser to accept the whole document."""
     assert list(text_string_to_metric_families(content))
     assert content.endswith("# EOF\n")
 

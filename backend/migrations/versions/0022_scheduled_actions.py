@@ -1,4 +1,4 @@
-"""Añade acciones programadas durables y recupera ofertas pendientes.
+"""Add durable scheduled actions and recover pending offers.
 
 Revision ID: 0022_scheduled_actions
 Revises: 0021_realtime_outbox_batch_size
@@ -109,8 +109,8 @@ def upgrade() -> None:
         postgresql_where=sa.text("status IN ('succeeded', 'cancelled')"),
     )
 
-    # Recupera ofertas que podían haber perdido su asyncio.create_task durante
-    # un crash. El deadline conserva los 30 s desde created_at, no desde deploy.
+    # Recover offers that may have lost their asyncio.create_task during
+    # a crash. The deadline keeps the 30 s from created_at, not from the deploy.
     op.execute(
         sa.text(
             """

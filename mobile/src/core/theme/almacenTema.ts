@@ -5,7 +5,7 @@ import type { AlmacenTema } from './crearStoreTema';
 
 const CLAVE = 'viajaya.tema';
 
-/** Reutiliza el almacenamiento nativo instalado; web guarda solo esta preferencia. */
+/** Reuse the installed native storage; on web only this preference is stored. */
 export const almacenTema: AlmacenTema = {
   async leer() {
     if (Platform.OS === 'web') {

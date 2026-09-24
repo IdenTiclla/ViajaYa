@@ -1,10 +1,10 @@
 /**
- * Navegación compartida por pasajero y conductor. El icono activo conserva el
- * acento amarillo; todas las etiquetas tienen espacio y posición estables.
+ * Navigation shared by passenger and driver. The active icon keeps the
+ * yellow accent; every label has a stable space and position.
  *
- * Reemplaza al TabBar por defecto de React Navigation (que solo permite cambiar
- * el `tintColor`, no pintar un fondo por tab). Los iconos y títulos se declaran
- * en cada `Tabs.Screen` (`tabBarIcon` / `title`) y aquí se consumen tal cual.
+ * Replaces React Navigation's default TabBar (which only allows changing
+ * the `tintColor`, not painting a background per tab). Icons and titles are declared
+ * in each `Tabs.Screen` (`tabBarIcon` / `title`) and consumed here as is.
  */
 import type { BottomTabBarProps } from 'expo-router/js-tabs';
 import { useState } from 'react';
@@ -22,9 +22,9 @@ export function PillTabBar({ state, descriptors, navigation }: BottomTabBarProps
   const [enfocada, setEnfocada] = useState<string | null>(null);
   const dosFilas = fontScale > 1.3;
 
-  // Focus por key (no por índice) y filtra rutas ocultas: una tab se oculta
-  // declarando `tabBarButton: () => null` (estándar RN); las visibles no la
-  // definen. Ej.: el redirect "index" del conductor.
+  // Focus by key (not by index) and filter hidden routes: a tab is hidden
+  // by declaring `tabBarButton: () => null` (RN standard); visible ones do not
+  // define it. E.g.: the driver's "index" redirect.
   const focusedKey = state.routes[state.index]?.key;
   const visibleRoutes = state.routes.filter(
     (route) => (descriptors[route.key].options as { tabBarButton?: unknown }).tabBarButton === undefined,

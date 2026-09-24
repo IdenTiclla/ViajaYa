@@ -1,10 +1,10 @@
 import { TripProgress } from '@/features/rides/presentation/TripProgress';
 /**
- * Tarjeta de cierre de viaje reutilizable (pasajero ↔ conductor).
+ * Reusable ride-closing card (passenger ↔ driver).
  *
- * Muestra el resumen del viaje terminado y permite calificar a la otra parte
- * (1–5 estrellas + comentario opcional). La opción de omitir permanece disponible
- * hasta enviar, incluso después de elegir estrellas.
+ * Shows the finished ride's summary and lets the user rate the other party
+ * (1–5 stars + optional comment). The skip option stays available
+ * until submitting, even after choosing stars.
  */
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useRef, useState } from 'react';
@@ -20,13 +20,13 @@ import { TripSecondaryAction } from './TripSecondaryAction';
 
 type Props = {
   ride: Ride;
-  /** Nombre de la otra parte (conductor para el pasajero; pasajero para el conductor). */
+  /** Name of the other party (the driver for the passenger; the passenger for the driver). */
   counterpartName?: string | null;
-  /** Detalle del vehículo, cuando se califica al conductor. */
+  /** Vehicle detail, when rating the driver. */
   counterpartVehicle?: string | null;
-  /** A quién se califica, para el texto de ayuda. */
+  /** Who is being rated, for the helper text. */
   rateeRole: 'driver' | 'passenger';
-  /** Se llama tras enviar la calificación o al omitir. */
+  /** Called after submitting the rating or when skipping. */
   onDone: () => void;
 };
 

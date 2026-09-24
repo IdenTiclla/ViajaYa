@@ -1,4 +1,4 @@
-"""Lifecycle, retries y apagado del worker de acciones programadas."""
+"""Lifecycle, retries and shutdown of the scheduled actions worker."""
 
 from __future__ import annotations
 

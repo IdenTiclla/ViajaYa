@@ -1,4 +1,4 @@
-"""Adaptador SQLAlchemy para la outbox durable de tiempo real."""
+"""SQLAlchemy adapter for the durable realtime outbox."""
 
 from __future__ import annotations
 
@@ -29,8 +29,8 @@ from app.infrastructure.db.models import (
 def _to_event(row: RealtimeOutboxModel) -> RealtimeOutboxEvent:
     created_at = row.created_at
     if created_at.tzinfo is None:
-        # SQLite pierde la zona de DateTime(timezone=True); PostgreSQL conserva
-        # el instante aware. El envelope v2 exige siempre una fecha inequívoca.
+        # SQLite drops the zone of DateTime(timezone=True); PostgreSQL keeps
+        # the aware instant. The v2 envelope always requires an unambiguous date.
         created_at = created_at.replace(tzinfo=UTC)
     return RealtimeOutboxEvent(
         id=row.id,
@@ -56,7 +56,7 @@ def _to_event(row: RealtimeOutboxModel) -> RealtimeOutboxEvent:
 
 
 class SqlAlchemyRealtimeOutbox(RealtimeOutbox):
-    """Persiste lotes y los reclama manteniendo el lock hasta el commit del UoW."""
+    """Persist batches and claim them, holding the lock until the UoW commit."""
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -81,9 +81,9 @@ class SqlAlchemyRealtimeOutbox(RealtimeOutbox):
             else uuid.uuid4()
         )
 
-        # Todos los productores adquieren locks en el mismo orden global para
-        # que dos lotes con las mismas claves invertidas no formen un deadlock.
-        # Los contadores de agregado siempre se reservan antes que los de topic.
+        # All producers acquire locks in the same global order so that
+        # two batches with the same keys in reverse order do not deadlock.
+        # Aggregate counters are always reserved before topic counters.
         aggregate_counts = Counter(
             (event.aggregate_type, event.aggregate_id) for event in events
         )
@@ -263,7 +263,7 @@ class SqlAlchemyRealtimeOutbox(RealtimeOutbox):
             statement = postgresql_insert(RealtimeAggregateVersionModel).values(**values)
         elif dialect_name == "sqlite":
             statement = sqlite_insert(RealtimeAggregateVersionModel).values(**values)
-        else:  # pragma: no cover - los entornos soportados son PostgreSQL y SQLite
+        else:  # pragma: no cover - the supported environments are PostgreSQL and SQLite
             raise RuntimeError(f"Dialect de outbox no soportado: {dialect_name}")
 
         statement = statement.on_conflict_do_update(
@@ -285,7 +285,7 @@ class SqlAlchemyRealtimeOutbox(RealtimeOutbox):
             statement = postgresql_insert(RealtimeStreamVersionModel).values(**values)
         elif dialect_name == "sqlite":
             statement = sqlite_insert(RealtimeStreamVersionModel).values(**values)
-        else:  # pragma: no cover - los entornos soportados son PostgreSQL y SQLite
+        else:  # pragma: no cover - the supported environments are PostgreSQL and SQLite
             raise RuntimeError(f"Dialect de outbox no soportado: {dialect_name}")
 
         statement = statement.on_conflict_do_update(

@@ -1,4 +1,4 @@
-"""Pruebas del validador canónico de batches realtime."""
+"""Tests of the canonical realtime batch validator."""
 
 from __future__ import annotations
 

@@ -1,7 +1,7 @@
 /**
- * Destinos recientes del pasajero desde la API (`/rides/recent-destinations`).
+ * The passenger's recent destinations from the API (`/rides/recent-destinations`).
  *
- * Conserva los destinos cargados y distingue un fallo de red de una lista vacía.
+ * Keeps the loaded destinations and tells a network failure apart from an empty list.
  */
 import { useQuery } from '@tanstack/react-query';
 

@@ -1,4 +1,4 @@
-"""Tests de los casos de uso que preparan snapshots realtime consistentes."""
+"""Tests of the use cases that prepare consistent realtime snapshots."""
 
 from __future__ import annotations
 

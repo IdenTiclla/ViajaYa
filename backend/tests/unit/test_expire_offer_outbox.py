@@ -1,4 +1,4 @@
-"""Atomicidad y contrato realtime del vencimiento de una oferta."""
+"""Atomicity and realtime contract of an offer's expiry."""
 
 from __future__ import annotations
 

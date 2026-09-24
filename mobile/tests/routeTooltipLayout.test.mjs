@@ -55,7 +55,7 @@ test('el centro del pin no se desplaza al crecer la etiqueta o mostrar Editar', 
   for (const altura of [TAMANO_PIN_RUTA, 44, 62, 92]) {
     const arriba = calcularAnclajePin(altura, 'arriba');
     const abajo = calcularAnclajePin(altura, 'abajo');
-    // El centro queda a medio diámetro del borde, sin depender del tooltip.
+    // The center stays half a diameter from the edge, independent of the tooltip.
     assert.ok(Math.abs(altura - arriba.y * altura - TAMANO_PIN_RUTA / 2) < 0.000001);
     assert.ok(Math.abs(abajo.y * altura - TAMANO_PIN_RUTA / 2) < 0.000001);
     assert.equal(arriba.x, 0.5);

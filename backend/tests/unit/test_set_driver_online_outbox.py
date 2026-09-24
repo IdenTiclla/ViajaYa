@@ -1,4 +1,4 @@
-"""Atomicidad y contrato realtime de la disponibilidad del conductor."""
+"""Atomicity and realtime contract of the driver's availability."""
 
 from __future__ import annotations
 

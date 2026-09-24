@@ -1,4 +1,4 @@
-"""Contrato validado de mensajes WebSocket de negociación."""
+"""Validated contract of negotiation WebSocket messages."""
 
 from __future__ import annotations
 
@@ -28,8 +28,8 @@ RideClosedReason: TypeAlias = Literal["paused", "terminal"]
 
 class RideClosedData(_StrictPayload):
     ride_id: uuid.UUID
-    # Opcionales únicamente para leer frames legacy y filas históricas de
-    # outbox. Todo productor actual los completa y el envelope v2 los exige.
+    # Optional only to read legacy frames and historical outbox rows.
+    # Every current producer fills them and the v2 envelope requires them.
     pool_version: int | None = Field(default=None, strict=True, ge=1)
     reason: RideClosedReason | None = None
 
@@ -80,8 +80,8 @@ class WithdrawnOfferReferenceData(_StrictPayload):
 
 class OffersWithdrawnData(_StrictPayload):
     ride_ids: list[uuid.UUID]
-    # Opcional solo para leer frames legacy y filas históricas de outbox. Los
-    # productores actuales lo completan y el envelope v2 lo exige.
+    # Optional only to read legacy frames and historical outbox rows. Current
+    # producers fill it and the v2 envelope requires it.
     offers: list[WithdrawnOfferReferenceData] | None = None
     reason: OffersWithdrawnReason | None = None
 
@@ -205,16 +205,16 @@ negotiation_message_adapter = TypeAdapter(NegotiationMessage)
 
 
 def parse_negotiation_message(value: object) -> NegotiationMessage:
-    """Valida un valor externo contra la unión discriminada del protocolo."""
+    """Validate an external value against the protocol's discriminated union."""
     return negotiation_message_adapter.validate_python(value)
 
 
 def dump_negotiation_message(message: NegotiationMessage) -> dict[str, object]:
-    """Serializa un mensaje ya tipado sin añadir campos opcionales ausentes."""
+    """Serialize an already typed message without adding absent optional fields."""
     validated = negotiation_message_adapter.validate_python(message)
     payload = validated.model_dump(mode="json", exclude_unset=True)
-    # ``type`` tiene un default Literal para construir mensajes con ergonomía;
-    # se fija siempre en la salida aunque ``exclude_unset`` omita ese default.
+    # ``type`` has a Literal default so messages are ergonomic to build;
+    # it is always set on output even though ``exclude_unset`` omits that default.
     payload["type"] = validated.type
     return payload
 
@@ -283,7 +283,7 @@ def validate_realtime_event_semantics(
     aggregate_id: uuid.UUID,
     message: NegotiationMessage,
 ) -> None:
-    """Correlaciona routing y agregado con el payload ya validado."""
+    """Correlate routing and aggregate with the already validated payload."""
     stream_prefix, _, raw_stream_id = stream.partition(":")
     if stream_prefix not in _EVENT_STREAM_PREFIXES[event_type]:
         raise ValueError("event_type no admite el stream indicado")
@@ -307,7 +307,7 @@ def validate_realtime_event_semantics(
 
 
 class StreamWatermark(_Message):
-    """Última posición incluida en un snapshot para un stream concreto."""
+    """Last position included in a snapshot for a given stream."""
 
     stream: str = Field(min_length=1, max_length=255)
     stream_version: int = Field(strict=True, ge=0, le=_MAX_SAFE_JSON_INTEGER)
@@ -327,7 +327,7 @@ def _validate_unique_watermarks(
 
 
 class _RealtimeEventEnvelopeV2Base(_Message):
-    """Campos v2 estables antes y después de añadir correlación."""
+    """v2 fields that stay stable before and after adding correlation."""
 
     schema_version: Literal[2]
     kind: Literal["event"]
@@ -350,7 +350,7 @@ class _RealtimeEventEnvelopeV2Base(_Message):
 
     @model_validator(mode="after")
     def validate_type_and_data(self) -> _RealtimeEventEnvelopeV2Base:
-        """Mantiene correlacionados el discriminador y su payload canónico."""
+        """Keep the discriminator and its canonical payload correlated."""
         try:
             message = parse_negotiation_message({"type": self.type, "data": self.data})
         except (TypeError, ValueError) as error:
@@ -374,22 +374,22 @@ class _RealtimeEventEnvelopeV2Base(_Message):
         )
 
         normalized = dump_negotiation_message(message)["data"]
-        if not isinstance(normalized, dict):  # pragma: no cover - los deltas son objetos
+        if not isinstance(normalized, dict):  # pragma: no cover - deltas are objects
             raise ValueError("data debe ser un objeto para los eventos realtime.")
         self.data = normalized
         return self
 
 
 class LegacyRealtimeEventEnvelopeV2(_RealtimeEventEnvelopeV2Base):
-    """Envelope exacto aceptado por réplicas anteriores durante el rollout."""
+    """Exact envelope accepted by older replicas during the rollout."""
 
 
 class RealtimeEventEnvelopeV2(_RealtimeEventEnvelopeV2Base):
-    """Envelope v2 con correlación y lectura compatible del formato anterior.
+    """v2 envelope with correlation and compatible reading of the previous format.
 
-    El productor nuevo siempre envía ``correlation_id``. Durante un rolling
-    deploy, un consumidor nuevo puede recibir una copia anterior sin el campo;
-    ``batch_id`` es entonces el fallback estable y compartido por todo el lote.
+    The new producer always sends ``correlation_id``. During a rolling
+    deploy, a new consumer may receive an older copy without the field;
+    ``batch_id`` is then the stable fallback shared by the whole batch.
     """
 
     correlation_id: uuid.UUID | None = None
@@ -440,7 +440,7 @@ class DriverSnapshotDataV2(_StrictPayload):
 
 
 class DriverSnapshotMessageV2(_Message):
-    """Estado unificado del conductor y vector de posiciones observadas."""
+    """The driver's unified state and vector of observed positions."""
 
     schema_version: Literal[2]
     kind: Literal["snapshot"]

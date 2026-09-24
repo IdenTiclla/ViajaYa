@@ -1,4 +1,4 @@
-"""Contrato de leases Redis por conexión para presencia compartida."""
+"""Contract of per-connection Redis leases for shared presence."""
 
 from __future__ import annotations
 

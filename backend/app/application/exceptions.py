@@ -1,4 +1,4 @@
-"""Errores propios de la orquestación de la aplicación."""
+"""Errors specific to the application orchestration."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from app.application.dto import RealtimeOutboxQuarantineCode
 
 
 class InvalidRealtimeOutboxBatchError(ValueError):
-    """El lote reclamado de la outbox no cumple el contrato de publicación."""
+    """The claimed outbox batch does not meet the publication contract."""
 
     def __init__(
         self,
@@ -18,12 +18,12 @@ class InvalidRealtimeOutboxBatchError(ValueError):
 
 
 class InvalidScheduledActionError(ValueError):
-    """La acción persistida no cumple el contrato de su tipo."""
+    """The persisted action does not meet its type's contract."""
 
 
 class UnsupportedScheduledActionError(ValueError):
-    """No existe un handler desplegado para el tipo de acción reclamado."""
+    """No handler is deployed for the claimed action type."""
 
 
 class PassengerPresenceUnavailableError(RuntimeError):
-    """La presencia compartida no puede tomar una decisión segura."""
+    """Shared presence cannot make a safe decision."""

@@ -1,11 +1,11 @@
 /**
- * Marcador de ruta reutilizable: pines circulares A (origen) y B (destino)
- * y un tooltip "Origen"/"Destino" al lado libre de la ruta. Lo usan las vistas de
- * trayecto (pasajero y conductor) para que origen y destino se vean siempre igual.
+ * Reusable route marker: circular A (origin) and B (destination) pins
+ * and an "Origen"/"Destino" tooltip on the free side of the route. Used by the
+ * route views (passenger and driver) so origin and destination always look the same.
  *
- * El tooltip va en flujo (no absoluto) para que renderice de forma fiable dentro
- * del marker en iOS y Android; el `anchor` apunta al pin (no al centro del
- * conjunto) para que el punto quede exacto en la coordenada.
+ * The tooltip is laid out in flow (not absolute) so it renders reliably inside
+ * the marker on iOS and Android; the `anchor` points at the pin (not at the center of
+ * the group) so the point sits exactly on the coordinate.
  */
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -33,21 +33,21 @@ type Props = {
   coordinate: Coordinates;
   /** Texto del tooltip (p. ej. "Origen", "Destino"). */
   label: string;
-  /** Trayecto visible: permite alejar la etiqueta de la ruta junto al pin. */
+  /** Visible route: lets the label move away from the route next to the pin. */
   ruta?: readonly Coordinates[];
-  /** Orientación actual de la cámara, en grados. */
+  /** Current camera bearing, in degrees. */
   rumboMapa?: number;
-  /** Zoom de Google Maps para comparar el tamaño del texto con el trayecto. */
+  /** Google Maps zoom to compare the text size with the route. */
   zoomMapa?: number;
-  /** Oculta el tooltip cuando la información se presenta fuera del mapa. */
+  /** Hide the tooltip when the information is shown outside the map. */
   showTooltip?: boolean;
-  /** Muestra un control de edición unido al marcador. */
+  /** Show an edit control attached to the marker. */
   showEditControl?: boolean;
-  /** Atenuar el pin (p. ej. orígenes no seleccionados en el mapa de solicitudes). */
+  /** Dim the pin (e.g. unselected origins on the requests map). */
   dim?: boolean;
-  /** Jerarquía del marcador cuando varios puntos se superponen. */
+  /** Marker stacking order when several points overlap. */
   zIndex?: number;
-  /** Indica que todavía se está resolviendo el nombre de este punto. */
+  /** Signals that this point's name is still being resolved. */
   loading?: boolean;
   onPress?: () => void;
   /** Reports the measured label block so the camera can frame it. */
@@ -98,16 +98,16 @@ export function RoutePinMarker({
     <Marker
       ref={marcador}
       coordinate={coordinate}
-      // En Google Maps Android las polilíneas y los marcadores son capas
-      // separadas; un z-index explícito mantiene el pin visible sobre la ruta.
+      // On Google Maps Android polylines and markers are separate
+      // layers; an explicit z-index keeps the pin visible above the route.
       zIndex={zIndex ?? 10}
       anchor={calcularAnclajePin(medidas.alto, posicion)}
       accessibilityLabel={label}
       title={!visible ? label : undefined}
       onPress={onPress}>
       <View
-        // Fabric no debe aplanar este contenedor: Android mide el primer hijo
-        // nativo para dimensionar el bitmap completo (texto, Editar y símbolo).
+        // Fabric must not flatten this container: Android measures the first native
+        // child to size the whole bitmap (text, Editar and symbol).
         collapsable={false}
         style={[styles.wrap, posicion === 'abajo' && styles.wrapAbajo]}
         onLayout={(event) => {

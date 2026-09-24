@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 
 type MapaConCamara = { getCamera: () => Promise<{ heading: number; zoom?: number }> };
 
-/** Actualiza la escala y orientación usadas para separar etiquetas y ruta. */
+/** Update the scale and orientation used to separate labels from the route. */
 export function useRumboMapa(mapa: RefObject<MapaConCamara | null>) {
   const [camara, setCamara] = useState<{ rumboMapa: number; zoomMapa?: number }>({ rumboMapa: 0 });
   const generacion = useRef(0);

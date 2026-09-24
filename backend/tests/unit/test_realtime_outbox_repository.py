@@ -1,4 +1,4 @@
-"""Pruebas SQLite del repositorio outbox y su unidad de trabajo."""
+"""SQLite tests of the outbox repository and its unit of work."""
 
 from __future__ import annotations
 

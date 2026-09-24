@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 
 class ScheduledActionsWorker:
-    """Reclama en transacciones cortas y ejecuta cada efecto en una sesión nueva."""
+    """Claim in short transactions and run each effect in a new session."""
 
     def __init__(
         self,
@@ -123,7 +123,7 @@ class ScheduledActionsWorker:
         return self._recovered_lease_count
 
     async def preflight(self) -> None:
-        """Exige la tabla completa y sus índices operativos antes de arrancar."""
+        """Require the full table and its operational indexes before starting."""
         async with self._session_factory() as session:
             try:
                 await session.execute(select(ScheduledActionModel).limit(1))
@@ -170,7 +170,7 @@ class ScheduledActionsWorker:
                 timeout=self._handler_timeout_seconds,
             )
         except asyncio.CancelledError:
-            # Un SIGTERM/cancel deja el lease running; otro worker lo recupera.
+            # A SIGTERM/cancel leaves the lease running; another worker recovers it.
             raise
         except (InvalidScheduledActionError, UnsupportedScheduledActionError) as error:
             return await self._record_failure(
@@ -264,8 +264,8 @@ class ScheduledActionsWorker:
         loop_now = loop.time()
         if loop_now < self._next_reconciliation_at:
             return
-        # Durante un backlog el loop consume sin dormir. Limitar la consulta al
-        # intervalo de polling evita escanear ofertas antes de cada claim.
+        # During a backlog the loop consumes without sleeping. Limiting the query to the
+        # polling interval avoids scanning offers before every claim.
         self._next_reconciliation_at = loop_now + self._poll_interval_seconds
         async with self._session_factory() as session:
             created_count = await ReconcileMissingScheduledActions(

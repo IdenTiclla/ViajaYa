@@ -1,4 +1,4 @@
-"""Coordinación de procesos consumidores de la outbox realtime."""
+"""Coordination of the realtime outbox consumer processes."""
 
 from __future__ import annotations
 
@@ -35,23 +35,23 @@ class LiveLocalProcessLockUnavailableError(RuntimeError):
 
 
 class PostgreSQLLiveLocalProcessLock:
-    """Mantiene la exclusión de modos realtime en una conexión dedicada.
+    """Hold the realtime mode exclusion on a dedicated connection.
 
-    El lock se deriva del nombre de la base para no hacer colisionar entornos
-    que compartan un mismo clúster PostgreSQL. La conexión usa autocommit: queda
-    reservada durante el lifespan sin mantener una transacción ociosa abierta.
-    Durante el rolling deploy todos los modos conservan además la clave de la
-    versión anterior: shadow la comparte y ambos live la toman en exclusiva.
-    Esto impide mezclar binarios viejos/nuevos. ``live_redis`` solo comparte la
-    clave legada cuando el despliegue certifica presencia compartida; un binario
-    anterior, que todavía la toma en exclusiva, continúa bloqueando el rolling.
-    Un mutex efímero
-    serializa únicamente la transición mientras cada grupo comprueba que el
-    opuesto esté vacío.
+    The lock is derived from the database name so that environments sharing the
+    same PostgreSQL cluster do not collide. The connection uses autocommit: it stays
+    reserved for the lifespan without keeping an idle transaction open.
+    During a rolling deploy every mode also keeps the previous version's
+    key: shadow shares it and both live modes take it exclusively.
+    This prevents mixing old/new binaries. ``live_redis`` only shares the
+    legacy key when the deployment certifies shared presence; an older
+    binary, which still takes it exclusively, keeps blocking the rollout.
+    An ephemeral mutex
+    serializes only the transition while each group checks that the
+    opposite one is empty.
 
-    SQLite solo se admite para las pruebas locales. En ese dialecto el método
-    devuelve ``False`` y no finge una exclusión que SQLite no puede garantizar
-    entre procesos.
+    SQLite is only supported for local tests. In that dialect the method
+    returns ``False`` and does not pretend to provide an exclusion SQLite cannot guarantee
+    across processes.
     """
 
     def __init__(
@@ -85,7 +85,7 @@ class PostgreSQLLiveLocalProcessLock:
         return self._dialect_name
 
     async def acquire(self) -> bool:
-        """Adquiere la exclusión o falla si otra instancia ya la posee."""
+        """Acquire the exclusion or fail if another instance already holds it."""
         if self._connection is not None or self._dialect_name is not None:
             raise RuntimeError("El lock live_local ya fue inicializado.")
 
@@ -199,10 +199,10 @@ class PostgreSQLLiveLocalProcessLock:
         return True
 
     async def check(self) -> bool:
-        """Comprueba la misma sesión propietaria sin readquirir el lock.
+        """Check the same owning session without re-acquiring the lock.
 
-        Comparar el PID evita considerar sana una reconexión transparente: una
-        nueva sesión ya no posee el advisory lock original.
+        Comparing the PID avoids treating a transparent reconnection as healthy: a
+        new session no longer holds the original advisory lock.
         """
         async with self._operation_lock:
             if self._dialect_name == "sqlite":
@@ -226,7 +226,7 @@ class PostgreSQLLiveLocalProcessLock:
             return current_pid == self._backend_pid
 
     async def release(self) -> None:
-        """Libera la exclusión y devuelve la conexión dedicada al pool."""
+        """Release the exclusion and return the dedicated connection to the pool."""
         async with self._operation_lock:
             connection = self._connection
             self._connection = None
@@ -264,7 +264,7 @@ class PostgreSQLLiveLocalProcessLock:
                         "PostgreSQL informó que el lock realtime legado no estaba tomado."
                     )
             except Exception:  # noqa: BLE001 - cerrar libera el lock
-                # No se registra el error del driver para no filtrar el DSN.
+                # The driver error is not logged so the DSN does not leak.
                 logger.error("No se pudo liberar limpiamente el lock realtime.")
                 await connection.invalidate()
             finally:

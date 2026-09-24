@@ -17,7 +17,7 @@ const OPTIONS: readonly SelectableOption<ServiceType>[] = SERVICE_OPTIONS.map((o
   accessibilityLabel: option.label,
 }));
 
-/** Selector visual único para el servicio de la solicitud del pasajero. */
+/** Single visual selector for the service of the passenger's request. */
 export function ServiceTypeSelector({ value, onChange }: Props) {
   return <SelectableOptionCards options={OPTIONS} value={value} onChange={onChange} columns={2} />;
 }

@@ -10,7 +10,7 @@ type Props = {
   message?: string;
 };
 
-/** Pantalla de marcador de posición para secciones aún no implementadas. */
+/** Placeholder screen for sections not implemented yet. */
 export function Placeholder({ icon, title, message = 'Disponible próximamente.' }: Props) {
   const { colors, styles } = useEstilos(crearEstilos);
   return (

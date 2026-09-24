@@ -1,8 +1,8 @@
-"""Caso de uso: el pasajero guarda los cambios de una solicitud pausada (Modificar).
+"""Use case: the passenger saves the changes to a paused request (Modify).
 
-Sobrescribe origen, destino, servicio, monto y método de pago de una solicitud que
-estaba ``paused`` y la vuelve a publicar (``paused=False``) para que reaparezca en
-el pool de conductores. Re-valida coordenadas y monto (reglas de dominio).
+Overwrites origin, destination, service, fare and payment method of a request that
+was ``paused`` and publishes it again (``paused=False``) so it reappears in
+the driver pool. Re-validates coordinates and fare (domain rules).
 """
 
 from __future__ import annotations
@@ -72,7 +72,7 @@ class EditRide:
                 "Debes pausar la solicitud antes de editarla."
             )
 
-        # Re-valida país operativo, coordenadas y monto positivo.
+        # Re-validates operating country, coordinates and a positive fare.
         origin_point = ServiceAreaPoint(
             data.origin.latitude, data.origin.longitude, data.origin.country_code
         )
@@ -104,9 +104,9 @@ class EditRide:
                 fare=fare.amount,
                 payment_method=data.payment_method,
                 paused=False,
-                # Cada reapertura es una publicación nueva, aunque el pasajero
-                # guarde sin cambiar campos visibles. El cierre anterior y el
-                # nuevo anuncio deben ser comparables incluso si cruzan pools.
+                # Every reopening is a new publication, even if the passenger
+                # saves without changing visible fields. The previous close and the
+                # new announcement must be comparable even if they cross pools.
                 pool_version=ride.pool_version + 1,
             ),
             RideStatus.SEARCHING,

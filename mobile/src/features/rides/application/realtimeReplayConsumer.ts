@@ -1,4 +1,4 @@
-/** Coordinador puro de protocolo legacy/v2 y replay por conexión WebSocket. */
+/** Pure coordinator of the legacy/v2 protocol and per-WebSocket-connection replay. */
 
 import type {
   RealtimeEventMetadata,
@@ -43,7 +43,7 @@ export type RealtimeConsumeResult =
 
 type PostCommitEffect = (() => void) | void;
 
-/** Barrera externa que permite al transporte invalidar un handler en curso. */
+/** External barrier that lets the transport invalidate an in-progress handler. */
 export type RealtimeConnectionGuard = {
   isCurrent: () => boolean;
 };
@@ -67,11 +67,11 @@ type RealtimeReplayConsumerOptions<TMessage> = {
 };
 
 export type RealtimeReplayConsumer<TMessage> = {
-  /** Inicia una conexión e invalida cualquier handler de la anterior. */
+  /** Start a connection and invalidate any handler of the previous one. */
   beginConnection: () => RealtimeConnectionGuard;
   /**
-   * Invalida inmediatamente la conexión actual sin borrar cursores confirmados.
-   * El transporte debe llamarlo al cerrar, reemplazar o resincronizar el socket.
+   * Immediately invalidate the current connection without clearing confirmed cursors.
+   * The transport must call it when closing, replacing or resyncing the socket.
    */
   invalidateConnection: () => void;
   consume: (

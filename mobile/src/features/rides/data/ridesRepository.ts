@@ -1,9 +1,9 @@
 /**
- * Acceso HTTP al flujo de ofertas y ciclo de vida del viaje.
+ * HTTP access to the offers flow and the ride lifecycle.
  *
- * Usa el cliente axios único (`@/core/http/client`, con Bearer/refresh) y mapea
- * el contrato del backend (`/rides`, `/drivers`) a/desde los tipos del dominio.
- * La *creación* de la solicitud sigue viviendo en `booking/data/ridesRepository`.
+ * Uses the single axios client (`@/core/http/client`, with Bearer/refresh) and maps
+ * the backend contract (`/rides`, `/drivers`) to/from the domain types.
+ * *Creating* the request still lives in `booking/data/ridesRepository`.
  */
 import { api } from '@/core/http/client';
 import type { components } from '@/core/http/generated/openapi';
@@ -249,7 +249,7 @@ export const ridesRepository = {
     return data ? toRide(data) : null;
   },
 
-  /** Conductor: retira su oferta (o se niega a confirmar una aceptada). */
+  /** Driver: withdraw their offer (or decline to confirm an accepted one). */
   async withdrawOffer(offerId: string): Promise<void> {
     await api.post(`/rides/offers/${offerId}/withdraw`);
   },
@@ -262,7 +262,7 @@ export const ridesRepository = {
     return data ? toRide(data) : null;
   },
 
-  /** Ambos roles: ultimo viaje completado que el usuario aun no califico. */
+  /** Both roles: the latest completed ride the user has not rated yet. */
   async getPendingRatingRide(signal?: AbortSignal): Promise<Ride | null> {
     const { data } = await api.get<RideDto | null>('/rides/me/pending-rating', {
       signal,
@@ -278,16 +278,16 @@ export const ridesRepository = {
   },
 
   /**
-   * Pasajero: acepta una oferta y le asigna el viaje (decisión final). El
-   * backend devuelve el viaje ya asignado; las demás ofertas del viaje quedan
-   * rechazadas en la misma transacción.
+   * Passenger: accept an offer and get the ride assigned (final decision). The
+   * backend returns the already assigned ride; the ride's other offers are
+   * rejected in the same transaction.
    */
   async acceptOffer(offerId: string): Promise<Ride> {
     const { data } = await api.post<RideDto>(`/rides/offers/${offerId}/accept`);
     return toRide(data);
   },
 
-  /** Pasajero: rechaza una oferta concreta (el conductor lo ve en vivo). */
+  /** Passenger: reject a specific offer (the driver sees it live). */
   async rejectOffer(offerId: string): Promise<void> {
     await api.post(`/rides/offers/${offerId}/reject`);
   },
@@ -339,19 +339,19 @@ export const ridesRepository = {
     return toRide(data);
   },
 
-  /** Pasajero: aumenta su oferta mientras se buscan conductores. */
+  /** Passenger: raise their fare while drivers are being searched. */
   async updateFare(rideId: string, fare: number): Promise<Ride> {
     const { data } = await api.patch<RideDto>(`/rides/${rideId}/fare`, { fare });
     return toRide(data);
   },
 
-  /** Pasajero: pausa la solicitud para editarla (Modificar): la oculta del pool. */
+  /** Passenger: pause the request to edit it (Modify): hides it from the pool. */
   async pauseForEdit(rideId: string): Promise<Ride> {
     const { data } = await api.post<RideDto>(`/rides/${rideId}/pause-edit`);
     return toRide(data);
   },
 
-  /** Pasajero: guarda los cambios de una solicitud pausada y la vuelve a publicar. */
+  /** Passenger: save the changes to a paused request and publish it again. */
   async editRide(rideId: string, input: EditRideInput): Promise<Ride> {
     const { data } = await api.patch<RideDto>(`/rides/${rideId}`, {
       origin: toPointDto(input.origin),

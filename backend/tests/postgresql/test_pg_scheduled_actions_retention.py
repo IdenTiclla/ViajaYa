@@ -1,4 +1,4 @@
-"""Retención acotada de scheduled_actions sobre PostgreSQL real."""
+"""Bounded retention of scheduled_actions on real PostgreSQL."""
 
 from __future__ import annotations
 

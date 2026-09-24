@@ -1,4 +1,4 @@
-"""Caso de uso: renovar un lease compartido de presencia del pasajero."""
+"""Use case: renew a shared passenger presence lease."""
 
 from __future__ import annotations
 

@@ -14,7 +14,7 @@ from app.domain.entities import DriverStatus, DriverVehicle, ServiceType, UserRo
 
 
 class OnlineRequest(BaseModel):
-    """Cuerpo para alternar disponibilidad del conductor."""
+    """Body to toggle the driver's availability."""
 
     is_online: bool
 
@@ -80,7 +80,7 @@ class AccountModeRequest(BaseModel):
 
 
 class EarningsItemResponse(BaseModel):
-    """Una línea del desglose de ganancias."""
+    """One line of the earnings breakdown."""
 
     ride_id: uuid.UUID
     destination_name: str
@@ -89,7 +89,7 @@ class EarningsItemResponse(BaseModel):
 
 
 class DriverEarningsResponse(BaseModel):
-    """Resumen de ganancias del conductor (hoy, histórico y recientes)."""
+    """The driver's earnings summary (today, all-time and recent)."""
 
     total_today: Decimal
     trips_today: int

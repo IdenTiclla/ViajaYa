@@ -1,4 +1,4 @@
-"""Servidor hijo y publishers coordinados para el smoke de crash realtime."""
+"""Child server and coordinated publishers for the realtime crash smoke."""
 
 from __future__ import annotations
 
@@ -56,7 +56,7 @@ async def _wait_release(release: Any) -> None:
 
 
 class CrashGateRealtimeOutboxBatchPublisher(RealtimeOutboxBatchPublisher):
-    """Suspende un batch una sola vez justo antes o después de publicarlo."""
+    """Suspend a batch only once, right before or after publishing it."""
 
     def __init__(
         self,
@@ -96,7 +96,7 @@ class CrashGateRealtimeOutboxBatchPublisher(RealtimeOutboxBatchPublisher):
 
 
 class RecoveryGateRealtimeOutboxBatchPublisher(RealtimeOutboxBatchPublisher):
-    """Retiene el replay exacto hasta que el cliente de recuperación se suscriba."""
+    """Hold the exact replay until the recovery client subscribes."""
 
     def __init__(
         self,
@@ -139,7 +139,7 @@ class RecoveryGateRealtimeOutboxBatchPublisher(RealtimeOutboxBatchPublisher):
 
 
 class CrashGateRedisRealtimeBridge(RedisRealtimeBridge):
-    """Bridge Redis real con la misma compuerta exacta del crash local."""
+    """Real Redis bridge with the same exact gate as the local crash."""
 
     def __init__(
         self,
@@ -176,7 +176,7 @@ class CrashGateRedisRealtimeBridge(RedisRealtimeBridge):
 
 
 class RecoveryGateRedisRealtimeBridge(RedisRealtimeBridge):
-    """Bridge Redis real que retiene el replay hasta conectar el cliente."""
+    """Real Redis bridge that holds the replay until the client connects."""
 
     def __init__(
         self,
@@ -242,7 +242,7 @@ def run_realtime_server_process(
     redis_url: str | None = None,
     redis_channel: str | None = None,
 ) -> None:
-    """Punto de entrada picklable del proceso Uvicorn exclusivo de tests."""
+    """Picklable entry point of the test-only Uvicorn process."""
     _validate_test_database_url(database_url)
     resolved_ride_id = uuid.UUID(ride_id)
     engine = create_async_engine(database_url, poolclass=NullPool)

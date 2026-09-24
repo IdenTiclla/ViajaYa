@@ -1,9 +1,9 @@
 /**
- * Estilo de mapa "decluttered" para la vista del trayecto: oculta las etiquetas
- * e íconos de POI/negocios y de transporte, que Google dibuja por encima de la
- * polilínea y dificultan ver la ruta. Conserva las calles y sus nombres.
+ * "Decluttered" map style for the route view: hides the labels
+ * and icons of POIs/businesses and transit, which Google draws above the
+ * polyline and make the route hard to see. Keeps streets and their names.
  *
- * Solo aplica con `PROVIDER_GOOGLE` y sin un Map ID en la nube.
+ * Only applies with `PROVIDER_GOOGLE` and without a cloud Map ID.
  */
 import type { MapStyleElement } from 'react-native-maps';
 import { useMemo } from 'react';
@@ -16,7 +16,7 @@ export const declutteredMapStyle: MapStyleElement[] = [
   { featureType: 'transit', elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
 ];
 
-/** Fija también el mapa al tema elegido, conservando el control de lugares. */
+/** Also pin the map to the chosen theme, keeping control over places. */
 export function useEstiloMapa(ocultarLugares = true) {
   const { colors, modo } = useTema();
   const estiloMapa = useMemo<MapStyleElement[]>(() => [

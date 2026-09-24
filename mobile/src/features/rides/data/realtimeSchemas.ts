@@ -185,7 +185,7 @@ const rideClosedMessageSchema = z.object({
   data: z
     .object({
       ride_id: uuidSchema,
-      // Opcionales durante el despliegue; los productores nuevos siempre los emiten.
+      // Optional during the rollout; new producers always emit them.
       pool_version: z.number().int().positive().optional(),
       reason: z.enum(['paused', 'terminal']).optional(),
     })
@@ -223,8 +223,8 @@ const offersWithdrawnMessageSchema = z.object({
   data: z
     .object({
       ride_ids: z.array(uuidSchema),
-      // Compatibilidad legacy: los productores nuevos añaden las identidades
-      // exactas para no retirar una reoferta posterior del mismo ride.
+      // Legacy compatibility: new producers add the exact identities
+      // so a later re-offer on the same ride is not withdrawn.
       offers: z
         .array(
           z.object({
@@ -294,7 +294,7 @@ const versionedEventMetadataSchema = z.object({
   kind: z.literal('event'),
   event_id: uuidSchema,
   batch_id: uuidSchema,
-  // Durante el rolling deploy, el backend anterior todavía omite este campo.
+  // During the rolling deploy, the previous backend still omits this field.
   correlation_id: uuidSchema.optional(),
   sequence: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
   aggregate_type: z.enum(['ride', 'driver']),
@@ -626,8 +626,8 @@ type MessageSchema<T extends SocketWireMessage> = {
 };
 
 /**
- * Elige el protocolo antes de validar. Si aparece cualquier clave reservada de
- * v2, el frame debe satisfacer v2 completo y nunca puede caer al parser legacy.
+ * Pick the protocol before validating. If any reserved v2 key appears,
+ * the frame must satisfy the full v2 schema and can never fall back to the legacy parser.
  */
 function createDualMessageParser<
   TLegacy extends SocketWireMessage,

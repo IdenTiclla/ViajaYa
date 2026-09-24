@@ -1,4 +1,4 @@
-"""Implementación SQLAlchemy del puerto ``UserRepository``."""
+"""SQLAlchemy implementation of the ``UserRepository`` port."""
 
 from __future__ import annotations
 
@@ -66,7 +66,7 @@ from app.infrastructure.db.models import (
     UserModel,
 )
 
-# Estados en los que un conductor cuenta como "ocupado" (tiene un viaje activo).
+# Statuses in which a driver counts as "busy" (has an active ride).
 _ACTIVE_RIDE_STATUSES = (
     RideStatus.ACCEPTED,
     RideStatus.ARRIVING,
@@ -80,17 +80,17 @@ _PASSENGER_ACTIVE_RIDE_STATUSES = (
     RideStatus.IN_PROGRESS,
 )
 
-# Estado en el que una oferta sigue viva dentro de la negociación.
+# Status in which an offer is still live within the negotiation.
 _ACTIVE_OFFER_STATUSES = (OfferStatus.PENDING,)
 
 _ACTIVE_RIDER_UNIQUE_INDEX = "uq_ride_requests_active_rider"
 
 
 def _is_active_rider_unique_violation(exc: IntegrityError) -> bool:
-    """Identifica únicamente la colisión del índice de viaje activo.
+    """Identify only the active-ride index collision.
 
-    Asyncpg expone el nombre de la restricción en la cadena de excepciones;
-    SQLite, usado en los tests, informa las columnas de la clave duplicada.
+    Asyncpg exposes the constraint name in the exception chain;
+    SQLite, used in tests, reports the columns of the duplicated key.
     """
     current: BaseException | None = exc
     seen: set[int] = set()
@@ -198,7 +198,7 @@ class SqlAlchemyUserRepository(UserRepository):
 
     async def update(self, user: User) -> User:
         row = await self._session.get(UserModel, user.id)
-        if row is None:  # pragma: no cover - el caso de uso valida antes
+        if row is None:  # pragma: no cover - the use case validates first
             raise ValueError("user not found")
         row.full_name = user.full_name
         row.phone = user.phone
@@ -222,7 +222,7 @@ class SqlAlchemyUserRepository(UserRepository):
             .returning(UserModel)
         )
         row = result.scalar_one_or_none()
-        if row is None:  # pragma: no cover - el caso de uso valida antes
+        if row is None:  # pragma: no cover - the use case validates first
             if self._commit_set_online:
                 await self._session.rollback()
             raise ValueError("user not found")
@@ -328,8 +328,8 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
         return _ride_to_entity(row)
 
     async def add_if_no_active(self, ride: RideRequest) -> RideRequest | None:
-        # Serializar todas las altas del mismo pasajero sobre una fila que siempre
-        # existe evita el clásico doble INSERT tras dos lecturas "sin activo".
+        # Serializing all inserts of the same passenger on a row that always
+        # exists avoids the classic double INSERT after two "no active ride" reads.
         await self._session.execute(
             select(UserModel.id).where(UserModel.id == ride.rider_id).with_for_update()
         )
@@ -364,7 +364,7 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
 
     async def update(self, ride: RideRequest) -> RideRequest:
         row = await self._session.get(RideRequestModel, ride.id)
-        if row is None:  # pragma: no cover - el caso de uso valida antes
+        if row is None:  # pragma: no cover - the use case validates first
             raise ValueError("ride request not found")
         row.origin_latitude = ride.origin.latitude
         row.origin_longitude = ride.origin.longitude
@@ -448,7 +448,7 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
         else:
             await self._session.flush()
         row = await self._session.get(RideRequestModel, ride.id, populate_existing=True)
-        if row is None:  # pragma: no cover - el UPDATE acaba de devolver este id
+        if row is None:  # pragma: no cover - the UPDATE just returned this id
             return None
         return _ride_to_entity(row)
 
@@ -518,10 +518,10 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
         before_id: uuid.UUID | None = None,
         limit: int | None = None,
     ) -> list[OpenRideDetail]:
-        # Una sola query: JOIN con el pasajero + subquery correlacionada que cuenta
-        # sus viajes completados. Así el pool de solicitudes (alto volumen, refresco
-        # por polling + WS) se carga sin N+1. ``correlate(UserModel)`` fija la
-        # correlación con la tabla exterior (evita el error de auto-correlación).
+        # A single query: JOIN with the passenger + a correlated subquery that counts
+        # their completed rides. This way the request pool (high volume, refreshed
+        # by polling + WS) loads without N+1. ``correlate(UserModel)`` pins the
+        # correlation to the outer table (avoids the auto-correlation error).
         trips_completed = (
             select(func.count(RideRequestModel.id))
             .where(
@@ -558,8 +558,8 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
             created_key = RideRequestModel.created_at
             cursor_key = before_created_at
             if self._session.bind is not None and self._session.bind.dialect.name == "sqlite":
-                # SQLite persiste CURRENT_TIMESTAMP sin fracción, pero serializa
-                # binds DateTime con ``.000000``. ``datetime`` iguala ambas formas.
+                # SQLite persists CURRENT_TIMESTAMP without fractions, but serializes
+                # DateTime binds with ``.000000``. ``datetime`` makes both forms equal.
                 created_key = func.datetime(created_key)
                 cursor_key = func.datetime(cursor_key)
             statement = statement.where(
@@ -610,9 +610,9 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
     async def list_paused_with_rider_for_driver(
         self, driver_id: uuid.UUID
     ) -> list[OpenRideDetail]:
-        # Al pausar una solicitud, las ofertas vivas pasan a REJECTED. La pausa
-        # actual permite distinguirla de un rechazo normal y recuperar el aviso
-        # para este conductor al reconectar.
+        # When a request is paused, its live offers become REJECTED. The current
+        # pause lets us tell it apart from a normal rejection and recover the notice
+        # for this driver on reconnect.
         result = await self._session.execute(
             select(RideRequestModel)
             .join(OfferModel, OfferModel.ride_id == RideRequestModel.id)
@@ -653,9 +653,9 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
         )
 
     async def open_ride_with_rider(self, ride_id: uuid.UUID) -> OpenRideDetail | None:
-        # Solicitud + resumen del pasajero para publicar ``ride_created`` con los
-        # datos del pasajero. Volumen bajo (una vez por creación/edición/aumento
-        # de oferta): tres lecturas sencillas es aceptable.
+        # Request + passenger summary to publish ``ride_created`` with the
+        # passenger's data. Low volume (once per creation/edit/fare
+        # increase): three simple reads are acceptable.
         ride = await self.get_by_id(ride_id)
         if ride is None:
             return None
@@ -698,8 +698,8 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
     async def list_recent_destinations(
         self, rider_id: uuid.UUID, limit: int = 10
     ) -> list[Location]:
-        # Trae las últimas solicitudes y deduplica destinos por coordenadas,
-        # conservando el orden (del más reciente al más antiguo).
+        # Load the latest requests and deduplicate destinations by coordinates,
+        # keeping the order (most recent first).
         result = await self._session.execute(
             select(RideRequestModel)
             .where(RideRequestModel.rider_id == rider_id)
@@ -742,7 +742,7 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
 
 
 class SqlAlchemyRideReadRepository(RideReadRepository):
-    """Consultas enriquecidas de viajes sin escrituras ni cargas N+1."""
+    """Enriched ride queries without writes or N+1 loads."""
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -995,8 +995,8 @@ class SqlAlchemyOfferRepository(OfferRepository):
         clock: DatabaseClock = database_utc_now,
     ) -> None:
         self._session = session
-        # Migración incremental: estas mutaciones participan del UoW; los demás
-        # métodos todavía conservan sus commits internos.
+        # Incremental migration: these mutations take part in the UoW; the other
+        # methods still keep their internal commits.
         self._commit_create_or_supersede = commit_create_or_supersede
         self._commit_accept = commit_accept
         self._commit_pause = commit_pause
@@ -1024,8 +1024,8 @@ class SqlAlchemyOfferRepository(OfferRepository):
         self, offer: Offer, *, expected_ride_fare: Decimal,
         expected_pool_version: int | None = None,
     ) -> OfferCreation | None:
-        # Mismo orden que accept_atomically: conductor -> ride -> oferta. El lock
-        # del conductor serializa dos envíos simultáneos del mismo conductor.
+        # Same order as accept_atomically: driver -> ride -> offer. The driver's
+        # lock serializes two simultaneous submissions from the same driver.
         driver_row = (
             await self._session.execute(
                 select(UserModel)
@@ -1122,7 +1122,7 @@ class SqlAlchemyOfferRepository(OfferRepository):
 
     async def update(self, offer: Offer) -> Offer:
         row = await self._session.get(OfferModel, offer.id)
-        if row is None:  # pragma: no cover - el caso de uso valida antes
+        if row is None:  # pragma: no cover - the use case validates first
             raise ValueError("offer not found")
         row.status = offer.status
         row.price = offer.price
@@ -1213,8 +1213,8 @@ class SqlAlchemyOfferRepository(OfferRepository):
     async def set_driver_offline_atomically(
         self, driver_id: uuid.UUID
     ) -> DriverOfflineTransition | None:
-        # Create/accept toman este mismo lock primero. Si offline gana, ambos ven
-        # ``is_online=False``; si accept gana, el viaje activo impide desconectar.
+        # Create/accept take this same lock first. If going offline wins, both see
+        # ``is_online=False``; if accept wins, the active ride prevents going offline.
         driver_row = (
             await self._session.execute(
                 select(UserModel)
@@ -1391,9 +1391,9 @@ class SqlAlchemyOfferRepository(OfferRepository):
     async def cancel_ride_on_disconnect_atomically(
         self, ride_id: uuid.UUID
     ) -> RideAutoCancellation | None:
-        # El lock del viaje serializa este cierre contra accept/create/pause/cancel.
-        # Las ofertas se leen y mutan antes del único commit: nunca queda un ride
-        # CANCELLED con ofertas PENDING por una caída entre dos transacciones.
+        # The ride lock serializes this close against accept/create/pause/cancel.
+        # Offers are read and mutated before the single commit: a ride is never left
+        # CANCELLED with PENDING offers because of a crash between two transactions.
         ride_row = (
             await self._session.execute(
                 select(RideRequestModel)
@@ -1444,13 +1444,13 @@ class SqlAlchemyOfferRepository(OfferRepository):
         )
 
     async def accept_atomically(self, offer_id: uuid.UUID) -> OfferAcceptance | None:
-        # Toda la asignación vive en UNA transacción. Una lectura inicial obtiene
-        # los ids inmutables; luego bloqueamos en el mismo orden que create/supersede
-        # (conductor -> viaje -> oferta) para evitar interbloqueos. El lock sobre la
-        # fila del viaje (``with_for_update``) serializa dos ``accept`` del pasajero
-        # (o un accept contra un cancel): el segundo ve el viaje ya ACCEPTED y
-        # aborta (None). En SQLite (tests) ``FOR UPDATE`` es no-op; la garantía es
-        # de Postgres.
+        # The whole assignment lives in ONE transaction. An initial read gets
+        # the immutable ids; then we lock in the same order as create/supersede
+        # (driver -> ride -> offer) to avoid deadlocks. The lock on the
+        # ride row (``with_for_update``) serializes two passenger ``accept`` calls
+        # (or an accept against a cancel): the second one sees the ride already ACCEPTED and
+        # aborts (None). On SQLite (tests) ``FOR UPDATE`` is a no-op; the guarantee comes
+        # from Postgres.
         offer_ref = await self._session.get(OfferModel, offer_id)
         if offer_ref is None:
             await self._session.rollback()
@@ -1501,22 +1501,22 @@ class SqlAlchemyOfferRepository(OfferRepository):
         if offer_row is None or offer_row.status is not OfferStatus.PENDING:
             await self._session.rollback()
             return None
-        # La decisión monetaria se toma con el mismo reloj autoritativo que el
-        # scheduler y después de adquirir todos los locks de la aceptación.
+        # The monetary decision is made with the same authoritative clock as the
+        # scheduler and after acquiring all of the acceptance's locks.
         now = (
             await self._clock(self._session)
             if self._session.get_bind().dialect.name == "postgresql"
             else datetime.now(UTC)
         )
         if is_offer_expired(_offer_to_entity(offer_row), now):
-            # La expiración tiene su propio caso de uso. En el modo UoW de
-            # aceptación no se confirma un efecto lateral sin su evento durable.
+            # Expiry has its own use case. In the acceptance UoW mode a
+            # side effect is never committed without its durable event.
             if self._commit_accept:
                 offer_row.status = OfferStatus.EXPIRED
                 await self._session.commit()
             return None
 
-        # El conductor debe estar libre: sin ningún viaje activo.
+        # The driver must be free: no active ride at all.
         busy = (
             await self._session.execute(
                 select(RideRequestModel.id)
@@ -1531,8 +1531,8 @@ class SqlAlchemyOfferRepository(OfferRepository):
             await self._session.rollback()
             return None
 
-        # Otras ofertas vivas del conductor en OTRAS solicitudes: se retiran y se
-        # avisa a esos pasajeros (excluimos la solicitud actual).
+        # The driver's other live offers on OTHER requests: they are withdrawn and
+        # those passengers are notified (we exclude the current request).
         others = (
             await self._session.execute(
                 select(OfferModel.id, OfferModel.ride_id).where(
@@ -1548,8 +1548,8 @@ class SqlAlchemyOfferRepository(OfferRepository):
             for row in others
         ]
 
-        # Otros conductores con ofertas vivas en ESTE viaje: pierden la carrera y
-        # hay que avisarles que el viaje ya fue tomado.
+        # Other drivers with live offers on THIS ride: they lose the race and
+        # must be told the ride was already taken.
         losers = (
             await self._session.execute(
                 select(OfferModel.driver_id).where(
@@ -1563,7 +1563,7 @@ class SqlAlchemyOfferRepository(OfferRepository):
             did for did in dict.fromkeys(losers) if did != driver_row.id
         ]
 
-        # Aplicar: oferta elegida ACCEPTED; el resto del viaje y del conductor REJECTED.
+        # Apply: the chosen offer becomes ACCEPTED; the ride's and driver's others, REJECTED.
         offer_row.status = OfferStatus.ACCEPTED
         await self._session.execute(
             update(OfferModel)
@@ -1609,9 +1609,9 @@ class SqlAlchemyOfferRepository(OfferRepository):
         )
 
     async def mark_expired_if_pending(self, offer_id: uuid.UUID) -> Offer | None:
-        # Vence la oferta solo si sigue PENDING y ya pasó su TTL (race-safe con un
-        # accept/reject/withdraw/supersede simultáneo: esos la sacan de PENDING y
-        # aquí no se toca). Bloqueo de fila para serializar contra accept_atomically.
+        # Expire the offer only if it is still PENDING and past its TTL (race-safe against a
+        # simultaneous accept/reject/withdraw/supersede: those take it out of PENDING and
+        # it is not touched here). Row lock to serialize against accept_atomically.
         offer_row = (
             await self._session.execute(
                 select(OfferModel)
@@ -1625,9 +1625,9 @@ class SqlAlchemyOfferRepository(OfferRepository):
                 await self._session.rollback()
             return None
 
-        # Debe leerse después del ``FOR UPDATE``. Si esta consulta esperó a
-        # otra transacción, usar el inicio de la transacción podría considerar
-        # fresca una oferta cuyo TTL venció mientras esperaba el bloqueo.
+        # It must be read after the ``FOR UPDATE``. If this query waited on
+        # another transaction, using the transaction start could treat as
+        # fresh an offer whose TTL expired while waiting for the lock.
         now = await self._clock(self._session)
         if not is_offer_expired(_offer_to_entity(offer_row), now):
             if self._commit_mark_expired_if_pending:
@@ -1659,9 +1659,9 @@ class SqlAlchemyRatingRepository(RatingRepository):
         self._session = session
 
     async def add_and_recompute(self, rating: RideRating) -> RideRating | None:
-        # Todos los votos hacia una persona toman el mismo bloqueo. En READ
-        # COMMITTED, el segundo promedio ve el commit anterior y no puede dejar
-        # User.rating calculado desde un conjunto incompleto.
+        # All votes for a person take the same lock. Under READ
+        # COMMITTED, the second average sees the previous commit and cannot leave
+        # User.rating computed from an incomplete set.
         locked_ratee_id = (
             await self._session.execute(
                 select(UserModel.id)
@@ -1669,7 +1669,7 @@ class SqlAlchemyRatingRepository(RatingRepository):
                 .with_for_update()
             )
         ).scalar_one_or_none()
-        if locked_ratee_id is None:  # pragma: no cover - protegido por las FK del viaje
+        if locked_ratee_id is None:  # pragma: no cover - protected by the ride's FKs
             await self._session.rollback()
             raise ValueError("ratee not found")
 
@@ -1784,7 +1784,7 @@ class SqlAlchemyRatingSkipRepository(RatingSkipRepository):
         except IntegrityError:
             await self._session.rollback()
             existing = await self.get_by_ride_and_rater(skip.ride_id, skip.rater_id)
-            if existing is None:  # pragma: no cover - la restricción fue otra
+            if existing is None:  # pragma: no cover - it was a different constraint
                 raise
             return existing
         await self._session.refresh(row)
@@ -1842,7 +1842,7 @@ class SqlAlchemySavedPlaceRepository(SavedPlaceRepository):
 
     async def update(self, place: SavedPlace) -> SavedPlace:
         row = await self._session.get(SavedPlaceModel, place.id)
-        if row is None:  # pragma: no cover - el caso de uso valida antes
+        if row is None:  # pragma: no cover - the use case validates first
             raise ValueError("saved place not found")
         row.label = place.label
         row.category = place.category

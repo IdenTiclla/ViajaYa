@@ -1,4 +1,4 @@
-"""Proyección SQLAlchemy sanitizada para observar scheduled_actions."""
+"""Sanitized SQLAlchemy projection to observe scheduled_actions."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ def _as_utc(value: datetime | None) -> datetime | None:
 class SqlAlchemyScheduledActionsOperationalReader(
     ScheduledActionsOperationalReader
 ):
-    """Agrega estados sin cargar dedupe keys, agregados ni payloads."""
+    """Aggregate statuses without loading dedupe keys, aggregates or payloads."""
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session

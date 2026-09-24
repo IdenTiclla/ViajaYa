@@ -1,4 +1,4 @@
-"""Certificación PostgreSQL de cardinalidad y retención de outbox 0021."""
+"""PostgreSQL certification of the 0021 outbox cardinality and retention."""
 
 from __future__ import annotations
 

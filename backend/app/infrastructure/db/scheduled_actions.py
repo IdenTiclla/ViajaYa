@@ -60,7 +60,7 @@ def _to_action(
 
 
 class SqlAlchemyScheduledActionRepository(ScheduledActionQueue):
-    """Agenda, reclama y finaliza acciones sin confirmar la sesión recibida."""
+    """Schedule, claim and finalize actions without committing the given session."""
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -94,7 +94,7 @@ class SqlAlchemyScheduledActionRepository(ScheduledActionQueue):
             statement = postgresql_insert(ScheduledActionModel).values(**values)
         elif dialect_name == "sqlite":
             statement = sqlite_insert(ScheduledActionModel).values(**values)
-        else:  # pragma: no cover - solo soportamos los motores del proyecto
+        else:  # pragma: no cover - we only support the project's engines
             raise RuntimeError(f"Dialect de scheduler no soportado: {dialect_name}")
 
         excluded = statement.excluded
@@ -132,7 +132,7 @@ class SqlAlchemyScheduledActionRepository(ScheduledActionQueue):
         return _to_action(row)
 
     async def schedule_next(self, action: RenewableScheduledAction) -> ScheduledAction:
-        """Renueva una acción sin calcular su generación fuera de PostgreSQL."""
+        """Renew an action without computing its generation outside PostgreSQL."""
         if not 1 <= len(action.dedupe_key.strip()) <= 255:
             raise ValueError("La clave de deduplicación no es válida.")
         if not 1 <= len(action.action_type.strip()) <= 64:
@@ -161,7 +161,7 @@ class SqlAlchemyScheduledActionRepository(ScheduledActionQueue):
         elif dialect_name == "sqlite":
             statement = sqlite_insert(ScheduledActionModel).values(**values)
             written_at = datetime.now(UTC)
-        else:  # pragma: no cover - solo soportamos los motores del proyecto
+        else:  # pragma: no cover - we only support the project's engines
             raise RuntimeError(f"Dialect de scheduler no soportado: {dialect_name}")
 
         excluded = statement.excluded

@@ -1,4 +1,4 @@
-"""Pruebas de la proyección operativa de la outbox realtime."""
+"""Tests of the realtime outbox's operational projection."""
 
 from __future__ import annotations
 

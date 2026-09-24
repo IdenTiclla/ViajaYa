@@ -1,4 +1,4 @@
-"""Tests unitarios de los casos de uso de ofertas y ciclo de vida del viaje."""
+"""Unit tests of the offer and ride lifecycle use cases."""
 
 from __future__ import annotations
 
@@ -122,7 +122,7 @@ async def test_taxi_and_moto_can_offer_and_be_assigned_delivery(
 
 
 async def test_create_offer_supersedes_previous_pending_offer():
-    """Mejorar la oferta: la nueva reemplaza a la anterior del mismo conductor."""
+    """Improving the offer: the new one replaces the same driver's previous one."""
     rides, offers = InMemoryRideRequestRepository(), InMemoryOfferRepository()
     rider, driver = _passenger(), _driver()
     ride = await rides.add(_ride(rider.id))
@@ -141,7 +141,7 @@ async def test_create_offer_supersedes_previous_pending_offer():
 
 
 async def test_create_offer_blocked_after_ride_assigned():
-    """Tras aceptar una oferta el viaje deja de buscar: re-ofertar falla."""
+    """After accepting an offer the ride stops searching: offering again fails."""
     rides = InMemoryRideRequestRepository()
     users = InMemoryUserRepository()
     offers = InMemoryOfferRepository(rides=rides, users=users)
@@ -225,7 +225,7 @@ async def test_create_offer_rejects_busy_driver():
 
 
 async def test_accept_offer_assigns_ride_and_rejects_others():
-    """Aceptar asigna el viaje y rechaza las demás ofertas vivas del mismo ride."""
+    """Accepting assigns the ride and rejects the ride's other live offers."""
     rides = InMemoryRideRequestRepository()
     users = InMemoryUserRepository()
     offers = InMemoryOfferRepository(rides=rides, users=users)
@@ -253,7 +253,7 @@ async def test_accept_offer_assigns_ride_and_rejects_others():
 
 
 async def test_accept_second_offer_after_assignment_fails():
-    """Tras asignar, aceptar otra oferta del mismo viaje da error (ya no busca)."""
+    """After assignment, accepting another offer on the same ride errors (no longer searching)."""
     rides = InMemoryRideRequestRepository()
     users = InMemoryUserRepository()
     offers = InMemoryOfferRepository(rides=rides, users=users)
@@ -304,7 +304,7 @@ async def test_accept_rejects_expired_offer():
         driver, ride.id, CreateOfferInput(accept_at_fare=True)
     )
 
-    # La oferta venció (30 s) aunque la solicitud sigue viva.
+    # The offer expired (30 s) even though the request is still alive.
     (await offers.get_by_id(offer.detail.offer.id)).created_at = datetime.now(UTC) - (
         OFFER_TTL + timedelta(seconds=1)
     )
@@ -317,7 +317,7 @@ async def test_accept_rejects_expired_offer():
 
 
 async def test_accept_fails_when_driver_already_busy():
-    """Carrera: el conductor ya tiene un viaje activo; aceptar su otra oferta da 409."""
+    """Race: the driver already has an active ride; accepting their other offer gives 409."""
     rides = InMemoryRideRequestRepository()
     users = InMemoryUserRepository()
     offers = InMemoryOfferRepository(rides=rides, users=users)
@@ -333,16 +333,16 @@ async def test_accept_fails_when_driver_already_busy():
         driver, ride_b.id, CreateOfferInput(accept_at_fare=True)
     )
 
-    # El pasajero A acepta: el conductor queda con un viaje activo y su oferta al
-    # pasajero B se retiró (REJECTED) en la misma transacción.
+    # Passenger A accepts: the driver now has an active ride and their offer to
+    # passenger B was withdrawn (REJECTED) in the same transaction.
     await accept_offer_use_case(rides, offers).execute(
         rider_a,
         offer_a.detail.offer.id,
     )
     assert (await offers.get_by_id(offer_b.detail.offer.id)).status is OfferStatus.REJECTED
 
-    # Simulamos la ventana de carrera: reabrimos la oferta B como PENDING (vigente)
-    # justo antes del check atómico. El conductor sigue ocupado → 409.
+    # We simulate the race window: we reopen offer B as PENDING (current)
+    # right before the atomic check. The driver is still busy → 409.
     (await offers.get_by_id(offer_b.detail.offer.id)).status = OfferStatus.PENDING
 
     with pytest.raises(DriverUnavailableError):
@@ -552,7 +552,7 @@ async def test_list_offers_hides_expired_offers():
     old = await create_offer_use_case(rides, offers).execute(
         d2, ride.id, CreateOfferInput(accept_at_fare=True)
     )
-    # Envejecemos una oferta más allá de su TTL (30 s).
+    # We age an offer beyond its TTL (30 s).
     (await offers.get_by_id(old.detail.offer.id)).created_at = datetime.now(UTC) - (
         OFFER_TTL + timedelta(seconds=1)
     )
@@ -562,7 +562,7 @@ async def test_list_offers_hides_expired_offers():
 
 
 async def test_list_offers_empty_after_accept():
-    """Tras aceptar, todas las ofertas del viaje están resueltas: ninguna viva."""
+    """After accepting, every offer on the ride is resolved: none is live."""
     rides = InMemoryRideRequestRepository()
     users = InMemoryUserRepository()
     offers = InMemoryOfferRepository(rides=rides, users=users)
@@ -653,7 +653,7 @@ async def test_expire_offer_marks_expired_when_past_ttl():
         driver, ride.id, CreateOfferInput(accept_at_fare=True)
     )
     offer = created.detail.offer
-    # La envejecemos más allá del TTL (30 s).
+    # We age it beyond the TTL (30 s).
     (await offers.get_by_id(offer.id)).created_at = datetime.now(UTC) - (
         OFFER_TTL + timedelta(seconds=1)
     )

@@ -1,4 +1,4 @@
-"""Pruebas de retención segura de batches publicados."""
+"""Tests of the safe retention of published batches."""
 
 from __future__ import annotations
 

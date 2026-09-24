@@ -1,4 +1,4 @@
-"""ride_rating_skips: omisión persistente de calificación
+"""ride_rating_skips: persistent rating skip
 
 Revision ID: 0014_ride_rating_skips
 Revises: 0013_ride_terminal_timestamps

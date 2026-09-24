@@ -1,4 +1,4 @@
-"""Caso de uso: validar presencia y cerrar una búsqueda desde el scheduler."""
+"""Use case: validate presence and close a search from the scheduler."""
 
 from __future__ import annotations
 

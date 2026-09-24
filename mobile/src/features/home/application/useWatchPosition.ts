@@ -1,7 +1,7 @@
 /**
- * Hook de ubicación continua (navegación del conductor): subscribe a
- * GPS y brújula. Expo gestiona la pausa nativa en segundo plano; conservar la
- * suscripción evita competir con esa reanudación y reiniciar la adquisición GPS.
+ * Continuous location hook (driver navigation): subscribes to
+ * GPS and compass. Expo handles the native pause in the background; keeping the
+ * subscription avoids competing with that resume and restarting the GPS acquisition.
  */
 import { useEffect, useState } from 'react';
 import { AppState } from 'react-native';
@@ -14,7 +14,7 @@ export type WatchStatus = 'loading' | 'granted' | 'denied' | 'disabled' | 'error
 export type WatchedPosition = {
   status: WatchStatus;
   coordinates: Coordinates | null;
-  /** Rumbo de movimiento o brújula, en grados desde el norte. */
+  /** Movement heading or compass, in degrees from north. */
   heading: number | null;
   retry: () => void;
 };
@@ -43,7 +43,7 @@ export function useWatchPosition(habilitado = true): WatchedPosition {
       if (tienePosicion || estadoApp === 'background') return;
       espera = setTimeout(() => {
         if (!active || tienePosicion) return;
-        // La escucha sigue viva: una señal que llegue tarde recupera el mapa.
+        // The listener stays alive: a late signal recovers the map.
         setPosition({ status: 'error', coordinates: null, heading: null });
       }, 15_000);
     };
@@ -108,8 +108,8 @@ export function useWatchPosition(habilitado = true): WatchedPosition {
         tienePosicion = false;
         setPosition({ status: 'loading', coordinates: null, heading: null });
       }
-      // Conserva el watcher sano. Solo retirarlo si cambiaron los permisos o
-      // se apagó la ubicación mientras la app estaba fuera de primer plano.
+      // Keep the healthy watcher. Only remove it if the permissions changed or
+      // location was turned off while the app was in the background.
       const intento = generacion;
       void locationService.consultarDisponibilidad().then((disponibilidad) => {
         if (!active || intento !== generacion || estadoApp !== 'active') return;

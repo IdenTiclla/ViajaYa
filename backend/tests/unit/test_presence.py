@@ -1,4 +1,4 @@
-"""Carreras focales de presencia y cierre automático de la negociación."""
+"""Focused races of presence and the negotiation's automatic close."""
 
 from __future__ import annotations
 

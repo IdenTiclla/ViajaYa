@@ -1,4 +1,4 @@
-"""Schemas Pydantic para las calificaciones de viaje."""
+"""Pydantic schemas for ride ratings."""
 
 from __future__ import annotations
 

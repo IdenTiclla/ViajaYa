@@ -8,7 +8,7 @@ from app.application.interfaces import TerminalScheduledActionsRetention, UnitOf
 
 
 class PurgeTerminalScheduledActions:
-    """Aplica retención solo a éxitos y cancelaciones; conserva fallos ``dead``."""
+    """Apply retention only to successes and cancellations; keep ``dead`` failures."""
 
     def __init__(
         self,

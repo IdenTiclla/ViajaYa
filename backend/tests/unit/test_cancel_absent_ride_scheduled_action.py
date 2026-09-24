@@ -203,4 +203,4 @@ async def test_generacion_renovada_antes_del_ack_revierte_el_cierre() -> None:
     assert result.status == "lost_lease"
     assert result.cancelled_ride is None
     assert unit_of_work.rollbacks == 1
-    # PostgreSQL cubre que este rollback revierta también la mutación del ride.
+    # PostgreSQL covers that this rollback also reverts the ride mutation.

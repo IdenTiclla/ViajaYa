@@ -30,7 +30,7 @@ class PostgreSQLTestDatabase:
     engine: AsyncEngine
 
     def migrate(self, action: str, revision: str) -> None:
-        """Ejecuta Alembic aislando la URL de prueba de la configuración normal."""
+        """Run Alembic isolating the test URL from the normal configuration."""
         previous_url = os.environ.get("DATABASE_URL")
         os.environ["DATABASE_URL"] = self.url
         get_settings.cache_clear()
@@ -41,7 +41,7 @@ class PostgreSQLTestDatabase:
                 command.upgrade(config, revision)
             elif action == "downgrade":
                 command.downgrade(config, revision)
-            else:  # pragma: no cover - solo lo usa esta suite
+            else:  # pragma: no cover - only this suite uses it
                 raise ValueError(f"Acción Alembic desconocida: {action}")
         finally:
             if previous_url is None:
@@ -51,7 +51,7 @@ class PostgreSQLTestDatabase:
             get_settings.cache_clear()
 
     async def migrate_async(self, action: str, revision: str) -> None:
-        """Evita anidar el ``asyncio.run`` de Alembic en el loop de pytest."""
+        """Avoid nesting Alembic's ``asyncio.run`` inside pytest's loop."""
         await asyncio.to_thread(self.migrate, action, revision)
 
     async def purge_accounts(self) -> None:
@@ -88,7 +88,7 @@ def _test_database_url() -> str:
 
 @pytest_asyncio.fixture(scope="session")
 async def pg_test_db() -> PostgreSQLTestDatabase:
-    """Recrea solo el esquema Alembic de una base señalada expresamente como test."""
+    """Recreate only the Alembic schema of a database explicitly flagged as a test one."""
     url = _test_database_url()
     engine = create_async_engine(url, poolclass=NullPool)
     database = PostgreSQLTestDatabase(url=url, engine=engine)
@@ -107,7 +107,7 @@ async def pg_test_db() -> PostgreSQLTestDatabase:
 async def _clean_scheduled_actions_if_present(
     database: PostgreSQLTestDatabase,
 ) -> None:
-    """Aísla backfills 0022 creados al re-upgradear fixtures de revisiones viejas."""
+    """Isolate 0022 backfills created when re-upgrading fixtures from old revisions."""
     async with database.engine.begin() as connection:
         exists = await connection.scalar(
             text("SELECT to_regclass('scheduled_actions') IS NOT NULL")
@@ -118,7 +118,7 @@ async def _clean_scheduled_actions_if_present(
 
 @pytest_asyncio.fixture(autouse=True)
 async def isolate_scheduled_actions(pg_test_db: PostgreSQLTestDatabase):
-    """Limpia solo la cola de la base desechable entre casos PostgreSQL."""
+    """Clean only the disposable database's queue between PostgreSQL cases."""
     await _clean_scheduled_actions_if_present(pg_test_db)
     try:
         yield

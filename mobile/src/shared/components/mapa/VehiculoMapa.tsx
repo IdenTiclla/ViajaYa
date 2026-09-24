@@ -3,7 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import { useEstilos, type Tema } from '@/core/theme';
 import type { VehicleType } from '@/features/auth/domain/types';
 
-/** Dibujo cenital propio: el frente apunta al norte antes de aplicar el rumbo. */
+/** Our own top-down drawing: the front points north before the heading is applied. */
 export function VehiculoMapa({ tipo }: { tipo: VehicleType }) {
   const { styles } = useEstilos(crearEstilos);
   return (

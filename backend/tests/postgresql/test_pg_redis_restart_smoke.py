@@ -1,4 +1,4 @@
-"""Restart real de Redis entre commit y publish con replay durable."""
+"""Real Redis restart between commit and publish with durable replay."""
 
 from __future__ import annotations
 
@@ -447,6 +447,6 @@ async def test_restart_redis_reintenta_la_misma_identidad_durable(pg_test_db) ->
         await _stop_process(process, shutdown)
         listener.close()
         if not business_cleaned:
-            # El teardown Alembic elimina el estado propio. La prioridad aquí es
-            # dejar Redis y el proceso hijo recuperados aun si falla el escenario.
+            # The Alembic teardown removes our own state. The priority here is
+            # to leave Redis and the child process recovered even if the scenario fails.
             pass

@@ -1,4 +1,4 @@
-"""Pruebas de los adaptadores one-shot usados por el smoke realtime."""
+"""Tests of the one-shot adapters used by the realtime smoke."""
 
 from __future__ import annotations
 

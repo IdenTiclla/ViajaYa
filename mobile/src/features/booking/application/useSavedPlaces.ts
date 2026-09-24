@@ -1,9 +1,9 @@
 /**
- * Lugares guardados del pasajero desde la API (`/saved-places`).
+ * The passenger's saved places from the API (`/saved-places`).
  *
- * Expone la lista (react-query) y las mutaciones para crear/editar/eliminar,
- * que invalidan la consulta para refrescar la UI. Conserva por separado carga,
- * error y actualización para no presentar un fallo de red como una lista vacía.
+ * Exposes the list (react-query) and the create/edit/delete mutations,
+ * which invalidate the query to refresh the UI. It keeps loading,
+ * error and refreshing separate so a network failure is not presented as an empty list.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -39,7 +39,7 @@ export function useSavedPlaces(): {
   };
 }
 
-/** Devuelve el lugar guardado más reciente de una categoría (Home/Work), si existe. */
+/** Return the most recent saved place of a category (Home/Work), if any. */
 export function findByCategory(
   places: SavedPlace[],
   category: SavedPlaceCategory,

@@ -1,40 +1,40 @@
-"""Excepciones del dominio.
+"""Domain exceptions.
 
-Son independientes del framework. La capa de API las traduce a respuestas HTTP
-en ``app/api/errors.py`` (un único punto de mapeo, principio DRY).
+They are framework-independent. The API layer translates them into HTTP responses
+in ``app/api/errors.py`` (a single mapping point, DRY principle).
 """
 
 
 class DomainError(Exception):
-    """Excepción base para errores de reglas de negocio."""
+    """Base exception for business-rule errors."""
 
 
 class InvalidCredentialsError(DomainError):
-    """Las credenciales (email/contraseña) no son válidas."""
+    """The credentials (email/password) are not valid."""
 
 
 class InvalidEmailError(DomainError):
-    """El formato del correo no es válido."""
+    """The email format is not valid."""
 
 
 class InvalidTokenError(DomainError):
-    """El token (propio o de un proveedor OAuth) es inválido o expiró."""
+    """The token (our own or an OAuth provider's) is invalid or expired."""
 
 
 class UnsupportedProviderError(DomainError):
-    """El proveedor de OAuth solicitado no está soportado."""
+    """The requested OAuth provider is not supported."""
 
 
 class InvalidLocationError(DomainError):
-    """Las coordenadas de un punto del viaje están fuera de rango."""
+    """The coordinates of a ride point are out of range."""
 
 
 class InvalidFareError(DomainError):
-    """El monto ofertado para el viaje no es válido (debe ser mayor que cero)."""
+    """The fare offered for the ride is not valid (it must be greater than zero)."""
 
 
 class SavedPlaceNotFoundError(DomainError):
-    """El lugar guardado no existe o no pertenece al usuario actual."""
+    """The saved place does not exist or does not belong to the current user."""
 
 
 class RideNotFoundError(DomainError):
@@ -42,39 +42,39 @@ class RideNotFoundError(DomainError):
 
 
 class RideAlreadyActiveError(DomainError):
-    """El pasajero ya tiene una solicitud o un viaje activo."""
+    """The passenger already has an active request or ride."""
 
 
 class OfferNotFoundError(DomainError):
-    """La oferta no existe o no pertenece a la solicitud indicada."""
+    """The offer does not exist or does not belong to the given request."""
 
 
 class InvalidRideTransitionError(DomainError):
-    """La transición de estado del viaje no está permitida desde el estado actual."""
+    """The ride status transition is not allowed from the current status."""
 
 
 class NotAuthorizedActionError(DomainError):
-    """El usuario no tiene permiso para ejecutar esta acción (rol o propiedad)."""
+    """The user is not allowed to perform this action (role or ownership)."""
 
 
 class DriverUnavailableError(DomainError):
-    """El conductor ya fue asignado a otro viaje (perdió la carrera por aceptar).
+    """The driver was already assigned to another ride (lost the race to accept).
 
-    Es la "regla de oro": cuando un conductor oferta a varios pasajeros, solo el
-    primero que acepta se lo queda; cualquier intento posterior recibe este error.
+    This is the "golden rule": when a driver offers to several passengers, only the
+    first one to accept gets them; any later attempt receives this error.
     """
 
 
 class RideNotCompletedError(DomainError):
-    """No se puede calificar un viaje que aún no está completado."""
+    """A ride that is not completed yet cannot be rated."""
 
 
 class AlreadyRatedError(DomainError):
-    """El usuario ya calificó este viaje."""
+    """The user already rated this ride."""
 
 
 class InvalidRatingError(DomainError):
-    """La calificación está fuera del rango permitido (1–5)."""
+    """The rating is outside the allowed range (1–5)."""
 
 
 class InvalidDriverApplicationError(DomainError):

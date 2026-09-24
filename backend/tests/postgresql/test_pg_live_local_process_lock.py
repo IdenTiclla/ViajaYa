@@ -1,4 +1,4 @@
-"""Exclusión PostgreSQL entre procesos para el dispatcher ``live_local``."""
+"""Cross-process PostgreSQL exclusion for the ``live_local`` dispatcher."""
 
 from __future__ import annotations
 

@@ -88,7 +88,7 @@
         "type": "object"
       },
       "AuthProvider": {
-        "description": "Origen de la identidad del usuario.",
+        "description": "Where the user's identity comes from.",
         "enum": [
           "local",
           "google",
@@ -153,7 +153,7 @@
         "type": "object"
       },
       "DriverEarningsResponse": {
-        "description": "Resumen de ganancias del conductor (hoy, histórico y recientes).",
+        "description": "The driver's earnings summary (today, all-time and recent).",
         "properties": {
           "recent": {
             "items": {
@@ -438,7 +438,7 @@
         "type": "object"
       },
       "EarningsItemResponse": {
-        "description": "Una línea del desglose de ganancias.",
+        "description": "One line of the earnings breakdown.",
         "properties": {
           "completed_at": {
             "anyOf": [
@@ -502,7 +502,7 @@
         "type": "object"
       },
       "HistoryCounterpartSchema": {
-        "description": "La otra parte del viaje en el historial (conductor o pasajero).",
+        "description": "The other party of the ride in the history (driver or passenger).",
         "properties": {
           "full_name": {
             "title": "Full Name",
@@ -583,7 +583,7 @@
         "type": "object"
       },
       "OfferCreate": {
-        "description": "Oferta de un conductor: aceptar al precio del pasajero o contraofertar.\n\nSi ``accept_at_fare`` es ``True`` se ignora ``price`` (se toma el del viaje).\nSi es ``False`` (contraoferta) ``price`` es obligatorio.",
+        "description": "A driver's offer: accept at the passenger's price or counter-offer.\n\nIf ``accept_at_fare`` is ``True``, ``price`` is ignored (the ride's is used).\nIf it is ``False`` (counter-offer), ``price`` is required.",
         "properties": {
           "accept_at_fare": {
             "default": true,
@@ -636,7 +636,7 @@
         "type": "object"
       },
       "OfferDriverSchema": {
-        "description": "Datos públicos del conductor que hace la oferta.",
+        "description": "Public data of the driver making the offer.",
         "properties": {
           "full_name": {
             "title": "Full Name",
@@ -775,7 +775,7 @@
         "type": "object"
       },
       "OfferStatus": {
-        "description": "Estado de una oferta de un conductor sobre una solicitud de viaje.\n\nEl pasajero tiene la decisión final: al aceptar una oferta ``PENDING`` esta\npasa a ``ACCEPTED`` y el viaje se asigna a ese conductor (transacción\natómica); las demás ofertas vivas del viaje quedan ``REJECTED``. ``EXPIRED``\naplica cuando vence el TTL de 30 s sin que el pasajero la aceptara.",
+        "description": "Status of a driver's offer on a ride request.\n\nThe passenger has the final say: accepting a ``PENDING`` offer moves it\nto ``ACCEPTED`` and assigns the ride to that driver (atomic\ntransaction); the ride's other live offers become ``REJECTED``. ``EXPIRED``\napplies when the 30 s TTL runs out without the passenger accepting it.",
         "enum": [
           "pending",
           "accepted",
@@ -786,7 +786,7 @@
         "type": "string"
       },
       "OnlineRequest": {
-        "description": "Cuerpo para alternar disponibilidad del conductor.",
+        "description": "Body to toggle the driver's availability.",
         "properties": {
           "is_online": {
             "title": "Is Online",
@@ -800,7 +800,7 @@
         "type": "object"
       },
       "OpenRidePageResponse": {
-        "description": "Página de solicitudes abiertas ordenadas de forma estable.",
+        "description": "Page of open requests in a stable order.",
         "properties": {
           "items": {
             "items": {
@@ -829,7 +829,7 @@
         "type": "object"
       },
       "OpenRideResponse": {
-        "description": "Solicitud abierta tal como la ve un conductor en su lista.",
+        "description": "Open request as a driver sees it in their list.",
         "properties": {
           "created_at": {
             "anyOf": [
@@ -888,7 +888,7 @@
         "type": "object"
       },
       "OpenRideRiderResponse": {
-        "description": "Datos públicos del pasajero que el conductor ve en una solicitud abierta.",
+        "description": "Public passenger data the driver sees on an open request.",
         "properties": {
           "full_name": {
             "title": "Full Name",
@@ -925,7 +925,7 @@
         "type": "object"
       },
       "PaymentMethod": {
-        "description": "Forma de pago elegida para el viaje.\n\nPor ahora la app soporta pago por QR y pago en efectivo.",
+        "description": "Payment method chosen for the ride.\n\nFor now the app supports QR payment and cash.",
         "enum": [
           "qr",
           "cash"
@@ -1278,7 +1278,7 @@
         "type": "object"
       },
       "PointInputSchema": {
-        "description": "Punto entrante: nunca admite una etiqueta provisional como nombre final.",
+        "description": "Incoming point: never accepts a provisional label as the final name.",
         "properties": {
           "address": {
             "maxLength": 512,
@@ -1328,7 +1328,7 @@
         "type": "object"
       },
       "PointSchema": {
-        "description": "Un punto del viaje en el contrato HTTP.",
+        "description": "A ride point in the HTTP contract.",
         "properties": {
           "address": {
             "maxLength": 512,
@@ -1996,7 +1996,7 @@
         "type": "object"
       },
       "RideDriverSchema": {
-        "description": "Datos del conductor asignado, expuestos al pasajero durante el viaje.",
+        "description": "Assigned driver's data, shown to the passenger during the ride.",
         "properties": {
           "full_name": {
             "title": "Full Name",
@@ -2075,7 +2075,7 @@
         "type": "object"
       },
       "RideEdit": {
-        "description": "Cambios a guardar al modificar una solicitud pausada (mismos campos que al crear).",
+        "description": "Changes to save when modifying a paused request (same fields as on creation).",
         "properties": {
           "destination": {
             "$ref": "#/components/schemas/PointInputSchema"
@@ -2114,7 +2114,7 @@
         "type": "object"
       },
       "RideFareUpdate": {
-        "description": "Nuevo monto ofertado por el pasajero mientras busca conductor.",
+        "description": "New fare offered by the passenger while searching for a driver.",
         "properties": {
           "fare": {
             "anyOf": [
@@ -2137,7 +2137,7 @@
         "type": "object"
       },
       "RideHistoryItemResponse": {
-        "description": "Un viaje del historial, listo para pintar la tarjeta.",
+        "description": "A history ride, ready to render the card.",
         "properties": {
           "counterpart": {
             "anyOf": [
@@ -2214,7 +2214,7 @@
         "type": "object"
       },
       "RideHistoryPageResponse": {
-        "description": "Página del historial de un pasajero o conductor.",
+        "description": "Page of a passenger's or driver's history.",
         "properties": {
           "items": {
             "items": {
@@ -2296,7 +2296,7 @@
         "type": "object"
       },
       "RideResponse": {
-        "description": "Detalle completo de un viaje (polling de estado para ambos lados).",
+        "description": "Full ride detail (status polling for both sides).",
         "properties": {
           "accepted_eta_min": {
             "anyOf": [
@@ -2439,7 +2439,7 @@
         "type": "object"
       },
       "RideRiderSchema": {
-        "description": "Datos del pasajero, visibles para el conductor asignado.",
+        "description": "Passenger data, visible to the assigned driver.",
         "properties": {
           "full_name": {
             "title": "Full Name",
@@ -2483,7 +2483,7 @@
         "type": "object"
       },
       "RideStatus": {
-        "description": "Estado del ciclo de vida de una solicitud de viaje.\n\nFlujo: ``SEARCHING`` (publicada, esperando ofertas) → ``ACCEPTED`` (el\npasajero eligió una oferta y hay conductor asignado) → ``ARRIVING`` (el\nconductor va al origen) → ``IN_PROGRESS`` (viaje en curso) → ``COMPLETED``.\n``CANCELLED`` es posible antes de ``IN_PROGRESS``.",
+        "description": "Lifecycle status of a ride request.\n\nFlow: ``SEARCHING`` (published, waiting for offers) → ``ACCEPTED`` (the\npassenger picked an offer and a driver is assigned) → ``ARRIVING`` (the\ndriver is heading to the origin) → ``IN_PROGRESS`` (ride underway) → ``COMPLETED``.\n``CANCELLED`` is possible before ``IN_PROGRESS``.",
         "enum": [
           "searching",
           "accepted",
@@ -2496,7 +2496,7 @@
         "type": "string"
       },
       "RideStatusUpdate": {
-        "description": "Avance de estado del viaje solicitado por el conductor.",
+        "description": "Ride status change requested by the driver.",
         "properties": {
           "status": {
             "$ref": "#/components/schemas/RideStatus"
@@ -2532,7 +2532,7 @@
         "type": "object"
       },
       "SavedPlaceCategory": {
-        "description": "Categoría de un lugar guardado; define el ícono en la app.",
+        "description": "Category of a saved place; sets the icon in the app.",
         "enum": [
           "home",
           "work",
@@ -3219,7 +3219,7 @@
         "type": "object"
       },
       "UserRole": {
-        "description": "Rol del usuario en la plataforma.\n\nDefine qué navegación y acciones ve la app: el pasajero publica solicitudes,\nel conductor responde con ofertas. ``DELIVERY`` se reserva para repartos.",
+        "description": "User role on the platform.\n\nDefines which navigation and actions the app shows: the passenger publishes requests,\nthe driver answers with offers. ``DELIVERY`` is reserved for deliveries.",
         "enum": [
           "passenger",
           "driver",
@@ -4113,7 +4113,7 @@
     },
     "/api/v1/drivers/me/earnings": {
       "get": {
-        "description": "Resumen de ganancias del conductor (hoy, histórico y viajes recientes).",
+        "description": "The driver's earnings summary (today, all-time and recent rides).",
         "operationId": "earnings_api_v1_drivers_me_earnings_get",
         "parameters": [
           {
@@ -4223,7 +4223,7 @@
     },
     "/api/v1/drivers/me/online": {
       "post": {
-        "description": "Alterna la disponibilidad del conductor (en línea/desconectado).",
+        "description": "Toggle the driver's availability (online/offline).",
         "operationId": "set_online_api_v1_drivers_me_online_post",
         "parameters": [
           {
@@ -4607,7 +4607,7 @@
     },
     "/api/v1/rides/me/active": {
       "get": {
-        "description": "Solicitud o viaje no terminal del pasajero, para recuperar el flujo.",
+        "description": "The passenger's non-terminal request or ride, to resume the flow.",
         "operationId": "passenger_active_ride_api_v1_rides_me_active_get",
         "parameters": [
           {
@@ -4665,7 +4665,7 @@
     },
     "/api/v1/rides/me/pending-rating": {
       "get": {
-        "description": "Último viaje completado que el usuario actual todavía no calificó.",
+        "description": "The latest completed ride the current user has not rated yet.",
         "operationId": "pending_rating_ride_api_v1_rides_me_pending_rating_get",
         "parameters": [
           {
@@ -4723,7 +4723,7 @@
     },
     "/api/v1/rides/offers/{offer_id}/accept": {
       "post": {
-        "description": "El pasajero acepta una oferta: le asigna el viaje (decisión final).\n\nLas demás ofertas vivas del viaje quedan rechazadas en la misma transacción.",
+        "description": "The passenger accepts an offer: it assigns them the ride (final decision).\n\nThe ride's other live offers are rejected in the same transaction.",
         "operationId": "accept_offer_api_v1_rides_offers__offer_id__accept_post",
         "parameters": [
           {
@@ -4783,7 +4783,7 @@
     },
     "/api/v1/rides/offers/{offer_id}/reject": {
       "post": {
-        "description": "El pasajero rechaza una oferta concreta; el conductor lo ve en vivo.",
+        "description": "The passenger rejects a specific offer; the driver sees it live.",
         "operationId": "reject_offer_api_v1_rides_offers__offer_id__reject_post",
         "parameters": [
           {
@@ -4836,7 +4836,7 @@
     },
     "/api/v1/rides/offers/{offer_id}/withdraw": {
       "post": {
-        "description": "El conductor retira su oferta (o se niega a confirmarla); el pasajero deja de verla.",
+        "description": "The driver withdraws (or declines to confirm) their offer; the passenger stops seeing it.",
         "operationId": "withdraw_offer_api_v1_rides_offers__offer_id__withdraw_post",
         "parameters": [
           {
@@ -4889,7 +4889,7 @@
     },
     "/api/v1/rides/open": {
       "get": {
-        "description": "Solicitudes abiertas del tipo de vehículo del conductor (en línea).\n\nSolo las que tienen al pasajero presente (conexión WS viva): las abandonadas\nno se muestran.",
+        "description": "Open requests for the (online) driver's vehicle type.\n\nOnly those whose passenger is present (live WS connection): abandoned ones\nare not shown.",
         "operationId": "open_rides_api_v1_rides_open_get",
         "parameters": [
           {
@@ -5021,7 +5021,7 @@
     },
     "/api/v1/rides/{ride_id}": {
       "get": {
-        "description": "Detalle del viaje para polling (pasajero o conductor asignado).",
+        "description": "Ride detail for polling (passenger or assigned driver).",
         "operationId": "get_ride_api_v1_rides__ride_id__get",
         "parameters": [
           {
@@ -5079,7 +5079,7 @@
         ]
       },
       "patch": {
-        "description": "Guarda los cambios de una solicitud pausada y la vuelve a publicar en el pool.",
+        "description": "Save the changes to a paused request and publish it to the pool again.",
         "operationId": "edit_ride_api_v1_rides__ride_id__patch",
         "parameters": [
           {
@@ -5149,7 +5149,7 @@
     },
     "/api/v1/rides/{ride_id}/cancel": {
       "post": {
-        "description": "Cancela el viaje (pasajero o conductor asignado), antes de iniciarlo.",
+        "description": "Cancel the ride (passenger or assigned driver) before it starts.",
         "operationId": "cancel_ride_api_v1_rides__ride_id__cancel_post",
         "parameters": [
           {
@@ -5209,7 +5209,7 @@
     },
     "/api/v1/rides/{ride_id}/dismiss": {
       "post": {
-        "description": "Oculta para este conductor la versión vigente de una solicitud abierta.",
+        "description": "Hide the current version of an open request for this driver.",
         "operationId": "dismiss_open_ride_api_v1_rides__ride_id__dismiss_post",
         "parameters": [
           {
@@ -5396,7 +5396,7 @@
     },
     "/api/v1/rides/{ride_id}/fare": {
       "patch": {
-        "description": "El pasajero ajusta su oferta mientras se buscan conductores.",
+        "description": "The passenger adjusts their offer while drivers are being searched.",
         "operationId": "update_fare_api_v1_rides__ride_id__fare_patch",
         "parameters": [
           {
@@ -5466,7 +5466,7 @@
     },
     "/api/v1/rides/{ride_id}/offers": {
       "get": {
-        "description": "Ofertas pendientes recibidas por el pasajero para su viaje.",
+        "description": "Pending offers the passenger received for their ride.",
         "operationId": "list_offers_api_v1_rides__ride_id__offers_get",
         "parameters": [
           {
@@ -5528,7 +5528,7 @@
         ]
       },
       "post": {
-        "description": "El conductor oferta sobre un viaje (aceptar al precio, contraofertar o mejorar).",
+        "description": "The driver offers on a ride (accept at the price, counter-offer or improve).",
         "operationId": "create_offer_api_v1_rides__ride_id__offers_post",
         "parameters": [
           {
@@ -5598,7 +5598,7 @@
     },
     "/api/v1/rides/{ride_id}/pause-edit": {
       "post": {
-        "description": "Pausa la solicitud para editarla (Modificar): la oculta del pool y retira ofertas.",
+        "description": "Pause the request to edit it (Modify): hide it from the pool and withdraw offers.",
         "operationId": "pause_ride_for_edit_api_v1_rides__ride_id__pause_edit_post",
         "parameters": [
           {
@@ -5723,7 +5723,7 @@
         ]
       },
       "post": {
-        "description": "Califica al otro participante tras completarse el viaje.",
+        "description": "Rate the other participant after the ride is completed.",
         "operationId": "rate_ride_api_v1_rides__ride_id__rating_post",
         "parameters": [
           {
@@ -5793,7 +5793,7 @@
     },
     "/api/v1/rides/{ride_id}/rating/skip": {
       "post": {
-        "description": "Cierra la calificación pendiente sin alterar la reputación.",
+        "description": "Close the pending rating without changing reputation.",
         "operationId": "skip_ride_rating_api_v1_rides__ride_id__rating_skip_post",
         "parameters": [
           {
@@ -5906,7 +5906,7 @@
     },
     "/api/v1/rides/{ride_id}/status": {
       "patch": {
-        "description": "El conductor asignado avanza el estado del viaje.",
+        "description": "The assigned driver advances the ride's status.",
         "operationId": "update_status_api_v1_rides__ride_id__status_patch",
         "parameters": [
           {
@@ -6205,7 +6205,7 @@
     },
     "/health": {
       "get": {
-        "description": "Contrato de liveness histórico, conservado sin cambios.",
+        "description": "Historical liveness contract, kept unchanged.",
         "operationId": "health_health_get",
         "responses": {
           "200": {
@@ -6227,7 +6227,7 @@
     },
     "/health/live": {
       "get": {
-        "description": "Solo certifica que el proceso puede responder; no consulta dependencias.",
+        "description": "Only certifies that the process can respond; it does not query dependencies.",
         "operationId": "liveness_health_live_get",
         "responses": {
           "200": {
@@ -6249,7 +6249,7 @@
     },
     "/health/ready": {
       "get": {
-        "description": "Comprueba PostgreSQL y los workers habilitados, sin filtrar errores.",
+        "description": "Check PostgreSQL and the enabled workers without leaking errors.",
         "operationId": "readiness_health_ready_get",
         "responses": {
           "200": {
@@ -6281,7 +6281,7 @@
     },
     "/health/realtime": {
       "get": {
-        "description": "Expone métricas acotadas de outbox sin topics, payloads ni errores.",
+        "description": "Expose bounded outbox metrics without topics, payloads or errors.",
         "operationId": "realtime_health_health_realtime_get",
         "responses": {
           "200": {
@@ -6313,7 +6313,7 @@
     },
     "/health/scheduled-actions": {
       "get": {
-        "description": "Expone backlog y leases agregados, nunca payloads ni identificadores.",
+        "description": "Expose aggregated backlog and leases, never payloads or identifiers.",
         "operationId": "scheduled_actions_health_health_scheduled_actions_get",
         "responses": {
           "200": {

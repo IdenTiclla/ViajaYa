@@ -1,1 +1,1 @@
-"""Datos geograficos versionados usados por las reglas del dominio."""
+"""Versioned geographic data used by the domain rules."""

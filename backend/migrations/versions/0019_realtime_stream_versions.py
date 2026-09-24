@@ -1,4 +1,4 @@
-"""Añade secuencias monotónicas por topic a la outbox durable.
+"""Add monotonic per-topic sequences to the durable outbox.
 
 Revision ID: 0019_realtime_stream_versions
 Revises: 0018_realtime_outbox

@@ -1,4 +1,4 @@
-/** Verifica activo y calificación con un límite para toda la recuperación. */
+/** Check the active ride and pending rating with a single time limit for the whole recovery. */
 type ResultadoConsulta = {
   isSuccess: boolean;
   data?: unknown;
@@ -30,7 +30,7 @@ export async function confirmarRecuperacion(
     }
   };
   try {
-    // También acota consultas pausadas por conectividad o reintentos internos.
+    // It also bounds queries paused by connectivity or internal retries.
     await Promise.race([verificar(), limite]);
   } finally {
     clearTimeout(temporizador);

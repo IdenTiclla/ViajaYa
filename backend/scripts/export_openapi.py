@@ -1,11 +1,11 @@
-"""Genera y verifica el contrato OpenAPI versionado del backend.
+"""Generate and verify the backend's versioned OpenAPI contract.
 
-Uso::
+Usage::
 
     python -m scripts.export_openapi
     python -m scripts.export_openapi --check
 
-El modo ``--check`` solo compara el contrato actual con el snapshot; nunca modifica archivos.
+``--check`` mode only compares the current contract with the snapshot; it never modifies files.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ OPENAPI_SNAPSHOT = Path(__file__).resolve().parents[1] / "openapi.json"
 
 
 def serializar_openapi() -> str:
-    """Devuelve el OpenAPI actual como JSON estable y terminado en salto de línea."""
+    """Return the current OpenAPI as stable JSON ending with a newline."""
     schema = create_app().openapi()
     return json.dumps(
         schema,
@@ -38,7 +38,7 @@ def snapshot_esta_actualizado(
     *,
     esperado: str | None = None,
 ) -> bool:
-    """Compara el snapshot sin escribir en disco."""
+    """Compare the snapshot without writing to disk."""
     if esperado is None:
         esperado = serializar_openapi()
     try:
@@ -76,7 +76,7 @@ def main(
     *,
     destino: Path = OPENAPI_SNAPSHOT,
 ) -> int:
-    """Ejecuta la exportación o la comprobación solicitada."""
+    """Run the requested export or check."""
     args = _crear_parser().parse_args(argv)
     esperado = serializar_openapi()
 

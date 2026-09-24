@@ -1,8 +1,8 @@
-"""Runner interactivo para certificar realtime en un dev build móvil.
+"""Interactive runner to certify realtime on a mobile dev build.
 
-Arranca una API ``live_local`` sobre una base PostgreSQL desechable y conserva
-los controles de fallo dentro del proceso. No agrega endpoints ni configuración
-de corrupción al artefacto productivo.
+Starts a ``live_local`` API on a disposable PostgreSQL database and keeps
+the fault controls inside the process. It adds no endpoints or corruption
+settings to the production artifact.
 """
 
 from __future__ import annotations
@@ -118,7 +118,7 @@ async def _wait_fault(controller: RealtimeFaultController) -> None:
 
 
 class MobileRealtimeSmoke:
-    """Orquesta datos reales y fallos sin exponer controles por red."""
+    """Orchestrate real data and faults without exposing controls over the network."""
 
     def __init__(
         self,

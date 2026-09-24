@@ -1,7 +1,7 @@
 /**
- * Mutaciones del flujo de viaje (ofertar, aceptar, avanzar estado, cancelar,
- * disponibilidad del conductor). Tras cada mutación se invalidan las consultas
- * afectadas para que el polling refleje el nuevo estado de inmediato.
+ * Ride flow mutations (offer, accept, advance status, cancel,
+ * driver availability). After each mutation the affected queries are
+ * invalidated so polling reflects the new state immediately.
  */
 import { type QueryClient, useMutation, useQueryClient } from '@tanstack/react-query';
 
@@ -35,7 +35,7 @@ function updateActiveRideIfMatching(
   );
 }
 
-/** Conductor: oferta sobre una solicitud (aceptar al precio o contraofertar). */
+/** Driver: offer on a request (accept at the price or counter-offer). */
 export function useCreateOffer() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -48,8 +48,8 @@ export function useCreateOffer() {
 }
 
 /**
- * Pasajero: acepta una oferta y le asigna el viaje (decisión final). El backend
- * devuelve el viaje ya asignado; se refleja al instante en la caché del viaje.
+ * Passenger: accept an offer and get the ride assigned (final decision). The backend
+ * returns the already assigned ride; it is reflected instantly in the ride's cache.
  */
 export function useAcceptOffer() {
   const queryClient = useQueryClient();
@@ -72,21 +72,21 @@ export function useAcceptOffer() {
   });
 }
 
-/** Conductor: retira su oferta (o se niega a confirmar una aceptada). */
+/** Driver: withdraw their offer (or decline to confirm an accepted one). */
 export function useWithdrawOffer() {
   return useMutation({
     mutationFn: (offerId: string) => ridesRepository.withdrawOffer(offerId),
   });
 }
 
-/** Conductor: deja de ver una solicitud hasta que el pasajero la renueve. */
+/** Driver: stop seeing a request until the passenger renews it. */
 export function useDismissOpenRide() {
   return useMutation({
     mutationFn: (rideId: string) => ridesRepository.dismissOpenRide(rideId),
   });
 }
 
-/** Pasajero: rechaza una oferta concreta (sin asignar conductor). */
+/** Passenger: reject a specific offer (without assigning a driver). */
 export function useRejectOffer() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -98,7 +98,7 @@ export function useRejectOffer() {
   });
 }
 
-/** Conductor: avanza el estado del viaje (llegué → iniciar → finalizar). */
+/** Driver: advance the ride's status (arrived → start → finish). */
 export function useUpdateRideStatus() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -157,15 +157,15 @@ export function useCancelRide() {
         role === 'passenger' ? PASSENGER_ACTIVE_RIDE_KEY : DRIVER_ACTIVE_RIDE_KEY;
       if (!applyRideMutationResult(queryClient, ride, activeQueryKey)) return;
       if (role === 'passenger') {
-        // "Activo" es un contrato no terminal. Limpiarlo antes del refetch evita
-        // que Home reutilice un SEARCHING anterior mientras confirma con servidor.
+        // "Active" is a non-terminal contract. Clearing it before the refetch keeps
+        // Home from reusing an earlier SEARCHING while it confirms with the server.
         queryClient.setQueryData(PASSENGER_ACTIVE_RIDE_KEY, null);
         void queryClient.invalidateQueries({
           queryKey: PASSENGER_ACTIVE_RIDE_KEY,
           refetchType: 'active',
         });
       } else {
-        // El conductor conserva el terminal hasta reconocerlo en su pantalla.
+        // The driver keeps the terminal status until acknowledging it on their screen.
         updateActiveRideIfMatching(queryClient, DRIVER_ACTIVE_RIDE_KEY, ride);
       }
     },
@@ -173,9 +173,9 @@ export function useCancelRide() {
 }
 
 /**
- * Pasajero: ajusta la oferta de la solicitud en búsqueda. Actualiza la caché
- * del detalle del viaje al instante; los conductores ven el nuevo monto en vivo
- * por WebSocket (el backend reanuncia la solicitud al pool).
+ * Passenger: adjust the fare of the searching request. Updates the ride
+ * detail cache instantly; drivers see the new amount live
+ * over WebSocket (the backend re-announces the request to the pool).
  */
 export function useUpdateRideFare() {
   const queryClient = useQueryClient();
@@ -189,7 +189,7 @@ export function useUpdateRideFare() {
   });
 }
 
-/** Conductor: alterna su disponibilidad (en línea/desconectado). */
+/** Driver: toggle their availability (online/offline). */
 export function useSetOnline() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -205,7 +205,7 @@ export function useSetOnline() {
           ['open-rides'],
           emptyOpenRides(),
         );
-        // El commit HTTP ya retiró las ofertas aunque el aviso WS se pierda.
+        // The HTTP commit already withdrew the offers even if the WS notice is lost.
         const driverRequests = useDriverRequests.getState();
         driverRequests.invalidateAllOfferAttempts();
         driverRequests.reconcileOffered([]);
@@ -214,7 +214,7 @@ export function useSetOnline() {
   });
 }
 
-/** Pasajero: pausa la solicitud para editarla (Modificar solicitud). */
+/** Passenger: pause the request to edit it (Modify request). */
 export function usePauseForEdit() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -227,7 +227,7 @@ export function usePauseForEdit() {
   });
 }
 
-/** Pasajero: guarda los cambios de una solicitud pausada y la vuelve a publicar. */
+/** Passenger: save the changes to a paused request and publish it again. */
 export function useEditRide() {
   const queryClient = useQueryClient();
   return useMutation({

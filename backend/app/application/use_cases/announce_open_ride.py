@@ -1,4 +1,4 @@
-"""Caso de uso: anuncia una solicitud al confirmar presencia del pasajero."""
+"""Use case: announce a request once the passenger's presence is confirmed."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from app.domain.repositories import OpenRideDetail, RideRequestRepository
 
 
 class AnnounceOpenRide:
-    """Revalida y registra ``ride_created`` en una única transacción corta."""
+    """Re-validate and record ``ride_created`` in a single short transaction."""
 
     def __init__(
         self,

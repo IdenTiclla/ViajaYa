@@ -1,4 +1,4 @@
-"""Dobles de prueba en memoria para los puertos del dominio/aplicación."""
+"""In-memory test doubles for the domain/application ports."""
 
 from __future__ import annotations
 
@@ -184,7 +184,7 @@ class InMemoryRideRequestRepository(RideRequestRepository):
     def __init__(self, users: InMemoryUserRepository | None = None) -> None:
         self.rides: list[RideRequest] = []
         self.dismissals: dict[tuple[uuid.UUID, uuid.UUID], int] = {}
-        # Opcional: para construir el resumen del pasajero con sus datos reales.
+        # Optional: to build the passenger summary with their real data.
         self._users = users
 
     async def add(self, ride: RideRequest) -> RideRequest:
@@ -338,8 +338,8 @@ class InMemoryRideRequestRepository(RideRequestRepository):
     async def list_paused_with_rider_for_driver(
         self, driver_id: uuid.UUID
     ) -> list[OpenRideDetail]:
-        # El fake no persiste ofertas por conductor; este snapshot es exclusivo
-        # de reconexión del WebSocket y no interviene en los casos de uso unitarios.
+        # The fake does not persist offers per driver; this snapshot is exclusive
+        # to WebSocket reconnection and plays no part in the unit use cases.
         return []
 
     async def rider_summary(self, rider_id: uuid.UUID) -> RiderSummary | None:
@@ -380,8 +380,8 @@ class InMemoryRideRequestRepository(RideRequestRepository):
         )
 
     def _detail_for(self, ride: RideRequest) -> OpenRideDetail:
-        # Con usuarios cableados usamos los datos reales; sin ellos, un resumen de
-        # respaldo para los tests que no necesitan el nombre del pasajero.
+        # With wired users we use the real data; without them, a fallback
+        # summary for tests that do not need the passenger's name.
         full_name = "Pasajero"
         rating: float | None = None
         if self._users is not None:
@@ -406,7 +406,7 @@ class InMemoryRideRequestRepository(RideRequestRepository):
     ) -> list[Location]:
         seen: set[tuple[float, float]] = set()
         out: list[Location] = []
-        for ride in reversed(self.rides):  # del más reciente al más antiguo
+        for ride in reversed(self.rides):  # most recent first
             if ride.rider_id != rider_id:
                 continue
             key = (round(ride.destination.latitude, 5), round(ride.destination.longitude, 5))
@@ -435,8 +435,8 @@ class InMemoryOfferRepository(OfferRepository):
         users: InMemoryUserRepository | None = None,
     ) -> None:
         self.offers: list[Offer] = []
-        # ``accept_atomically`` necesita ver viajes y conductores; se inyectan en
-        # los tests que ejercitan la aceptación.
+        # ``accept_atomically`` needs to see rides and drivers; they are injected in
+        # the tests that exercise acceptance.
         self._rides = rides
         self._users = users
 
@@ -766,7 +766,7 @@ class InMemoryOfferRepository(OfferRepository):
 
 
 class InMemoryUnitOfWork(UnitOfWork):
-    """UoW de prueba que restaura los agregados si la operación falla."""
+    """Test UoW that restores the aggregates if the operation fails."""
 
     def __init__(
         self,
@@ -986,7 +986,7 @@ def create_ride_request_use_case(
     scheduled_actions: ScheduledActionScheduler | None = None,
     passenger_presence_grace_seconds: float = 120.0,
 ) -> CreateRideRequest:
-    """Cablea CreateRideRequest con una frontera transaccional explícita."""
+    """Wire CreateRideRequest with an explicit transactional boundary."""
     return CreateRideRequest(
         rides,
         unit_of_work or InMemoryUnitOfWork(rides=rides),
@@ -1001,7 +1001,7 @@ def update_ride_fare_use_case(
     unit_of_work: UnitOfWork | None = None,
     event_recorder: RepublishRideEventRecorder | None = None,
 ) -> UpdateRideFare:
-    """Cablea UpdateRideFare con dobles transaccionales explícitos."""
+    """Wire UpdateRideFare with explicit transactional doubles."""
     return UpdateRideFare(
         rides,
         unit_of_work or InMemoryUnitOfWork(rides=rides),
@@ -1015,7 +1015,7 @@ def edit_ride_use_case(
     unit_of_work: UnitOfWork | None = None,
     event_recorder: RepublishRideEventRecorder | None = None,
 ) -> EditRide:
-    """Cablea EditRide con dobles transaccionales explícitos."""
+    """Wire EditRide with explicit transactional doubles."""
     return EditRide(
         rides,
         unit_of_work or InMemoryUnitOfWork(rides=rides),
@@ -1029,7 +1029,7 @@ def withdraw_offer_use_case(
     unit_of_work: UnitOfWork | None = None,
     event_recorder: WithdrawOfferEventRecorder | None = None,
 ) -> WithdrawOffer:
-    """Cablea WithdrawOffer con dobles transaccionales explícitos."""
+    """Wire WithdrawOffer with explicit transactional doubles."""
     return WithdrawOffer(
         offers,
         unit_of_work or InMemoryUnitOfWork(offers),
@@ -1044,7 +1044,7 @@ def reject_offer_use_case(
     unit_of_work: UnitOfWork | None = None,
     event_recorder: RejectOfferEventRecorder | None = None,
 ) -> RejectOffer:
-    """Cablea RejectOffer con dobles transaccionales explícitos."""
+    """Wire RejectOffer with explicit transactional doubles."""
     return RejectOffer(
         rides,
         offers,
@@ -1059,7 +1059,7 @@ def expire_offer_use_case(
     unit_of_work: UnitOfWork | None = None,
     event_recorder: ExpireOfferEventRecorder | None = None,
 ) -> ExpireOffer:
-    """Cablea ExpireOffer con dobles transaccionales explícitos."""
+    """Wire ExpireOffer with explicit transactional doubles."""
     return ExpireOffer(
         offers,
         unit_of_work or InMemoryUnitOfWork(offers),
@@ -1075,7 +1075,7 @@ def update_ride_status_use_case(
     unit_of_work: UnitOfWork | None = None,
     event_recorder: UpdateRideStatusEventRecorder | None = None,
 ) -> UpdateRideStatus:
-    """Cablea UpdateRideStatus con dobles transaccionales explícitos."""
+    """Wire UpdateRideStatus with explicit transactional doubles."""
     return UpdateRideStatus(
         rides,
         offers,
@@ -1092,7 +1092,7 @@ def set_driver_online_use_case(
     unit_of_work: UnitOfWork | None = None,
     event_recorder: DriverAvailabilityEventRecorder | None = None,
 ) -> SetDriverOnline:
-    """Cablea SetDriverOnline con dobles transaccionales explícitos."""
+    """Wire SetDriverOnline with explicit transactional doubles."""
     return SetDriverOnline(
         users,
         offers,
@@ -1109,7 +1109,7 @@ def cancel_ride_use_case(
     unit_of_work: UnitOfWork | None = None,
     event_recorder: CancelRideEventRecorder | None = None,
 ) -> CancelRide:
-    """Cablea CancelRide con dobles transaccionales explícitos."""
+    """Wire CancelRide with explicit transactional doubles."""
     return CancelRide(
         rides,
         offers,
@@ -1127,7 +1127,7 @@ def cancel_ride_on_disconnect_use_case(
     unit_of_work: UnitOfWork | None = None,
     event_recorder: CancelRideEventRecorder | None = None,
 ) -> CancelRideOnDisconnect:
-    """Cablea el cierre por ausencia con dobles transaccionales explícitos."""
+    """Wire the absence close with explicit transactional doubles."""
     return CancelRideOnDisconnect(
         offers,
         users,
@@ -1143,7 +1143,7 @@ def accept_offer_use_case(
     unit_of_work: UnitOfWork | None = None,
     event_recorder: AcceptOfferEventRecorder | None = None,
 ) -> AcceptOffer:
-    """Cablea AcceptOffer con dobles transaccionales explícitos."""
+    """Wire AcceptOffer with explicit transactional doubles."""
     return AcceptOffer(
         rides,
         offers,
@@ -1170,7 +1170,7 @@ def pause_ride_use_case(
     unit_of_work: UnitOfWork | None = None,
     event_recorder: PauseRideEventRecorder | None = None,
 ) -> PauseRideForEdit:
-    """Cablea PauseRideForEdit con dobles transaccionales explícitos."""
+    """Wire PauseRideForEdit with explicit transactional doubles."""
     return PauseRideForEdit(
         rides,
         offers,
@@ -1186,7 +1186,7 @@ def create_offer_use_case(
     unit_of_work: UnitOfWork | None = None,
     event_recorder: CreateOfferEventRecorder | None = None,
 ) -> CreateOffer:
-    """Cablea CreateOffer con dobles transaccionales explícitos."""
+    """Wire CreateOffer with explicit transactional doubles."""
     return CreateOffer(
         rides,
         offers,
@@ -1230,7 +1230,7 @@ class InMemoryRatingRepository(RatingRepository):
 
 
 class InMemoryRideReadRepository(RideReadRepository):
-    """Compone los repositorios en memoria como proyección de lectura."""
+    """Compose the in-memory repositories as a read projection."""
 
     def __init__(
         self,
@@ -1466,7 +1466,7 @@ class InMemorySavedPlaceRepository(SavedPlaceRepository):
 
 
 class FakeVerifier(SocialIdentityVerifier):
-    """Verificador OAuth de prueba: el token es el provider_id."""
+    """Test OAuth verifier: the token is the provider_id."""
 
     def __init__(self, provider: AuthProvider) -> None:
         self.provider = provider

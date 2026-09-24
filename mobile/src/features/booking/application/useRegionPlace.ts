@@ -1,9 +1,9 @@
 /**
- * Convierte el centro del mapa en un `Place` cada vez que el usuario termina de
- * mover la cámara. Entrega primero las coordenadas con una etiqueta utilizable
- * y luego la enriquece mediante geocodificación inversa. Una guardia con `useRef`
- * deduplica centros idénticos y descarta resultados obsoletos si el usuario vuelve
- * a mover el mapa antes de que resuelva una geocodificación anterior.
+ * Turn the map center into a `Place` every time the user finishes
+ * moving the camera. It first delivers the coordinates with a usable label
+ * and then enriches it through reverse geocoding. A `useRef` guard
+ * deduplicates identical centers and discards stale results if the user moves
+ * the map again before a previous geocoding resolves.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Region } from 'react-native-maps';
@@ -12,9 +12,9 @@ import type { Coordinates, Place } from '@/features/booking/domain/types';
 import { locationService } from '@/features/home/data/locationService';
 
 function mismasCoordenadas(a: Coordinates, b: Coordinates): boolean {
-  // MapView puede devolver el mismo centro con una variación decimal mínima
-  // después de animateToRegion. Tratarla como un punto nuevo reinicia (o incluso
-  // cancela) la primera dirección aunque el pasajero no haya movido el mapa.
+  // MapView may return the same center with a tiny decimal variation
+  // after animateToRegion. Treating it as a new point restarts (or even
+  // cancels) the first address even though the passenger did not move the map.
   return (
     Math.abs(a.latitude - b.latitude) < 0.00001 &&
     Math.abs(a.longitude - b.longitude) < 0.00001
@@ -42,8 +42,8 @@ export function useRegionPlace(onPlace: (place: Place) => void) {
 
   useEffect(
     () => () => {
-      // Invalida respuestas tardías para que un logout o cambio de pantalla no
-      // vuelva a escribir el store global después de desmontar este hook.
+      // Invalidate late responses so a logout or screen change does not
+      // write to the global store again after this hook unmounts.
       latestRequestId.current += 1;
       latest.current = null;
       pending.current = null;

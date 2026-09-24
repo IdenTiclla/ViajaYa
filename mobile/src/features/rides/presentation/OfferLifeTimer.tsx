@@ -1,8 +1,8 @@
 /**
- * Contador de vida de una solicitud/oferta: muestra mm:ss restantes de la
- * ventana de negociación. Se pone en rojo en los últimos segundos y late (pulso)
- * para llamar la atención. No corre su propio reloj (recibe los segundos ya
- * calculados) para compartir un solo tick.
+ * Lifetime countdown of a request/offer: shows the mm:ss left in the
+ * negotiation window. It turns red in the last seconds and beats (pulse)
+ * to draw attention. It does not run its own clock (it receives the already
+ * computed seconds) so a single tick is shared.
  */
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { StyleSheet, Text } from 'react-native';
@@ -28,7 +28,7 @@ export function OfferLifeTimer({
   const { colors, styles } = useEstilos(crearEstilos);
   const low = secondsLeft != null && secondsLeft <= LOW_THRESHOLD;
   const reduceMotion = useReducedMotion();
-  // Pulso solo en los últimos segundos (y si el usuario no pidió reducir motion).
+  // Pulse only in the last seconds (and if the user did not ask to reduce motion).
   const pulseStyle = useAnimatedStyle(() => {
     if (!low || reduceMotion) return {};
     return {

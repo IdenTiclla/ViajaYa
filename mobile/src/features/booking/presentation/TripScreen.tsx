@@ -1,13 +1,13 @@
 import { useDriverLocation } from '@/features/tracking/application/useDriverLocation';
 import { DriverLocationStatus } from '@/features/tracking/presentation/DriverLocationStatus';
 /**
- * Viaje en curso (pasajero) — seguimiento con mapa (diseño Stitch
+ * Ride in progress (passenger) — tracking with a map (Stitch design
  * "Seguimiento del Viaje" / "Conductor en el origen").
  *
- * Muestra el trayecto en el mapa y una tarjeta inferior con el conductor
- * asignado (vehículo, rating, placa) y acciones Mensaje / Llamar / Compartir.
- * Según el estado, un banner indica si el conductor va en camino o ya llegó.
- * Al completarse, lleva a calificar; permite cancelar antes de iniciar.
+ * Shows the route on the map and a bottom card with the assigned
+ * driver (vehicle, rating, plate) and Message / Call / Share actions.
+ * Depending on the status, a banner says whether the driver is on the way or has arrived.
+ * When completed, it leads to rating; it allows cancelling before the ride starts.
  */
 import { Ionicons, type IoniconsIconName } from '@react-native-vector-icons/ionicons';
 import { useQueryClient } from '@tanstack/react-query';
@@ -99,8 +99,8 @@ export function TripScreen() {
   };
   const goRate = () => router.replace(`/(app)/booking/rating?rideId=${id}`);
 
-  // Al completarse el viaje (aviso en vivo por WS), lleva a calificar tras una
-  // breve pausa para que el pasajero vea el banner de "Viaje finalizado".
+  // When the ride is completed (live notice over WS), it leads to rating after a
+  // short pause so the passenger sees the "Viaje finalizado" banner.
   const completed = ride?.status === 'completed';
   useEffect(() => {
     if (!completed || !id) return;

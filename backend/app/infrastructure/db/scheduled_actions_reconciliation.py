@@ -1,4 +1,4 @@
-"""Reconciliación SQLAlchemy de acciones durables ausentes."""
+"""SQLAlchemy reconciliation of missing durable actions."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ from app.infrastructure.db.scheduled_actions import (
 class SqlAlchemyMissingOfferScheduledActionsReconciler(
     MissingScheduledActionsReconciler
 ):
-    """Repara por lotes la ventana entre migración y productor nuevo."""
+    """Repair in batches the window between the migration and the new producer."""
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -77,7 +77,7 @@ class SqlAlchemyMissingOfferScheduledActionsReconciler(
 class SqlAlchemyMissingPassengerPresenceActionsReconciler(
     MissingScheduledActionsReconciler
 ):
-    """Da una gracia completa a búsquedas previas al productor compartido."""
+    """Give searches that predate the shared producer a full grace period."""
 
     def __init__(self, session: AsyncSession, *, grace_seconds: float) -> None:
         if grace_seconds <= 0:
@@ -134,7 +134,7 @@ class SqlAlchemyMissingPassengerPresenceActionsReconciler(
 
 
 class CompositeMissingScheduledActionsReconciler(MissingScheduledActionsReconciler):
-    """Ejecuta un lote acotado por cada clase de acción independiente."""
+    """Run one bounded batch per independent action class."""
 
     def __init__(self, *reconcilers: MissingScheduledActionsReconciler) -> None:
         if not reconcilers:

@@ -1,4 +1,4 @@
-"""Pruebas del contrato entrante para nombres legibles de ubicaciones."""
+"""Tests of the incoming contract for human-readable location names."""
 
 import pytest
 from pydantic import ValidationError

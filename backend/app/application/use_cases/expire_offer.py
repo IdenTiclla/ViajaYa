@@ -1,10 +1,10 @@
-"""Caso de uso: vencer una oferta cuyo TTL (30 s) expiró.
+"""Use case: expire an offer whose TTL (30 s) has run out.
 
-Sirve para que el backend avise al conductor en tiempo real cuando su oferta muere
-por tiempo (la tarea diferida de ``create_offer`` y el barrido del snapshot del
-conductor lo invocan). Es race-safe: solo vence si la oferta seguía ``PENDING`` y
-ya pasó su deadline (un accept/reject/withdraw/supersede simultáneo la saca de
-``PENDING`` y aquí no se toca).
+It lets the backend notify the driver in real time when their offer dies
+of old age (the deferred ``create_offer`` task and the driver snapshot sweep
+invoke it). It is race-safe: it only expires the offer if it was still ``PENDING`` and
+past its deadline (a simultaneous accept/reject/withdraw/supersede takes it out of
+``PENDING`` and it is not touched here).
 """
 
 from __future__ import annotations
@@ -28,8 +28,9 @@ class ExpireOffer:
         self._event_recorder = event_recorder
 
     async def execute(self, offer_id: uuid.UUID) -> Offer | None:
-        """Marca la oferta ``EXPIRED`` si seguía ``PENDING`` y venció; devuelve la
-        oferta actualizada o ``None`` si ya estaba resuelta por otra vía."""
+        """Mark the offer ``EXPIRED`` if it was still ``PENDING`` and past due; return the
+        updated offer, or ``None`` if it was already resolved another way.
+        """
         try:
             offer = await self._offers.mark_expired_if_pending(offer_id)
             if offer is None:

@@ -1,4 +1,4 @@
-"""Retención SQLAlchemy de batches publicados de la outbox realtime."""
+"""SQLAlchemy retention of published realtime outbox batches."""
 
 from __future__ import annotations
 
@@ -71,9 +71,9 @@ class SqlAlchemyPublishedRealtimeOutboxRetention(PublishedRealtimeOutboxRetentio
         if not candidate_ids:
             return PublishedRealtimeOutboxRetentionResult(0, 0)
 
-        # La condición SQL evita que un batch truncado antiguo monopolice para
-        # siempre el LIMIT. La segunda validación bajo lock protege el DELETE
-        # frente a datos históricos anómalos y cambios concurrentes.
+        # The SQL condition keeps an old truncated batch from monopolizing the
+        # LIMIT forever. The second check under lock protects the DELETE
+        # against anomalous historical data and concurrent changes.
         rows = list(
             (
                 await self._session.execute(

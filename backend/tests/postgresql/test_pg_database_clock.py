@@ -1,4 +1,4 @@
-"""Garantías del reloj autoritativo usado por ofertas y scheduler."""
+"""Guarantees of the authoritative clock used by offers and the scheduler."""
 
 from __future__ import annotations
 

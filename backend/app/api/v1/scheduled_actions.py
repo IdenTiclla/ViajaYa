@@ -1,4 +1,4 @@
-"""Adaptador que enruta acciones durables hacia casos de uso de aplicación."""
+"""Adapter that routes durable actions to application use cases."""
 
 from __future__ import annotations
 
@@ -47,7 +47,7 @@ def _schedule_shadow_offer_expired(offer: Offer) -> None:
 async def shutdown_shadow_scheduled_action_publications(
     timeout_seconds: float,
 ) -> None:
-    """Drena publicaciones desacopladas del timeout transaccional del handler."""
+    """Drain publications decoupled from the handler's transactional timeout."""
     tasks = set(_SHADOW_PUBLICATION_TASKS)
     if not tasks:
         return
@@ -65,7 +65,7 @@ async def shutdown_shadow_scheduled_action_publications(
 
 
 class ApplicationScheduledActionExecutor(ScheduledActionExecutor):
-    """Abre una sesión nueva y mantiene efecto + ack en la misma transacción."""
+    """Open a new session and keep effect + ack in the same transaction."""
 
     def __init__(
         self,
@@ -110,9 +110,9 @@ class ApplicationScheduledActionExecutor(ScheduledActionExecutor):
                     self._settings.scheduled_actions_mode == "shadow"
                     and result.expired_offer is not None
                 ):
-                    # Shadow conserva la entrega legacy visible. Si el worker durable
-                    # gana la carrera al timer local, él debe publicar el mismo evento;
-                    # la mutación y el ack ya quedaron confirmados antes de este envío
-                    # best-effort, igual que en el camino HTTP histórico.
+                    # Shadow keeps the visible legacy delivery. If the durable worker
+                    # wins the race against the local timer, it must publish the same event;
+                    # the mutation and the ack were already confirmed before this best-effort
+                    # send, just like in the historical HTTP path.
                     _schedule_shadow_offer_expired(result.expired_offer)
                 return result.status

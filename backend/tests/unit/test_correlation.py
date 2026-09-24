@@ -1,4 +1,4 @@
-"""Contrato de correlación HTTP y aislamiento entre solicitudes concurrentes."""
+"""HTTP correlation contract and isolation between concurrent requests."""
 
 from __future__ import annotations
 

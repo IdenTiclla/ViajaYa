@@ -1,19 +1,19 @@
 import { useOfferComposer } from './useOfferComposer';
 /**
- * Estado de una oferta enviada (conductor) — "Esperando al pasajero".
+ * Status of a sent offer (driver) — "Esperando al pasajero".
  *
- * Se abre al **tocar** una solicitud en la que el conductor ya ofertó. Muestra,
- * en tiempo real, el estado de ESA oferta:
- * - **Esperando**: el pasajero aún revisa; contador de 30 s de la oferta.
- *   Desde aquí puede **mejorar** su propuesta (reemplaza la anterior) o
- *   **retirarla** del todo.
- * - **Aceptada (ganó)**: el pasajero decide —al aceptar tu oferta el viaje se te
- *   asigna directo y saltas al viaje en curso (vía `driver-active-ride`).
- * - **Rechazada / expirada**: ofrece volver a ofertar o mejorar la propuesta.
- * - **Tomada por otro**: aviso de viaje perdido.
+ * Opens when **tapping** a request the driver already offered on. It shows,
+ * in real time, the status of THAT offer:
+ * - **Waiting**: the passenger is still reviewing; the offer's 30 s countdown.
+ *   From here they can **improve** their proposal (replaces the previous one) or
+ *   **withdraw** it entirely.
+ * - **Accepted (won)**: the passenger decides — accepting your offer assigns you
+ *   the ride directly and you jump to the ride in progress (via `driver-active-ride`).
+ * - **Rejected / expired**: offers to make a new offer or improve the proposal.
+ * - **Taken by someone else**: lost-ride notice.
  *
- * Los datos de la oferta se leen del store `useDriverRequests` (no de params),
- * así la vista es consistente venga de donde venga.
+ * The offer data is read from the `useDriverRequests` store (not from params),
+ * so the view is consistent wherever it is opened from.
  */
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -66,7 +66,7 @@ export function OfertaEnviadaScreen() {
   const { ride: activeRide } = activeRideQuery;
 
 
-  // Estado en vivo de la oferta (rechazo por WebSocket; oferta en store).
+  // Live status of the offer (rejection over WebSocket; offer in the store).
   const rejectedRides = useDriverRequests((s) => s.rejected);
   const takenRides = useDriverRequests((s) => s.taken);
   const expiredRides = useDriverRequests((s) => s.expired);
@@ -90,7 +90,7 @@ export function OfertaEnviadaScreen() {
   const [headerHeight, setHeaderHeight] = useState(80);
   const [counterPrice, setCounterPrice] = useState('');
 
-  // La solicitud sigue en la lista abierta mientras nadie la toma.
+  // The request stays in the open list while nobody takes it.
   const openRidesQuery = useNegotiationRide(rideId, !activeRide);
   const { ride: openRide, isLoading } = openRidesQuery;
 
@@ -98,11 +98,11 @@ export function OfertaEnviadaScreen() {
   const destination = openRide?.destination ?? null;
   const { route } = useRoute(origin, destination, openRide?.service ?? 'taxi');
 
-  // El contador es el de la propia oferta del conductor (30 s), solo para display.
+  // The countdown is the driver's own offer's (30 s), display only.
   const secondsLeft = useCountdown(sentOffer?.expiresAt ?? null);
-  // Autoridad única: el store `expired` (poblado por el WS, o por markExpired
-  // optimista si el countdown llega antes). Así esta pantalla y las cards del
-  // mapa/lista coinciden en cuándo la oferta venció.
+  // Single authority: the `expired` store (filled by the WS, or by an optimistic
+  // markExpired if the countdown gets there first). This way this screen and the
+  // map/list cards agree on when the offer expired.
   useEffect(() => {
     if (rideId && sentOffer?.expiresAt && secondsLeft === 0 && !expiredRides.has(rideId)) {
       markExpired(rideId, sentOffer.offerId);
@@ -116,10 +116,10 @@ export function OfertaEnviadaScreen() {
 
   const backToList = () => router.replace('/(driver)/(tabs)/solicitudes');
 
-  // Si el pasajero renovó la solicitud mientras la app estaba en segundo plano,
-  // el snapshot limpia el desenlace de la oferta anterior. Esta pantalla queda
-  // entonces sin oferta activa y debe volver a la tarjeta actualizada, desde
-  // donde el conductor puede enviar una nueva propuesta al monto vigente.
+  // If the passenger renewed the request while the app was in the background,
+  // the snapshot clears the previous offer's outcome. This screen is then
+  // left without an active offer and must go back to the updated card, from
+  // where the driver can send a new proposal at the current amount.
   useEffect(() => {
     if (
       rideId &&
@@ -278,7 +278,7 @@ export function OfertaEnviadaScreen() {
     );
   }
 
-  // Otro conductor se llevó el viaje (lo confirmó primero): viaje perdido.
+  // Another driver got the ride (confirmed it first): lost ride.
   if (wasTaken) {
     return (
       <RideUnavailableScreen
@@ -292,10 +292,10 @@ export function OfertaEnviadaScreen() {
     );
   }
 
-  // El pasajero está modificando la solicitud (Modificar): la oferta fue retirada
-  // temporalmente. No es un viaje perdido — al terminar la edición, el conductor
-  // podrá ofertar de nuevo desde la lista. (Sin este guard, la pantalla caía en
-  // el estado "Viaje ya no disponible".)
+  // The passenger is modifying the request (Modify): the offer was withdrawn
+  // temporarily. It is not a lost ride — when the edit ends, the driver
+  // can offer again from the list. (Without this guard, the screen fell into
+  // the "Viaje ya no disponible" state.)
   if (isPaused) {
     return (
       <RideUnavailableScreen
@@ -310,7 +310,7 @@ export function OfertaEnviadaScreen() {
     );
   }
 
-  // La solicitud ya no está abierta y no es mía: otro conductor la tomó o se canceló.
+  // The request is no longer open and is not mine: another driver took it or it was cancelled.
   if (!isLoading && !openRide) {
     return (
       <RideUnavailableScreen
@@ -322,7 +322,7 @@ export function OfertaEnviadaScreen() {
     );
   }
 
-  // Rechazada o expirada, pero la solicitud sigue abierta: ofrecer re-ofertar.
+  // Rejected or expired, but the request is still open: offer to re-offer.
   if (wasRejected || offerExpired) {
     return (
       <>
@@ -634,7 +634,7 @@ function ReofferScreen({
   );
 }
 
-/** Anillo de carga que gira (indeterminado) alrededor de un ícono de reloj. */
+/** Loading ring that spins (indeterminate) around a clock icon. */
 function SpinnerRing() {
   const { colors, styles } = useEstilos(crearEstilos);
   const [spin] = useState(() => new Animated.Value(0));

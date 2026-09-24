@@ -1,4 +1,4 @@
-"""Worker cancelable para retención de acciones programadas terminales."""
+"""Cancellable worker for the retention of terminal scheduled actions."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 class TerminalScheduledActionsRetentionWorker:
-    """Purga un chunk por intervalo con una sesión y transacción propias."""
+    """Purge one chunk per interval with its own session and transaction."""
 
     def __init__(
         self,
@@ -62,7 +62,7 @@ class TerminalScheduledActionsRetentionWorker:
         return self._deleted_action_count
 
     async def preflight(self) -> None:
-        """Exige la tabla y el índice parcial incorporados por la migración 0022."""
+        """Require the table and the partial index added by migration 0022."""
         async with self._session_factory() as session:
             try:
                 await session.execute(
@@ -129,8 +129,8 @@ class TerminalScheduledActionsRetentionWorker:
                         deleted_count,
                     )
 
-                # Un chunk por intervalo evita competir de forma sostenida con
-                # el claim de acciones y las transacciones de negocio.
+                # One chunk per interval avoids competing continuously with
+                # the action claim and business transactions.
                 await self._wait_for_cycle()
         finally:
             self._running = False

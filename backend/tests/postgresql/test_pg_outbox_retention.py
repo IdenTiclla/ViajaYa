@@ -1,4 +1,4 @@
-"""Retención concurrente real de batches publicados en PostgreSQL."""
+"""Real concurrent retention of published batches on PostgreSQL."""
 
 from __future__ import annotations
 

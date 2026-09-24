@@ -6,7 +6,7 @@ from app.application.interfaces import MissingScheduledActionsReconciler, UnitOf
 
 
 class ReconcileMissingScheduledActions:
-    """Persiste un lote acotado y confirma la reparación en una sola UoW."""
+    """Persist a bounded batch and confirm the repair in a single UoW."""
 
     def __init__(
         self,

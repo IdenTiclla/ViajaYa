@@ -5,9 +5,9 @@ import { useNegotiationSocket } from '@/features/rides/application/useNegotiatio
 import { usePassengerActiveRide } from '@/features/rides/application/useRides';
 
 /**
- * Stack del área autenticada; contiene el navegador de tabs (Viaje/Historial/…).
- * El `PassengerToaster` flota sobre cualquier pantalla para avisar en vivo de los
- * desenlaces de las ofertas (nueva, expirada, retirada).
+ * Stack of the authenticated area; it holds the tab navigator (Viaje/Historial/…).
+ * `PassengerToaster` floats over any screen to report offer outcomes
+ * live (new, expired, withdrawn).
  */
 export default function AppLayout() {
   const { ride } = usePassengerActiveRide();
@@ -17,15 +17,15 @@ export default function AppLayout() {
   const routeRideId = Array.isArray(routeRideIdParam)
     ? routeRideIdParam[0]
     : routeRideIdParam;
-  // Tras crear una solicitud, `/me/active` y la navegacion convergen en paralelo.
-  // El parametro de la pantalla mantiene el canal vivo durante esa ventana y al
-  // volver de background, incluso si React Query conserva temporalmente `null`.
+  // After creating a request, `/me/active` and navigation converge in parallel.
+  // The screen parameter keeps the channel alive during that window and when
+  // coming back from background, even if React Query temporarily keeps `null`.
   const socketRideId = ride?.id ?? routeRideId ?? null;
   const socketEnabled =
     socketRideId != null &&
     (ride == null || (ride.status !== 'completed' && ride.status !== 'cancelled'));
 
-  // Una sola conexión sobrevive a los cambios Offers -> Configure -> Trip.
+  // A single connection survives the Offers -> Configure -> Trip transitions.
   useNegotiationSocket(socketRideId, socketEnabled);
 
   return (

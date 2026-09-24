@@ -1,4 +1,4 @@
-"""Engine y sesiones asíncronas de SQLAlchemy."""
+"""SQLAlchemy async engine and sessions."""
 
 from __future__ import annotations
 
@@ -22,6 +22,6 @@ async_session_factory = async_sessionmaker(
 
 
 async def get_session() -> AsyncIterator[AsyncSession]:
-    """Dependencia FastAPI: una sesión por request."""
+    """FastAPI dependency: one session per request."""
     async with async_session_factory() as session:
         yield session

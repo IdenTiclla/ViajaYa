@@ -1,9 +1,9 @@
 /**
- * Historial de viajes (pasajero o conductor) — diseño Stitch "Historial de Viajes".
+ * Ride history (passenger or driver) — Stitch "Historial de Viajes" design.
  *
- * Tabs Completados / Cancelados; cada tarjeta muestra la ruta, la fecha, la
- * contraparte y el importe. El backend infiere el rol desde el token,
- * así que la misma pantalla sirve para ambos roles.
+ * Completados / Cancelados tabs; each card shows the route, the date, the
+ * counterpart and the amount. The backend infers the role from the token,
+ * so the same screen works for both roles.
  */
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useState } from 'react';

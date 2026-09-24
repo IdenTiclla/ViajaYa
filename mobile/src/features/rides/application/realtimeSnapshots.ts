@@ -1,4 +1,4 @@
-/** Aplicación autoritativa de snapshots v2 sobre React Query y Zustand. */
+/** Authoritative application of v2 snapshots over React Query and Zustand. */
 
 import {
   notifyManager,
@@ -154,8 +154,8 @@ export async function applyDriverRealtimeSnapshot(
   await Promise.all(cancellations);
   if (!isCurrent()) return;
 
-  // Query observers se notifican al salir del batch; la única transición de
-  // Zustand ocurre cuando todas las cachés ya contienen la misma fotografía.
+  // Query observers are notified when leaving the batch; the single Zustand
+  // transition happens once all caches already hold the same picture.
   notifyManager.batch(() => {
     const activeRide = snapshot.activeRide == null ? null
       : reconcileSnapshotRide(queryClient, activeRideKey, snapshot.activeRide);

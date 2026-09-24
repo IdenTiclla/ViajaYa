@@ -20,7 +20,7 @@ type Props = {
 };
 
 
-/** Separa identidad, precio, llegada y vencimiento para comparar las ofertas. */
+/** Separate identity, price, arrival and expiry to compare offers. */
 export function TarjetaOferta({
   offer, tag, now, acceptingId, decisionsLocked, onAccept, onReject,
 }: Props) {

@@ -14,7 +14,7 @@ type Props = {
   atenuado?: boolean;
 };
 
-/** Pines circulares compartidos: A para origen y B para destino. */
+/** Shared circular pins: A for origin and B for destination. */
 export function InsigniaPuntoMapa({
   tipo, tamano, borde, tamanoLetra, cargando = false, atenuado = false,
 }: Props) {
@@ -35,7 +35,7 @@ export function InsigniaPuntoMapa({
           opacity: atenuado ? 0.5 : 1,
         },
       ]}>
-      {/* La letra es parte del símbolo; la etiqueta accesible vive en el marcador. */}
+      {/* The letter is part of the symbol; the accessible label lives on the marker. */}
       <Text
         allowFontScaling={false}
         style={[

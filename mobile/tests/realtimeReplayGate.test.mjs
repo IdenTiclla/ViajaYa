@@ -47,7 +47,7 @@ test('solo avanza cursores después de confirmar el ticket', () => {
   assert.equal(first.kind, 'apply');
   assert.equal(gate.state().streams.get('ride:ride-1'), 10);
 
-  // Simula un handler fallido: sin commit, el mismo evento sigue procesable.
+  // Simulates a failed handler: without a commit, the same event can still be processed.
   const retry = gate.decideEvent(event());
   assert.equal(retry.kind, 'apply');
   gate.commit(retry.ticket);

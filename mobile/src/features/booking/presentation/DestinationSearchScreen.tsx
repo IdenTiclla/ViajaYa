@@ -1,10 +1,10 @@
 /**
- * Pantalla "¿A dónde vamos?" — primer paso tras fijar el origen.
+ * "¿A dónde vamos?" screen — first step after setting the origin.
  *
- * La barra de búsqueda autocompleta lugares con Google Places (sesgados hacia
- * el origen) en cuanto se escriben ≥ 3 caracteres. Sin término buscable se
- * muestran los atajos a lugares guardados (Casa/Trabajo + favoritos), el acceso
- * para fijar la ubicación en el mapa y los destinos recientes.
+ * The search bar autocompletes places with Google Places (biased toward
+ * the origin) as soon as ≥ 3 characters are typed. Without a searchable term it
+ * shows the shortcuts to saved places (Casa/Trabajo + favorites), the entry
+ * to set the location on the map, and the recent destinations.
  */
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -79,8 +79,8 @@ export function DestinationSearchScreen() {
   const goToConfigure = (place: Place) => {
     Keyboard.dismiss();
     setDestination(place);
-    // En edición cierra las pantallas auxiliares hacia el Configure original;
-    // en creación, dismissTo reemplaza la pantalla actual si aún no existe.
+    // In edit mode it closes the auxiliary screens back to the original Configure;
+    // when creating, dismissTo replaces the current screen if it does not exist yet.
     router.dismissTo({
       pathname: '/booking/configure',
       params: rideId ? { rideId } : {},
@@ -95,7 +95,7 @@ export function DestinationSearchScreen() {
     cancelarSeleccion,
   } = useSeleccionDestino(resolve, goToConfigure);
 
-  // También invalida la selección al salir con el gesto o botón del sistema.
+  // Also invalidates the selection when leaving with the system gesture or button.
   useFocusEffect(useCallback(() => () => cancelarSeleccion(), [cancelarSeleccion]));
 
   const abrirMapa = () => {
@@ -109,8 +109,8 @@ export function DestinationSearchScreen() {
     setQuery(texto);
   };
 
-  // Atajo Casa/Trabajo: si ya está guardado, lo usa como destino; si no, abre
-  // el flujo para fijarlo (mapa → nombrar/guardar) con la categoría puesta.
+  // Casa/Trabajo shortcut: if it is already saved, use it as the destination; if not, open
+  // the flow to set it (map → name/save) with the category preset.
   const onShortcut = (category: SavedPlaceCategory) => {
     if (savedPlacesError || savedPlacesLoading) return;
     cancelarSeleccion();

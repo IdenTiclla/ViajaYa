@@ -1,8 +1,8 @@
-"""Contorno geografico de la zona donde opera ViajaYa.
+"""Geographic outline of the area where ViajaYa operates.
 
-Fuente: Natural Earth, ``Admin 0 - Countries`` a escala 1:10m, dataset de
-dominio publico. El GeoJSON se extrajo del commit reproducible
-``ca96624a56bd078437bca8184e78163e5039ad19`` de:
+Source: Natural Earth, ``Admin 0 - Countries`` at 1:10m scale, a
+public-domain dataset. The GeoJSON was extracted from the reproducible commit
+``ca96624a56bd078437bca8184e78163e5039ad19`` of:
 https://github.com/nvkelso/natural-earth-vector/tree/ca96624a56bd078437bca8184e78163e5039ad19/geojson
 """
 
@@ -20,7 +20,7 @@ _EPSILON = 1e-10
 
 @cache
 def _bolivia_ring() -> tuple[Point, ...]:
-    """Carga una vez el contorno versionado (coordenadas en orden longitud/latitud)."""
+    """Load the versioned outline once (coordinates in longitude/latitude order)."""
 
     resource = files("app.domain.data").joinpath(_BOUNDARY_RESOURCE)
     feature = json.loads(resource.read_text(encoding="utf-8"))
@@ -50,7 +50,7 @@ def _point_is_on_segment(point: Point, start: Point, end: Point) -> bool:
 
 
 def _ring_covers(point: Point, ring: tuple[Point, ...]) -> bool:
-    """Ray casting con el borde incluido, equivalente a la operacion GIS ``covers``."""
+    """Ray casting with the boundary included, equivalent to the GIS ``covers`` operation."""
 
     px, py = point
     inside = False
@@ -70,6 +70,6 @@ def _ring_covers(point: Point, ring: tuple[Point, ...]) -> bool:
 
 
 def bolivia_covers(latitude: float, longitude: float) -> bool:
-    """Devuelve ``True`` para puntos interiores o ubicados sobre la frontera."""
+    """Return ``True`` for interior points or points on the boundary."""
 
     return _ring_covers((longitude, latitude), _bolivia_ring())

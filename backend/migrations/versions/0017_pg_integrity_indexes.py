@@ -1,9 +1,9 @@
-"""Refuerza integridad e índices de lectura en PostgreSQL.
+"""Strengthen integrity and read indexes on PostgreSQL.
 
-La migración no intenta reparar filas incompatibles: el preflight enumera los
-problemas y aborta antes de modificar el esquema. Las restricciones que exigen
-examinar tablas existentes se crean ``NOT VALID`` y se validan de forma
-explícita para reducir el bloqueo del DDL en PostgreSQL.
+The migration does not try to repair incompatible rows: the preflight lists the
+problems and aborts before modifying the schema. Constraints that require
+scanning existing tables are created ``NOT VALID`` and validated
+explicitly to reduce DDL locking on PostgreSQL.
 
 Revision ID: 0017_pg_integrity_indexes
 Revises: 0016_driver_ride_dismissals
@@ -216,8 +216,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Primero se recuperan los índices simples para no dejar las FK sin soporte
-    # durante la eliminación de sus reemplazos compuestos.
+    # The simple indexes are restored first so the FKs are not left without support
+    # while their composite replacements are dropped.
     op.create_index("ix_ride_requests_rider_id", "ride_requests", ["rider_id"])
     op.create_index("ix_ride_requests_driver_id", "ride_requests", ["driver_id"])
     op.create_index("ix_offers_ride_id", "offers", ["ride_id"])

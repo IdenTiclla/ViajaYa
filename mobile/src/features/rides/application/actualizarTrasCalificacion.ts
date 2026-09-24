@@ -2,7 +2,7 @@ import type { QueryClient } from '@tanstack/react-query';
 
 import type { Ride } from '../domain/types';
 
-/** El cierre confirmado no espera otra respuesta de red para liberar la pantalla. */
+/** The confirmed close does not wait for another network response to release the screen. */
 export async function actualizarTrasCalificacion(queryClient: QueryClient, rideId: string): Promise<void> {
   const pendientes = ['pending-rating-ride'] as const;
   const active = ['driver-active-ride'] as const;

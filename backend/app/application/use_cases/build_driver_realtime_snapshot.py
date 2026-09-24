@@ -1,4 +1,4 @@
-"""Caso de uso: construir el snapshot realtime consistente del conductor."""
+"""Use case: build the driver's consistent realtime snapshot."""
 
 from __future__ import annotations
 

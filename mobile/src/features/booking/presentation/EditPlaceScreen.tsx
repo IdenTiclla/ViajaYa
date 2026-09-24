@@ -1,9 +1,9 @@
 /**
- * Formulario para crear o editar un lugar guardado.
+ * Form to create or edit a saved place.
  *
- * Recibe por parámetros el punto ya elegido (lat/lng/name/address, fijado en el
- * mapa) más, en modo edición, `id`/`label`/`category`. El usuario pone un nombre
- * y una categoría; al guardar se persiste en el backend (`/saved-places`).
+ * Receives through params the already chosen point (lat/lng/name/address, set on the
+ * map) plus, in edit mode, `id`/`label`/`category`. The user sets a name
+ * and a category; saving persists it in the backend (`/saved-places`).
  */
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -105,7 +105,7 @@ export function EditPlaceScreen() {
     });
   };
 
-  // Reabre el mapa para cambiar el punto, conservando nombre/categoría actuales.
+  // Reopen the map to change the point, keeping the current name/category.
   const onChangeLocation = () => {
     router.replace({
       pathname: '/booking/pick-on-map',

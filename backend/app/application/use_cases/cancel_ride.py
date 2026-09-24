@@ -14,7 +14,7 @@ from app.domain.exceptions import (
 )
 from app.domain.repositories import OfferRepository, RideRequestRepository, UserRepository
 
-# Estados desde los que aún se puede cancelar (antes de iniciar el viaje).
+# Statuses from which a ride can still be cancelled (before it starts).
 _CANCELLABLE = {RideStatus.SEARCHING, RideStatus.ACCEPTED, RideStatus.ARRIVING}
 
 

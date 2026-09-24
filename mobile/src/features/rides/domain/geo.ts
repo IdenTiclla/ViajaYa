@@ -1,7 +1,7 @@
-/** Utilidades geográficas del dominio (sin IO ni framework). */
+/** Domain geographic utilities (no IO or framework). */
 import type { Coordinates } from '@/core/domain/geo';
 
-/** Distancia en línea recta (haversine) entre dos puntos, en kilómetros. */
+/** Straight-line (haversine) distance between two points, in kilometers. */
 export function haversineKm(a: Coordinates, b: Coordinates): number {
   const R = 6371; // radio terrestre (km)
   const dLat = toRad(b.latitude - a.latitude);
@@ -17,12 +17,12 @@ function toRad(deg: number): number {
   return (deg * Math.PI) / 180;
 }
 
-/** Formatea una distancia (km) para mostrar: "850 m" o "12.4 km". */
+/** Format a distance (km) for display: "850 m" or "12.4 km". */
 export function formatKm(km: number): string {
   return km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km`;
 }
 
-/** Precio por kilómetro (Bs/km) formateado, o ``null`` si la distancia es ~0. */
+/** Formatted price per kilometer (Bs/km), or ``null`` if the distance is ~0. */
 export function pricePerKm(fare: number, km: number): string | null {
   if (km < 0.1) return null;
   return (fare / km).toFixed(2);

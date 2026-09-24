@@ -1,4 +1,4 @@
-"""Tests unitarios de los casos de uso de viajes con dobles en memoria."""
+"""Unit tests of the ride use cases with in-memory doubles."""
 
 from __future__ import annotations
 
@@ -264,7 +264,7 @@ async def test_recent_destinations_dedupes_and_orders():
     )
     second.status = RideStatus.CANCELLED
     await repo.update(second)
-    # Repite A: no debe duplicarse, pero pasa al frente por ser el más reciente.
+    # Repeat A: it must not be duplicated, but it moves to the front as the most recent.
     await create.execute(rider, _input(destination=LocationInput(-16.49, -68.14, "A", "dir A")))
 
     destinations = await ListRecentDestinations(repo).execute(rider.id)
@@ -389,10 +389,10 @@ async def test_pause_ride_hides_from_pool_and_kills_offers():
 
     assert result.ride.paused is True
     assert result.ride.status is RideStatus.SEARCHING
-    # La oferta viva se retiró.
+    # The live offer was withdrawn.
     assert (await offers.get_by_id(offer.detail.offer.id)).status is OfferStatus.REJECTED
     assert len(result.paused_offers) == 1
-    # Y la solicitud ya no aparece en el pool.
+    # And the request no longer shows up in the pool.
     assert await rides.list_open_for_services((ServiceType.TAXI, ServiceType.DELIVERY)) == []
 
 
@@ -474,7 +474,7 @@ async def test_edit_ride_updates_fields_and_unpauses():
     assert updated.destination.name == "Mercado"
     assert updated.payment_method is PaymentMethod.QR
     assert updated.pool_version == 2
-    # Y vuelve a aparecer en el pool.
+    # And it shows up in the pool again.
     open_rides = await rides.list_open_for_services((ServiceType.TAXI, ServiceType.DELIVERY))
     assert [r.id for r in open_rides] == [ride.id]
 

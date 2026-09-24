@@ -1,4 +1,4 @@
-"""SIGKILL real después del claim y recuperación durable de la expiración."""
+"""Real SIGKILL after the claim and durable recovery of the expiry."""
 
 from __future__ import annotations
 

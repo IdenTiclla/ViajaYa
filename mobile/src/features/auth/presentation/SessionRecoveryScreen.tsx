@@ -6,7 +6,7 @@ import { spacing, useEstilos, type Tema } from '@/core/theme';
 import { Button, FeedbackState } from '@/shared/components';
 import { useAuthStore } from '@/store/authStore';
 
-/** Permite reintentar conservando credenciales o salir explícitamente al login. */
+/** Allows retrying while keeping credentials, or explicitly going back to login. */
 export function SessionRecoveryScreen() {
   const { styles } = useEstilos(crearEstilos);
   const error = useAuthStore((s) => s.startupError);

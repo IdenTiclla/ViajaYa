@@ -43,7 +43,7 @@ async def test_pause_edit_and_republish_ride(client, session_factory):
 
     ride_id = (await client.post(RIDES, json=_ride_payload(), headers=rider_h)).json()["id"]
 
-    # Un conductor oferta sobre la solicitud.
+    # A driver offers on the request.
     offer = await client.post(
         f"{RIDES}/{ride_id}/offers",
         json={"accept_at_fare": True},
@@ -51,12 +51,12 @@ async def test_pause_edit_and_republish_ride(client, session_factory):
     )
     assert offer.status_code == 201
 
-    # Pausar para editar: la solicitud sigue searching pero se oculta del pool.
+    # Pause to edit: the request stays searching but is hidden from the pool.
     paused = await client.post(f"{RIDES}/{ride_id}/pause-edit", headers=rider_h)
     assert paused.status_code == 200
     assert paused.json()["status"] == "searching"
 
-    # Las ofertas vivas se retiraron: el pasajero ya no ve ninguna.
+    # The live offers were withdrawn: the passenger no longer sees any.
     offers_after_pause = await client.get(f"{RIDES}/{ride_id}/offers", headers=rider_h)
     assert offers_after_pause.json() == []
 
@@ -72,7 +72,7 @@ async def test_pause_edit_and_republish_ride(client, session_factory):
     assert body["fare"] == "35.00"
     assert body["destination"]["name"] == "Mercado"
 
-    # Tras editar, un conductor puede ofertar de nuevo sobre la solicitud actualizada.
+    # After editing, a driver can offer again on the updated request.
     offer_again = await client.post(
         f"{RIDES}/{ride_id}/offers",
         json={"accept_at_fare": True},
@@ -81,7 +81,7 @@ async def test_pause_edit_and_republish_ride(client, session_factory):
     assert offer_again.status_code == 201
     assert offer_again.json()["price"] == "35.00"
 
-    # Y el pasajero puede aceptar (asignación directa).
+    # And the passenger can accept (direct assignment).
     offer_id = offer_again.json()["id"]
     accepted = await client.post(f"{RIDES}/offers/{offer_id}/accept", headers=rider_h)
     assert accepted.status_code == 200
@@ -93,7 +93,7 @@ async def test_edit_without_pause_rejected(client, session_factory):
     rider_h = _headers(rider_token)
     ride_id = (await client.post(RIDES, json=_ride_payload(), headers=rider_h)).json()["id"]
 
-    # No se puede editar sin pausar primero.
+    # It cannot be edited without pausing first.
     edited = await client.patch(
         f"{RIDES}/{ride_id}",
         json=_ride_payload(fare="35.00"),

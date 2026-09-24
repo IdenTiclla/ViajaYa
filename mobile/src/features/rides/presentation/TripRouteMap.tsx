@@ -1,9 +1,9 @@
 import { MarcadorVehiculo } from '@/features/driver/presentation/MarcadorVehiculo';
 import type { VehicleType } from '@/features/auth/domain/types';
 /**
- * Mapa de fondo del viaje en curso: dibuja el trayecto origen→destino por calles
- * y reencuadra para que quepan ambos puntos.
- * Reutilizado por las vistas de seguimiento del pasajero y de navegación del conductor.
+ * Background map of the ride in progress: draws the origin→destination street route
+ * and refits so both points fit.
+ * Reused by the passenger tracking and driver navigation views.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
@@ -35,7 +35,7 @@ export function TripRouteMap({
   destination: Place;
   topPadding?: number;
   bottomPadding?: number;
-  /** Muestra el nombre de cada lugar dentro del tooltip de sus marcadores. */
+  /** Show each place's name inside its markers' tooltip. */
   showPlaceNamesInTooltip?: boolean;
   /** Disable only when the containing screen renders the notice in its panel. */
   showMotorcycleNotice?: boolean;
@@ -96,7 +96,7 @@ export function TripRouteMap({
       initialRegion={region}
       customMapStyle={estiloMapa}
       userInterfaceStyle={modoMapa}
-      // La proyección de colisiones comparte la vista cenital del trayecto.
+      // The collision projection shares the route's top-down view.
       pitchEnabled={false}
       scrollEnabled={false}
       zoomEnabled={false}
@@ -106,8 +106,8 @@ export function TripRouteMap({
       moveOnMarkerPress={false}
       onMapReady={() => setReady(true)}
       onRegionChangeComplete={actualizarRumbo}
-      // En algunos Android el mapa queda listo antes de recibir su tamaño final.
-      // Reencuadrar tras el layout mantiene el trayecto centrado al navegar.
+      // On some Android devices the map is ready before it gets its final size.
+      // Refitting after layout keeps the route centered while navigating.
       onLayout={({ nativeEvent: { layout } }) => setSize((current) =>
         current.width === layout.width && current.height === layout.height
           ? current : { width: layout.width, height: layout.height },

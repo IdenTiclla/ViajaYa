@@ -1,13 +1,13 @@
-"""ride_requests: paused (oculta la solicitud del pool mientras se edita)
+"""ride_requests: paused (hides the request from the pool while it is being edited)
 
 Revision ID: 0012_ride_paused
 Revises: 0011_drop_offer_rider_accepted
 Create Date: 2026-06-20
 
-Bandera ortogonal al ``status``: el ride sigue ``SEARCHING`` pero
-``list_open_for_service`` lo excluye mientras ``paused=True`` (el pasajero está
-modificando la solicitud). Las ofertas vivas se retiran al pausar y la solicitud
-vuelve a publicarse al guardar la edición.
+A flag orthogonal to ``status``: the ride stays ``SEARCHING`` but
+``list_open_for_service`` excludes it while ``paused=True`` (the passenger is
+modifying the request). Live offers are withdrawn when pausing and the request
+is published again when the edit is saved.
 """
 
 from __future__ import annotations

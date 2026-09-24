@@ -317,7 +317,7 @@ test('una respuesta HTTP accepted atrasada no reemplaza el cancelled recibido po
     }
   });
 
-  // El WebSocket se adelanta mientras la petición HTTP continúa pendiente.
+  // The WebSocket gets ahead while the HTTP request is still pending.
   const cancelled = ride('ride-1', 'cancelled');
   queryClient.setQueryData(detailKey, cancelled);
   queryClient.setQueryData(activeKey, null);
@@ -573,7 +573,7 @@ test('el snapshot PENDING corrige una expiración local por reloj adelantado', (
       price: 20,
       rideFare: 20,
       etaMin: 5,
-      // Simula reloj del dispositivo adelantado respecto al servidor.
+      // Simulates a device clock ahead of the server's.
       expiresAt: '2000-07-18T12:00:30Z',
     },
   ]);

@@ -1,7 +1,7 @@
-"""Caso de uso: el pasajero ajusta la oferta de su solicitud en curso.
+"""Use case: the passenger adjusts the fare of their ongoing request.
 
-Mientras la solicitud sigue ``SEARCHING`` (buscando conductores indefinidamente),
-el pasajero puede ajustar el monto que muestra al pool de conductores.
+While the request is still ``SEARCHING`` (looking for drivers indefinitely),
+the passenger can adjust the amount shown to the driver pool.
 """
 
 from __future__ import annotations
@@ -69,7 +69,7 @@ class UpdateRideFare:
                 "No puedes ajustar la oferta mientras modificas la solicitud."
             )
 
-        # Valida positividad (regla de dominio) y evita republicaciones sin cambios.
+        # Validates positivity (domain rule) and avoids republishing without changes.
         fare = FareOffer(new_fare)
         if fare.amount == ride.fare:
             raise InvalidFareError("La nueva oferta debe ser diferente de la actual.")

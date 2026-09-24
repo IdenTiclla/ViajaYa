@@ -1,4 +1,4 @@
-"""Leases Redis por conexión para la presencia compartida del pasajero."""
+"""Per-connection Redis leases for the passenger's shared presence."""
 
 from __future__ import annotations
 
@@ -188,14 +188,14 @@ class RedisPassengerPresenceStore(PassengerPresenceLeaseStore):
         ride_id: uuid.UUID,
         connection_id: uuid.UUID,
     ) -> float:
-        # El score pasa a ``now``: el miembro conserva exactamente la gracia,
-        # sin borrar los leases de otras conexiones o procesos.
+        # The score moves to ``now``: the member keeps exactly the grace period,
+        # without deleting the leases of other connections or processes.
         remaining = await self._touch(ride_id, f"ws:{connection_id}", 0)
         self._disconnect_count += 1
         return remaining
 
     async def renew_http(self, ride_id: uuid.UUID) -> float:
-        # La respuesta HTTP es un pulso, no una conexión persistente.
+        # The HTTP response is a pulse, not a persistent connection.
         remaining = await self._touch(ride_id, "http", 0)
         self._renewal_count += 1
         return remaining

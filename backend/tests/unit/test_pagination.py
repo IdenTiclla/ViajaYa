@@ -1,4 +1,4 @@
-"""Pruebas del cursor opaco expuesto por la capa API."""
+"""Tests of the opaque cursor exposed by the API layer."""
 
 from __future__ import annotations
 

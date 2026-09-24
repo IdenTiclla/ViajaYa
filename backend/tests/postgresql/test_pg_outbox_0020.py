@@ -1,4 +1,4 @@
-"""Certificación PostgreSQL de la cuarentena terminal de outbox 0020."""
+"""PostgreSQL certification of the 0020 outbox terminal quarantine."""
 
 from __future__ import annotations
 

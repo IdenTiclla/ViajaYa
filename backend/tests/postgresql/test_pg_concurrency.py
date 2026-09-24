@@ -1,4 +1,4 @@
-"""Carreras transaccionales que SQLite no puede certificar."""
+"""Transactional races that SQLite cannot certify."""
 
 from __future__ import annotations
 

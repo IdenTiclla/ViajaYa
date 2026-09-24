@@ -1,4 +1,4 @@
-"""Capturas consistentes para el contrato WebSocket versionado."""
+"""Consistent captures for the versioned WebSocket contract."""
 
 from __future__ import annotations
 
@@ -48,20 +48,20 @@ _OPEN_RIDES_LIMIT = 50
 
 
 def _as_utc(moment: datetime) -> datetime:
-    """Normaliza el ``CURRENT_TIMESTAMP`` sin zona que devuelve SQLite."""
+    """Normalize the timezone-less ``CURRENT_TIMESTAMP`` SQLite returns."""
     return moment.replace(tzinfo=UTC) if moment.tzinfo is None else moment
 
 
 class SqlAlchemyRealtimeSnapshotReader(RealtimeSnapshotReader):
-    """Lee estado y watermarks dentro del mismo corte de PostgreSQL.
+    """Read state and watermarks within the same PostgreSQL cut.
 
-    El adaptador abre una sesión corta por captura. En PostgreSQL, la primera
-    sentencia de la transacción fija ``REPEATABLE READ READ ONLY``; así una
-    mutación concurrente nunca puede quedar ausente del estado pero incluida en
-    sus watermarks. SQLite conserva su transacción normal para la suite rápida.
+    The adapter opens a short session per capture. On PostgreSQL, the first
+    statement of the transaction sets ``REPEATABLE READ READ ONLY``; this way a
+    concurrent mutation can never be missing from the state yet included in
+    its watermarks. SQLite keeps its normal transaction for the fast suite.
 
-    La expiración es solo un filtro contra ``captured_at``: esta ruta nunca
-    modifica ofertas ni ejecuta mantenimiento durante una captura.
+    Expiry is only a filter against ``captured_at``: this path never
+    modifies offers or runs maintenance during a capture.
     """
 
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
@@ -200,13 +200,13 @@ class SqlAlchemyRealtimeSnapshotReader(RealtimeSnapshotReader):
 
     async def _configure_transaction(self, session: AsyncSession) -> None:
         if session.get_bind().dialect.name == "postgresql":
-            # Debe ser la primera sentencia SQL: PostgreSQL no permite cambiar el
-            # aislamiento después de que la transacción haya leído una tabla.
+            # It must be the first SQL statement: PostgreSQL does not allow changing the
+            # isolation level after the transaction has read a table.
             await session.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY"))
 
     async def _captured_at(self, session: AsyncSession) -> datetime:
         captured_at = await session.scalar(select(func.now()))
-        if captured_at is None:  # pragma: no cover - los dialectos soportados lo devuelven
+        if captured_at is None:  # pragma: no cover - the supported dialects return it
             raise RuntimeError("La base no devolvió el instante de captura.")
         return _as_utc(captured_at)
 
@@ -238,7 +238,7 @@ class SqlAlchemyRealtimeSnapshotReader(RealtimeSnapshotReader):
         ride_id: uuid.UUID,
         captured_at: datetime,
     ) -> list[OfferDetail]:
-        """Carga ofertas vivas y su conductor en una sola consulta."""
+        """Load live offers and their driver in a single query."""
         rows = (
             await session.execute(
                 select(OfferModel, UserModel)
@@ -268,7 +268,7 @@ class SqlAlchemyRealtimeSnapshotReader(RealtimeSnapshotReader):
         driver_id: uuid.UUID,
         services: tuple[ServiceType, ...],
     ) -> list[OpenRideDetail]:
-        """Carga rides pausados y resumen del pasajero sin consultas por fila."""
+        """Load paused rides and the passenger summary without per-row queries."""
         trips_completed = (
             select(func.count(RideRequestModel.id))
             .where(

@@ -1,8 +1,8 @@
 /**
- * Estado global de sesión (zustand).
+ * Global session state (zustand).
  *
- * Orquesta el repositorio de auth y la persistencia de tokens (SecureStore).
- * El acceso por teléfono y el social terminan en el mismo `acceptPhoneSession`.
+ * Orchestrates the auth repository and token persistence (SecureStore).
+ * Phone and social sign-in both end in the same `acceptPhoneSession`.
  */
 import { create } from 'zustand';
 
@@ -109,7 +109,7 @@ export const useAuthStore = create<AuthState>((set) => {
   };
 });
 
-// El cliente HTTP ya eliminó las credenciales. No duplicar el borrado nativo.
+// The HTTP client already removed the credentials. Do not duplicate the native deletion.
 setOnSessionExpired(() => {
   generacionSesion += 1;
   useAuthStore.setState({

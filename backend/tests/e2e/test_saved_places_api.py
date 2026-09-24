@@ -1,4 +1,4 @@
-"""Tests e2e de los endpoints de lugares guardados."""
+"""E2E tests of the saved places endpoints."""
 
 from __future__ import annotations
 
@@ -97,7 +97,7 @@ async def test_saved_places_isolated_between_users(client):
 
     # Bob no ve los lugares de Alice...
     assert (await client.get(SAVED_PLACES, headers=bob)).json() == []
-    # ...ni puede editarlos o borrarlos (404, no se revela su existencia).
+    # ...nor can they edit or delete them (404, their existence is not revealed).
     assert (
         await client.put(f"{SAVED_PLACES}/{place_id}", json=_payload(), headers=bob)
     ).status_code == 404

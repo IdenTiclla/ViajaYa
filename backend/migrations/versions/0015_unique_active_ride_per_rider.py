@@ -1,4 +1,4 @@
-"""Garantiza un único viaje activo por pasajero.
+"""Guarantee a single active ride per passenger.
 
 Revision ID: 0015_unique_active_ride
 Revises: 0014_ride_rating_skips
@@ -41,7 +41,7 @@ _RANKED_ACTIVE_RIDES = """
 
 
 def upgrade() -> None:
-    # Cierra primero las ofertas pendientes de los viajes históricos duplicados.
+    # First close the pending offers of the duplicated historical rides.
     op.execute(
         sa.text(
             f"""

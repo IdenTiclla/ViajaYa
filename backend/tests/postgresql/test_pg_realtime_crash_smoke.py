@@ -1,4 +1,4 @@
-"""Crash/restart real en las dos ventanas críticas de la outbox realtime."""
+"""Real crash/restart in the two critical windows of the realtime outbox."""
 
 from __future__ import annotations
 
@@ -348,7 +348,7 @@ async def _cleanup_business(
 
 
 async def _fallback_cleanup_business(pg_test_db, bootstrap: _Bootstrap) -> None:
-    """Limpia estado propio aun si ninguna instancia live sobrevivió al fallo."""
+    """Clean our own state even if no live instance survived the failure."""
     sessions = async_sessionmaker[AsyncSession](
         pg_test_db.engine,
         expire_on_commit=False,
@@ -501,8 +501,8 @@ async def _exercise_crash_window(
             trust_env=False,
         ) as recovery_client:
             if window == "before_publish":
-                # La recuperación publica con el hub vacío. El cliente llega
-                # después y debe converger únicamente con su snapshot.
+                # Recovery publishes with an empty hub. The client arrives
+                # later and must converge only through its snapshot.
                 recovery_release.set()
                 await _wait_event(recovery_published, "recovery published")
                 await network_support._wait_until_drained(recovery_client)
@@ -512,8 +512,8 @@ async def _exercise_crash_window(
                     bootstrap,
                 )
             else:
-                # En la ventana posterior a publish sí conservamos un socket
-                # para comprobar que el retry repite el envelope exacto.
+                # In the post-publish window we do keep a socket
+                # to check that the retry repeats the exact envelope.
                 recovery_websocket, recovered_snapshot = await _connect_snapshot(
                     base_url,
                     bootstrap,
@@ -579,7 +579,7 @@ async def _exercise_crash_window(
         if first_websocket is not None:
             try:
                 await first_websocket.close()
-            except Exception:  # noqa: BLE001 - el proceso murió sin close frame
+            except Exception:  # noqa: BLE001 - the process died without a close frame
                 pass
         if recovery_websocket is not None:
             try:

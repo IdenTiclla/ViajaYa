@@ -1,4 +1,4 @@
-"""Correlación segura de solicitudes, logs y efectos asíncronos."""
+"""Safe correlation of requests, logs and asynchronous effects."""
 
 from __future__ import annotations
 
@@ -20,8 +20,8 @@ _correlation_id: ContextVar[uuid.UUID | None] = ContextVar(
 )
 logger = logging.getLogger(__name__)
 
-# Equivale al contrato ``z.string().uuid()`` de Zod 4: UUID RFC 9562/4122
-# versiones 1-8, más los valores nil/max que el parser admite explícitamente.
+# Equivalent to Zod 4's ``z.string().uuid()`` contract: RFC 9562/4122 UUIDs,
+# versions 1-8, plus the nil/max values the parser explicitly accepts.
 _CLIENT_UUID_PATTERN = re.compile(
     r"^(?:"
     r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-"
@@ -34,7 +34,7 @@ _UNRESOLVED_ROUTE = "<unresolved>"
 
 
 def current_correlation_id() -> uuid.UUID | None:
-    """Devuelve el ID del contexto actual sin crear estado implícito."""
+    """Return the current context's ID without creating implicit state."""
     return _correlation_id.get()
 
 
@@ -42,7 +42,7 @@ def current_correlation_id() -> uuid.UUID | None:
 def correlation_scope(
     correlation_id: uuid.UUID | None = None,
 ) -> Iterator[uuid.UUID]:
-    """Aísla un ID para que tareas concurrentes nunca compartan contexto."""
+    """Isolate an ID so concurrent tasks never share context."""
     resolved = correlation_id or uuid.uuid4()
     token: Token[uuid.UUID | None] = _correlation_id.set(resolved)
     try:
@@ -81,7 +81,7 @@ def _with_response_header(message: Message, correlation_id: uuid.UUID) -> Messag
 
 
 class CorrelationIdMiddleware:
-    """Propaga un UUID por request sin registrar query, headers ni payloads."""
+    """Propagate a UUID per request without logging query, headers or payloads."""
 
     def __init__(self, app: ASGIApp) -> None:
         self._app = app
@@ -115,7 +115,7 @@ class CorrelationIdMiddleware:
         with correlation_scope(correlation_id):
             try:
                 await self._app(scope, receive, send_correlated)
-            except Exception as error:  # noqa: BLE001 - frontera ASGI de último recurso
+            except Exception as error:  # noqa: BLE001 - last-resort ASGI boundary
                 if scope_type != "http" or response_started:
                     raise
                 logger.error(

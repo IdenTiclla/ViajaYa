@@ -1,11 +1,11 @@
 /**
- * Solicitudes en mapa (conductor) — diseño Material-You.
+ * Requests on a map (driver) — Material You design.
  *
- * Mapa con los pines **A** (origen) por solicitud y **B** (destino) de la
- * seleccionada, unidos por el trayecto; el mapa encuadra la ruta seleccionada.
- * Abajo, una **tarjeta flotante** con la solicitud activa (avatar, precio,
- * contraoferta rápida +Bs, ruta y Rechazar/Enviar oferta) y un paginador visible
- * para navegar entre solicitudes. Tocar la tarjeta abre el detalle.
+ * Map with the **A** (origin) pins per request and **B** (destination) of the
+ * selected one, joined by the route; the map frames the selected route.
+ * At the bottom, a **floating card** with the active request (avatar, price,
+ * quick +Bs counter-offer, route and Rechazar/Enviar oferta) and a visible pager
+ * to move between requests. Tapping the card opens the detail.
  */
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -51,13 +51,13 @@ type Props = {
   disabled: boolean;
   isOffered: (rideId: string) => boolean;
   pendingRideIds: ReadonlySet<string>;
-  /** Ofertas enviadas del conductor (para el contador de expiración de la card). */
+  /** The driver's sent offers (for the card's expiry countdown). */
   offeredMap: Record<string, SentOffer>;
   rejected: Set<string>;
   expired: Set<string>;
   paused: Set<string>;
   taken: Set<string>;
-  /** Ride a seleccionar al abrir el mapa (al tocar una tarjeta desde la lista). */
+  /** Ride to select when opening the map (when tapping a card from the list). */
   initialSelectedId?: string | null;
   hasNextPage: boolean;
   isFetchingNextPage: boolean;
@@ -107,7 +107,7 @@ export function SolicitudesMapa({
   const selectedRide = rides.find((r) => r.id === selectedId) ?? rides[0] ?? null;
   const selectedIndex = rides.findIndex((r) => r.id === selectedRide?.id);
 
-  // Cambia la solicitud activa y sincroniza el carrusel (al tocar marker o flecha).
+  // Change the active request and sync the carousel (on marker or arrow tap).
   const select = (ride: OpenRide, index?: number) => {
     setSelectedId(ride.id);
     if (index != null) listRef.current?.scrollToIndex({ index, animated: true });
@@ -177,9 +177,11 @@ export function SolicitudesMapa({
           current.width === layout.width && current.height === layout.height
             ? current : { width: layout.width, height: layout.height })}>
         <RoutePolyline coordinates={route?.coordinates ?? []} />
-        {/* Los orígenes alternativos quedan como referencias discretas. El A y
-            B activos se renderizan después y con mayor z-index para que nunca
-            queden tapados por otro marcador o por la ruta en Google Maps. */}
+        {/*
+ * Alternative origins stay as discreet references. The active A and
+ * B are rendered afterwards and with a higher z-index so they are never
+ * covered by another marker or by the route on Google Maps.
+ */}
         {rides
           .filter((ride) => ride.id !== selectedRide?.id)
           .map((ride) => (
@@ -285,7 +287,7 @@ export function SolicitudesMapa({
             index,
           })}
           onMomentumScrollEnd={(e) => {
-            // Al deslizar, la solicitud visible pasa a ser la activa (encuadre + B).
+            // On swipe, the visible request becomes the active one (framing + B).
             const index = Math.round(e.nativeEvent.contentOffset.x / cardWidth);
             const ride = rides[index];
             if (ride) setSelectedId(ride.id);
@@ -333,7 +335,7 @@ export function SolicitudesMapa({
   );
 }
 
-/** Tarjeta flotante de la solicitud seleccionada en el mapa (sin swipe). */
+/** Floating card of the request selected on the map (no swipe). */
 function MapCard({
   ride,
   offered,
@@ -361,7 +363,7 @@ function MapCard({
   disabled: boolean;
   pendingAccept: boolean;
   offerExpiresAt: string | null;
-  /** Precio que el conductor ofertó (mostrado cuando `offered`). */
+  /** Price the driver offered (shown when `offered`). */
   offerPrice: number | null;
   onPress?: () => void;
   onAccept: () => void;
@@ -373,8 +375,8 @@ function MapCard({
   const { colors, styles } = useEstilos(crearEstilos);
   const secondsLeft = useCountdown(offerExpiresAt);
   const tripKm = haversineKm(ride.origin.coordinates, ride.destination.coordinates);
-  // Con oferta enviada mostramos el monto que el conductor propuso (no el fare
-  // del pasajero), para que vea su contraoferta reflejada en la tarjeta.
+  // With a sent offer we show the amount the driver proposed (not the passenger's
+  // fare), so they see their counter-offer reflected on the card.
   const displayPrice = offered && offerPrice != null ? offerPrice : ride.fare;
   const perKm = pricePerKm(displayPrice, tripKm);
   const { rider } = ride;
@@ -680,7 +682,7 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   fare: { fontSize: fontSize.xl, fontWeight: fontWeight.bold, color: colors.primary },
   perKm: { fontSize: 10, color: colors.textSecondary, fontWeight: fontWeight.semibold, marginTop: 2 },
 
-  // Banners de estado (full-width arriba de la card, con curva superior).
+  // Status banners (full width above the card, with a rounded top).
   offeredBanner: {
     minHeight: 42,
     flexDirection: 'row',
@@ -768,7 +770,7 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,
   },
-  // Mantiene alineadas las cards aunque el estado oculte los controles.
+  // Keeps the cards aligned even when the state hides the controls.
   quickSlot: { minHeight: 34 },
   quickRow: { flexDirection: 'row', gap: spacing.xs },
   quickPill: {

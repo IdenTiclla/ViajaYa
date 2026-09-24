@@ -1,4 +1,4 @@
-"""Bridge Redis entre la outbox durable y los hubs WebSocket de cada proceso."""
+"""Redis bridge between the durable outbox and each process's WebSocket hubs."""
 
 from __future__ import annotations
 
@@ -60,7 +60,7 @@ class _RedisClient(Protocol):
 
 
 class RedisRealtimeUnavailableError(RuntimeError):
-    """Redis no puede confirmar fanout a ningún suscriptor activo."""
+    """Redis cannot confirm fan-out to any active subscriber."""
 
 
 class _WireMessage(BaseModel):
@@ -141,8 +141,8 @@ class _ResyncWireMessage(_WireMessageV1):
     def validate_streams(self) -> _ResyncWireMessage:
         if len(set(self.streams)) != len(self.streams):
             raise ValueError("La orden de resnapshot repite streams.")
-        # El envelope aplica la misma validación canónica a streams. Para una
-        # orden de control basta restringir los tres namespaces productivos.
+        # The envelope applies the same canonical validation to streams. For a
+        # control command it is enough to restrict the three production namespaces.
         for stream in self.streams:
             prefix, separator, suffix = stream.partition(":")
             if (
@@ -187,11 +187,11 @@ def _parse_wire_message(
 
 
 class RedisRealtimeBridge(RealtimeDeliveryBridge):
-    """Publica batches y mantiene una suscripción de fanout por proceso.
+    """Publish batches and keep one fan-out subscription per process.
 
-    Redis Pub/Sub no conserva mensajes. Si esta suscripción se interrumpe, el
-    bridge cierra todos los sockets locales con 1012; su reconexión creará un
-    snapshot nuevo desde PostgreSQL y no continuará sobre un stream incompleto.
+    Redis Pub/Sub does not keep messages. If this subscription is interrupted, the
+    bridge closes all local sockets with 1012; their reconnection builds a
+    new snapshot from PostgreSQL and does not continue over an incomplete stream.
     """
 
     def __init__(
@@ -337,10 +337,10 @@ class RedisRealtimeBridge(RealtimeDeliveryBridge):
                 for envelope in envelopes
             ],
         )
-        # Las réplicas antiguas solo están suscritas al canal original. El
-        # consumidor nuevo omite la copia legacy si ya observó la correlacionada;
-        # si Redis invierte el orden, el gate mobile tolera la segunda entrega
-        # porque la correlación diagnóstica no forma parte de su identidad.
+        # Old replicas are only subscribed to the original channel. The
+        # new consumer skips the legacy copy if it already saw the correlated one;
+        # if Redis reverses the order, the mobile gate tolerates the second delivery
+        # because the diagnostic correlation is not part of its identity.
         correlated_subscribers = await self._publish_wire(
             correlated_message,
             channel=self._correlated_channel,
@@ -397,7 +397,7 @@ class RedisRealtimeBridge(RealtimeDeliveryBridge):
                                 await self._consume(message)
                 except asyncio.CancelledError:
                     raise
-                except Exception as error:  # noqa: BLE001 - reconexión resiliente
+                except Exception as error:  # noqa: BLE001 - resilient reconnection
                     had_active_subscription = self._connected
                     self._connected = False
                     self._ready_event.clear()

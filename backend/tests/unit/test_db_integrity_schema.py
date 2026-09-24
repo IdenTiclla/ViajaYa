@@ -1,4 +1,4 @@
-"""Contrato del esquema ORM para integridad e índices críticos."""
+"""ORM schema contract for integrity and critical indexes."""
 
 from __future__ import annotations
 

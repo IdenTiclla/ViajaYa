@@ -1,4 +1,4 @@
-"""Añade cuarentena terminal para batches inválidos de la outbox.
+"""Add a terminal quarantine for invalid outbox batches.
 
 Revision ID: 0020_realtime_outbox_quarantine
 Revises: 0019_realtime_stream_versions

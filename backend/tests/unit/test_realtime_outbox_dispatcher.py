@@ -1,4 +1,4 @@
-"""Pruebas operativas del dispatcher de outbox en modo sombra."""
+"""Operational tests of the outbox dispatcher in shadow mode."""
 
 from __future__ import annotations
 

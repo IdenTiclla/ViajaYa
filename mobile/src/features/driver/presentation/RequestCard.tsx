@@ -1,12 +1,12 @@
 /**
- * Tarjeta de una solicitud entrante (conductor) — diseño Material-You.
+ * Incoming request card (driver) — Material You design.
  *
- * Avatar + rating del pasajero, precio ofertado y **contraoferta rápida** (pills
- * +Bs que envían una contraoferta al instante) o precio propio (botón lápiz →
- * `TextInput` nativo). Ruta Pickup/Drop-off y acciones Rechazar / Enviar oferta. Al pulsar
- * el botón pasa a "Enviando…" (spinner) mientras se crea la propuesta. Estado
- * `offered` → banner "Oferta enviada"; `rejected` → reofertar. Se puede
- * **rechazar deslizando** para no volver a verla hasta que el pasajero la modifique.
+ * Passenger avatar + rating, offered price and **quick counter-offer** (+Bs
+ * pills that send a counter-offer instantly) or a custom price (pencil button →
+ * native `TextInput`). Pickup/Drop-off route and Rechazar / Enviar oferta actions. When
+ * tapped, the button switches to "Enviando…" (spinner) while the proposal is created. Status
+ * `offered` → "Oferta enviada" banner; `rejected` → re-offer. It can be
+ * **rejected by swiping** so it is not seen again until the passenger modifies it.
  */
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useMemo, useRef } from 'react';
@@ -33,19 +33,19 @@ type Props = {
   ride: OpenRide;
   offered: boolean;
   rejected: boolean;
-  /** La oferta del conductor venció (30 s) sin respuesta. */
+  /** The driver's offer expired (30 s) without an answer. */
   expired: boolean;
-  /** El pasajero está modificando la solicitud (no se puede ofertar aún). */
+  /** The passenger is modifying the request (offering is not possible yet). */
   paused: boolean;
-  /** Otro conductor se llevó el viaje (la card desaparecerá pronto por WS). */
+  /** Another driver got the ride (the card will disappear soon via WS). */
   taken: boolean;
-  /** Bloquea toda interacción (hay una mutación en curso). */
+  /** Block all interaction (a mutation is in progress). */
   disabled: boolean;
-  /** Esta tarjeta es la que está enviando la oferta (botón "Enviando…"). */
+  /** This card is the one sending the offer ("Enviando…" button). */
   pendingAccept: boolean;
-  /** Expiración (ISO) de la oferta enviada; alimenta el contador del banner offered. */
+  /** Expiry (ISO) of the sent offer; drives the countdown of the offered banner. */
   offerExpiresAt: string | null;
-  /** Precio que el conductor ofertó (mostrado cuando `offered`). */
+  /** Price the driver offered (shown when `offered`). */
   offerPrice: number | null;
   onPress: () => void;
   onViewOffer: () => void;
@@ -53,7 +53,7 @@ type Props = {
   onDismiss: () => void;
   onQuickAdd: (delta: number) => void;
   onOpenPriceInput: () => void;
-  /** Retira la oferta enviada (solo estado offered). */
+  /** Withdraw the sent offer (offered state only). */
   onWithdraw: () => void;
 };
 
@@ -82,8 +82,8 @@ export function RequestCard({
     () => haversineKm(ride.origin.coordinates, ride.destination.coordinates),
     [ride.origin, ride.destination],
   );
-  // Con oferta enviada mostramos el monto que el conductor propuso (no el fare
-  // del pasajero), para que vea su contraoferta reflejada en la tarjeta.
+  // With a sent offer we show the amount the driver proposed (not the passenger's
+  // fare), so they see their counter-offer reflected on the card.
   const displayPrice = offered && offerPrice != null ? offerPrice : ride.fare;
   const perKm = pricePerKm(displayPrice, tripKm);
 
@@ -182,9 +182,11 @@ export function RequestCard({
           </View>
         </View>
 
-        {/* Contraoferta rápida (rápida +Bs y lápiz): visible mientras se pueda
-            ofertar (default, expired y rejected). En expired/rejected es la forma
-            de mejorar la oferta tras un rechazo/vencimiento. */}
+        {/*
+ * Quick counter-offer (quick +Bs and pencil): visible while offering is possible
+ * (default, expired and rejected). In expired/rejected it is the way
+ * to improve the offer after a rejection/expiry.
+ */}
         <View style={styles.quickSlot}>
           {!offered && !paused && !taken && (
             <View style={styles.quick}>
@@ -304,9 +306,9 @@ export function RequestCard({
 }
 
 /**
- * Banner "Oferta enviada" con el **contador de los 30 s** (reutiliza `OfferLifeTimer`)
- * El `useCountdown` vive aquí (no en `RequestCard`) para que el tick por segundo
- * re-renderice solo este banner, no toda la tarjeta.
+ * "Oferta enviada" banner with the **30 s countdown** (reuses `OfferLifeTimer`).
+ * `useCountdown` lives here (not in `RequestCard`) so the per-second tick
+ * re-renders only this banner, not the whole card.
  */
 function OfferedBanner({
   expiresAt,
@@ -456,7 +458,7 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   fare: { fontSize: fontSize.xl, fontWeight: fontWeight.bold, color: colors.primary },
   perKm: { fontSize: 10, color: colors.textSecondary, fontWeight: fontWeight.semibold, marginTop: 2 },
 
-  // Conserva el alto al ocultar controles en estados terminales o pendientes.
+  // Keep the height when hiding controls in terminal or pending states.
   quickSlot: { minHeight: 50 },
   quick: { gap: spacing.xs },
   quickLabel: { fontSize: 10, color: colors.textSecondary, fontWeight: fontWeight.bold, letterSpacing: 0.5 },

@@ -243,7 +243,7 @@ async def _delete_test_quarantines(
     sessions: async_sessionmaker[AsyncSession],
     ride_id: str,
 ) -> None:
-    """Retira cuarentenas del ride propio para permitir el downgrade de tests."""
+    """Remove our ride's quarantines to allow the test downgrade."""
     async with sessions() as session:
         await session.execute(
             delete(RealtimeOutboxModel).where(

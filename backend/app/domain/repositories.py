@@ -1,7 +1,7 @@
-"""Puertos del dominio: interfaces que la infraestructura debe implementar.
+"""Domain ports: interfaces the infrastructure must implement.
 
-Los casos de uso dependen de estas abstracciones, no de SQLAlchemy
-(inversión de dependencias).
+Use cases depend on these abstractions, not on SQLAlchemy
+(dependency inversion).
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ from app.domain.entities import (
 
 @dataclass(frozen=True)
 class WithdrawnOfferReference:
-    """Identidad exacta de una oferta retirada durante una mutación atómica."""
+    """Exact identity of an offer withdrawn during an atomic mutation."""
 
     ride_id: uuid.UUID
     offer_id: uuid.UUID
@@ -39,13 +39,13 @@ class WithdrawnOfferReference:
 
 @dataclass(frozen=True)
 class OfferAcceptance:
-    """Resultado de un despacho atómico exitoso.
+    """Result of a successful atomic dispatch.
 
-    Agrega lo que el caso de uso y la capa de eventos necesitan tras asignar el
-    conductor: el viaje actualizado, la oferta aceptada, el conductor, los
-    pares exactos de las ofertas vivas de ese conductor que se retiraron en
-    **otros** rides, y los ``driver_id`` de los **otros** conductores de este
-    viaje cuyas ofertas quedaron rechazadas (para avisarles que fue tomado).
+    Bundles what the use case and the events layer need after assigning the
+    driver: the updated ride, the accepted offer, the driver, the exact
+    pairs of that driver's live offers that were withdrawn in
+    **other** rides, and the ``driver_id`` of the **other** drivers of this
+    ride whose offers were rejected (to tell them it was taken).
     """
 
     ride: RideRequest
@@ -56,13 +56,13 @@ class OfferAcceptance:
 
     @property
     def withdrawn_ride_ids(self) -> list[uuid.UUID]:
-        """Compatibilidad para consumidores que todavía resumen solo por ride."""
+        """Compatibility for consumers that still summarize by ride only."""
         return [offer.ride_id for offer in self.withdrawn_offers]
 
 
 @dataclass(frozen=True)
 class OfferCreation:
-    """Alta o reemplazo atómico de una oferta."""
+    """Atomic creation or replacement of an offer."""
 
     offer: Offer
     superseded_offer_id: uuid.UUID | None = None
@@ -70,7 +70,7 @@ class OfferCreation:
 
 @dataclass(frozen=True)
 class DriverOfflineTransition:
-    """Conductor desconectado y ofertas pendientes retiradas en un solo commit."""
+    """Driver taken offline and pending offers withdrawn in a single commit."""
 
     driver: User
     withdrawn_offers: list[Offer]
@@ -78,7 +78,7 @@ class DriverOfflineTransition:
 
 @dataclass(frozen=True)
 class RideAutoCancellation:
-    """Cierre atómico de una búsqueda abandonada y sus ofertas vivas."""
+    """Atomic closing of an abandoned search and its live offers."""
 
     ride: RideRequest
     cancelled_offers: list[Offer]
@@ -86,7 +86,7 @@ class RideAutoCancellation:
 
 @dataclass(frozen=True)
 class RideOffersTransition:
-    """Mutación atómica de un viaje y las ofertas vivas afectadas por ella."""
+    """Atomic mutation of a ride and the live offers it affects."""
 
     ride: RideRequest
     affected_offers: list[Offer]
@@ -94,10 +94,10 @@ class RideOffersTransition:
 
 @dataclass(frozen=True)
 class RiderSummary:
-    """Datos públicos del pasajero que el conductor ve en una solicitud abierta.
+    """Public passenger data the driver sees on an open request.
 
-    ``rating`` es el promedio de las calificaciones recibidas y puede ser ``None``
-    si aún no tiene votos. ``trips_completed`` cuenta su historial completado.
+    ``rating`` is the average of the ratings received and can be ``None``
+    if they have no votes yet. ``trips_completed`` counts their completed history.
     """
 
     full_name: str
@@ -107,8 +107,9 @@ class RiderSummary:
 
 @dataclass(frozen=True)
 class OpenRideDetail:
-    """Solicitud abierta enriquecida con el resumen del pasajero, tal como la ve
-    un conductor en su lista (REST y snapshot/``ride_created`` del WebSocket)."""
+    """Open request enriched with the passenger summary, as a driver sees it
+    in their list (REST and the WebSocket snapshot/``ride_created``).
+    """
 
     ride: RideRequest
     rider: RiderSummary
@@ -117,53 +118,53 @@ class OpenRideDetail:
 class UserRepository(ABC):
     @abstractmethod
     async def get_by_id(self, user_id: uuid.UUID) -> User | None:
-        """Devuelve el usuario con ese id, o ``None`` si no existe."""
+        """Return the user with that id, or ``None`` if it does not exist."""
 
     @abstractmethod
     async def get_by_email(self, email: str) -> User | None:
-        """Devuelve el usuario con ese correo, o ``None`` si no existe."""
+        """Return the user with that email, or ``None`` if it does not exist."""
 
     @abstractmethod
     async def get_by_provider(self, provider: AuthProvider, provider_id: str) -> User | None:
-        """Devuelve el usuario vinculado a una identidad externa, o ``None``."""
+        """Return the user linked to an external identity, or ``None``."""
 
     @abstractmethod
     async def add(self, user: User) -> User:
-        """Persiste un usuario nuevo y lo devuelve (con ``created_at`` poblado)."""
+        """Persist a new user and return it (with ``created_at`` populated)."""
 
     @abstractmethod
     async def update(self, user: User) -> User:
-        """Actualiza los datos generales de un usuario y lo devuelve."""
+        """Update a user's general data and return it."""
 
     @abstractmethod
     async def set_online(self, user_id: uuid.UUID, is_online: bool) -> User:
-        """Actualiza solo la disponibilidad, sin pisar otros campos concurrentes."""
+        """Update availability only, without overwriting other concurrent fields."""
 
 
 class RideRequestRepository(ABC):
     @abstractmethod
     async def add(self, ride: RideRequest) -> RideRequest:
-        """Persiste una solicitud de viaje y la devuelve (con ``created_at``)."""
+        """Persist a ride request and return it (with ``created_at``)."""
 
     @abstractmethod
     async def add_if_no_active(self, ride: RideRequest) -> RideRequest | None:
-        """Crea la solicitud solo si el pasajero no tiene otro viaje activo.
+        """Create the request only if the passenger has no other active ride.
 
-        La comprobación y el alta deben ejecutarse bajo una exclusión mutua sobre
-        el pasajero para que dos requests concurrentes no creen dos solicitudes.
+        The check and the insert must run under mutual exclusion on the
+        passenger so that two concurrent requests do not create two requests.
         """
 
     @abstractmethod
     async def get_by_id(self, ride_id: uuid.UUID) -> RideRequest | None:
-        """Devuelve la solicitud con ese id, o ``None`` si no existe."""
+        """Return the request with that id, or ``None`` if it does not exist."""
 
     @abstractmethod
     async def get_active_by_rider(self, rider_id: uuid.UUID) -> RideRequest | None:
-        """Viaje no terminal más reciente del pasajero, o ``None``."""
+        """The passenger's most recent non-terminal ride, or ``None``."""
 
     @abstractmethod
     async def update(self, ride: RideRequest) -> RideRequest:
-        """Actualiza una solicitud existente (estado, conductor asignado) y la devuelve."""
+        """Update an existing request (status, assigned driver) and return it."""
 
     @abstractmethod
     async def update_if_state(
@@ -174,10 +175,10 @@ class RideRequestRepository(ABC):
         expected_paused: bool | None = None,
         expected_fare: Decimal | None = None,
     ) -> RideRequest | None:
-        """Actualiza mediante compare-and-set y devuelve ``None`` si perdió la carrera.
+        """Update via compare-and-set and return ``None`` if the race was lost.
 
-        Siempre compara ``status``; opcionalmente compara ``paused`` y ``fare``
-        para proteger mutaciones que conservan el mismo estado del viaje.
+        It always compares ``status``; it optionally compares ``paused`` and ``fare``
+        to protect mutations that keep the same ride status.
         """
 
     @abstractmethod
@@ -188,11 +189,11 @@ class RideRequestRepository(ABC):
 
     @abstractmethod
     async def cancel_if_searching(self, ride_id: uuid.UUID) -> RideRequest | None:
-        """Cancela atómicamente solo un ride ``SEARCHING`` y no pausado."""
+        """Atomically cancel only a ``SEARCHING``, non-paused ride."""
 
     @abstractmethod
     async def list_open_for_services(self, services: tuple[ServiceType, ...]) -> list[RideRequest]:
-        """Solicitudes compatibles con el vehiculo, de la mas nueva a la mas vieja."""
+        """Requests compatible with the vehicle, newest first."""
 
     @abstractmethod
     async def list_open_with_rider_for_services(
@@ -204,62 +205,65 @@ class RideRequestRepository(ABC):
         before_id: uuid.UUID | None = None,
         limit: int | None = None,
     ) -> list[OpenRideDetail]:
-        """Solicitudes compatibles enriquecidas con el resumen del pasajero
-        (nombre, rating y viajes completados), en **una sola query** (JOIN +
-        conteo, sin N+1). Si se recibe ``driver_id``, excluye las versiones que
-        ese conductor ocultó. ``before_created_at``/``before_id`` forman el
-        cursor descendente y ``limit`` acota las filas. Orden total: fecha e id."""
+        """Compatible requests enriched with the passenger summary
+        (name, rating and completed trips), in **a single query** (JOIN +
+        count, no N+1). When ``driver_id`` is given, it excludes the versions that
+        driver hid. ``before_created_at``/``before_id`` form the
+        descending cursor and ``limit`` caps the rows. Total order: date and id.
+        """
 
     @abstractmethod
     async def dismiss_open_ride_for_driver(
         self, driver_id: uuid.UUID, ride_id: uuid.UUID, pool_version: int
     ) -> None:
-        """Guarda que el conductor ocultó esta versión de la solicitud."""
+        """Record that the driver hid this version of the request."""
 
     @abstractmethod
     async def list_paused_with_rider_for_driver(self, driver_id: uuid.UUID) -> list[OpenRideDetail]:
-        """Solicitudes pausadas sobre las que el conductor ya había ofertado."""
+        """Paused requests the driver had already offered on."""
 
     @abstractmethod
     async def rider_summary(self, rider_id: uuid.UUID) -> RiderSummary | None:
-        """Resumen público de un pasajero, o ``None`` si no existe."""
+        """Public summary of a passenger, or ``None`` if it does not exist."""
 
     @abstractmethod
     async def open_ride_with_rider(self, ride_id: uuid.UUID) -> OpenRideDetail | None:
-        """Detalle enriquecido de una solicitud (para publicar ``ride_created`` con
-        los datos del pasajero), o ``None`` si no existe."""
+        """Enriched detail of a request (to publish ``ride_created`` with
+        the passenger data), or ``None`` if it does not exist.
+        """
 
     @abstractmethod
     async def lock_open_ride_with_rider_for_announcement(
         self, ride_id: uuid.UUID
     ) -> OpenRideDetail | None:
-        """Bloquea y devuelve una solicitud publicable, o ``None``.
+        """Lock and return a publishable request, or ``None``.
 
-        La implementación debe revalidar bajo el lock que siga ``SEARCHING`` y
-        no esté pausada. El caller conserva la transacción hasta registrar el
-        anuncio realtime y confirmar ambos efectos en un único commit.
+        The implementation must re-check under the lock that it is still ``SEARCHING`` and
+        not paused. The caller keeps the transaction until it records the
+        realtime announcement and confirms both effects in a single commit.
         """
 
     @abstractmethod
     async def list_by_driver(self, driver_id: uuid.UUID) -> list[RideRequest]:
-        """Viajes asignados al conductor, del más reciente al más antiguo."""
+        """Rides assigned to the driver, most recent first."""
 
     @abstractmethod
     async def list_recent_destinations(
         self, rider_id: uuid.UUID, limit: int = 10
     ) -> list[Location]:
-        """Destinos recientes y únicos del pasajero, del más nuevo al más viejo."""
+        """The passenger's recent, unique destinations, newest first."""
 
     @abstractmethod
     async def list_history(
         self, user_id: uuid.UUID, role: UserRole, statuses: set[RideStatus]
     ) -> list[RideRequest]:
-        """Viajes terminales del usuario (por ``rider_id`` si pasajero, ``driver_id`` si
-        conductor) con estado en ``statuses``, del más reciente al más antiguo."""
+        """The user's terminal rides (by ``rider_id`` for a passenger, ``driver_id`` for a
+        driver) with a status in ``statuses``, most recent first.
+        """
 
 
 class PendingRatingRepository(ABC):
-    """Consulta de lectura para recuperar cierres que aún requieren calificación."""
+    """Read query to recover closed rides that still need a rating."""
 
     @abstractmethod
     async def get_latest_for(
@@ -267,32 +271,32 @@ class PendingRatingRepository(ABC):
         user_id: uuid.UUID,
         role: UserRole,
     ) -> RideRequest | None:
-        """Último ``COMPLETED`` del usuario sin rating emitido por él, o ``None``."""
+        """The user's latest ``COMPLETED`` ride without a rating from them, or ``None``."""
 
 
 class OfferRepository(ABC):
     @abstractmethod
     async def add(self, offer: Offer) -> Offer:
-        """Persiste una oferta nueva y la devuelve (con ``created_at`` poblado)."""
+        """Persist a new offer and return it (with ``created_at`` populated)."""
 
     @abstractmethod
     async def create_or_supersede_atomically(
         self, offer: Offer, *, expected_ride_fare: Decimal,
         expected_pool_version: int | None = None,
     ) -> OfferCreation | None:
-        """Crea la oferta y reemplaza la previa bajo una sola transacción.
+        """Create the offer and replace the previous one in a single transaction.
 
-        Devuelve ``None`` si el conductor o el ride dejaron de ser elegibles al
-        revalidarlos bajo lock.
+        Return ``None`` if the driver or the ride stopped being eligible when
+        re-checked under the lock.
         """
 
     @abstractmethod
     async def get_by_id(self, offer_id: uuid.UUID) -> Offer | None:
-        """Devuelve la oferta con ese id, o ``None`` si no existe."""
+        """Return the offer with that id, or ``None`` if it does not exist."""
 
     @abstractmethod
     async def update(self, offer: Offer) -> Offer:
-        """Actualiza una oferta existente (estado) y la devuelve."""
+        """Update an existing offer (status) and return it."""
 
     @abstractmethod
     async def reject_if_pending(self, offer_id: uuid.UUID) -> Offer | None:
@@ -300,37 +304,39 @@ class OfferRepository(ABC):
 
     @abstractmethod
     async def list_by_ride(self, ride_id: uuid.UUID) -> list[Offer]:
-        """Ofertas de una solicitud, de la más nueva a la más antigua."""
+        """Offers of a request, newest first."""
 
     @abstractmethod
     async def list_active_by_driver(self, driver_id: uuid.UUID) -> list[Offer]:
-        """Ofertas vivas (``PENDING``) de un conductor, de la más nueva a la más vieja."""
+        """A driver's live (``PENDING``) offers, newest first."""
 
     @abstractmethod
     async def get_active_by_driver_and_ride(
         self, ride_id: uuid.UUID, driver_id: uuid.UUID
     ) -> Offer | None:
-        """Oferta viva (``PENDING``) más reciente del conductor para ese viaje, o
-        ``None`` (la expiración por tiempo la decide el caso de uso)."""
+        """The driver's most recent live (``PENDING``) offer for that ride, or
+        ``None`` (time-based expiry is decided by the use case).
+        """
 
     @abstractmethod
     async def reject_others(self, ride_id: uuid.UUID, keep_offer_id: uuid.UUID) -> None:
-        """Marca ``REJECTED`` las ofertas ``PENDING`` del viaje salvo ``keep_offer_id``."""
+        """Mark the ride's ``PENDING`` offers ``REJECTED`` except ``keep_offer_id``."""
 
     @abstractmethod
     async def reject_pending(self, ride_id: uuid.UUID) -> None:
-        """Marca ``REJECTED`` todas las ofertas vivas (``PENDING``) del viaje
-        (la solicitud murió o se pausó para editar)."""
+        """Mark all live (``PENDING``) offers of the ride ``REJECTED``
+        (the request died or was paused for editing).
+        """
 
     @abstractmethod
     async def set_driver_offline_atomically(
         self, driver_id: uuid.UUID
     ) -> DriverOfflineTransition | None:
-        """Desconecta al conductor y retira sus ofertas en una transacción.
+        """Take the driver offline and withdraw their offers in one transaction.
 
-        Debe bloquear primero al conductor, rechazar el cambio si ya tiene un viaje
-        activo y serializarse contra creación/aceptación de ofertas. Devuelve las
-        ofertas no expiradas para publicar su retiro a los pasajeros.
+        It must lock the driver first, reject the change if they already have an
+        active ride, and serialize against offer creation/acceptance. Return the
+        unexpired offers so their withdrawal can be published to passengers.
         """
 
     @abstractmethod
@@ -341,10 +347,10 @@ class OfferRepository(ABC):
         expected_status: RideStatus,
         expected_paused: bool,
     ) -> RideOffersTransition | None:
-        """Cancela el viaje y rechaza sus ofertas ``PENDING`` en un solo commit.
+        """Cancel the ride and reject its ``PENDING`` offers in a single commit.
 
-        Debe bloquear el viaje y revalidar su estado y pausa contra el snapshot
-        esperado antes de mutar cualquier fila.
+        It must lock the ride and re-check its status and pause against the
+        expected snapshot before mutating any row.
         """
 
     @abstractmethod
@@ -354,68 +360,67 @@ class OfferRepository(ABC):
         *,
         expected_fare: Decimal,
     ) -> RideOffersTransition | None:
-        """Pausa un viaje ``SEARCHING`` y rechaza sus ofertas en un solo commit.
+        """Pause a ``SEARCHING`` ride and reject its offers in a single commit.
 
-        Debe revalidar bajo lock que siga sin pausa y conserve ``expected_fare``.
+        It must re-check under the lock that it is still unpaused and keeps ``expected_fare``.
         """
 
     @abstractmethod
     async def cancel_ride_on_disconnect_atomically(
         self, ride_id: uuid.UUID
     ) -> RideAutoCancellation | None:
-        """Cancela una búsqueda abandonada y rechaza sus ofertas en una transacción.
+        """Cancel an abandoned search and reject its offers in one transaction.
 
-        Debe bloquear y revalidar que el viaje siga ``SEARCHING`` y no pausado.
-        Devuelve las ofertas que seguían vivas al cerrarse para emitir sus eventos.
+        It must lock and re-check that the ride is still ``SEARCHING`` and not paused.
+        Return the offers that were still live when it closed so their events can be emitted.
         """
 
     @abstractmethod
     async def accept_atomically(self, offer_id: uuid.UUID) -> OfferAcceptance | None:
-        """Asigna el conductor de forma atómica al aceptar el pasajero la oferta.
+        """Assign the driver atomically when the passenger accepts the offer.
 
-        En **una sola transacción** y con bloqueo de filas (``SELECT … FOR UPDATE``
-        en Postgres) re-verifica que la oferta siga ``PENDING``, que el viaje siga
-        ``SEARCHING`` y que el conductor siga en línea, habilitado y **sin un viaje
-        activo**. Si todo sigue válido: marca la oferta ``ACCEPTED``, rechaza el resto
-        de ofertas
-        vivas del viaje y las demás ofertas vivas del conductor en otras
-        solicitudes, asigna el conductor y pasa el viaje a ``ACCEPTED``; devuelve
-        el :class:`OfferAcceptance`.
+        In **a single transaction** and with row locks (``SELECT … FOR UPDATE``
+        on Postgres) it re-checks that the offer is still ``PENDING``, that the ride is still
+        ``SEARCHING`` and that the driver is still online, enabled and **without an
+        active ride**. If everything is still valid: it marks the offer ``ACCEPTED``, rejects
+        the ride's other live offers and the driver's other live offers on other
+        requests, assigns the driver and moves the ride to ``ACCEPTED``; it returns
+        the :class:`OfferAcceptance`.
 
-        Devuelve ``None`` si el conductor ya no está disponible o el viaje/oferta
-        dejó de ser asignable (el caso de uso lo traduce a ``DriverUnavailableError``).
+        Return ``None`` if the driver is no longer available or the ride/offer
+        stopped being assignable (the use case translates it into ``DriverUnavailableError``).
         """
 
     @abstractmethod
     async def mark_expired_if_pending(self, offer_id: uuid.UUID) -> Offer | None:
-        """Vence la oferta (``EXPIRED``) solo si sigue ``PENDING`` y pasó su TTL.
+        """Expire the offer (``EXPIRED``) only if it is still ``PENDING`` and past its TTL.
 
-        Devuelve la oferta ya ``EXPIRED``, o ``None`` si ya no era ``PENDING`` o no
-        estaba vencida (race-safe contra accept/reject/withdraw/supersede: esos la
-        sacan de ``PENDING`` y aquí no se toca). Así el backend puede avisar al
-        conductor en tiempo real cuando su oferta muere por tiempo.
+        Return the now ``EXPIRED`` offer, or ``None`` if it was no longer ``PENDING`` or had
+        not expired (race-safe against accept/reject/withdraw/supersede: those take
+        it out of ``PENDING`` and it is not touched here). This lets the backend notify the
+        driver in real time when their offer dies of old age.
         """
 
 
 class RatingRepository(ABC):
     @abstractmethod
     async def add_and_recompute(self, rating: RideRating) -> RideRating | None:
-        """Persiste el voto y actualiza el promedio del calificado atómicamente.
+        """Persist the vote and update the rated user's average atomically.
 
-        Implementaciones transaccionales deben serializar las calificaciones del
-        mismo ``ratee_id`` y escribir exclusivamente ``User.rating``. Devuelve
-        ``None`` cuando ya existe un voto del mismo autor para el viaje.
+        Transactional implementations must serialize ratings for the
+        same ``ratee_id`` and write only ``User.rating``. Return
+        ``None`` when a vote from the same author already exists for the ride.
         """
 
     @abstractmethod
     async def get_by_ride_and_rater(
         self, ride_id: uuid.UUID, rater_id: uuid.UUID
     ) -> RideRating | None:
-        """Devuelve la calificación que ``rater_id`` dio a ese viaje, o ``None``."""
+        """Return the rating ``rater_id`` gave to that ride, or ``None``."""
 
     @abstractmethod
     async def list_by_ratee(self, ratee_id: uuid.UUID) -> list[RideRating]:
-        """Calificaciones recibidas por un usuario, de la más nueva a la más antigua."""
+        """Ratings received by a user, newest first."""
 
     @abstractmethod
     async def average_for(self, ratee_id: uuid.UUID) -> float | None:
@@ -429,11 +434,11 @@ class RatingSkipRepository(ABC):
         ride_id: uuid.UUID,
         rater_id: uuid.UUID,
     ) -> RideRatingSkip | None:
-        """Devuelve la omisión del participante, o ``None`` si todavía no existe."""
+        """Return the participant's skip, or ``None`` if it does not exist yet."""
 
     @abstractmethod
     async def add_if_absent(self, skip: RideRatingSkip) -> RideRatingSkip:
-        """Persiste la omisión o devuelve la existente de forma idempotente."""
+        """Persist the skip, or return the existing one idempotently."""
 
 
 class DriverVehicleRepository(ABC):
@@ -457,15 +462,15 @@ class DriverVehicleRepository(ABC):
 class SavedPlaceRepository(ABC):
     @abstractmethod
     async def list_by_user(self, user_id: uuid.UUID) -> list[SavedPlace]:
-        """Lugares guardados del usuario, del más reciente al más antiguo."""
+        """The user's saved places, most recent first."""
 
     @abstractmethod
     async def get_by_id(self, place_id: uuid.UUID) -> SavedPlace | None:
-        """Devuelve el lugar con ese id, o ``None`` si no existe."""
+        """Return the place with that id, or ``None`` if it does not exist."""
 
     @abstractmethod
     async def add(self, place: SavedPlace) -> SavedPlace:
-        """Persiste un lugar nuevo y lo devuelve (con timestamps poblados)."""
+        """Persist a new place and return it (with timestamps populated)."""
 
     @abstractmethod
     async def update(self, place: SavedPlace) -> SavedPlace:

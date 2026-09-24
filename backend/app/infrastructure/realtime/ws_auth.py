@@ -1,4 +1,4 @@
-"""Autenticación del handshake WebSocket sin exponer tokens en la URL."""
+"""WebSocket handshake authentication without exposing tokens in the URL."""
 
 from __future__ import annotations
 
@@ -8,11 +8,11 @@ AUTH_SUBPROTOCOL = "viajaya.auth"
 
 
 def token_from_subprotocol(websocket: WebSocket) -> str | None:
-    """Extrae el JWT del protocolo siguiente a ``viajaya.auth``.
+    """Extract the JWT from the protocol that follows ``viajaya.auth``.
 
-    React Native permite pasar subprotocolos aunque no permita cabeceras HTTP
-    arbitrarias. Uvicorn no registra esta cabecera en el access log, a diferencia
-    de un query param.
+    React Native allows passing subprotocols even though it does not allow arbitrary
+    HTTP headers. Uvicorn does not log this header in the access log, unlike
+    a query param.
     """
     raw = websocket.headers.get("sec-websocket-protocol", "")
     protocols = [item.strip() for item in raw.split(",") if item.strip()]

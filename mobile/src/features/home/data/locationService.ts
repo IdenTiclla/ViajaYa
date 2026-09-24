@@ -1,6 +1,6 @@
 /**
- * Acceso a la ubicación del dispositivo (expo-location) detrás de un puerto
- * sencillo, para aislar la UI del SDK y poder mockearlo en tests.
+ * Access to the device location (expo-location) behind a simple
+ * port, to isolate the UI from the SDK and allow mocking it in tests.
  */
 import * as Location from 'expo-location';
 
@@ -25,8 +25,8 @@ function formatCoords({ latitude, longitude }: Coordinates): string {
   return `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
 }
 
-// Plus Codes de Google (p. ej. "6R66+9P5"): bloque alfanumérico + '+' + sufijo.
-// No los queremos como etiqueta; preferimos la calle y el número.
+// Google Plus Codes (e.g. "6R66+9P5"): alphanumeric block + '+' + suffix.
+// We do not want them as a label; we prefer the street and number.
 const PLUS_CODE_RE = /\b[A-Z0-9]{4,}\+[A-Z0-9]{2,}\b/i;
 const CALLE_SIN_NOMBRE_RE = /^(?:unnamed road|calle sin nombre|v[ií]a sin nombre|camino sin nombre)$/i;
 const PREFIJO_CALLE_RE =
@@ -183,8 +183,8 @@ function guardarEtiqueta(coordinates: Coordinates, resultado: EtiquetaGeocodific
 function iniciarGeocodificacion(
   coordinates: Coordinates,
 ): Promise<Location.LocationGeocodedAddress[]> {
-  // El timeout de JavaScript no puede cancelar Android Geocoder. Si la operación
-  // nativa anterior sigue viva, usamos el respaldo HTTP y evitamos apilar llamadas.
+  // The JavaScript timeout cannot cancel Android Geocoder. If the previous native
+  // operation is still running, we use the HTTP fallback and avoid stacking calls.
   if (operacionGeocodificacionNativa) {
     return Promise.reject(
       new TiempoMaximoSuperadoError('El geocoder nativo anterior sigue ocupado.'),
@@ -231,8 +231,8 @@ function obtenerGeocodificacion(
 
   if (mismasCoordenadas(activa.coordinates, coordinates)) return activa.promise;
 
-  // Una coordenada nueva nunca espera detrás de Android Geocoder: si el nativo
-  // está ocupado, resolverEtiqueta inicia inmediatamente el respaldo HTTP.
+  // A new coordinate never waits behind Android Geocoder: if the native one
+  // is busy, resolverEtiqueta immediately starts the HTTP fallback.
   return Promise.reject(
     new TiempoMaximoSuperadoError('El geocoder nativo está resolviendo otro punto.'),
   );
@@ -256,10 +256,10 @@ function crearEtiquetaNativa(
   const nativeStreet = clean(result.street);
   const street =
     nativeStreet && !CALLE_SIN_NOMBRE_RE.test(nativeStreet) ? nativeStreet : null;
-  // Calle + número de casa (si lo hay): "Av. Perú 1500".
+  // Street + house number (if any): "Av. Perú 1500".
   const streetLine = street && result.streetNumber ? `${street} ${result.streetNumber}` : street;
 
-  // Partes en orden de prioridad, sin códigos ni duplicados.
+  // Parts in priority order, without codes or duplicates.
   const formattedAddress =
     result.formattedAddress
       ?.split(',')
@@ -364,9 +364,9 @@ async function resolverEtiqueta(
   const nativa = obtenerEtiquetaNativa(coordinates);
   const resultadoTemprano = await esperarGraciaNativa(nativa);
 
-  // Una calle nativa es suficientemente precisa y evita una llamada HTTP. Un
-  // barrio o ciudad, en cambio, espera a Google porque puede existir una vía
-  // cercana mejor aunque esa referencia genérica haya llegado primero.
+  // A native street is precise enough and avoids an HTTP call. A
+  // neighborhood or city, instead, waits for Google because there may be a better
+  // nearby street even though that generic reference arrived first.
   if (resultadoTemprano?.estado === 'resuelta' && resultadoTemprano.calidad === 'calle') {
     return { etiqueta: resultadoTemprano.etiqueta, calidad: resultadoTemprano.calidad };
   }
@@ -387,8 +387,8 @@ async function resolverEtiqueta(
     return elegirMejorEtiqueta(resultadoGoogle, resultadoNativo);
   }
 
-  // Si ambas fuentes siguen trabajando, la primera calle gana. Una referencia
-  // genérica espera a la otra fuente en vez de ocultar una calle más lenta.
+  // If both sources are still working, the first street wins. A generic
+  // reference waits for the other source instead of hiding a slower street.
   const candidataNativa = nativa.then((resultado) =>
     resultado.estado === 'resuelta'
       ? { etiqueta: resultado.etiqueta, calidad: resultado.calidad }
@@ -431,8 +431,8 @@ async function obtenerEtiquetaGeocodificada(
 
 export const locationService = {
   /**
-   * Solicita el permiso de ubicación en uso y devuelve la posición actual.
-   * Si el usuario lo deniega, regresa `{ status: 'denied' }` (sin lanzar).
+   * Request the while-in-use location permission and return the current position.
+   * If the user denies it, returns `{ status: 'denied' }` (without throwing).
    */
   async getCurrentLocation(onUpdate?: LocationUpdate): Promise<LocationResult> {
     const permission = await Location.requestForegroundPermissionsAsync();
@@ -440,8 +440,8 @@ export const locationService = {
       return { status: 'denied', canAskAgain: permission.canAskAgain };
     }
 
-    // Una posición fresca puede tardar mucho dentro de edificios o en equipos
-    // con GPS lento. Primero consultamos la caché nativa, que no activa sensores.
+    // A fresh position can take a long time indoors or on devices
+    // with slow GPS. We first query the native cache, which does not wake the sensors.
     const lastKnownPosition = await conTiempoMaximo(
       Location.getLastKnownPositionAsync({
         maxAge: EDAD_MAXIMA_ULTIMA_UBICACION_MS,
@@ -452,8 +452,8 @@ export const locationService = {
     ).catch(() => null);
     const currentPositionPromise = obtenerPosicionActual();
 
-    // Preferimos la posición fresca. Si tarda, la última posición solo es
-    // provisional y la promesa nativa compartida actualizará la caché al resolver.
+    // We prefer the fresh position. If it is slow, the last position is only
+    // provisional and the shared native promise will update the cache when it resolves.
     if (lastKnownPosition) {
       try {
         const position = await conTiempoMaximo(
@@ -506,23 +506,23 @@ export const locationService = {
     return crearResultadoUbicacion(position, false).coordinates;
   },
 
-  /** Seguimiento del conductor: GPS y brújula, con cancelación conjunta. */
+  /** Driver tracking: GPS and compass, with joint cancellation. */
   watchPosition: observarUbicacion,
   consultarDisponibilidad: consultarDisponibilidadUbicacion,
 
   /**
-   * Geocodificación inversa: convierte coordenadas en una etiqueta legible.
+   * Reverse geocoding: turns coordinates into a readable label.
    *
-   * Devuelve una forma literal — **calle y número** como `name`, y el resto
-   * (barrio/ciudad) como `address` — ignorando Plus Codes y otros códigos.
-   * Un fallo se expresa como `null`; nunca se convierte en una etiqueta ficticia.
+   * Returns a literal shape — **street and number** as `name`, and the rest
+   * (neighborhood/city) as `address` — ignoring Plus Codes and other codes.
+   * A failure is expressed as `null`; it never becomes a fake label.
    */
   async reverseGeocode(coordinates: Coordinates): Promise<PlaceLabel | null> {
     const resultado = await obtenerEtiquetaGeocodificada(coordinates);
     return resultado?.etiqueta ?? null;
   },
 
-  /** Devuelve únicamente una vía cercana; un POI, barrio o ciudad no basta. */
+  /** Return only a nearby street; a POI, neighborhood or city is not enough. */
   async reverseGeocodeNearestStreet(coordinates: Coordinates): Promise<PlaceLabel | null> {
     const resultado = await obtenerEtiquetaGeocodificada(coordinates, true);
     return resultado?.calidad === 'calle' ? resultado.etiqueta : null;

@@ -1,4 +1,4 @@
-"""Pruebas SQLite del corte de lectura para snapshots realtime."""
+"""SQLite tests of the read cut for realtime snapshots."""
 
 from __future__ import annotations
 

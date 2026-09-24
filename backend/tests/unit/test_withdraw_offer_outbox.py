@@ -1,4 +1,4 @@
-"""Atomicidad y contrato realtime del retiro voluntario de una oferta."""
+"""Atomicity and realtime contract of an offer's voluntary withdrawal."""
 
 from __future__ import annotations
 
@@ -293,8 +293,8 @@ async def test_sql_lost_compare_and_set_leaves_rollback_to_unit_of_work(
     async with session_factory() as session:
         driver, offer = await _sql_scenario(session)
 
-        # Otra transacción gana. En modo UoW, el CAS debe devolver ``None`` sin
-        # cerrar por su cuenta la transacción que pertenece a la aplicación.
+        # Another transaction wins. In UoW mode, the CAS must return ``None`` without
+        # closing on its own the transaction that belongs to the application.
         async with session_factory() as competing_session:
             rejected = await SqlAlchemyOfferRepository(
                 competing_session

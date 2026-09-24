@@ -1,4 +1,4 @@
-"""Punto de entrada de la API FastAPI."""
+"""FastAPI entry point."""
 
 from __future__ import annotations
 
@@ -149,8 +149,8 @@ def create_app(
                 await process_lock.acquire()
 
             if mode in {"live_local", "live_redis"}:
-                # El mismo cambio de modo que activa snapshots/eventos v2 apaga
-                # la ruta directa. Nunca se entregan ambos protocolos al socket.
+                # The same mode switch that enables v2 snapshots/events turns off
+                # the direct path. Both protocols are never delivered to the socket.
                 hub.set_legacy_delivery_enabled(False)
 
             if mode == "live_redis":
@@ -245,8 +245,8 @@ def create_app(
                         batch_validator,
                         **dispatcher_options,
                     )
-                # Una base sin 0018–0021 es un error de despliegue y debe impedir
-                # que la API aparente estar lista en cualquier modo consumidor.
+                # A database without 0018–0021 is a deployment error and must keep
+                # the API from appearing ready in any consumer mode.
                 await dispatcher.preflight()
                 dispatcher_task = asyncio.create_task(
                     dispatcher.run(),
@@ -254,8 +254,8 @@ def create_app(
                 )
                 app.state.realtime_outbox_dispatcher = dispatcher
                 app.state.realtime_outbox_dispatcher_task = dispatcher_task
-                # El servidor no queda listo antes de que la tarea haya podido
-                # entrar a su loop y exponer ``running=True``.
+                # The server is not ready before the task has been able to
+                # enter its loop and expose ``running=True``.
                 await asyncio.sleep(0)
 
             retention_days = (
@@ -283,10 +283,10 @@ def create_app(
 
             scheduled_mode = resolved_settings.scheduled_actions_mode
 
-            # La cola se escribe incluso en off; su esquema, reconciliación y
-            # retención son obligatorios en los tres modos. Repetir la reparación
-            # al arrancar cierra ofertas creadas por la versión anterior después
-            # del backfill de 0022.
+            # The queue is written even in off mode; its schema, reconciliation and
+            # retention are required in all three modes. Repeating the repair
+            # on startup closes offers created by the previous version after
+            # the 0022 backfill.
             scheduled_retention_worker = TerminalScheduledActionsRetentionWorker(
                 resolved_session_factory,
                 retention_days=(
@@ -355,9 +355,9 @@ def create_app(
                     ),
                 )
                 await scheduled_worker.preflight()
-                # Shadow conserva el timer legacy, pero también ejecuta la copia
-                # durable. La carrera es idempotente y evita acumular un backlog
-                # que bloquearía la promoción o un rollback desde live.
+                # Shadow keeps the legacy timer, but also runs the durable
+                # copy. The race is idempotent and avoids accumulating a backlog
+                # that would block the promotion or a rollback from live.
                 scheduled_task = asyncio.create_task(
                     scheduled_worker.run(),
                     name=f"scheduled-actions-{scheduled_mode}-worker",
@@ -376,13 +376,13 @@ def create_app(
 
             yield
         finally:
-            # Los timers HTTP/WS pueden sobrevivir a su request original. Se
-            # cierran antes del dispatcher para que ningún productor quede
-            # escribiendo en la outbox durante el apagado.
+            # HTTP/WS timers may outlive their original request. They are
+            # closed before the dispatcher so no producer keeps
+            # writing to the outbox during shutdown.
             await rides.shutdown_expiry_tasks()
             await presence.shutdown_presence_tasks()
-            # El scheduler puede producir outbox: se detiene y espera antes de
-            # cerrar el dispatcher que entrega sus eventos.
+            # The scheduler can produce outbox events: it is stopped and awaited before
+            # closing the dispatcher that delivers its events.
             if scheduled_worker is not None:
                 scheduled_worker.stop()
             if scheduled_retention_worker is not None:
@@ -487,9 +487,9 @@ def create_app(
         async with resolved_session_factory() as session:
             yield session
 
-    # ``create_app`` es la raíz de composición. Sus argumentos deben gobernar
-    # también las dependencias HTTP/WS; de otro modo el lifecycle podría estar
-    # en live mientras los recorders y el handshake siguen en ``off``.
+    # ``create_app`` is the composition root. Its arguments must also govern
+    # the HTTP/WS dependencies; otherwise the lifecycle could be
+    # in live mode while the recorders and the handshake are still ``off``.
     app.dependency_overrides[get_settings] = lambda: resolved_settings
     app.dependency_overrides[get_session_factory] = lambda: resolved_session_factory
     app.dependency_overrides[get_session] = resolved_get_session

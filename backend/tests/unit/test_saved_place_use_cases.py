@@ -1,4 +1,4 @@
-"""Tests unitarios de los casos de uso de lugares guardados (dobles en memoria)."""
+"""Unit tests of the saved places use cases (in-memory doubles)."""
 
 from __future__ import annotations
 

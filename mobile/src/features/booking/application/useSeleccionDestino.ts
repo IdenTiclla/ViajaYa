@@ -4,7 +4,7 @@ import { conTiempoLimite } from '@/core/async/conTiempoLimite';
 import { getBoliviaPlaceError } from '@/features/booking/domain/bolivia';
 import type { Place, PlaceSuggestion } from '@/features/booking/domain/types';
 
-/** Solo la selección vigente puede fijar un destino o mostrar un error. */
+/** Only the current selection can set a destination or show an error. */
 export function useSeleccionDestino(
   resolver: (sugerencia: PlaceSuggestion) => Promise<Place | null>,
   alSeleccionar: (lugar: Place) => void,

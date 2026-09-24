@@ -1,6 +1,6 @@
 /**
- * Acceso HTTP a la API de viajes (usa el cliente axios único con Bearer/refresh).
- * Mapea el contrato del backend (`/rides`) a/desde los tipos del dominio móvil.
+ * HTTP access to the rides API (uses the single axios client with Bearer/refresh).
+ * Maps the backend contract (`/rides`) to/from the mobile domain types.
  */
 import { api } from '@/core/http/client';
 import {

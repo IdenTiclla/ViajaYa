@@ -1,4 +1,4 @@
-"""Pruebas del metadata SQLAlchemy de la outbox durable."""
+"""Tests of the durable outbox's SQLAlchemy metadata."""
 
 from __future__ import annotations
 

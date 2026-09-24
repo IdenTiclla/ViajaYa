@@ -34,7 +34,7 @@ _OPERATION_TIMEOUT_SECONDS = 20.0
 
 @asynccontextmanager
 async def _serve(app) -> AsyncIterator[str]:
-    """Levanta Uvicorn en loopback y un puerto efímero durante la prueba."""
+    """Start Uvicorn on loopback and an ephemeral port during the test."""
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     listener.bind(("127.0.0.1", 0))

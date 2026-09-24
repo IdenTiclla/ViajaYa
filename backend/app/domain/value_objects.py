@@ -1,4 +1,4 @@
-"""Value objects del dominio: encapsulan validación de reglas de negocio."""
+"""Domain value objects: they encapsulate business-rule validation."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 @dataclass(frozen=True, slots=True)
 class Email:
-    """Correo electrónico normalizado y validado."""
+    """Normalized, validated email address."""
 
     value: str
 
@@ -25,7 +25,7 @@ class Email:
         normalized = self.value.strip().lower()
         if not _EMAIL_RE.match(normalized):
             raise InvalidEmailError(f"Correo inválido: {self.value!r}")
-        # frozen dataclass: asignamos vía object.__setattr__
+        # frozen dataclass: we assign via object.__setattr__
         object.__setattr__(self, "value", normalized)
 
     def __str__(self) -> str:  # pragma: no cover - trivial
@@ -34,7 +34,7 @@ class Email:
 
 @dataclass(frozen=True, slots=True)
 class GeoPoint:
-    """Coordenadas geográficas validadas dentro de su rango admisible."""
+    """Geographic coordinates validated within their allowed range."""
 
     latitude: float
     longitude: float
@@ -48,7 +48,7 @@ class GeoPoint:
 
 @dataclass(frozen=True, slots=True)
 class ServiceAreaPoint:
-    """Coordenadas válidas dentro del país donde opera ViajaYa."""
+    """Valid coordinates inside the country where ViajaYa operates."""
 
     latitude: float
     longitude: float
@@ -58,15 +58,15 @@ class ServiceAreaPoint:
         GeoPoint(self.latitude, self.longitude)
         if self.country_code and self.country_code.strip().upper() != "BO":
             raise InvalidLocationError("ViajaYa opera actualmente solo dentro de Bolivia.")
-        # El codigo de pais es solo una pista del cliente. El contorno versionado
-        # es la autoridad, incluso si el cliente lo omite o afirma que es BO.
+        # The country code is only a hint from the client. The versioned outline
+        # is the authority, even if the client omits it or claims it is BO.
         if not bolivia_covers(self.latitude, self.longitude):
             raise InvalidLocationError("El origen y el destino deben estar dentro de Bolivia.")
 
 
 @dataclass(frozen=True, slots=True)
 class FareOffer:
-    """Monto ofertado por el pasajero. Debe ser estrictamente positivo."""
+    """Fare offered by the passenger. It must be strictly positive."""
 
     amount: Decimal
 

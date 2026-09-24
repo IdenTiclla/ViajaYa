@@ -4,11 +4,11 @@ import { Tabs } from 'expo-router/js-tabs';
 import { PillTabBar } from '@/core/components/PillTabBar';
 
 /**
- * Navegación principal del conductor: Solicitudes / Historial / Ganancias / Perfil.
+ * Driver's main navigation: Solicitudes / Historial / Ganancias / Perfil.
  *
- * El tab activo lleva el pill amarillo Stitch (ver PillTabBar). "Solicitudes" es
- * la pantalla inicial al ingresar (redirect en app/index.tsx). "index" queda como
- * redirect oculto (`tabBarButton: () => null`) del segmento base hacia Solicitudes.
+ * The active tab carries the Stitch yellow pill (see PillTabBar). "Solicitudes" is
+ * the initial screen on entry (redirect in app/index.tsx). "index" stays as a
+ * hidden redirect (`tabBarButton: () => null`) from the base segment to Solicitudes.
  */
 export default function DriverTabsLayout() {
   return (

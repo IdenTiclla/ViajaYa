@@ -1,4 +1,4 @@
-"""Orden de entrega entre snapshots WebSocket y eventos concurrentes."""
+"""Delivery order between WebSocket snapshots and concurrent events."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-/** Respaldo HTTP de geocodificación para dispositivos cuyo geocoder nativo falla. */
+/** HTTP geocoding fallback for devices whose native geocoder fails. */
 import { api } from '@/core/http/client';
 import { env } from '@/core/config/env';
 import type { Coordinates, PlaceLabel } from '@/core/domain/geo';
@@ -116,8 +116,8 @@ function seleccionarMejorResultado(
     const calidad = calidadResultado(resultado);
     const candidata = { etiqueta, calidad };
 
-    // La primera calle conserva la cercanía/relevancia del orden de Google. No
-    // desplazamos una vía cercana solo porque otra posterior tenga numeración.
+    // The first street keeps the closeness/relevance of Google's order. We do not
+    // displace a nearby street just because a later one has house numbers.
     if (calidad === 'calle') return candidata;
     if (calidad === 'lugar' && !mejorLugar) mejorLugar = candidata;
     if (calidad === 'area' && !mejorArea) mejorArea = candidata;

@@ -1,4 +1,4 @@
-"""Caso de uso: vencer una oferta y completar su acción en una sola UoW."""
+"""Use case: expire an offer and complete its action in a single UoW."""
 
 from __future__ import annotations
 

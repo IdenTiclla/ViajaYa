@@ -1,4 +1,4 @@
-"""Caso de uso: un conductor oculta una versión de una solicitud del pool."""
+"""Use case: a driver hides a version of a request from the pool."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ class DismissOpenRide:
             or ride.paused
             or not driver_can_serve(driver, ride.service_type)
         ):
-            # No revelamos ni permitimos descartar algo que no esté en su pool.
+            # We neither reveal nor allow dismissing anything that is not in their pool.
             raise RideNotFoundError("La solicitud abierta no existe.")
 
         await self._rides.dismiss_open_ride_for_driver(driver.id, ride.id, ride.pool_version)

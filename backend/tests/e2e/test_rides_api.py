@@ -1,4 +1,4 @@
-"""Tests e2e de los endpoints de viajes."""
+"""E2E tests of the ride endpoints."""
 
 from __future__ import annotations
 

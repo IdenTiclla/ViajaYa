@@ -1,8 +1,8 @@
-"""Adaptadores one-shot para probar resiliencia realtime fuera de producción.
+"""One-shot adapters to test realtime resilience outside production.
 
-Este módulo vive bajo ``scripts`` y no forma parte del paquete ``app``. No lee
-variables de entorno ni expone controles remotos: el runner de smoke conserva
-una referencia directa al controlador y arma cada fallo de forma explícita.
+This module lives under ``scripts`` and is not part of the ``app`` package. It reads no
+environment variables and exposes no remote controls: the smoke runner keeps
+a direct reference to the controller and arms each fault explicitly.
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ _QUARANTINE_REASON = "Fallo de cuarentena inyectado por el smoke realtime."
 
 @dataclass(frozen=True, slots=True)
 class RealtimeFaultPlan:
-    """Plan exacto y observable; ``hit`` cambia una sola vez por armado."""
+    """Exact, observable plan; ``hit`` changes only once per arming."""
 
     action: RealtimeFaultAction
     event_type: str
@@ -52,14 +52,14 @@ class RealtimeFaultPlan:
 
 @dataclass(frozen=True, slots=True)
 class RealtimeFaultMatch:
-    """Resultado estable de consumir un plan y su primer evento objetivo."""
+    """Stable result of consuming a plan and its first target event."""
 
     plan: RealtimeFaultPlan
     event_id: uuid.UUID
 
 
 class RealtimeFaultController:
-    """Arma y consume exactamente una coincidencia de forma thread-safe."""
+    """Arm and consume exactly one match in a thread-safe way."""
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -72,7 +72,7 @@ class RealtimeFaultController:
             return self._plan
 
     def arm(self, plan: RealtimeFaultPlan) -> None:
-        """Arma un plan nuevo sin sobrescribir otro que todavía no hizo hit."""
+        """Arm a new plan without overwriting another that has not hit yet."""
         if plan.hit:
             raise ValueError("No se puede armar un plan que ya declara hit.")
         with self._lock:
@@ -86,7 +86,7 @@ class RealtimeFaultController:
         *,
         allowed_actions: Collection[RealtimeFaultAction],
     ) -> RealtimeFaultMatch | None:
-        """Consume el plan si acción, event_type y topic coinciden exactamente."""
+        """Consume the plan if action, event_type and topic match exactly."""
         with self._lock:
             plan = self._plan
             if plan is None or plan.hit or plan.action not in allowed_actions:
@@ -110,7 +110,7 @@ class RealtimeFaultController:
 
 
 class FaultInjectingRealtimeOutboxBatchValidator(RealtimeOutboxBatchValidator):
-    """Decora el validador canónico e inyecta una cuarentena one-shot."""
+    """Wrap the canonical validator and inject a one-shot quarantine."""
 
     def __init__(
         self,
@@ -121,8 +121,8 @@ class FaultInjectingRealtimeOutboxBatchValidator(RealtimeOutboxBatchValidator):
         self._controller = controller
 
     def validate(self, events: Sequence[RealtimeOutboxEvent]) -> None:
-        # Un lote genuinamente inválido conserva siempre su error canónico y no
-        # consume el plan de smoke.
+        # A genuinely invalid batch always keeps its canonical error and does not
+        # consume the smoke plan.
         self._delegate.validate(events)
         match = self._controller.consume(
             events,
@@ -136,7 +136,7 @@ class FaultInjectingRealtimeOutboxBatchValidator(RealtimeOutboxBatchValidator):
 
 
 class FaultInjectingRealtimeOutboxBatchPublisher(RealtimeOutboxBatchPublisher):
-    """Inyecta un fallo de entrega y delega cualquier publicación normal."""
+    """Inject a delivery failure and delegate any normal publication."""
 
     def __init__(
         self,
@@ -173,8 +173,8 @@ class FaultInjectingRealtimeOutboxBatchPublisher(RealtimeOutboxBatchPublisher):
             await self._delegate.publish(events)
             return
 
-        # Serializar el lote completo antes del primer broadcast conserva la
-        # garantía productiva de no entregar parcialmente un contrato inválido.
+        # Serializing the whole batch before the first broadcast keeps the
+        # production guarantee of never partially delivering an invalid contract.
         envelopes = serialize_realtime_outbox_batch_v2(events)
         skipped = False
         for event, envelope in zip(events, envelopes, strict=True):

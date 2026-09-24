@@ -1,4 +1,4 @@
-"""Pruebas del snapshot realtime consumido por los parsers mobile."""
+"""Tests of the realtime snapshot consumed by the mobile parsers."""
 
 from __future__ import annotations
 

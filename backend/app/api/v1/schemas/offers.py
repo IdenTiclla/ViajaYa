@@ -1,6 +1,6 @@
-"""Schemas Pydantic de la API de ofertas (contrato HTTP).
+"""Pydantic schemas of the offers API (HTTP contract).
 
-Separados de las entidades de dominio.
+Separate from the domain entities.
 """
 
 from __future__ import annotations
@@ -17,10 +17,10 @@ from app.domain.ride_policy import offer_expires_at
 
 
 class OfferCreate(BaseModel):
-    """Oferta de un conductor: aceptar al precio del pasajero o contraofertar.
+    """A driver's offer: accept at the passenger's price or counter-offer.
 
-    Si ``accept_at_fare`` es ``True`` se ignora ``price`` (se toma el del viaje).
-    Si es ``False`` (contraoferta) ``price`` es obligatorio.
+    If ``accept_at_fare`` is ``True``, ``price`` is ignored (the ride's is used).
+    If it is ``False`` (counter-offer), ``price`` is required.
     """
 
     accept_at_fare: bool = True
@@ -36,7 +36,7 @@ class OfferCreate(BaseModel):
 
 
 class OfferDriverSchema(BaseModel):
-    """Datos públicos del conductor que hace la oferta."""
+    """Public data of the driver making the offer."""
 
     id: uuid.UUID
     full_name: str
@@ -54,7 +54,7 @@ class OfferResponse(BaseModel):
     status: OfferStatus
     driver: OfferDriverSchema
     created_at: UtcAwareDatetime | None
-    # Cuándo expira la oferta (created_at + 30 s); alimenta el contador.
+    # When the offer expires (created_at + 30 s); drives the countdown.
     expires_at: UtcAwareDatetime | None
 
     @classmethod

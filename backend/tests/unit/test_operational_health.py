@@ -1,4 +1,4 @@
-"""Pruebas de liveness y readiness operativos de la API."""
+"""Tests of the API's operational liveness and readiness."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Certificación PostgreSQL de la migración y el claim de la outbox 0018."""
+"""PostgreSQL certification of the 0018 outbox migration and claim."""
 
 from __future__ import annotations
 

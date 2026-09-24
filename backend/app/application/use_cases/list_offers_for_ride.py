@@ -1,7 +1,7 @@
-"""Caso de uso: el pasajero lista las ofertas vivas de su viaje.
+"""Use case: the passenger lists the live offers on their ride.
 
-Incluye las ofertas ``PENDING`` (esperando decisión del pasajero) cuya ventana
-de tiempo (30 s) siga vigente.
+Includes the ``PENDING`` offers (waiting for the passenger's decision) whose time
+window (30 s) is still open.
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ class ListOffersForRide:
         offers = await self._offers.list_by_ride(ride_id)
         details: list[OfferDetail] = []
         for offer in offers:
-            # Solo ofertas vivas: PENDING y sin vencer.
+            # Live offers only: PENDING and not expired.
             if not is_offer_active(offer):
                 continue
             driver = await self._users.get_by_id(offer.driver_id)

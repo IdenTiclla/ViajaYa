@@ -1,11 +1,11 @@
 import { useOfferComposer } from './useOfferComposer';
 /**
- * Solicitudes entrantes (conductor) — diseño Material-You.
+ * Incoming requests (driver) — Material You design.
  *
- * Tres estados: viaje activo → seguimiento; sin solicitudes → mapa con radar y
- * estado compacto; con solicitudes → cabecera glass
- * + toggle Lista/Mapa y tarjetas translúcidas. El conductor **oferta** (no
- * asigna): Enviar oferta deja la tarjeta en "Oferta enviada" y sigue viendo otras.
+ * Three states: active ride → tracking; no requests → map with radar and
+ * a compact status; with requests → glass header
+ * + List/Map toggle and translucent cards. The driver **offers** (does not
+ * assign): Enviar oferta leaves the card on "Oferta enviada" and they keep seeing others.
  */
 import { Ionicons, type IoniconsIconName } from '@react-native-vector-icons/ionicons';
 import { useIsFocused, useRouter } from 'expo-router';
@@ -111,13 +111,13 @@ export function SolicitudesEntrantesScreen() {
   const openRidesQuery = useOpenRides(openRidesEnabled);
   const rides = openRidesQuery.rides;
   const createOffer = useOfferComposer();
-  // Ubicación continua (navegación): el mapa sigue al conductor centrado en el
-  // estado de búsqueda y detrás de la lista de solicitudes.
+  // Continuous location (navigation): the map follows the driver, centered, in the
+  // searching state and behind the requests list.
   const position = useWatchPosition(enfocada && !activeRide && !pendingRatingRide);
 
   const dismissed = useDriverRequests((s) => s.dismissed);
-  // Autocuración: expira en cliente las ofertas vencidas si se perdió el WS
-  // (p. ej. el conductor cambió de cuenta durante los 30 s de la oferta).
+  // Self-healing: expires on the client the offers that ran out if the WS was lost
+  // (e.g. the driver switched accounts during the offer's 30 s).
   useAutoExpireOffers();
   const rejected = useDriverRequests((s) => s.rejected);
   const expired = useDriverRequests((s) => s.expired);
@@ -134,9 +134,9 @@ export function SolicitudesEntrantesScreen() {
   const [mode, setMode] = useState<ViewMode>('list');
   const [priceInputFor, setPriceInputFor] = useState<OpenRide | null>(null);
   const [customPrice, setCustomPrice] = useState('');
-  // Ride a seleccionar al abrir el mapa desde la lista (toca una tarjeta).
+  // Ride to select when opening the map from the list (tap a card).
   const [selectedForMap, setSelectedForMap] = useState<string | null>(null);
-  // Feedback efímero "Oferta enviada" al enviar una oferta.
+  // Ephemeral "Oferta enviada" feedback when sending an offer.
   const [offerSent, setOfferSent] = useState(false);
 
   const visibleRides = useMemo(
@@ -153,10 +153,10 @@ export function SolicitudesEntrantesScreen() {
     }
   }, [openRidesQuery]);
 
-  // El backend puede filtrar por presencia después de resolver el cursor y
-  // devolver una página vacía con continuación. Sigue avanzando hasta hallar
-  // una solicitud visible o agotar páginas, sin solapar peticiones ni reintentar
-  // automáticamente una página que ya falló.
+  // The backend may filter by presence after resolving the cursor and
+  // return an empty page with a continuation. Keep advancing until finding
+  // a visible request or running out of pages, without overlapping requests or
+  // automatically retrying a page that already failed.
   useEffect(() => {
     if (openRidesEnabled && visibleRides.length === 0) {
       loadMoreOpenRides();
@@ -166,7 +166,7 @@ export function SolicitudesEntrantesScreen() {
   // Only the request being submitted is busy; other passengers remain available.
   const pendingRideIds = createOffer.pendingRideIds;
 
-  // Ofertar NO saca al conductor de la lista: la tarjeta pasa a "Oferta enviada".
+  // Offering does NOT take the driver out of the list: the card switches to "Oferta enviada".
   const acceptAtFare = (ride: OpenRide) => {
     if (createOffer.isRidePending(ride.id)) return;
     const attemptToken = beginOfferAttempt(ride.id);
@@ -190,7 +190,7 @@ export function SolicitudesEntrantesScreen() {
     );
   };
 
-  // Contraoferta rápida (+Bs): envía al instante precio = oferta del pasajero + delta.
+  // Quick counter-offer (+Bs): instantly sends price = passenger's fare + delta.
   const quickAdd = (ride: OpenRide, delta: number) => {
     if (createOffer.isRidePending(ride.id)) return;
     const price = Math.round((ride.fare + delta) * 100) / 100;
@@ -247,7 +247,7 @@ export function SolicitudesEntrantesScreen() {
     );
   };
 
-  // Retira la oferta enviada a una solicitud (desde la lista o el mapa).
+  // Withdraw the offer sent to a request (from the list or the map).
   const withdraw = (ride: OpenRide) => {
     const offer = useDriverRequests.getState().getOffer(ride.id);
     if (!offer) return;
@@ -279,16 +279,16 @@ export function SolicitudesEntrantesScreen() {
     });
   };
 
-  // Lista: al tocar una tarjeta abre SIEMPRE el mapa con esa solicitud seleccionada
-  // (sin importar su estado). El estado se ve en la card del mapa; desde ahí, al
-  // tocarla, se abre la pantalla de estado (openStatus).
+  // List: tapping a card ALWAYS opens the map with that request selected
+  // (regardless of its status). The status shows on the map card; from there,
+  // tapping it opens the status screen (openStatus).
   const openInMap = (ride: OpenRide) => {
     setSelectedForMap(ride.id);
     setMode('map');
   };
 
-  // Mapa: al tocar la card flotante de una oferta enviada/expirada/rechazada, abre
-  // la pantalla de estado (esperando confirmación).
+  // Map: tapping the floating card of a sent/expired/rejected offer opens
+  // the status screen (waiting for confirmation).
   const openStatus = (ride: OpenRide) => {
     if (isOffered(ride.id) || rejected.has(ride.id) || expired.has(ride.id)) {
       router.push({ pathname: '/(driver)/oferta-enviada', params: { rideId: ride.id } });
@@ -734,7 +734,7 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   },
   scrim: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
 
-  // Estado "con solicitudes" — modo lista (sobre el mapa de fondo).
+  // "With requests" state — list mode (over the background map).
   list: { flex: 1 },
   listContent: { paddingHorizontal: spacing.sm, gap: spacing.sm, paddingBottom: spacing.xxl },
   pageLoader: { marginVertical: spacing.md },

@@ -1,8 +1,8 @@
 import type { Coordinates } from '@/core/domain/geo';
 
 export type PosicionTooltip = 'arriba' | 'abajo';
-// Una sola escala visual para todos los mapas, sin variantes por rol o pantalla.
-// Medidas lógicas: react-native-maps aplica la densidad nativa de cada dispositivo.
+// A single visual scale for every map, with no variants per role or screen.
+// Logical sizes: react-native-maps applies each device's native density.
 export const ANCHO_RUTA = 3;
 export const ANCHO_CONTORNO_RUTA = 5;
 export const TAMANO_PIN_RUTA = 16;
@@ -35,7 +35,7 @@ export function longitudeDelta(from: number, to: number): number {
   return ((to - from + 540) % 360) - 180;
 }
 
-/** Proyección cenital de Google Maps en unidades lógicas, relativa al pin. */
+/** Top-down Google Maps projection in logical units, relative to the pin. */
 export function proyectarRutaRespectoAlPin(
   punto: Coordinates,
   ruta: readonly Coordinates[],
@@ -55,7 +55,7 @@ export function proyectarRutaRespectoAlPin(
   });
 }
 
-/** Busca espacio para toda la etiqueta, incluyendo Editar, frente a cada tramo. */
+/** Find room for the whole label, including Editar, in front of every segment. */
 export function ubicarTooltipSinCruzarRuta(
   ruta: readonly PuntoMapa[],
   medidas: MedidasEtiqueta,
@@ -67,8 +67,8 @@ export function ubicarTooltipSinCruzarRuta(
   for (let i = 1; i < ruta.length; i += 1) {
     const a = ruta[i - 1];
     const b = ruta[i];
-    // Recorta el segmento contra la franja horizontal del tooltip: comprobar
-    // solo vértices omitiría una calle larga que cruza por detrás del texto.
+    // Clip the segment against the tooltip's horizontal band: checking
+    // only vertices would miss a long street crossing behind the text.
     const dx = b.x - a.x;
     let inicio = 0;
     let fin = 1;
@@ -103,15 +103,15 @@ export function ubicarTooltipSinCruzarRuta(
   const alternativa = separacionLibre(opuesta);
   const posicion = principal <= alternativa ? preferida : opuesta;
   const separacion = Math.min(principal, alternativa);
-  // Con un zoom demasiado lejano puede no caber ninguna etiqueta. Priorizamos
-  // la ruta y dejamos su título nativo disponible al tocar A/B; nunca creamos
-  // un bitmap gigante ni colocamos texto encima del trayecto como fallback.
+  // At a zoom that is too far out no label may fit. We prioritize
+  // the route and keep its native title available when tapping A/B; we never create
+  // a giant bitmap nor place text over the route as a fallback.
   return separacion <= SEPARACION_MAXIMA_TOOLTIP
     ? { posicion, separacion, visible: true }
     : { posicion: preferida, separacion: SEPARACION_TOOLTIP, visible: false };
 }
 
-/** Coloca el texto al lado opuesto del tramo que entra o sale del punto. */
+/** Place the text on the side opposite the segment entering or leaving the point. */
 export function elegirPosicionTooltip(
   kind: 'A' | 'B',
   punto: Coordinates,
@@ -123,8 +123,8 @@ export function elegirPosicionTooltip(
   const rumbo = rumboMapa * Math.PI / 180;
   let este = 0;
   let norte = 0;
-  // Omite duplicados y el pequeño ajuste del proveedor a la calle. Usar el
-  // extremo opuesto fallaría en rutas que primero doblan en otra dirección.
+  // Skip duplicates and the provider's small snap to the street. Using the
+  // opposite end would fail on routes that first turn in another direction.
   for (let i = 0; i < ruta.length; i += 1) {
     const vecino = ruta[kind === 'A' ? i : ruta.length - 1 - i];
     este = (vecino.longitude - punto.longitude) * cosLatitud;
@@ -133,15 +133,15 @@ export function elegirPosicionTooltip(
   }
   const longitud = Math.hypot(este, norte);
   if (longitud === 0) return preferida;
-  // El rumbo de la cámara también cuenta: tras girar el mapa, norte geográfico
-  // ya no coincide con arriba de la pantalla. Un tramo horizontal usa el lado
-  // estable de cada letra para que las etiquetas no oscilen por redondeo.
+  // The camera bearing also counts: after rotating the map, geographic north
+  // no longer matches the top of the screen. A horizontal segment uses each letter's
+  // stable side so labels do not flip due to rounding.
   const haciaArriba = norte * Math.cos(rumbo) + este * Math.sin(rumbo);
   if (Math.abs(haciaArriba) < longitud * 0.1) return preferida;
   return haciaArriba > 0 ? 'abajo' : 'arriba';
 }
 
-/** Mantiene el centro del símbolo sobre la coordenada, incluso con varias líneas. */
+/** Keep the symbol's center on the coordinate, even with several lines. */
 export function calcularAnclajePin(altura: number, posicion: PosicionTooltip) {
   const alturaReal = Math.max(altura, TAMANO_PIN_RUTA);
   const centroPin = posicion === 'arriba'
@@ -150,7 +150,7 @@ export function calcularAnclajePin(altura: number, posicion: PosicionTooltip) {
   return { x: 0.5, y: centroPin / alturaReal };
 }
 
-/** Da margen al layout nativo antes de regenerar el bitmap de Google Maps. */
+/** Give the native layout room before regenerating the Google Maps bitmap. */
 export function programarRedibujadoMarcador(
   redibujar: () => void,
   pedirFrame = requestAnimationFrame,

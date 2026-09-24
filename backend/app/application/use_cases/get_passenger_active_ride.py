@@ -1,4 +1,4 @@
-"""Caso de uso: recuperar el viaje vigente del pasajero."""
+"""Use case: recover the passenger's current ride."""
 
 from __future__ import annotations
 

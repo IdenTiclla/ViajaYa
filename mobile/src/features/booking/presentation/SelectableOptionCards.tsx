@@ -21,7 +21,7 @@ type Props<T extends string> = {
   columns?: 2;
 };
 
-/** Tarjetas uniformes para elegir una única opción dentro de un formulario. */
+/** Uniform cards to pick a single option within a form. */
 export function SelectableOptionCards<T extends string>({ options, value, onChange, disabled = false, columns }: Props<T>) {
   const { colors, styles, estiloFoco } = useEstilos(crearEstilos);
   const { fontScale } = useWindowDimensions();

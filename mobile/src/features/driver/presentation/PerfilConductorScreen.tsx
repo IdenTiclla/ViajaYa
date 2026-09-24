@@ -1,5 +1,5 @@
 /**
- * Perfil del conductor — datos de cuenta, vehículo y cierre de sesión.
+ * Driver profile — account data, vehicle and sign-out.
  */
 import { Ionicons, type IoniconsIconName } from '@react-native-vector-icons/ionicons';
 import { useRouter } from 'expo-router';

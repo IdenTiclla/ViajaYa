@@ -1,7 +1,7 @@
 /**
- * Muestra los toasts del conductor (desenlaces de oferta) en la parte superior,
- * estilo Material-You glass, con auto-descarte a los 3.5 s. Se monta en el layout
- * del conductor para aparecer sobre cualquier pantalla (lista, mapa, inicio).
+ * Show the driver's toasts (offer outcomes) at the top,
+ * Material You glass style, auto-dismissed after 3.5 s. Mounted in the driver's
+ * layout so it appears over any screen (list, map, home).
  */
 import { Ionicons, type IoniconsIconName } from '@react-native-vector-icons/ionicons';
 import { useEffect } from 'react';

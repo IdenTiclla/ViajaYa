@@ -18,7 +18,7 @@ type Props = {
   tipoVehiculo: VehicleType | null;
 };
 
-/** La posición y la rotación pertenecen al mapa nativo, no a un overlay de pantalla. */
+/** Position and rotation belong to the native map, not to a screen overlay. */
 export function MarcadorVehiculo({ coordinates, heading, tipoVehiculo, label, opacity = 1 }: Props) {
   const { styles, modo } = useEstilos(crearEstilos);
   const marcador = useRef<MapMarker>(null);
@@ -52,10 +52,10 @@ export function MarcadorVehiculo({ coordinates, heading, tipoVehiculo, label, op
   const etiqueta = orientado
     ? `Tu ${tipoVehiculo === 'moto' ? 'moto' : 'taxi'}`
     : 'Tu ubicación, orientación no disponible';
-  // El giro solo cambia una propiedad nativa: conserva el árbol del dibujo.
+  // Rotating only changes a native property: it keeps the drawing's tree.
   const contenido = useMemo(() => (
     <View collapsable={false} style={styles.marco}>
-      {/* Ambos slots permanecen montados para mantener estable el bitmap de Fabric. */}
+      {/* Both slots stay mounted to keep the Fabric bitmap stable. */}
       <View style={[styles.vehiculo, { opacity: hasVehicle ? 1 : 0 }]}>
         <VehiculoMapa tipo={tipoVehiculo ?? 'taxi'} />
         <View style={[styles.frente, { opacity: orientado ? 1 : 0 }]} />

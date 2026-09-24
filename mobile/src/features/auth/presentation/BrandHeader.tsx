@@ -5,7 +5,7 @@ import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/
 
 type Props = { title?: string; subtitle?: string };
 
-/** Logo + marca ViajaYa usado en las pantallas de autenticación. */
+/** ViajaYa logo + brand used on the authentication screens. */
 export function BrandHeader({ title = 'ViajaYa', subtitle }: Props) {
   const { colors, styles } = useEstilos(crearEstilos);
   return (

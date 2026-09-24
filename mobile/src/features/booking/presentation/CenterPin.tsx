@@ -1,9 +1,9 @@
 /**
- * Pin fijo en el centro del mapa: el usuario mueve el mapa por debajo y el pin
- * marca siempre el centro geográfico (que coincide con el centro de la cámara).
- * No captura toques (`pointerEvents="none"`) para no interferir con el gesto del
- * mapa. El extremo del tallo se ancla al 50% del mapa, independientemente de la
- * altura de la etiqueta o del tamaño de texto elegido en el teléfono.
+ * Pin fixed at the center of the map: the user moves the map underneath and the pin
+ * always marks the geographic center (which matches the camera center).
+ * It does not capture touches (`pointerEvents="none"`) so it does not interfere with the
+ * map gesture. The tip of the stem is anchored at 50% of the map, regardless of the
+ * label's height or the text size chosen on the phone.
  */
 import { StyleSheet, Text, View } from 'react-native';
 

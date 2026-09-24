@@ -1,7 +1,7 @@
 /**
- * Hooks del cierre del viaje: historial, ganancias del conductor y calificación.
- * El historial y las ganancias se consultan con React Query; la calificación es
- * una mutación que invalida el viaje y el historial para reflejar el cambio.
+ * Ride-closing hooks: history, driver earnings and rating.
+ * History and earnings are queried with React Query; rating is
+ * a mutation that invalidates the ride and the history to reflect the change.
  */
 import {
   useInfiniteQuery,
@@ -15,7 +15,7 @@ import { actualizarTrasCalificacion } from '@/features/rides/application/actuali
 import { ridesRepository } from '@/features/rides/data/ridesRepository';
 import type { RatingInput, RideStatus } from '@/features/rides/domain/types';
 
-/** Historial de viajes del usuario (pasajero o conductor), filtrable por estado. */
+/** The user's ride history (passenger or driver), filterable by status. */
 export function useRideHistory(status?: RideStatus) {
   const query = useInfiniteQuery({
     queryKey: ['ride-history', status ?? 'all'],
@@ -31,7 +31,7 @@ export function useRideHistory(status?: RideStatus) {
   };
 }
 
-/** Resumen de ganancias del conductor (hoy, histórico y viajes recientes). */
+/** The driver's earnings summary (today, all-time and recent rides). */
 export function useDriverEarnings(enabled = true) {
   return useQuery({
     queryKey: ['driver-earnings'],
@@ -40,7 +40,7 @@ export function useDriverEarnings(enabled = true) {
   });
 }
 
-/** Califica al otro participante tras completarse el viaje. */
+/** Rate the other participant after the ride is completed. */
 export function useRateRide() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -54,7 +54,7 @@ export function useRateRide() {
   });
 }
 
-/** Omite de forma explícita la calificación y cierra el pendiente en servidor. */
+/** Explicitly skip the rating and close the pending item on the server. */
 export function useSkipRating() {
   const queryClient = useQueryClient();
   return useMutation({

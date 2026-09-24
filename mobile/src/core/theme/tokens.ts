@@ -1,6 +1,6 @@
 /**
- * Design tokens de ViajaYa, derivados del diseño en Stitch.
- * Única fuente de verdad de colores, espaciado, tipografía y radios (DRY).
+ * ViajaYa design tokens, derived from the Stitch design.
+ * Single source of truth for colors, spacing, typography and radii (DRY).
  */
 
 export const coloresClaros = {
@@ -44,7 +44,7 @@ export const coloresClaros = {
   mapaEtiqueta: '#536174',
   mapaContorno: '#FFFFFF',
   mapaParque: '#D8E8DE',
-  // Detalles del vehículo: conservan su identidad sobre ambos estilos de mapa.
+  // Vehicle details: they keep their identity on both map styles.
   vehiculoContorno: '#162238',
   vehiculoReflejo: '#E8F7FF',
 
@@ -90,7 +90,7 @@ export const coloresOscuros: Colors = {
   mapaParque: '#203A34',
 };
 
-/** Claro es el valor inicial de la app, independiente del teléfono. */
+/** Light is the app's initial value, independent of the phone. */
 export const TEMA_PREDETERMINADO: ModoTema = 'light';
 
 export function resolverModoTema(valor: unknown): ModoTema {
@@ -140,7 +140,7 @@ export const fontWeight = {
   bold: '700',
 } as const;
 
-/** Tamaño táctil mínimo; la altura puede crecer con el texto del sistema. */
+/** Minimum touch size; the height can grow with the system text. */
 export const controles = { altoMinimo: 48 } as const;
 
 export type Spacing = typeof spacing;

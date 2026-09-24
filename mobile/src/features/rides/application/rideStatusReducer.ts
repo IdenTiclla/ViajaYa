@@ -15,8 +15,8 @@ export function isTerminalRide(ride: Ride | null | undefined): boolean {
 }
 
 /**
- * Un estado conocido no puede retroceder por un evento o una respuesta HTTP
- * atrasada. `cancelled` es una salida lateral válida desde un no terminal.
+ * A known status cannot go backwards because of a late event or HTTP
+ * response. `cancelled` is a valid side exit from a non-terminal status.
  */
 export function shouldApplyRideStatus(
   current: Ride | null | undefined,
@@ -41,8 +41,8 @@ export type RideMutationReduction = {
 };
 
 /**
- * Resuelve una respuesta HTTP de mutación contra el estado que pudo adelantar
- * el WebSocket mientras la petición seguía pendiente.
+ * Resolve an HTTP mutation response against the state the WebSocket
+ * may have advanced while the request was still pending.
  */
 export function reduceRideMutationResult(
   current: Ride | null | undefined,
@@ -55,8 +55,8 @@ export function reduceRideMutationResult(
 }
 
 /**
- * Escribe el resultado HTTP solo si el detalle canónico no contiene ya un
- * terminal más nuevo recibido por WebSocket.
+ * Write the HTTP result only if the canonical detail does not already hold a
+ * newer terminal status received over WebSocket.
  */
 export function applyRideMutationResult(
   queryClient: QueryClient,
@@ -79,10 +79,10 @@ export function applyRideMutationResult(
 }
 
 /**
- * Comparte el GET de viaje activo con la caché de detalle sin convertir un
- * efecto ejecutado tarde en una escritura nueva. El timestamp pertenece a la
- * consulta de origen: un snapshot/delta que ya actualizó el detalle con una
- * posición local igual o posterior conserva siempre la autoridad.
+ * Share the active-ride GET with the detail cache without turning a
+ * late-running effect into a new write. The timestamp belongs to the
+ * source query: a snapshot/delta that already updated the detail with an equal
+ * or later local position always keeps the authority.
  */
 export function copyPassengerActiveRideToDetail(
   queryClient: QueryClient,

@@ -16,7 +16,7 @@ import { MarcadorVehiculo } from './MarcadorVehiculo';
 import { RadarPulse } from './RadarPulse';
 import { useDriverMapCamera } from './useDriverMapCamera';
 
-// Zoom de navegación urbano: muestra unas manzanas alrededor del conductor.
+// Urban navigation zoom: shows a few blocks around the driver.
 const FOLLOW_DELTA = 0.012;
 
 type Props = {
@@ -46,7 +46,7 @@ export function DriverSearchMap(props: Props) {
       void Linking.openSettings();
     }
   };
-  // No mostrar una ciudad fija como si fuera la ubicación del conductor.
+  // Do not show a fixed city as if it were the driver's location.
   return (
     <View style={styles.container}>
       <View style={styles.permissionOverlay}>

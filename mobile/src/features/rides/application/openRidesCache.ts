@@ -15,8 +15,8 @@ export function openRidesSnapshot(
 }
 
 /**
- * Reemplaza el snapshot sin degradar los rides cuyo `poolVersion` local es más
- * nuevo (o cuya fase local ya cerró/pausó esa misma versión).
+ * Replace the snapshot without downgrading rides whose local `poolVersion` is
+ * newer (or whose local phase already closed/paused that same version).
  */
 export function versionedOpenRidesSnapshot(
   data: OpenRidesInfiniteData | undefined,
@@ -59,7 +59,7 @@ export function flattenOpenRides(
   return rides;
 }
 
-/** Inserta una solicitud nueva al inicio o reemplaza la posición ya conocida. */
+/** Insert a new request at the start or replace its already known position. */
 export function upsertOpenRide(
   data: OpenRidesInfiniteData | undefined,
   ride: OpenRide,
@@ -104,8 +104,8 @@ export function removeOpenRide(
 }
 
 /**
- * Antepone el snapshot de solicitudes pausadas sin descartar páginas abiertas
- * ya cargadas ni sus cursores. Los duplicados se retiran de las demás páginas.
+ * Prepend the paused requests snapshot without discarding already loaded
+ * open pages or their cursors. Duplicates are removed from the other pages.
  */
 export function prependPausedOpenRides(
   data: OpenRidesInfiniteData | undefined,

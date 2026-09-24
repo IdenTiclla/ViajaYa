@@ -11,7 +11,7 @@ const OPCIONES = [
   { modo: 'dark', titulo: 'Oscuro', detalle: 'Fondos oscuros', icono: 'moon-outline' },
 ] as const;
 
-/** La misma preferencia está disponible en los perfiles de ambos roles. */
+/** The same preference is available in both roles' profiles. */
 export function SelectorTema() {
   const { colors, styles, estiloFoco } = useEstilos(crearEstilos);
   const { modo, elegir, cargado, guardando, error } = usePreferenciaTema();

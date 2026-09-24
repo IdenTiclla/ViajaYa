@@ -1,4 +1,4 @@
-"""Fanout Redis entre procesos y recuperación segura de suscriptores."""
+"""Redis fan-out between processes and safe subscriber recovery."""
 
 from __future__ import annotations
 
@@ -290,8 +290,8 @@ async def test_consumidor_nuevo_acepta_batch_del_productor_anterior() -> None:
         assert len(socket.messages) == 1
         assert socket.messages[0]["event_id"] == str(event.id)
         assert socket.messages[0]["correlation_id"] == str(event.batch_id)
-        # Simula que el canal correlacionado llega después: ambas copias son
-        # válidas y el gate mobile las considera el mismo event_id.
+        # Simulates the correlated channel arriving later: both copies are
+        # valid and the mobile gate treats them as the same event_id.
         await broker.publish(
             correlated_message,
             channel="viajaya:test:v2:correlation-v1",

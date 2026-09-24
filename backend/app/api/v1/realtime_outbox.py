@@ -84,7 +84,7 @@ def _invalid_batch(
 
 
 def validate_realtime_outbox_batch(events: Sequence[RealtimeOutboxEvent]) -> None:
-    """Valida un lote reclamado sin exponer su payload en los errores."""
+    """Validate a claimed batch without exposing its payload in the errors."""
     if not events:
         raise _invalid_batch("empty_batch", "está vacío")
 
@@ -159,7 +159,7 @@ def validate_realtime_outbox_batch(events: Sequence[RealtimeOutboxEvent]) -> Non
                 message=message,
             )
         except ValueError as error:
-            # La razón solo contiene nombres de campos/reglas, nunca el payload.
+            # The reason only contains field/rule names, never the payload.
             raise _invalid_batch("invalid_routing", str(error)) from None
 
 
@@ -192,17 +192,17 @@ def _serialize_realtime_outbox_event_v2(
 def serialize_realtime_outbox_batch_v2(
     events: Sequence[RealtimeOutboxEvent],
 ) -> list[dict[str, object]]:
-    """Valida un lote canónico y lo traduce a envelopes v2 listos para JSON."""
+    """Validate a canonical batch and translate it into JSON-ready v2 envelopes."""
     validate_realtime_outbox_batch(events)
     return [_serialize_realtime_outbox_event_v2(event) for event in events]
 
 
 class LocalHubRealtimeOutboxBatchPublisher(RealtimeOutboxBatchPublisher):
-    """Entrega envelopes v2 al hub del único proceso API activo.
+    """Deliver v2 envelopes to the hub of the single active API process.
 
-    Primero serializa el batch completo para que un error determinista nunca
-    produzca una entrega parcial. Los fallos de un socket individual los absorbe
-    el hub; un fallo operativo del transporte se propaga para aplicar backoff.
+    It first serializes the whole batch so that a deterministic error never
+    produces a partial delivery. Failures of an individual socket are absorbed by
+    the hub; an operational transport failure is propagated to apply backoff.
     """
 
     async def publish(self, events: Sequence[RealtimeOutboxEvent]) -> None:
@@ -224,14 +224,14 @@ class LocalHubRealtimeOutboxBatchPublisher(RealtimeOutboxBatchPublisher):
 
 
 class CanonicalRealtimeOutboxBatchValidator(RealtimeOutboxBatchValidator):
-    """Adaptador que aplica el contrato canónico a cada lote reclamado."""
+    """Adapter that applies the canonical contract to every claimed batch."""
 
     def validate(self, events: Sequence[RealtimeOutboxEvent]) -> None:
         validate_realtime_outbox_batch(events)
 
 
 class OutboxCreateOfferEventRecorder(CreateOfferEventRecorder):
-    """Registra el batch de CreateOffer en la misma transacción que la oferta."""
+    """Record the CreateOffer batch in the same transaction as the offer."""
 
     def __init__(self, outbox: RealtimeOutbox) -> None:
         self._outbox = outbox
@@ -241,14 +241,14 @@ class OutboxCreateOfferEventRecorder(CreateOfferEventRecorder):
 
 
 class DisabledCreateOfferEventRecorder(CreateOfferEventRecorder):
-    """Recorder nulo mientras el productor de outbox está deshabilitado."""
+    """Null recorder while the outbox producer is disabled."""
 
     async def record(self, result: CreateOfferResult) -> None:
         del result
 
 
 class OutboxAcceptOfferEventRecorder(AcceptOfferEventRecorder):
-    """Registra el fanout de aceptación dentro de su transacción de negocio."""
+    """Record the acceptance fan-out inside its business transaction."""
 
     def __init__(self, outbox: RealtimeOutbox) -> None:
         self._outbox = outbox
@@ -258,14 +258,14 @@ class OutboxAcceptOfferEventRecorder(AcceptOfferEventRecorder):
 
 
 class DisabledAcceptOfferEventRecorder(AcceptOfferEventRecorder):
-    """Recorder nulo mientras el productor de aceptación está deshabilitado."""
+    """Null recorder while the acceptance producer is disabled."""
 
     async def record(self, result: AcceptOfferResult) -> None:
         del result
 
 
 class OutboxPauseRideEventRecorder(PauseRideEventRecorder):
-    """Registra el fanout de pausa dentro de la transacción de negocio."""
+    """Record the pause fan-out inside the business transaction."""
 
     def __init__(self, outbox: RealtimeOutbox) -> None:
         self._outbox = outbox
@@ -275,14 +275,14 @@ class OutboxPauseRideEventRecorder(PauseRideEventRecorder):
 
 
 class DisabledPauseRideEventRecorder(PauseRideEventRecorder):
-    """Recorder nulo mientras el productor de pausa está deshabilitado."""
+    """Null recorder while the pause producer is disabled."""
 
     async def record(self, result: RidePausedResult) -> None:
         del result
 
 
 class OutboxCancelRideEventRecorder(CancelRideEventRecorder):
-    """Registra el fanout de cancelación dentro de su transacción de negocio."""
+    """Record the cancellation fan-out inside its business transaction."""
 
     def __init__(self, outbox: RealtimeOutbox) -> None:
         self._outbox = outbox
@@ -292,14 +292,14 @@ class OutboxCancelRideEventRecorder(CancelRideEventRecorder):
 
 
 class DisabledCancelRideEventRecorder(CancelRideEventRecorder):
-    """Recorder nulo mientras el productor de cancelación está deshabilitado."""
+    """Null recorder while the cancellation producer is disabled."""
 
     async def record(self, result: CancelRideResult) -> None:
         del result
 
 
 class OutboxRepublishRideEventRecorder(RepublishRideEventRecorder):
-    """Registra una renovación del pool dentro de su transacción de negocio."""
+    """Record a pool renewal inside its business transaction."""
 
     def __init__(self, outbox: RealtimeOutbox) -> None:
         self._outbox = outbox
@@ -309,14 +309,14 @@ class OutboxRepublishRideEventRecorder(RepublishRideEventRecorder):
 
 
 class DisabledRepublishRideEventRecorder(RepublishRideEventRecorder):
-    """Recorder nulo mientras la renovación durable está deshabilitada."""
+    """Null recorder while the durable renewal is disabled."""
 
     async def record(self, result: RideRepublishedResult) -> None:
         del result
 
 
 class OutboxAnnounceOpenRideEventRecorder(AnnounceOpenRideEventRecorder):
-    """Registra el anuncio de presencia dentro de su transacción de lectura."""
+    """Record the presence announcement inside its read transaction."""
 
     def __init__(self, outbox: RealtimeOutbox) -> None:
         self._outbox = outbox
@@ -326,14 +326,14 @@ class OutboxAnnounceOpenRideEventRecorder(AnnounceOpenRideEventRecorder):
 
 
 class DisabledAnnounceOpenRideEventRecorder(AnnounceOpenRideEventRecorder):
-    """Recorder nulo mientras el anuncio durable está deshabilitado."""
+    """Null recorder while the durable announcement is disabled."""
 
     async def record(self, detail: OpenRideDetail) -> None:
         del detail
 
 
 class OutboxWithdrawOfferEventRecorder(WithdrawOfferEventRecorder):
-    """Registra el retiro voluntario dentro de su transacción de negocio."""
+    """Record the voluntary withdrawal inside its business transaction."""
 
     def __init__(self, outbox: RealtimeOutbox) -> None:
         self._outbox = outbox
@@ -343,14 +343,14 @@ class OutboxWithdrawOfferEventRecorder(WithdrawOfferEventRecorder):
 
 
 class DisabledWithdrawOfferEventRecorder(WithdrawOfferEventRecorder):
-    """Recorder nulo mientras el retiro durable está deshabilitado."""
+    """Null recorder while the durable withdrawal is disabled."""
 
     async def record(self, offer: Offer) -> None:
         del offer
 
 
 class OutboxRejectOfferEventRecorder(RejectOfferEventRecorder):
-    """Registra el rechazo explícito dentro de su transacción de negocio."""
+    """Record the explicit rejection inside its business transaction."""
 
     def __init__(self, outbox: RealtimeOutbox) -> None:
         self._outbox = outbox
@@ -360,14 +360,14 @@ class OutboxRejectOfferEventRecorder(RejectOfferEventRecorder):
 
 
 class DisabledRejectOfferEventRecorder(RejectOfferEventRecorder):
-    """Recorder nulo mientras el rechazo durable está deshabilitado."""
+    """Null recorder while the durable rejection is disabled."""
 
     async def record(self, offer: Offer) -> None:
         del offer
 
 
 class OutboxExpireOfferEventRecorder(ExpireOfferEventRecorder):
-    """Registra el vencimiento dentro de su transacción de negocio."""
+    """Record the expiry inside its business transaction."""
 
     def __init__(self, outbox: RealtimeOutbox) -> None:
         self._outbox = outbox
@@ -377,14 +377,14 @@ class OutboxExpireOfferEventRecorder(ExpireOfferEventRecorder):
 
 
 class DisabledExpireOfferEventRecorder(ExpireOfferEventRecorder):
-    """Recorder nulo mientras la expiración durable está deshabilitada."""
+    """Null recorder while the durable expiry is disabled."""
 
     async def record(self, offer: Offer) -> None:
         del offer
 
 
 class OutboxUpdateRideStatusEventRecorder(UpdateRideStatusEventRecorder):
-    """Registra el avance del viaje dentro de su transacción de negocio."""
+    """Record the ride's progress inside its business transaction."""
 
     def __init__(self, outbox: RealtimeOutbox) -> None:
         self._outbox = outbox
@@ -394,14 +394,14 @@ class OutboxUpdateRideStatusEventRecorder(UpdateRideStatusEventRecorder):
 
 
 class DisabledUpdateRideStatusEventRecorder(UpdateRideStatusEventRecorder):
-    """Recorder nulo mientras el avance durable está deshabilitado."""
+    """Null recorder while the durable progress is disabled."""
 
     async def record(self, detail: RideDetail) -> None:
         del detail
 
 
 class OutboxDriverAvailabilityEventRecorder(DriverAvailabilityEventRecorder):
-    """Registra los retiros offline dentro de su transacción de negocio."""
+    """Record the offline withdrawals inside their business transaction."""
 
     def __init__(self, outbox: RealtimeOutbox) -> None:
         self._outbox = outbox
@@ -413,7 +413,7 @@ class OutboxDriverAvailabilityEventRecorder(DriverAvailabilityEventRecorder):
 
 
 class DisabledDriverAvailabilityEventRecorder(DriverAvailabilityEventRecorder):
-    """Recorder nulo mientras la disponibilidad durable está deshabilitada."""
+    """Null recorder while the durable availability is disabled."""
 
     async def record(self, result: DriverAvailabilityResult) -> None:
         del result

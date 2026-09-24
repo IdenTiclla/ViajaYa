@@ -1,4 +1,4 @@
-"""Atomicidad y contrato realtime de creación y renovación del pool."""
+"""Atomicity and realtime contract of pool creation and renewal."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Caso de uso: el conductor avanza el estado del viaje."""
+"""Use case: the driver advances the ride's status."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from app.domain.exceptions import (
 )
 from app.domain.repositories import OfferRepository, RideRequestRepository, UserRepository
 
-# Transiciones que puede ejecutar el conductor asignado.
+# Transitions the assigned driver can perform.
 _ALLOWED_TRANSITIONS: dict[RideStatus, set[RideStatus]] = {
     RideStatus.ACCEPTED: {RideStatus.ARRIVING},
     RideStatus.ARRIVING: {RideStatus.IN_PROGRESS},

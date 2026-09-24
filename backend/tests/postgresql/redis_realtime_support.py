@@ -1,4 +1,4 @@
-"""Proceso Uvicorn live_redis para el smoke multiworker."""
+"""live_redis Uvicorn process for the multi-worker smoke."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ async def _wait_release(release: Any) -> None:
 
 
 class RestartGateRedisRealtimeBridge(RedisRealtimeBridge):
-    """Retiene el primer fallo y el replay de un evento exclusivo de tests."""
+    """Hold the first failure and the replay of a test-only event."""
 
     def __init__(
         self,
@@ -95,7 +95,7 @@ def run_redis_realtime_server_process(
     shutdown: Any,
     shared_presence_enabled: bool = False,
 ) -> None:
-    """Punto de entrada picklable de una réplica API con hub local propio."""
+    """Picklable entry point of an API replica with its own local hub."""
     _validate_test_database_url(database_url)
     if not redis_url.startswith(("redis://", "rediss://")):
         raise RuntimeError("El smoke multiworker requiere una URL Redis aislada.")

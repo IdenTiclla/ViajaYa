@@ -1,4 +1,4 @@
-"""Certificación PostgreSQL de las secuencias por topic de la outbox 0019."""
+"""PostgreSQL certification of the 0019 outbox per-topic sequences."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Contrato rápido del repositorio durable de acciones programadas."""
+"""Fast contract of the durable scheduled actions repository."""
 
 from __future__ import annotations
 

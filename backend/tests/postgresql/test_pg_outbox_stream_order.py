@@ -1,4 +1,4 @@
-"""Orden de claim por stream con dispatchers PostgreSQL concurrentes."""
+"""Per-stream claim order with concurrent PostgreSQL dispatchers."""
 
 from __future__ import annotations
 

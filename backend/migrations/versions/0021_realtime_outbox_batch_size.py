@@ -1,4 +1,4 @@
-"""Añade cardinalidad durable e índice de retención a la outbox.
+"""Add durable cardinality and a retention index to the outbox.
 
 Revision ID: 0021_realtime_outbox_batch_size
 Revises: 0020_realtime_outbox_quarantine

@@ -197,9 +197,9 @@ async def test_stale_expiration_does_not_overwrite_concurrent_acceptance(
             assert accepted.detail.accepted_offer is not None
             assert accepted.detail.accepted_offer.status is OfferStatus.ACCEPTED
 
-        # La copia precargada PENDING ya sería elegible para vencer. Sin
-        # populate_existing, el lock reutilizaría ese estado obsoleto y
-        # sobrescribiría la aceptación confirmada.
+        # The preloaded PENDING copy would already be eligible to expire. Without
+        # populate_existing, the lock would reuse that stale state and
+        # overwrite the confirmed acceptance.
         monkeypatch.setattr(ride_policy, "OFFER_TTL", timedelta(seconds=0))
         expired = await build_expire_offer(
             stale_session,

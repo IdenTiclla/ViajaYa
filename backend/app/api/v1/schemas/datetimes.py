@@ -1,4 +1,4 @@
-"""Tipos temporales del contrato que siempre serializan un instante inequívoco."""
+"""Contract time types that always serialize an unambiguous instant."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from pydantic import AwareDatetime, BeforeValidator
 
 
 def _assume_utc_for_naive(value: object) -> object:
-    """SQLite pierde ``tzinfo``; el backend persiste todos esos instantes en UTC."""
+    """SQLite drops ``tzinfo``; the backend persists all those instants in UTC."""
     if isinstance(value, datetime) and value.tzinfo is None:
         return value.replace(tzinfo=UTC)
     return value

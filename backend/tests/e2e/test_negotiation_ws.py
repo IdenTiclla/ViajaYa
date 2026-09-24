@@ -1,8 +1,8 @@
-"""Test e2e del canal WebSocket de negociación (snapshot + eventos + auth).
+"""E2E test of the negotiation WebSocket channel (snapshot + events + auth).
 
-Usa el ``TestClient`` síncrono de Starlette (soporta ``websocket_connect``). La
-preparación de la BD y la promoción de conductores corren en el mismo
-event loop del cliente mediante ``client.portal``.
+Uses Starlette's synchronous ``TestClient`` (it supports ``websocket_connect``). The
+DB setup and driver promotion run on the client's same
+event loop through ``client.portal``.
 """
 
 from __future__ import annotations
@@ -248,7 +248,7 @@ def _headers(token: str) -> dict[str, str]:
 
 
 def _websocket_connect(client: TestClient, url: str):
-    """Convierte las URLs historicas del test al handshake seguro por protocolo."""
+    """Convert the test's historical URLs to the secure protocol-based handshake."""
     parsed = urlsplit(url)
     token = parse_qs(parsed.query).get("token", [None])[0]
     subprotocols = [AUTH_SUBPROTOCOL, token] if token else None
@@ -256,7 +256,7 @@ def _websocket_connect(client: TestClient, url: str):
 
 
 def _receive_driver_handshake(ws) -> tuple[dict, dict]:
-    """Consume el handshake autoritativo del conductor en su orden contractual."""
+    """Consume the driver's authoritative handshake in its contractual order."""
     open_rides = ws.receive_json()
     assert isinstance(parse_negotiation_message(open_rides), OpenRidesSnapshotMessage)
     paused_rides = ws.receive_json()
@@ -270,7 +270,7 @@ def _receive_driver_handshake(ws) -> tuple[dict, dict]:
 
 @pytest.fixture
 def ws_client(tmp_path):
-    """TestClient con SQLite por archivo para permitir sesiones concurrentes."""
+    """TestClient with a file-backed SQLite to allow concurrent sessions."""
     engine = create_async_engine(
         f"sqlite+aiosqlite:///{tmp_path / 'negotiation.db'}",
         future=True,
@@ -329,7 +329,7 @@ def ws_client_v2(tmp_path):
 
 @pytest.fixture(autouse=True)
 def _reset_presence(ws_client: TestClient):
-    """Cancela tareas y limpia la presencia global entre tests."""
+    """Cancel tasks and clear the global presence between tests."""
     from app.api.v1 import presence
 
     async def reset() -> None:
@@ -368,11 +368,11 @@ def _wait_for_ride_status(
     *,
     timeout: float = 1.0,
 ) -> dict:
-    """Espera la convergencia de una tarea de presencia sin sleeps frágiles."""
+    """Wait for a presence task to converge without fragile sleeps."""
     from app.api.v1 import presence
 
-    # SQLite no modela el acceso concurrente de Postgres; dejamos terminar la
-    # transacción de presencia antes de consultar con otra sesión del fixture.
+    # SQLite does not model Postgres's concurrent access; we let the
+    # presence transaction finish before querying with another fixture session.
     parsed_id = uuid.UUID(ride_id)
     deadline = time.monotonic() + timeout
     client.portal.call(asyncio.sleep, 0.05)
@@ -405,7 +405,7 @@ def test_passenger_receives_snapshot_and_live_offer(ws_client: TestClient):
         assert isinstance(parse_negotiation_message(snapshot), OffersSnapshotMessage)
         assert snapshot["data"] == []
 
-        # El conductor oferta por HTTP → el pasajero lo recibe en vivo.
+        # The driver offers over HTTP → the passenger receives it live.
         offer = ws_client.post(
             f"{RIDES}/{ride_id}/offers",
             json={"accept_at_fare": True, "eta_min": 4},
@@ -416,8 +416,8 @@ def test_passenger_receives_snapshot_and_live_offer(ws_client: TestClient):
         assert isinstance(parse_negotiation_message(event), OfferCreatedMessage)
         assert event["data"]["ride_id"] == ride_id
 
-        # Al aceptar, el pasajero recibe el viaje asignado (decisión final):
-        # el evento ride_status llega con status=accepted.
+        # On accepting, the passenger receives the assigned ride (final decision):
+        # the ride_status event arrives with status=accepted.
         offer_id = offer.json()["id"]
         accepted = ws_client.post(
             f"{RIDES}/offers/{offer_id}/accept", headers=_headers(rider_token)
@@ -454,8 +454,8 @@ def test_live_local_sends_single_v2_snapshot_and_durable_delta(
             f"ride:{ride['id']}"
         ]
 
-        # Permite que el anuncio de presencia confirme su outbox antes del
-        # snapshot del conductor. La barrera sigue garantizando snapshot primero.
+        # Lets the presence announcement commit its outbox before the
+        # driver's snapshot. The barrier still guarantees the snapshot goes first.
         ws_client_v2.portal.call(asyncio.sleep, 0.05)
         with _websocket_connect(
             ws_client_v2,
@@ -654,7 +654,7 @@ def test_driver_offer_snapshot_contains_only_live_pending_offers(ws_client: Test
 
 
 def test_driver_receives_offer_accepted_on_passenger_accept(ws_client: TestClient):
-    """Al aceptar el pasajero, el conductor recibe offer_accepted (va a navegar)."""
+    """When the passenger accepts, the driver receives offer_accepted (goes to navigate)."""
     rider_token = _register(ws_client, "rider")
     driver_token = _register(ws_client, "driver")
     _promote_driver(ws_client, "driver")
@@ -674,8 +674,8 @@ def test_driver_receives_offer_accepted_on_passenger_accept(ws_client: TestClien
         )
         assert accepted.status_code == 200, accepted.text
 
-        # El orden del batch es parte del contrato: cerrar el pool, asignar el
-        # viaje y recién después limpiar las demás ofertas del ganador.
+        # The batch order is part of the contract: close the pool, assign the
+        # ride and only then clean up the winner's other offers.
         closed = ws.receive_json()
         offer_accepted = ws.receive_json()
         offers_withdrawn = ws.receive_json()
@@ -695,7 +695,7 @@ def test_driver_receives_offer_accepted_on_passenger_accept(ws_client: TestClien
 
 
 def test_passenger_sees_improved_offer_replace_old_one(ws_client: TestClient):
-    """Cuando el conductor mejora su oferta, la vieja se retira y llega la nueva."""
+    """When the driver improves their offer, the old one is withdrawn and the new one arrives."""
     rider_token = _register(ws_client, "rider")
     driver_token = _register(ws_client, "driver")
     _promote_driver(ws_client, "driver")
@@ -722,7 +722,7 @@ def test_passenger_sees_improved_offer_replace_old_one(ws_client: TestClient):
         withdrawn = ws.receive_json()
         assert withdrawn["type"] == "offer_withdrawn"
         assert withdrawn["data"]["offer_id"] == first["id"]
-        # La mejora se distingue de un retiro real: el cliente no muestra toast.
+        # The improvement is told apart from a real withdrawal: the client shows no toast.
         assert withdrawn["data"]["reason"] == "superseded"
 
         created = ws.receive_json()
@@ -733,7 +733,7 @@ def test_passenger_sees_improved_offer_replace_old_one(ws_client: TestClient):
 def test_live_passenger_ws_keeps_custom_offer_negotiation_active_past_grace(
     ws_client: TestClient, monkeypatch
 ):
-    """Una contraoferta no puede cerrar una busqueda con el pasajero conectado."""
+    """A counter-offer cannot close a search while the passenger is connected."""
     from app.api.v1 import presence
 
     monkeypatch.setattr(presence, "PRESENCE_GRACE_SECONDS", 0.03)
@@ -759,8 +759,8 @@ def test_live_passenger_ws_keeps_custom_offer_negotiation_active_past_grace(
         assert event["type"] == "offer_created"
         assert event["data"]["price"] == "30.00"
 
-        # Esperar mas que la gracia comprimida equivale a mantener la pantalla
-        # abierta por encima de los 30 s reales.
+        # Waiting longer than the compressed grace period is like keeping the screen
+        # open beyond the real 30 s.
         time.sleep(0.08)
         current = ws_client.get(f"{RIDES}/{ride_id}", headers=_headers(rider_token))
         assert current.status_code == 200, current.text
@@ -835,7 +835,7 @@ def test_driver_going_offline_withdraws_offer_and_prevents_accept(
 
 
 def test_accept_revalidates_driver_offline_in_database(ws_client: TestClient):
-    """La defensa atómica no depende de que la limpieza offline haya terminado."""
+    """The atomic defense does not depend on the offline cleanup having finished."""
     rider_token = _register(ws_client, "rider")
     driver_token = _register(ws_client, "driver")
     _promote_driver(ws_client, "driver")
@@ -927,8 +927,8 @@ def test_driver_receives_open_ride_event_when_passenger_connects(ws_client: Test
     with _websocket_connect(ws_client, f"/api/v1/ws/driver?token={driver_token}") as ws:
         snapshot, _ = _receive_driver_handshake(ws)
 
-        # Crear la solicitud por HTTP NO la publica al pool; aparece cuando el
-        # pasajero abre su conexión (presencia).
+        # Creating the request over HTTP does NOT publish it to the pool; it appears when the
+        # passenger opens their connection (presence).
         ride = ws_client.post(RIDES, json=_ride_payload(), headers=_headers(rider_token)).json()
         with _websocket_connect(
             ws_client, f"/api/v1/ws/rides/{ride['id']}?token={rider_token}"
@@ -937,7 +937,7 @@ def test_driver_receives_open_ride_event_when_passenger_connects(ws_client: Test
             event = ws.receive_json()
             assert event["type"] == "ride_created"
             assert event["data"]["service_type"] == "taxi"
-            # El evento llega ya con los datos del pasajero (no solo en el snapshot).
+            # The event already carries the passenger's data (not only in the snapshot).
             assert event["data"]["rider"]["full_name"] == "rider"
             assert event["data"]["rider"]["trips_completed"] == 0
 
@@ -1067,7 +1067,7 @@ def test_taxi_and_moto_driver_sockets_receive_delivery_pool(
 
 
 def test_open_rides_endpoint_includes_rider(ws_client: TestClient):
-    """GET /rides/open trae los datos del pasajero cuando este está presente."""
+    """GET /rides/open returns the passenger's data when they are present."""
     rider_token = _register(ws_client, "rider")
     driver_token = _register(ws_client, "driver")
     _promote_driver(ws_client, "driver")
@@ -1090,8 +1090,8 @@ def test_open_rides_endpoint_includes_rider(ws_client: TestClient):
 
 
 def test_open_ride_visible_during_grace_after_disconnect(ws_client: TestClient):
-    # Tras desconectarse (minimizar), la solicitud sigue presente durante la
-    # ventana de gracia: un conductor que entra todavía la ve.
+    # After disconnecting (minimizing), the request stays present during the
+    # grace window: a driver who joins still sees it.
     rider_token = _register(ws_client, "rider")
     driver_token = _register(ws_client, "driver")
     _promote_driver(ws_client, "driver")
@@ -1102,7 +1102,7 @@ def test_open_ride_visible_during_grace_after_disconnect(ws_client: TestClient):
         ws_client, f"/api/v1/ws/rides/{ride['id']}?token={rider_token}"
     ) as rider_ws:
         assert rider_ws.receive_json()["type"] == "offers_snapshot"
-    # El pasajero ya se desconectó, pero seguimos dentro de la gracia (30 s).
+    # The passenger already disconnected, but we are still within the grace period (30 s).
 
     with _websocket_connect(ws_client, f"/api/v1/ws/driver?token={driver_token}") as ws:
         snapshot, _ = _receive_driver_handshake(ws)
@@ -1110,7 +1110,7 @@ def test_open_ride_visible_during_grace_after_disconnect(ws_client: TestClient):
 
 
 def test_open_ride_hidden_after_grace_when_passenger_gone(ws_client: TestClient, monkeypatch):
-    # Si el pasajero no vuelve dentro de la gracia (app cerrada), deja de verse.
+    # If the passenger does not return within the grace period (app closed), it is hidden.
     from app.api.v1 import presence
 
     monkeypatch.setattr(presence, "PRESENCE_GRACE_SECONDS", 0.0)
@@ -1125,7 +1125,7 @@ def test_open_ride_hidden_after_grace_when_passenger_gone(ws_client: TestClient,
         ws_client, f"/api/v1/ws/rides/{ride['id']}?token={rider_token}"
     ) as rider_ws:
         assert rider_ws.receive_json()["type"] == "offers_snapshot"
-    # Gracia 0 → al desconectar, deja de estar presente de inmediato.
+    # Grace 0 → on disconnect, it stops being present immediately.
     _wait_for_ride_status(ws_client, ride["id"], rider_token, "cancelled")
 
     with _websocket_connect(ws_client, f"/api/v1/ws/driver?token={driver_token}") as ws:
@@ -1134,7 +1134,7 @@ def test_open_ride_hidden_after_grace_when_passenger_gone(ws_client: TestClient,
 
 
 def test_ride_cancelled_after_grace_when_passenger_gone(ws_client: TestClient, monkeypatch):
-    """Cerrar la app termina la búsqueda, no solo la oculta del pool."""
+    """Closing the app ends the search, it does not just hide it from the pool."""
     from app.api.v1 import presence
 
     monkeypatch.setattr(presence, "PRESENCE_GRACE_SECONDS", 0.01)
@@ -1174,7 +1174,7 @@ def test_ride_not_cancelled_if_passenger_reconnects_within_grace(
 def test_active_ride_polling_renews_presence_when_websocket_is_reconnecting(
     ws_client: TestClient, monkeypatch
 ):
-    """HTTP activo evita un falso abandono si solo se cayó el canal WebSocket."""
+    """Active HTTP avoids a false abandonment when only the WebSocket channel dropped."""
     from app.api.v1 import presence
 
     monkeypatch.setattr(presence, "PRESENCE_GRACE_SECONDS", 0.08)
@@ -1187,8 +1187,8 @@ def test_active_ride_polling_renews_presence_when_websocket_is_reconnecting(
     ) as rider_ws:
         assert rider_ws.receive_json()["type"] == "offers_snapshot"
 
-    # Renueva antes de la ventana original. Después esperamos más que aquella
-    # ventana desde la desconexión, pero menos que la nueva desde el heartbeat.
+    # It renews before the original window. Then we wait longer than that
+    # window since the disconnection, but less than the new one since the heartbeat.
     time.sleep(0.05)
     active = ws_client.get(f"{RIDES}/me/active", headers=headers)
     assert active.status_code == 200, active.text
@@ -1199,7 +1199,7 @@ def test_active_ride_polling_renews_presence_when_websocket_is_reconnecting(
     assert still_searching.status_code == 200, still_searching.text
     assert still_searching.json()["status"] == "searching"
 
-    # Sin más WS ni polling, la búsqueda sí termina al vencer la nueva ventana.
+    # With no more WS or polling, the search does end when the new window runs out.
     cancelled = _wait_for_ride_status(
         ws_client,
         ride["id"],
@@ -1212,7 +1212,7 @@ def test_active_ride_polling_renews_presence_when_websocket_is_reconnecting(
 def test_disconnect_revalidates_ride_unpaused_after_paused_handshake(
     ws_client: TestClient, monkeypatch
 ):
-    """El estado pausado leído al abrir el WS no decide el cierre posterior."""
+    """The paused state read when opening the WS does not decide the later close."""
     from app.api.v1 import presence
 
     monkeypatch.setattr(presence, "PRESENCE_GRACE_SECONDS", 0.01)
@@ -1282,7 +1282,7 @@ def test_auto_cancel_rejects_all_pending_offers_in_same_close(
 
 
 def test_auto_cancel_does_not_touch_accepted_ride(ws_client: TestClient, monkeypatch):
-    """Un accept que gana durante la gracia conserva la asignación."""
+    """An accept that wins during the grace period keeps the assignment."""
     from app.api.v1 import presence
 
     monkeypatch.setattr(presence, "PRESENCE_GRACE_SECONDS", 0.2)
@@ -1310,7 +1310,7 @@ def test_auto_cancel_does_not_touch_accepted_ride(ws_client: TestClient, monkeyp
 
 
 def test_auto_cancel_does_not_touch_paused_ride(ws_client: TestClient, monkeypatch):
-    """Modificar una solicitud no se interpreta como abandono del pasajero."""
+    """Modifying a request is not treated as the passenger abandoning it."""
     from app.api.v1 import presence
 
     monkeypatch.setattr(presence, "PRESENCE_GRACE_SECONDS", 0.01)
@@ -1337,7 +1337,7 @@ def test_open_rides_snapshot_excludes_absent_passenger(ws_client: TestClient):
     driver_token = _register(ws_client, "driver")
     _promote_driver(ws_client, "driver")
 
-    # Solicitud creada pero el pasajero NO está conectado: no debe aparecer.
+    # Request created but the passenger is NOT connected: it must not appear.
     ws_client.post(RIDES, json=_ride_payload(), headers=_headers(rider_token))
 
     with _websocket_connect(ws_client, f"/api/v1/ws/driver?token={driver_token}") as ws:
@@ -1347,8 +1347,9 @@ def test_open_rides_snapshot_excludes_absent_passenger(ws_client: TestClient):
 
 
 def test_driver_notified_when_passenger_cancels(ws_client: TestClient):
-    """Al cancelar el pasajero, el conductor con oferta viva recibe offer_rejected
-    con razón ``ride_cancelled`` (no ``ride_taken`` ni desaparición muda)."""
+    """When the passenger cancels, the driver with a live offer receives offer_rejected
+    with reason ``ride_cancelled`` (not ``ride_taken`` nor a silent disappearance).
+    """
     rider_token = _register(ws_client, "rider")
     driver_token = _register(ws_client, "driver")
     _promote_driver(ws_client, "driver")
@@ -1358,7 +1359,7 @@ def test_driver_notified_when_passenger_cancels(ws_client: TestClient):
     with _websocket_connect(ws_client, f"/api/v1/ws/driver?token={driver_token}") as ws:
         _receive_driver_handshake(ws)
 
-        # El pasajero abre su conexión (presencia) y el conductor ofrece.
+        # The passenger opens their connection (presence) and the driver offers.
         with _websocket_connect(
             ws_client, f"/api/v1/ws/rides/{ride['id']}?token={rider_token}"
         ) as rider_ws:
@@ -1369,9 +1370,9 @@ def test_driver_notified_when_passenger_cancels(ws_client: TestClient):
                 headers=_headers(driver_token),
             )
 
-        # El pasajero cancela → al conductor le llegan ride_closed (pool) y
-        # offer_rejected (personal, reason ride_cancelled). (También hay un
-        # ride_created previo encolado al abrir el pasajero su conexión.)
+        # The passenger cancels → the driver receives ride_closed (pool) and
+        # offer_rejected (personal, reason ride_cancelled). (There is also an earlier
+        # ride_created queued when the passenger opened their connection.)
         cancelled = ws_client.post(
             f"{RIDES}/{ride['id']}/cancel",
             headers=_headers(rider_token),
@@ -1396,11 +1397,12 @@ def test_driver_notified_when_passenger_cancels(ws_client: TestClient):
 
 
 def test_driver_receives_ride_paused_on_pause_edit(ws_client: TestClient):
-    """Al pausar para editar, el conductor con oferta recibe ``ride_paused`` con el
-    payload completo del ride (para mantener la tarjeta visible en estado
-    "modificando" durante la edición) — en vez del viejo ``offer_rejected(ride_paused)``
-    que, sumado al ``ride_closed`` del pool, hacía desaparecer la tarjeta (bug de
-    timing: el banner aparecía tras guardar, no durante)."""
+    """When pausing to edit, the driver with an offer receives ``ride_paused`` with the
+    full ride payload (to keep the card visible in the "modifying"
+    state during the edit) — instead of the old ``offer_rejected(ride_paused)``
+    which, together with the pool's ``ride_closed``, made the card disappear (timing
+    bug: the banner showed up after saving, not during).
+    """
     rider_token = _register(ws_client, "rider")
     driver_token = _register(ws_client, "driver")
     _promote_driver(ws_client, "driver")
@@ -1410,7 +1412,7 @@ def test_driver_receives_ride_paused_on_pause_edit(ws_client: TestClient):
     with _websocket_connect(ws_client, f"/api/v1/ws/driver?token={driver_token}") as ws:
         _receive_driver_handshake(ws)
 
-        # El pasajero abre presencia y el conductor oferta.
+        # The passenger opens presence and the driver offers.
         with _websocket_connect(
             ws_client, f"/api/v1/ws/rides/{ride['id']}?token={rider_token}"
         ) as rider_ws:
@@ -1431,8 +1433,8 @@ def test_driver_receives_ride_paused_on_pause_edit(ws_client: TestClient):
             assert withdrawn["type"] == "offer_withdrawn"
             assert withdrawn["data"]["offer_id"] == offer["id"]
 
-        # Había un ride_created previo en el pool. Después, el orden funcional
-        # exige cerrar la tarjeta y reinsertarla inmediatamente como pausada.
+        # There was an earlier ride_created in the pool. Then the functional order
+        # requires closing the card and immediately reinserting it as paused.
         driver_events = [ws.receive_json() for _ in range(3)]
         assert [event["type"] for event in driver_events] == [
             "ride_created",
@@ -1447,7 +1449,7 @@ def test_driver_receives_ride_paused_on_pause_edit(ws_client: TestClient):
         paused = driver_events[2]
         assert paused["data"]["id"] == ride["id"]
         assert paused["data"]["offer_id"] == offer["id"]
-        # Ya no debe llegar offer_rejected con razón ride_paused (evento reemplazado).
+        # offer_rejected with reason ride_paused must no longer arrive (replaced event).
         assert not any(
             e.get("type") == "offer_rejected" and e.get("data", {}).get("reason") == "ride_paused"
             for e in driver_events
@@ -1455,8 +1457,9 @@ def test_driver_receives_ride_paused_on_pause_edit(ws_client: TestClient):
 
 
 def test_driver_recovers_active_ride_on_reconnect(ws_client: TestClient):
-    """Si el WS del conductor estaba caído cuando lo eligieron, al reconectar
-    recupera el viaje activo (snapshot ``driver_active_ride``)."""
+    """If the driver's WS was down when they were chosen, on reconnect
+    they recover the active ride (``driver_active_ride`` snapshot).
+    """
     rider_token = _register(ws_client, "rider")
     driver_token = _register(ws_client, "driver")
     _promote_driver(ws_client, "driver")
@@ -1468,11 +1471,11 @@ def test_driver_recovers_active_ride_on_reconnect(ws_client: TestClient):
         headers=_headers(driver_token),
     ).json()
 
-    # El pasajero acepta sin que el conductor esté conectado (simula caída del WS).
+    # The passenger accepts while the driver is not connected (simulates a WS drop).
     accepted = ws_client.post(f"{RIDES}/offers/{offer['id']}/accept", headers=_headers(rider_token))
     assert accepted.status_code == 200, accepted.text
 
-    # Al reconectar, el conductor recupera su viaje activo.
+    # On reconnect, the driver recovers their active ride.
     with _websocket_connect(ws_client, f"/api/v1/ws/driver?token={driver_token}") as ws:
         _receive_driver_handshake(ws)
         active = ws.receive_json()
@@ -1482,11 +1485,11 @@ def test_driver_recovers_active_ride_on_reconnect(ws_client: TestClient):
 
 
 def test_passenger_receives_offer_expired(ws_client: TestClient, monkeypatch):
-    """Al vencer una oferta (30 s sin respuesta), el pasajero recibe ``offer_expired``
-    en vivo para retirar la tarjeta — no depende de volver a pollear ``/offers``.
+    """When an offer expires (30 s without an answer), the passenger receives ``offer_expired``
+    live to remove the card — it does not depend on polling ``/offers`` again.
 
-    Cubre la corrección de ``publish_offer_expired``, que ahora emite también al
-    ``ride_topic`` (antes solo al canal del conductor).
+    Covers the ``publish_offer_expired`` fix, which now also emits to the
+    ``ride_topic`` (before, only to the driver's channel).
     """
     import uuid as _uuid
     from datetime import timedelta
@@ -1496,7 +1499,7 @@ def test_passenger_receives_offer_expired(ws_client: TestClient, monkeypatch):
     from app.domain import ride_policy
     from app.infrastructure.config import get_settings
 
-    # Forzamos la expiración sin esperar los 30 s reales.
+    # We force the expiry without waiting the real 30 s.
     monkeypatch.setattr(ride_policy, "OFFER_TTL", timedelta(seconds=0))
 
     rider_token = _register(ws_client, "rider")

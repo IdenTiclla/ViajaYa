@@ -1,4 +1,4 @@
-"""Certificación PostgreSQL del corte consistente de snapshots realtime."""
+"""PostgreSQL certification of the consistent realtime snapshot cut."""
 
 from __future__ import annotations
 
@@ -62,8 +62,8 @@ async def test_snapshot_usa_repeatable_read_read_only_antes_de_cualquier_lectura
                 role=UserRole.PASSENGER,
             )
         )
-        # Estos modelos no declaran una relationship ORM entre sí; el flush
-        # explicita que la FK del ride siempre observa primero al pasajero.
+        # These models do not declare an ORM relationship between them; the flush
+        # makes explicit that the ride's FK always sees the passenger first.
         await session.flush()
         session.add(
             RideRequestModel(

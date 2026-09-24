@@ -1,4 +1,4 @@
-"""Caso de uso: elimina batches publicados después de su retención."""
+"""Use case: delete published batches after their retention."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from app.application.interfaces import PublishedRealtimeOutboxRetention, UnitOfW
 
 
 class PurgePublishedRealtimeOutbox:
-    """Aplica una política explícita sin tocar pendientes ni cuarentenas."""
+    """Apply an explicit policy without touching pending or quarantined batches."""
 
     def __init__(
         self,

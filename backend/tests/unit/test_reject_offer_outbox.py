@@ -1,4 +1,4 @@
-"""Atomicidad y contrato realtime del rechazo explícito de una oferta."""
+"""Atomicity and realtime contract of an offer's explicit rejection."""
 
 from __future__ import annotations
 

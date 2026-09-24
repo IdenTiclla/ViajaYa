@@ -1,7 +1,7 @@
-"""DTOs de entrada/salida de los casos de uso.
+"""Input/output DTOs for the use cases.
 
-Independientes de la capa HTTP: los schemas Pydantic de la API se mapean
-a/desde estos DTOs.
+Independent of the HTTP layer: the API's Pydantic schemas map
+to/from these DTOs.
 """
 
 from __future__ import annotations
@@ -53,7 +53,7 @@ ScheduledActionStatus: TypeAlias = Literal[
 
 @dataclass(frozen=True, slots=True)
 class PendingScheduledAction:
-    """Acción diferida que debe persistirse junto con la mutación productora."""
+    """Deferred action that must be persisted together with the producing mutation."""
 
     dedupe_key: str
     action_type: str
@@ -65,7 +65,7 @@ class PendingScheduledAction:
 
 @dataclass(frozen=True, slots=True)
 class RenewableScheduledAction:
-    """Acción cuya siguiente generación se asigna atómicamente al renovarla."""
+    """Action whose next generation is assigned atomically when renewed."""
 
     dedupe_key: str
     action_type: str
@@ -76,7 +76,7 @@ class RenewableScheduledAction:
 
 @dataclass(frozen=True, slots=True)
 class PassengerPresenceObservation:
-    """Corte Redis de presencia sin exponer conexiones ni claves internas."""
+    """Redis presence cut without exposing connections or internal keys."""
 
     live: bool
     present: bool
@@ -85,7 +85,7 @@ class PassengerPresenceObservation:
 
 @dataclass(frozen=True, slots=True)
 class ScheduledAction:
-    """Estado durable de una acción, incluido su lease cuando está reclamada."""
+    """Durable state of an action, including its lease when claimed."""
 
     id: uuid.UUID
     dedupe_key: str
@@ -108,7 +108,7 @@ class ScheduledAction:
 
 @dataclass(frozen=True, slots=True)
 class DispatchScheduledActionResult:
-    """Resultado sanitizado de procesar como máximo una acción diferida."""
+    """Sanitized result of processing at most one deferred action."""
 
     status: Literal[
         "empty",
@@ -126,7 +126,7 @@ class DispatchScheduledActionResult:
 
 @dataclass(frozen=True, slots=True)
 class ExecuteExpireOfferScheduledActionResult:
-    """Efecto confirmado de ``expire_offer`` y resultado de su fencing."""
+    """Confirmed effect of ``expire_offer`` and the result of its fencing."""
 
     status: Literal["succeeded", "lost_lease"]
     expired_offer: Offer | None = None
@@ -134,7 +134,7 @@ class ExecuteExpireOfferScheduledActionResult:
 
 @dataclass(frozen=True, slots=True)
 class ExecuteCancelAbsentRideScheduledActionResult:
-    """Resultado cercado del cierre durable de una búsqueda ausente."""
+    """Fenced result of durably closing an absent search."""
 
     status: Literal["succeeded", "deferred", "lost_lease"]
     cancelled_ride: CancelRideResult | None = None
@@ -150,7 +150,7 @@ class ScheduledActionDeadCount:
 
 @dataclass(frozen=True, slots=True)
 class ScheduledActionsOperationalState:
-    """Agregados persistidos del scheduler, sin payloads ni identificadores."""
+    """Persisted scheduler aggregates, without payloads or identifiers."""
 
     pending_count: int
     due_count: int
@@ -181,10 +181,10 @@ class ScheduledActionsOperationalSnapshot:
 
 @dataclass(frozen=True, slots=True)
 class PendingRealtimeEvent:
-    """Evento listo para persistirse, todavía sin metadatos de entrega.
+    """Event ready to be persisted, still without delivery metadata.
 
-    La outbox asigna id, lote, secuencia y versiones de agregado/stream dentro
-    de la misma transacción que la mutación de negocio.
+    The outbox assigns id, batch, sequence and aggregate/stream versions within
+    the same transaction as the business mutation.
     """
 
     event_type: str
@@ -197,7 +197,7 @@ class PendingRealtimeEvent:
 
 @dataclass(frozen=True, slots=True)
 class RealtimeOutboxEvent:
-    """Evento durable reclamado o recién añadido a la outbox."""
+    """Durable event claimed or just added to the outbox."""
 
     id: uuid.UUID
     batch_id: uuid.UUID
@@ -222,7 +222,7 @@ class RealtimeOutboxEvent:
 
 @dataclass(frozen=True, slots=True)
 class DispatchRealtimeOutboxResult:
-    """Resultado de procesar como máximo un batch pendiente de la outbox."""
+    """Result of processing at most one pending outbox batch."""
 
     status: Literal["empty", "published", "failed", "quarantined"]
     batch_id: uuid.UUID | None = None
@@ -233,7 +233,7 @@ class DispatchRealtimeOutboxResult:
 
 @dataclass(frozen=True, slots=True)
 class RealtimeOutboxQuarantineCount:
-    """Cantidad de batches terminales agrupados por código de cuarentena."""
+    """Number of terminal batches grouped by quarantine code."""
 
     code: str
     batch_count: int
@@ -241,10 +241,10 @@ class RealtimeOutboxQuarantineCount:
 
 @dataclass(frozen=True, slots=True)
 class RealtimeOutboxOperationalState:
-    """Estado persistido necesario para observar la salud de la outbox.
+    """Persisted state needed to observe the outbox health.
 
-    Los timestamps se conservan en este DTO de lectura para que la capa de
-    aplicación derive duraciones usando un reloj explícito y comprobable.
+    Timestamps are kept in this read DTO so that the application layer
+    derives durations using an explicit, testable clock.
     """
 
     pending_event_count: int
@@ -258,11 +258,11 @@ class RealtimeOutboxOperationalState:
 
 @dataclass(frozen=True, slots=True)
 class RealtimeOutboxOperationalSnapshot:
-    """Métricas operativas derivadas de un corte de lectura de la outbox.
+    """Operational metrics derived from a read cut of the outbox.
 
-    ``latest_publish_delay_seconds`` mide ``created_at → published_at``. Es
-    un límite superior conservador de la demora commit → publicación porque
-    PostgreSQL asigna ``created_at`` dentro de la transacción productora.
+    ``latest_publish_delay_seconds`` measures ``created_at → published_at``. It is
+    a conservative upper bound of the commit → publish delay because
+    PostgreSQL assigns ``created_at`` inside the producing transaction.
     """
 
     captured_at: datetime
@@ -277,7 +277,7 @@ class RealtimeOutboxOperationalSnapshot:
 
 @dataclass(frozen=True, slots=True)
 class PublishedRealtimeOutboxRetentionResult:
-    """Batches publicados eliminados en una transacción acotada."""
+    """Published batches deleted in a bounded transaction."""
 
     batch_count: int
     event_count: int
@@ -285,7 +285,7 @@ class PublishedRealtimeOutboxRetentionResult:
 
 @dataclass(frozen=True)
 class PageCursor:
-    """Posición estable para continuar una lectura ordenada en forma descendente."""
+    """Stable position to resume an ordered descending read."""
 
     created_at: datetime
     id: uuid.UUID
@@ -293,7 +293,7 @@ class PageCursor:
 
 @dataclass(frozen=True)
 class Page(Generic[T]):
-    """Segmento de una colección y posición de la página siguiente, si existe."""
+    """A slice of a collection and the next page's position, if any."""
 
     items: list[T]
     next_cursor: PageCursor | None = None
@@ -301,7 +301,7 @@ class Page(Generic[T]):
 
 @dataclass(frozen=True)
 class SocialProfile:
-    """Perfil normalizado devuelto por un proveedor OAuth tras verificar el token."""
+    """Normalized profile returned by an OAuth provider after verifying the token."""
 
     provider: AuthProvider
     provider_id: str
@@ -343,11 +343,11 @@ class SaveSavedPlaceInput:
 
 @dataclass(frozen=True)
 class CreateOfferInput:
-    """Oferta de un conductor sobre un viaje.
+    """A driver's offer on a ride.
 
-    ``accept_at_fare=True`` significa aceptar al precio del pasajero; en ese caso
-    ``price`` se ignora y se toma el ``fare`` del viaje. Si es ``False`` es una
-    contraoferta con ``price`` propio y ``eta_min`` estimado.
+    ``accept_at_fare=True`` means accepting at the passenger's price; in that case
+    ``price`` is ignored and the ride's ``fare`` is used. If ``False`` it is a
+    counter-offer with its own ``price`` and an estimated ``eta_min``.
     """
 
     accept_at_fare: bool = True
@@ -363,7 +363,7 @@ class UpdateRideStatusInput:
 
 @dataclass(frozen=True)
 class OfferDetail:
-    """Oferta enriquecida con los datos del conductor que la hizo."""
+    """Offer enriched with the data of the driver who made it."""
 
     offer: Offer
     driver: User
@@ -371,9 +371,10 @@ class OfferDetail:
 
 @dataclass(frozen=True)
 class CreateOfferResult:
-    """Resultado de ofertar: la oferta creada y, si el conductor **mejoró** una
-    oferta previa del mismo viaje, el id de la oferta reemplazada (la capa API
-    lo usa para retirar la tarjeta vieja de la pantalla del pasajero)."""
+    """Result of offering: the created offer and, if the driver **improved** a
+    previous offer on the same ride, the id of the replaced offer (the API layer
+    uses it to remove the old card from the passenger's screen).
+    """
 
     detail: OfferDetail
     superseded_offer_id: uuid.UUID | None = None
@@ -381,7 +382,7 @@ class CreateOfferResult:
 
 @dataclass(frozen=True)
 class DriverAvailabilityResult:
-    """Cambio de disponibilidad y ofertas retiradas al quedar offline."""
+    """Availability change and the offers withdrawn when going offline."""
 
     driver: User
     withdrawn_offers: list[Offer]
@@ -389,7 +390,7 @@ class DriverAvailabilityResult:
 
 @dataclass(frozen=True)
 class RideDetail:
-    """Viaje enriquecido con sus participantes y la oferta aceptada (si existe)."""
+    """Ride enriched with its participants and the accepted offer (if any)."""
 
     ride: RideRequest
     rider: User | None = None
@@ -399,7 +400,7 @@ class RideDetail:
 
 @dataclass(frozen=True, slots=True)
 class RealtimeStreamCheckpoint:
-    """Posición de stream incluida en una captura consistente de tiempo real."""
+    """Stream position included in a consistent realtime capture."""
 
     stream: str
     stream_version: int
@@ -407,7 +408,7 @@ class RealtimeStreamCheckpoint:
 
 @dataclass(frozen=True, slots=True)
 class PassengerRealtimeSnapshot:
-    """Proyección completa que recupera el pasajero al conectar su socket."""
+    """Full projection the passenger recovers when connecting their socket."""
 
     snapshot_id: uuid.UUID
     ride: RideDetail
@@ -418,7 +419,7 @@ class PassengerRealtimeSnapshot:
 
 @dataclass(frozen=True, slots=True)
 class DriverRealtimeSnapshot:
-    """Proyección unificada que recupera el conductor al conectar su socket."""
+    """Unified projection the driver recovers when connecting their socket."""
 
     snapshot_id: uuid.UUID
     open_rides: Page[OpenRideDetail]
@@ -431,9 +432,10 @@ class DriverRealtimeSnapshot:
 
 @dataclass(frozen=True)
 class RidePausedResult:
-    """Resultado de pausar una solicitud para editarla (Modificar solicitud): el
-    ride marcado ``paused`` y las ofertas vivas que se retiraron, para avisar a
-    esos conductores y al pasajero que quite las tarjetas."""
+    """Result of pausing a request to edit it (Modify request): the
+    ride marked ``paused`` and the live offers that were withdrawn, to notify
+    those drivers and tell the passenger to remove the cards.
+    """
 
     ride: RideRequest
     paused_offers: list[Offer]
@@ -442,10 +444,10 @@ class RidePausedResult:
 
 @dataclass(frozen=True)
 class RideRepublishedResult:
-    """Solicitud actualizada que vuelve a anunciarse en el pool.
+    """Updated request announced again in the pool.
 
-    Conserva en un mismo resultado el detalle privado del pasajero y la
-    proyección pública enriquecida que consumen los conductores.
+    Keeps in a single result the passenger's private detail and the
+    enriched public projection that drivers consume.
     """
 
     detail: RideDetail
@@ -458,10 +460,10 @@ class RideRepublishedResult:
 
 @dataclass(frozen=True)
 class CancelRideResult:
-    """Cancelación enriquecida y sus ofertas vivas rechazadas.
+    """Enriched cancellation and its rejected live offers.
 
-    El detalle se captura antes del commit para que la respuesta HTTP, la outbox
-    y la publicación directa compartan exactamente el mismo estado terminal.
+    The detail is captured before the commit so that the HTTP response, the outbox
+    and the direct publication share exactly the same terminal state.
     """
 
     detail: RideDetail
@@ -469,17 +471,18 @@ class CancelRideResult:
 
     @property
     def ride(self) -> RideRequest:
-        """Atajo compatible para las reglas que solo necesitan la entidad."""
+        """Compatible shortcut for rules that only need the entity."""
         return self.detail.ride
 
 
 @dataclass(frozen=True)
 class AcceptOfferResult:
-    """Resultado de que el pasajero acepte una oferta (asignación del viaje):
-    el viaje asignado, las identidades exactas de otras ofertas vivas del mismo
-    conductor que quedaron retiradas, y los ``driver_id`` de los otros conductores
-    de este viaje que perdieron la carrera (la capa API difunde
-    ``offer_withdrawn`` / ``offer_rejected`` con ellos)."""
+    """Result of the passenger accepting an offer (ride assignment):
+    the assigned ride, the exact identities of the same driver's other live offers
+    that were withdrawn, and the ``driver_id`` of the ride's other drivers
+    who lost the race (the API layer broadcasts
+    ``offer_withdrawn`` / ``offer_rejected`` with them).
+    """
 
     detail: RideDetail
     withdrawn_offers: list[WithdrawnOfferReference]
@@ -487,17 +490,17 @@ class AcceptOfferResult:
 
     @property
     def withdrawn_ride_ids(self) -> list[uuid.UUID]:
-        """Compatibilidad temporal con el contrato legacy resumido por ride."""
+        """Temporary compatibility with the legacy per-ride summary contract."""
         return [offer.ride_id for offer in self.withdrawn_offers]
 
 
 @dataclass(frozen=True)
 class RideHistoryItem:
-    """Viaje terminado/cancelado, enriquecido para las tarjetas de historial.
+    """Finished/cancelled ride, enriched for the history cards.
 
-    ``counterpart`` es el conductor (vista del pasajero) o el pasajero (vista del
-    conductor); ``price`` es el precio acordado (oferta aceptada o ``fare``);
-    ``my_rating`` es la nota que el usuario actual dejó a ese viaje, si existe.
+    ``counterpart`` is the driver (passenger view) or the passenger (driver
+    view); ``price`` is the agreed price (accepted offer or ``fare``);
+    ``my_rating`` is the score the current user gave that ride, if any.
     """
 
     ride: RideRequest
@@ -508,7 +511,7 @@ class RideHistoryItem:
 
 @dataclass(frozen=True)
 class EarningsItem:
-    """Una línea de ganancia: un viaje completado y lo que rindió."""
+    """One earnings line: a completed ride and what it earned."""
 
     ride_id: uuid.UUID
     destination_name: str
@@ -518,7 +521,7 @@ class EarningsItem:
 
 @dataclass(frozen=True)
 class DriverEarnings:
-    """Resumen de ganancias del conductor: hoy, histórico y viajes recientes."""
+    """Driver earnings summary: today, all-time and recent rides."""
 
     total_today: Decimal
     trips_today: int

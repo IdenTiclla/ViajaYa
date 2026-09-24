@@ -1,8 +1,8 @@
 /**
- * Ganancias del conductor — datos reales desde `GET /drivers/me/earnings`.
+ * Driver earnings — real data from `GET /drivers/me/earnings`.
  *
- * Muestra el total de hoy, contadores y el desglose de viajes completados
- * recientes con su importe.
+ * Shows today's total, counters and the breakdown of recent completed
+ * rides with their amount.
  */
 import { Ionicons, type IoniconsIconName } from '@react-native-vector-icons/ionicons';
 import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';

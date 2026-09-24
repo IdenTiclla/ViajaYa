@@ -1,4 +1,4 @@
-"""Caso de uso: resumen de ganancias del conductor."""
+"""Use case: the driver's earnings summary."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from app.application.interfaces import RideReadRepository
 from app.domain.entities import User
 from app.domain.exceptions import NotAuthorizedActionError
 
-# Cuántos viajes recientes se devuelven en el desglose.
+# How many recent rides are returned in the breakdown.
 _RECENT_LIMIT = 10
 _BUSINESS_TIMEZONE = ZoneInfo("America/La_Paz")
 

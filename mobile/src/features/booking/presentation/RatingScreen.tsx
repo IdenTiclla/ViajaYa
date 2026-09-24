@@ -1,8 +1,8 @@
 /**
- * Calificación del viaje (pasajero) — pantalla "Viaje Finalizado".
+ * Ride rating (passenger) — "Viaje Finalizado" screen.
  *
- * Carga el viaje por `rideId`, muestra el resumen y permite calificar al
- * conductor. Al finalizar, vuelve al inicio.
+ * Loads the ride by `rideId`, shows the summary and lets the user rate the
+ * driver. When done, it goes back home.
  */
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';

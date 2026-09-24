@@ -1,4 +1,4 @@
-"""Endpoints de viajes: solicitud, ofertas, asignación y ciclo de vida."""
+"""Ride endpoints: request, offers, assignment and lifecycle."""
 
 from __future__ import annotations
 
@@ -100,13 +100,13 @@ def _to_location_input(point) -> LocationInput:
     )
 
 
-# Tareas de expiración de ofertas en vuelo. Se guardan para evitar que el GC de
-# asyncio las reclame antes de los 30 s (create_task sin referencia es frágil).
+# In-flight offer expiry tasks. They are kept so asyncio's GC
+# does not reclaim them before the 30 s (create_task without a reference is fragile).
 _EXPIRY_TASKS: set[asyncio.Task[None]] = set()
 
 
 async def shutdown_expiry_tasks() -> None:
-    """Cancela y espera las expiraciones pendientes al apagar la API."""
+    """Cancel and await the pending expiries when shutting down the API."""
     tasks = set(_EXPIRY_TASKS)
     for task in tasks:
         task.cancel()
@@ -120,12 +120,12 @@ async def _expire_offer_after(
     session_factory: async_sessionmaker[AsyncSession],
     settings: Settings,
 ) -> None:
-    """Vence la oferta a los 30 s y avisa en tiempo real por WS a conductor y pasajero.
+    """Expire the offer after 30 s and notify driver and passenger in real time over WS.
 
-    Tarea diferida lanzada al crear la oferta, con una sesión nueva (la del
-    request ya cerró). Si para entonces la oferta fue aceptada/rechazada/retirada/
-    mejorada, el use case no la toca (race-safe). Es best-effort: nunca debe
-    romper el worker (si el servidor reinició, la sesión cayó, etc.).
+    A deferred task launched when the offer is created, with a new session (the
+    request's session is already closed). If by then the offer was accepted/rejected/withdrawn/
+    improved, the use case does not touch it (race-safe). It is best-effort: it must never
+    break the worker (server restarted, session dropped, etc.).
     """
     try:
         await asyncio.sleep(OFFER_TTL.total_seconds())
@@ -137,7 +137,7 @@ async def _expire_offer_after(
         if offer is not None:
             await events.publish_offer_expired(offer)
     except Exception:
-        # La entrega directa es best-effort, pero el fallo debe ser observable.
+        # Direct delivery is best-effort, but the failure must be observable.
         logger.exception("No se pudo vencer la oferta %s", offer_id)
 
 
@@ -157,8 +157,8 @@ async def create_ride(
             payment_method=body.payment_method,
         ),
     )
-    # La solicitud aparece para los conductores cuando el pasajero abre su
-    # conexión WebSocket (presencia), no al crearla. Ver ``passenger_ws``.
+    # The request shows up for drivers when the passenger opens their
+    # WebSocket connection (presence), not when it is created. See ``passenger_ws``.
     return RideRequestResponse.from_entity(ride)
 
 
@@ -180,10 +180,10 @@ async def open_rides(
     cursor: Annotated[str | None, Query(max_length=512)] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> OpenRidePageResponse:
-    """Solicitudes abiertas del tipo de vehículo del conductor (en línea).
+    """Open requests for the (online) driver's vehicle type.
 
-    Solo las que tienen al pasajero presente (conexión WS viva): las abandonadas
-    no se muestran.
+    Only those whose passenger is present (live WS connection): abandoned ones
+    are not shown.
     """
     page = await use_case.execute(current_user, decode_cursor(cursor), limit)
     if settings.realtime_shared_presence_enabled:
@@ -200,7 +200,7 @@ async def dismiss_open_ride(
     current_user: CurrentUserDep,
     use_case: Annotated[DismissOpenRide, Depends(get_dismiss_open_ride)],
 ) -> Response:
-    """Oculta para este conductor la versión vigente de una solicitud abierta."""
+    """Hide the current version of an open request for this driver."""
     await use_case.execute(current_user, ride_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -214,9 +214,9 @@ async def accept_offer(
     current_user: CurrentUserDep,
     use_case: Annotated[AcceptOffer, Depends(get_accept_offer)],
 ) -> RideResponse:
-    """El pasajero acepta una oferta: le asigna el viaje (decisión final).
+    """The passenger accepts an offer: it assigns them the ride (final decision).
 
-    Las demás ofertas vivas del viaje quedan rechazadas en la misma transacción.
+    The ride's other live offers are rejected in the same transaction.
     """
     result = await use_case.execute(current_user, offer_id)
     await events.publish_offer_accepted(result)
@@ -229,7 +229,7 @@ async def reject_offer(
     current_user: CurrentUserDep,
     use_case: Annotated[RejectOffer, Depends(get_reject_offer)],
 ) -> Response:
-    """El pasajero rechaza una oferta concreta; el conductor lo ve en vivo."""
+    """The passenger rejects a specific offer; the driver sees it live."""
     offer = await use_case.execute(current_user, offer_id)
     await events.publish_offer_rejected(offer)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -241,7 +241,7 @@ async def withdraw_offer(
     current_user: CurrentUserDep,
     use_case: Annotated[WithdrawOffer, Depends(get_withdraw_offer)],
 ) -> Response:
-    """El conductor retira su oferta (o se niega a confirmarla); el pasajero deja de verla."""
+    """The driver withdraws (or declines to confirm) their offer; the passenger stops seeing it."""
     offer = await use_case.execute(current_user, offer_id)
     await events.publish_offer_withdrawn_by_driver(offer)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -268,7 +268,7 @@ async def passenger_active_ride(
     settings: SettingsDep,
     passenger_presence: PassengerPresenceLeaseStoreDep,
 ) -> RideResponse | None:
-    """Solicitud o viaje no terminal del pasajero, para recuperar el flujo."""
+    """The passenger's non-terminal request or ride, to resume the flow."""
     detail = await use_case.execute(current_user)
     if (
         detail is not None
@@ -298,7 +298,7 @@ async def pending_rating_ride(
     current_user: CurrentUserDep,
     use_case: Annotated[GetPendingRatingRide, Depends(get_pending_rating_ride)],
 ) -> RideResponse | None:
-    """Último viaje completado que el usuario actual todavía no calificó."""
+    """The latest completed ride the current user has not rated yet."""
     detail = await use_case.execute(current_user)
     return RideResponse.from_detail(detail) if detail is not None else None
 
@@ -309,7 +309,7 @@ async def get_ride(
     current_user: CurrentUserDep,
     use_case: Annotated[GetRide, Depends(get_get_ride)],
 ) -> RideResponse:
-    """Detalle del viaje para polling (pasajero o conductor asignado)."""
+    """Ride detail for polling (passenger or assigned driver)."""
     detail = await use_case.execute(current_user, ride_id)
     return RideResponse.from_detail(detail)
 
@@ -335,7 +335,7 @@ async def rate_ride(
     current_user: CurrentUserDep,
     use_case: Annotated[RateRide, Depends(get_rate_ride)],
 ) -> RatingResponse:
-    """Califica al otro participante tras completarse el viaje."""
+    """Rate the other participant after the ride is completed."""
     rating = await use_case.execute(current_user, ride_id, body.score, body.comment)
     return RatingResponse.from_entity(rating)
 
@@ -346,7 +346,7 @@ async def skip_ride_rating(
     current_user: CurrentUserDep,
     use_case: Annotated[SkipRideRating, Depends(get_skip_ride_rating)],
 ) -> Response:
-    """Cierra la calificación pendiente sin alterar la reputación."""
+    """Close the pending rating without changing reputation."""
     await use_case.execute(current_user, ride_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -357,7 +357,7 @@ async def list_offers(
     current_user: CurrentUserDep,
     use_case: Annotated[ListOffersForRide, Depends(get_list_offers_for_ride)],
 ) -> list[OfferResponse]:
-    """Ofertas pendientes recibidas por el pasajero para su viaje."""
+    """Pending offers the passenger received for their ride."""
     offers = await use_case.execute(current_user, ride_id)
     return [OfferResponse.from_detail(detail) for detail in offers]
 
@@ -375,7 +375,7 @@ async def create_offer(
     session_factory: SessionFactoryDep,
     settings: SettingsDep,
 ) -> OfferResponse:
-    """El conductor oferta sobre un viaje (aceptar al precio, contraofertar o mejorar)."""
+    """The driver offers on a ride (accept at the price, counter-offer or improve)."""
     result = await use_case.execute(
         current_user,
         ride_id,
@@ -387,12 +387,12 @@ async def create_offer(
         ),
     )
     if result.superseded_offer_id is not None:
-        # Mejora de oferta: retira la tarjeta vieja y anuncia la nueva.
+        # Offer improvement: withdraw the old card and announce the new one.
         await events.publish_offer_superseded(result.superseded_offer_id, result.detail)
     else:
         await events.publish_offer_created(result.detail)
-    # En shadow se conserva el timer para comparar el dual-write. En live, la
-    # acción durable ya fue insertada en la misma transacción que la oferta.
+    # In shadow mode the timer is kept to compare the dual write. In live mode, the
+    # durable action was already inserted in the same transaction as the offer.
     if settings.scheduled_actions_mode != "live":
         task = asyncio.create_task(
             _expire_offer_after(
@@ -425,7 +425,7 @@ async def update_status(
     current_user: CurrentUserDep,
     use_case: Annotated[UpdateRideStatus, Depends(get_update_ride_status)],
 ) -> RideResponse:
-    """El conductor asignado avanza el estado del viaje."""
+    """The assigned driver advances the ride's status."""
     detail = await use_case.execute(current_user, ride_id, body.status)
     await events.publish_ride_status(detail)
     return RideResponse.from_detail(detail)
@@ -438,7 +438,7 @@ async def update_fare(
     current_user: CurrentUserDep,
     use_case: Annotated[UpdateRideFare, Depends(get_update_ride_fare)],
 ) -> RideResponse:
-    """El pasajero ajusta su oferta mientras se buscan conductores."""
+    """The passenger adjusts their offer while drivers are being searched."""
     result = await use_case.execute(current_user, ride_id, body.fare)
     await events.publish_ride_republished(result)
     return RideResponse.from_detail(result.detail)
@@ -450,7 +450,7 @@ async def cancel_ride(
     current_user: CurrentUserDep,
     use_case: Annotated[CancelRide, Depends(get_cancel_ride)],
 ) -> RideResponse:
-    """Cancela el viaje (pasajero o conductor asignado), antes de iniciarlo."""
+    """Cancel the ride (passenger or assigned driver) before it starts."""
     result = await use_case.execute(current_user, ride_id)
     await events.publish_ride_cancelled(result)
     return RideResponse.from_detail(result.detail)
@@ -462,7 +462,7 @@ async def pause_ride_for_edit(
     current_user: CurrentUserDep,
     use_case: Annotated[PauseRideForEdit, Depends(get_pause_ride_for_edit)],
 ) -> RideResponse:
-    """Pausa la solicitud para editarla (Modificar): la oculta del pool y retira ofertas."""
+    """Pause the request to edit it (Modify): hide it from the pool and withdraw offers."""
     result = await use_case.execute(current_user, ride_id)
     await events.publish_ride_paused(result)
     return RideResponse.from_detail(
@@ -477,7 +477,7 @@ async def edit_ride(
     current_user: CurrentUserDep,
     use_case: Annotated[EditRide, Depends(get_edit_ride)],
 ) -> RideResponse:
-    """Guarda los cambios de una solicitud pausada y la vuelve a publicar en el pool."""
+    """Save the changes to a paused request and publish it to the pool again."""
     result = await use_case.execute(
         current_user,
         ride_id,

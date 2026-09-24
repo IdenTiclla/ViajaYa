@@ -8,7 +8,7 @@ import { obtenerTema, TEMA_PREDETERMINADO } from './tokens';
 import { usePreferenciaTema } from './usePreferenciaTema';
 import { ContextoTema } from './useTema';
 
-// Controla también diálogos y campos nativos desde el arranque del JS.
+// Also controls native dialogs and fields from JS startup.
 if (Platform.OS !== 'web') Appearance.setColorScheme(TEMA_PREDETERMINADO);
 
 export function ProveedorTema({ children }: PropsWithChildren) {

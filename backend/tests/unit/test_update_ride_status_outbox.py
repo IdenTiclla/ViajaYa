@@ -1,4 +1,4 @@
-"""Atomicidad y contrato realtime de los avances del viaje."""
+"""Atomicity and realtime contract of ride status changes."""
 
 from __future__ import annotations
 

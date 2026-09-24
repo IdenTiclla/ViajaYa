@@ -1,8 +1,8 @@
 /**
- * Cola de notificaciones efímeras (toasts) del conductor: avisa del desenlace de
- * sus ofertas (expiró, rechazaron, tomada, cancelada, pausada, aceptada) aunque
- * no esté mirando la tarjeta. Lo empuja el socket del conductor; el
- * `DriverToaster` los muestra y auto-descarta.
+ * Queue of the driver's ephemeral notifications (toasts): reports the outcome of
+ * their offers (expired, rejected, taken, cancelled, paused, accepted) even when
+ * they are not looking at the card. Fed by the driver socket;
+ * `DriverToaster` shows them and auto-dismisses them.
  */
 import { create } from 'zustand';
 
@@ -36,7 +36,7 @@ export const useDriverToasts = create<DriverToastsState>((set) => ({
   toasts: [],
   push: (toast) =>
     set((s) => ({
-      // Máximo 3 en pantalla (las más recientes).
+      // At most 3 on screen (the most recent).
       toasts: [...s.toasts, { ...toast, id: `${Date.now()}-${_seq++}` }].slice(-3),
     })),
   dismiss: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),

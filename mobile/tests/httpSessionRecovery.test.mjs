@@ -4,7 +4,7 @@ import test from 'node:test';
 
 import axios, { AxiosError } from 'axios';
 
-// Sustituye únicamente el almacenamiento nativo y la configuración de Expo.
+// Replaces only the native storage and the Expo configuration.
 const hooks = registerHooks({
   resolve(specifier, context, nextResolve) {
     if (specifier === '@/core/config/env' || specifier === '@/core/http/tokenStorage') {
@@ -73,7 +73,7 @@ test('una sesión antigua no deja la recuperación esperando un refresh sin lím
   const simulate = async (config) => {
     if (!config.url.endsWith('/auth/refresh')) throw unauthorized(config);
     refreshTimeout = config.timeout;
-    // Simula el transporte sin respuesta; solo un timeout configurado lo libera.
+    // Simulates the transport with no response; only a configured timeout releases it.
     return new Promise((_, reject) => {
       if (config.timeout > 0) {
         setTimeout(() => reject(new AxiosError('Tiempo agotado', 'ECONNABORTED', config)),

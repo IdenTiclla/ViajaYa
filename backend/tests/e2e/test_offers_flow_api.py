@@ -1,4 +1,4 @@
-"""Test e2e del flujo completo de ofertas y viaje (pasajero ↔ conductores)."""
+"""E2E test of the full offers and ride flow (passenger ↔ drivers)."""
 
 from __future__ import annotations
 
@@ -17,14 +17,14 @@ RIDES = "/api/v1/rides"
 
 
 class _FakeWS:
-    """Doble de WebSocket para simular la presencia del pasajero en el pool."""
+    """WebSocket double to simulate the passenger's presence in the pool."""
 
     async def send_json(self, message: dict) -> None:  # pragma: no cover - no-op
         pass
 
 
 def _mark_present(ride_id: str) -> _FakeWS:
-    """Marca una solicitud como "presente" (pasajero conectado) para el pool."""
+    """Mark a request as "present" (passenger connected) for the pool."""
     ws = _FakeWS()
     hub.subscribe(ride_topic(uuid.UUID(ride_id)), ws)
     return ws
@@ -215,10 +215,10 @@ async def test_full_ride_flow(client, session_factory, service_type):
     resp = await client.post(RIDES, json=_ride_payload(service_type), headers=rider_h)
     assert resp.status_code == 201
     ride_id = resp.json()["id"]
-    # El pasajero "abre" su pantalla (presencia): la solicitud entra al pool.
+    # The passenger "opens" their screen (presence): the request enters the pool.
     presence = _mark_present(ride_id)
 
-    # --- los conductores ven la solicitud abierta ---
+    # --- the drivers see the open request ---
     open_resp = await client.get(f"{RIDES}/open", headers=d1_h)
     assert open_resp.status_code == 200
     assert any(r["id"] == ride_id for r in open_resp.json()["items"])
@@ -246,7 +246,7 @@ async def test_full_ride_flow(client, session_factory, service_type):
     assert offers_resp.status_code == 200
     assert len(offers_resp.json()) == 2
 
-    # --- el pasajero acepta la oferta 1: le asigna el viaje (decisión final) ---
+    # --- the passenger accepts offer 1: it assigns them the ride (final decision) ---
     accept1 = await client.post(f"{RIDES}/offers/{offer1_id}/accept", headers=rider_h)
     assert accept1.status_code == 200
     body = accept1.json()
@@ -265,16 +265,16 @@ async def test_full_ride_flow(client, session_factory, service_type):
     )
     assert passenger_start.status_code == 403, passenger_start.text
 
-    # aceptar otra oferta ya no es posible: el viaje dejó de buscar (409)
+    # accepting another offer is no longer possible: the ride stopped searching (409)
     offer2_id = o2.json()["id"]
     accept2 = await client.post(f"{RIDES}/offers/{offer2_id}/accept", headers=rider_h)
     assert accept2.status_code == 409
 
-    # tras la asignación, ya no quedan ofertas vivas
+    # after the assignment, no live offers remain
     offers_after = await client.get(f"{RIDES}/{ride_id}/offers", headers=rider_h)
     assert offers_after.json() == []
 
-    # --- el conductor avanza el viaje hasta completarlo ---
+    # --- the driver advances the ride until it is completed ---
     for new_status in ("arriving", "in_progress", "completed"):
         patch = await client.patch(
             f"{RIDES}/{ride_id}/status", json={"status": new_status}, headers=d1_h
@@ -299,7 +299,7 @@ async def test_full_ride_flow(client, session_factory, service_type):
                 cancellation = await client.post(f"{RIDES}/{ride_id}/cancel", headers=headers)
                 assert cancellation.status_code == 409, cancellation.text
 
-    # --- el pasajero ve el viaje completado por polling ---
+    # --- the passenger sees the completed ride by polling ---
     final = await client.get(f"{RIDES}/{ride_id}", headers=rider_h)
     assert final.status_code == 200
     assert final.json()["status"] == "completed"
@@ -317,7 +317,7 @@ async def test_driver_cannot_offer_on_other_service(client, session_factory):
     resp = await client.post(RIDES, json=_ride_payload(), headers=_headers(rider_token))
     ride_id = resp.json()["id"]
 
-    # el conductor de moto no ve la solicitud de taxi
+    # the moto driver does not see the taxi request
     open_resp = await client.get(f"{RIDES}/open", headers=_headers(moto_token))
     assert all(r["id"] != ride_id for r in open_resp.json()["items"])
 
@@ -385,7 +385,7 @@ async def test_taxi_and_moto_drivers_can_serve_delivery(client, session_factory)
 
 
 async def test_passenger_active_ride_and_duplicate_request(client, session_factory):
-    """El pasajero recupera su flujo y no puede abrir dos viajes simultáneos."""
+    """The passenger recovers their flow and cannot open two rides at once."""
     _, rider_token = await _register(client, "active-rider")
     _, driver_token = await _register(client, "active-driver")
     await _promote_to_driver(session_factory, "active-driver", VehicleType.TAXI)
@@ -443,7 +443,7 @@ async def test_passenger_active_ride_and_duplicate_request(client, session_facto
 
 
 async def test_cancelled_search_is_not_recovered_as_active(client):
-    """Cancelar una búsqueda debe dejar libre el flujo incluso tras recuperarlo."""
+    """Cancelling a search must free the flow even after recovering it."""
     _, rider_token = await _register(client, "cancel-active-rider")
     rider_h = _headers(rider_token)
 
@@ -473,7 +473,7 @@ async def test_cancelled_search_is_not_recovered_as_active(client):
 async def test_database_constraint_rejects_raced_second_active_ride(
     client, session_factory
 ):
-    """El índice conserva el invariante aunque una lectura concurrente no vea el activo."""
+    """The index keeps the invariant even if a concurrent read does not see the active ride."""
     rider_id, rider_token = await _register(client, "active-race-rider")
     created = await client.post(
         RIDES,
@@ -491,7 +491,7 @@ async def test_database_constraint_rejects_raced_second_active_ride(
     )
     async with session_factory() as session:
         rides = SqlAlchemyRideRequestRepository(session)
-        # Simula la ventana de carrera: la lectura previa no observó el INSERT ganador.
+        # Simulates the race window: the earlier read did not observe the winning INSERT.
         rides.get_active_by_rider = AsyncMock(return_value=None)  # type: ignore[method-assign]
         assert await rides.add_if_no_active(raced_ride) is None
 
@@ -520,14 +520,14 @@ async def test_close_flow_rating_history_earnings(client, session_factory, servi
             f"{RIDES}/{ride_id}/status", json={"status": new_status}, headers=drv_h
         )
 
-    # el pasajero califica al conductor
+    # the passenger rates the driver
     rate = await client.post(
         f"{RIDES}/{ride_id}/rating", json={"score": 5, "comment": "Excelente"}, headers=rider_h
     )
     assert rate.status_code == 201
 
-    # Actualizar reputación no pisa disponibilidad y cambiar disponibilidad no
-    # reescribe el promedio desde el snapshot anterior del usuario.
+    # Updating reputation does not overwrite availability, and changing availability does not
+    # rewrite the average from the user's previous snapshot.
     driver_me = await client.get("/api/v1/auth/me", headers=drv_h)
     assert driver_me.json()["rating"] == 5.0
     assert driver_me.json()["is_online"] is True
@@ -540,7 +540,7 @@ async def test_close_flow_rating_history_earnings(client, session_factory, servi
     assert offline.json()["is_online"] is False
     assert offline.json()["rating"] == 5.0
 
-    # El conductor también califica: esa reputación se persiste en el pasajero.
+    # The driver also rates: that reputation is persisted on the passenger.
     driver_rate = await client.post(
         f"{RIDES}/{ride_id}/rating", json={"score": 4}, headers=drv_h
     )
@@ -549,11 +549,11 @@ async def test_close_flow_rating_history_earnings(client, session_factory, servi
     assert rider_me.status_code == 200, rider_me.text
     assert rider_me.json()["rating"] == 4.0
 
-    # no se puede calificar dos veces el mismo viaje
+    # the same ride cannot be rated twice
     again = await client.post(f"{RIDES}/{ride_id}/rating", json={"score": 4}, headers=rider_h)
     assert again.status_code == 409
 
-    # el historial del pasajero lista el viaje con su calificación
+    # the passenger's history lists the ride with its rating
     hist = await client.get(f"{RIDES}/history", params={"status": "completed"}, headers=rider_h)
     assert hist.status_code == 200
     assert any(
@@ -561,13 +561,13 @@ async def test_close_flow_rating_history_earnings(client, session_factory, servi
         for h in hist.json()["items"]
     )
 
-    # las ganancias del conductor reflejan el viaje (25.00)
+    # the driver's earnings reflect the ride (25.00)
     earn = await client.get("/api/v1/drivers/me/earnings", headers=drv_h)
     assert earn.status_code == 200
     assert earn.json()["trips_all_time"] == 1
     assert float(earn.json()["total_all_time"]) == 25.0
 
-    # no se puede calificar un viaje que no está completado
+    # a ride that is not completed cannot be rated
     other_response = await client.post(RIDES, json=_ride_payload(service_type), headers=rider_h)
     other = other_response.json()["id"]
     bad = await client.post(f"{RIDES}/{other}/rating", json={"score": 5}, headers=rider_h)
@@ -620,7 +620,7 @@ async def test_pending_rating_recovers_latest_completed_for_both_roles(
     assert rider_pending.json()["status"] == "completed"
     assert driver_pending.json()["status"] == "completed"
 
-    # Los endpoints de viaje activo conservan su semántica no terminal.
+    # The active-ride endpoints keep their non-terminal semantics.
     assert (await client.get(f"{RIDES}/me/active", headers=rider_h)).json() is None
     assert (
         await client.get("/api/v1/drivers/me/active-ride", headers=driver_h)
@@ -632,8 +632,8 @@ async def test_pending_rating_recovers_latest_completed_for_both_roles(
         headers=rider_h,
     )
     assert rider_rates_second.status_code == 201, rider_rates_second.text
-    # El pendiente es independiente por usuario: el pasajero cae al anterior,
-    # mientras el conductor todavía debe calificar el viaje más reciente.
+    # The pending one is independent per user: the passenger falls back to the previous one,
+    # while the driver still has to rate the most recent ride.
     assert (await client.get(endpoint, headers=rider_h)).json()["id"] == first_id
     assert (await client.get(endpoint, headers=driver_h)).json()["id"] == second_id
 
@@ -692,7 +692,7 @@ async def test_skip_rating_is_persistent_for_both_roles(client, session_factory,
         assert repeated.status_code == 204, repeated.text
         assert (await client.get(pending_endpoint, headers=headers)).json()["id"] == first_id
 
-    # Omitir no crea ratings ni altera promedios de reputación.
+    # Skipping creates no ratings and does not change reputation averages.
     rider_me = await client.get("/api/v1/auth/me", headers=rider_h)
     driver_me = await client.get("/api/v1/auth/me", headers=driver_h)
     assert rider_me.json()["rating"] is None

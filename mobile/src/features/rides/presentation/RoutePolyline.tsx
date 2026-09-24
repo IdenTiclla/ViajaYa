@@ -1,6 +1,6 @@
 /**
- * Trayecto visual compartido por los mapas de pasajero y conductor.
- * El contorno claro mantiene la ruta legible sobre calles y etiquetas.
+ * Route visual shared by the passenger and driver maps.
+ * The light outline keeps the route readable over streets and labels.
  */
 import { Fragment } from 'react';
 import { Polyline } from 'react-native-maps';

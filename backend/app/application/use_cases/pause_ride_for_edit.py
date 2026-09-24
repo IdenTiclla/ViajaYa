@@ -1,9 +1,9 @@
-"""Caso de uso: el pasajero pausa su solicitud para editarla (Modificar solicitud).
+"""Use case: the passenger pauses their request to edit it (Modify request).
 
-Pone ``paused=True`` (la solicitud sigue ``SEARCHING`` pero se oculta del pool de
-conductores) y retira las ofertas vivas que tuviera, para que no queden apuntando
-a una solicitud que va a mutar. Al guardar la edición (:class:`EditRide`) la
-solicitud vuelve a estar disponible.
+Sets ``paused=True`` (the request stays ``SEARCHING`` but is hidden from the driver
+pool) and withdraws its live offers, so none keep pointing
+at a request that is about to change. Saving the edit (:class:`EditRide`) makes the
+request available again.
 """
 
 from __future__ import annotations

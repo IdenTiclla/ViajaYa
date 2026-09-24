@@ -1,4 +1,4 @@
-"""Crea la outbox durable y los contadores de versión de agregados.
+"""Create the durable outbox and the aggregate version counters.
 
 Revision ID: 0018_realtime_outbox
 Revises: 0017_pg_integrity_indexes

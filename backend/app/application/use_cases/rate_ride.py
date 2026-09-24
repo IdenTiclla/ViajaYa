@@ -1,4 +1,4 @@
-"""Caso de uso: calificar al otro participante tras completarse el viaje."""
+"""Use case: rate the other participant after the ride is completed."""
 
 from __future__ import annotations
 
@@ -44,7 +44,7 @@ class RateRide:
         if not (is_rider or is_driver):
             raise NotAuthorizedActionError("No participaste en este viaje.")
 
-        # El pasajero califica al conductor; el conductor al pasajero.
+        # The passenger rates the driver; the driver rates the passenger.
         ratee_id = ride.driver_id if is_rider else ride.rider_id
         if ratee_id is None:  # pragma: no cover - un viaje completado siempre tiene conductor
             raise RideNotCompletedError("El viaje no tiene conductor asignado.")

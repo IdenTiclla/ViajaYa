@@ -14,7 +14,7 @@ type Props = {
   onAction?: () => void;
 };
 
-/** Estado consistente para cargas, errores y listas vacías. */
+/** Consistent state for loading, errors and empty lists. */
 export function FeedbackState({
   title,
   message,

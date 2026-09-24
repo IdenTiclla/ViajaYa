@@ -8,7 +8,7 @@ export function useTema() {
   return useContext(ContextoTema);
 }
 
-/** Recalcula solo los estilos; cambiar de tema conserva pantallas y estado. */
+/** Recompute only the styles; switching theme keeps screens and state. */
 export function useEstilos<T>(crearEstilos: (tema: Tema) => T) {
   const tema = useTema();
   const styles = useMemo(() => crearEstilos(tema), [crearEstilos, tema]);

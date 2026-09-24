@@ -1,4 +1,4 @@
-"""Proceso hijo coordinado para el smoke de crash de scheduled_actions."""
+"""Coordinated child process for the scheduled_actions crash smoke."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ def run_claim_process(
     reached: Any,
     release: Any,
 ) -> None:
-    """Confirma un claim y espera para que el padre termine el proceso."""
+    """Confirm a claim and wait so the parent kills the process."""
     _validate_test_database_url(database_url)
 
     async def run() -> None:

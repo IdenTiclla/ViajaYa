@@ -1,4 +1,4 @@
-"""Pruebas de retención segura de acciones programadas terminales."""
+"""Tests of the safe retention of terminal scheduled actions."""
 
 from __future__ import annotations
 

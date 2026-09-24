@@ -1,6 +1,6 @@
-"""Schemas Pydantic de la API de viajes (contrato HTTP).
+"""Pydantic schemas of the rides API (HTTP contract).
 
-Separados de las entidades de dominio.
+Separate from the domain entities.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ from app.domain.service_area import bolivia_covers
 
 
 class PointSchema(BaseModel):
-    """Un punto del viaje en el contrato HTTP."""
+    """A ride point in the HTTP contract."""
 
     latitude: float = Field(ge=-90, le=90)
     longitude: float = Field(ge=-180, le=180)
@@ -83,7 +83,7 @@ def _is_useful_label(value: str) -> bool:
 
 
 class PointInputSchema(PointSchema):
-    """Punto entrante: nunca admite una etiqueta provisional como nombre final."""
+    """Incoming point: never accepts a provisional label as the final name."""
 
     @model_validator(mode="after")
     def normalize_readable_name(self) -> PointInputSchema:
@@ -109,7 +109,7 @@ class CreateRideRequestRequest(BaseModel):
 
 
 class RideEdit(CreateRideRequestRequest):
-    """Cambios a guardar al modificar una solicitud pausada (mismos campos que al crear)."""
+    """Changes to save when modifying a paused request (same fields as on creation)."""
 
 
 class RideRequestResponse(BaseModel):
@@ -137,19 +137,19 @@ class RideRequestResponse(BaseModel):
 
 
 class RideStatusUpdate(BaseModel):
-    """Avance de estado del viaje solicitado por el conductor."""
+    """Ride status change requested by the driver."""
 
     status: RideStatus
 
 
 class RideFareUpdate(BaseModel):
-    """Nuevo monto ofertado por el pasajero mientras busca conductor."""
+    """New fare offered by the passenger while searching for a driver."""
 
     fare: Decimal = Field(gt=0, max_digits=10, decimal_places=2)
 
 
 class OpenRideRiderResponse(BaseModel):
-    """Datos públicos del pasajero que el conductor ve en una solicitud abierta."""
+    """Public passenger data the driver sees on an open request."""
 
     id: uuid.UUID
     full_name: str
@@ -158,7 +158,7 @@ class OpenRideRiderResponse(BaseModel):
 
 
 class OpenRideResponse(BaseModel):
-    """Solicitud abierta tal como la ve un conductor en su lista."""
+    """Open request as a driver sees it in their list."""
 
     id: uuid.UUID
     service_type: ServiceType
@@ -193,7 +193,7 @@ class OpenRideResponse(BaseModel):
 
 
 class OpenRidePageResponse(BaseModel):
-    """Página de solicitudes abiertas ordenadas de forma estable."""
+    """Page of open requests in a stable order."""
 
     items: list[OpenRideResponse]
     next_cursor: str | None
@@ -207,7 +207,7 @@ class OpenRidePageResponse(BaseModel):
 
 
 class RideDriverSchema(BaseModel):
-    """Datos del conductor asignado, expuestos al pasajero durante el viaje."""
+    """Assigned driver's data, shown to the passenger during the ride."""
 
     id: uuid.UUID
     full_name: str
@@ -219,7 +219,7 @@ class RideDriverSchema(BaseModel):
 
 
 class RideRiderSchema(BaseModel):
-    """Datos del pasajero, visibles para el conductor asignado."""
+    """Passenger data, visible to the assigned driver."""
 
     id: uuid.UUID
     full_name: str
@@ -228,7 +228,7 @@ class RideRiderSchema(BaseModel):
 
 
 class RideResponse(BaseModel):
-    """Detalle completo de un viaje (polling de estado para ambos lados)."""
+    """Full ride detail (status polling for both sides)."""
 
     id: uuid.UUID
     rider_id: uuid.UUID
@@ -316,7 +316,7 @@ class RecentDestinationResponse(BaseModel):
 
 
 class HistoryCounterpartSchema(BaseModel):
-    """La otra parte del viaje en el historial (conductor o pasajero)."""
+    """The other party of the ride in the history (driver or passenger)."""
 
     id: uuid.UUID
     full_name: str
@@ -327,7 +327,7 @@ class HistoryCounterpartSchema(BaseModel):
 
 
 class RideHistoryItemResponse(BaseModel):
-    """Un viaje del historial, listo para pintar la tarjeta."""
+    """A history ride, ready to render the card."""
 
     id: uuid.UUID
     status: RideStatus
@@ -371,7 +371,7 @@ class RideHistoryItemResponse(BaseModel):
 
 
 class RideHistoryPageResponse(BaseModel):
-    """Página del historial de un pasajero o conductor."""
+    """Page of a passenger's or driver's history."""
 
     items: list[RideHistoryItemResponse]
     next_cursor: str | None

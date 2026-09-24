@@ -1,4 +1,4 @@
-"""Codificación opaca de cursores de paginación para el contrato HTTP/WS."""
+"""Opaque encoding of pagination cursors for the HTTP/WS contract."""
 
 from __future__ import annotations
 

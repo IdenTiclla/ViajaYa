@@ -1,4 +1,4 @@
-"""Modelos ORM (tablas). Se mapean a/desde las entidades del dominio."""
+"""ORM models (tables). They map to/from the domain entities."""
 
 from __future__ import annotations
 
@@ -43,9 +43,10 @@ from app.infrastructure.db.base import Base
 
 
 def _enum_values(enum_cls: type) -> list[str]:
-    """Hace que SQLAlchemy persista/lea el *valor* del enum (minúscula), no su
-    nombre. Así la columna coincide con el contrato de la API y con los
-    ``server_default`` de las migraciones (p. ej. ``cash``, ``taxi``)."""
+    """Make SQLAlchemy persist/read the enum's *value* (lowercase), not its
+    name. This way the column matches the API contract and the migrations'
+    ``server_default`` values (e.g. ``cash``, ``taxi``).
+    """
     return [member.value for member in enum_cls]
 
 
@@ -116,8 +117,8 @@ class UserModel(Base):
         server_default=UserRole.PASSENGER.value,
         nullable=False,
     )
-    # Campo fisico del conductor (taxi/moto). Sigue siendo VARCHAR(20), por lo que
-    # separarlo de ServiceType no requiere transformar los valores persistidos.
+    # The driver's physical field (taxi/moto). It is still VARCHAR(20), so
+    # separating it from ServiceType does not require transforming the persisted values.
     vehicle_type: Mapped[VehicleType | None] = mapped_column(
         Enum(
             VehicleType,
@@ -408,7 +409,7 @@ class RideRequestModel(Base):
 
 
 class DriverRideDismissalModel(Base):
-    """Versión de una solicitud que un conductor decidió no volver a ver."""
+    """A version of a request that a driver chose not to see again."""
 
     __tablename__ = "driver_ride_dismissals"
     __table_args__ = (
@@ -491,8 +492,8 @@ class OfferModel(Base):
         default=OfferStatus.PENDING,
         nullable=False,
     )
-    # Columna legada de 0010: se conserva para no destruir datos historicos,
-    # pero ya no participa en el dominio desde que 0011 elimino ese estado.
+    # Legacy column from 0010: kept so historical data is not destroyed,
+    # but it no longer takes part in the domain since 0011 removed that state.
     rider_accepted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -596,7 +597,7 @@ class SavedPlaceModel(Base):
 
 
 class RealtimeAggregateVersionModel(Base):
-    """Contador transaccional de versión para cada agregado del tiempo real."""
+    """Transactional version counter for each realtime aggregate."""
 
     __tablename__ = "realtime_aggregate_versions"
     __table_args__ = (
@@ -622,7 +623,7 @@ class RealtimeAggregateVersionModel(Base):
 
 
 class RealtimeStreamVersionModel(Base):
-    """Contador transaccional de secuencia para cada topic del tiempo real."""
+    """Transactional sequence counter for each realtime topic."""
 
     __tablename__ = "realtime_stream_versions"
     __table_args__ = (
@@ -645,7 +646,7 @@ class RealtimeStreamVersionModel(Base):
 
 
 class RealtimeOutboxModel(Base):
-    """Evento durable pendiente de publicación por el dispatcher."""
+    """Durable event pending publication by the dispatcher."""
 
     __tablename__ = "realtime_outbox"
     __table_args__ = (
@@ -774,7 +775,7 @@ class RealtimeOutboxModel(Base):
 
 
 class ScheduledActionModel(Base):
-    """Acción diferida durable, reclamada mediante un lease con fencing."""
+    """Durable deferred action, claimed through a fenced lease."""
 
     __tablename__ = "scheduled_actions"
     __table_args__ = (

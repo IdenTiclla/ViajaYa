@@ -1,4 +1,4 @@
-"""Exposición OpenMetrics de señales operativas sanitizadas."""
+"""OpenMetrics exposure of sanitized operational signals."""
 
 from __future__ import annotations
 
@@ -107,7 +107,7 @@ def render_realtime_openmetrics(
     presence_observation_count: int = 0,
     presence_failure_count: int = 0,
 ) -> str:
-    """Renderiza solo agregados operativos, sin payloads, topics ni errores."""
+    """Render only operational aggregates, without payloads, topics or errors."""
     document = _OpenMetricsDocument()
     dispatcher_enabled = mode in {"shadow", "live_local", "live_redis"}
     document.metric(
@@ -532,7 +532,7 @@ async def metrics(
     use_case: RealtimeOutboxOperationalSnapshotDep,
     scheduled_use_case: ScheduledActionsOperationalSnapshotDep,
 ) -> Response:
-    """Expone métricas scrapeables sin convertir fallos internos en datos."""
+    """Expose scrapeable metrics without turning internal failures into data."""
     mode = settings.realtime_outbox_dispatch_mode
     retention_days = settings.realtime_outbox_published_retention_days
     dispatcher = request.app.state.realtime_outbox_dispatcher

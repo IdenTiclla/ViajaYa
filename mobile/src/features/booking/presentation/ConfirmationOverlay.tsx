@@ -1,8 +1,8 @@
 /**
- * Overlay de confirmación: se muestra al aceptar una oferta (el viaje quedó
- * asignado). Ícono verde con rebote; avanza al **tap** del usuario (tras un
- * mínimo de ~500 ms para evitar un toque accidental) o, como respaldo, se
- * auto-oculta a los 3 s. Al terminar llama a `onDone` (navega al viaje).
+ * Confirmation overlay: shown when accepting an offer (the ride was
+ * assigned). Green icon with a bounce; it advances on the user's **tap** (after a
+ * minimum of ~500 ms to avoid an accidental touch) or, as a fallback,
+ * auto-hides after 3 s. When done it calls `onDone` (navigates to the ride).
  */
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useEffect, useRef, useState } from 'react';
@@ -22,7 +22,7 @@ export function ConfirmationOverlay({
 }) {
   const { colors, styles } = useEstilos(crearEstilos);
   const [scale] = useState(() => new Animated.Value(0));
-  // Ref (no state): el onPress la lee al tap; evita re-renders en cascada.
+  // Ref (not state): onPress reads it on tap; avoids cascading re-renders.
   const canDismissRef = useRef(false);
 
   useEffect(() => {

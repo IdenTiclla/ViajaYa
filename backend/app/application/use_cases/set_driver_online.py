@@ -1,4 +1,4 @@
-"""Caso de uso: el conductor alterna su disponibilidad (en línea/desconectado)."""
+"""Use case: the driver toggles their availability (online/offline)."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Frontera transaccional y contrato realtime de las cancelaciones."""
+"""Transactional boundary and realtime contract of cancellations."""
 
 from __future__ import annotations
 

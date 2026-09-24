@@ -1,34 +1,34 @@
 /**
- * Estado de pantalla del conductor sobre las solicitudes abiertas (zustand).
+ * Driver screen state over the open requests (zustand).
  *
- * Al descartar, el backend guarda la versión de la solicitud para ese conductor.
- * Este store conserva el reflejo inmediato mientras llega la confirmación y evita
- * que un evento WebSocket repetido vuelva a mostrarla.
+ * When dismissing, the backend stores the request's version for that driver.
+ * This store keeps the immediate reflection while the confirmation arrives and keeps
+ * a repeated WebSocket event from showing it again.
  *
- * `offered` recuerda la oferta enviada a cada solicitud (id, precio, ETA y
- * expiración 30 s) **mientras siga viva**. Los demás conjuntos marcan el
- * desenlace en vivo por WebSocket:
- * - `rejected`: el pasajero rechazó la oferta (`declined`) o canceló el viaje.
- * - `taken`: otro conductor se llevó el viaje.
- * - `expired`: la oferta venció (30 s) sin respuesta.
- * - `paused`: el pasajero está modificando la solicitud (no se puede ofertar).
+ * `offered` remembers the offer sent to each request (id, price, ETA and
+ * 30 s expiry) **while it is still live**. The other sets mark the
+ * outcome live over WebSocket:
+ * - `rejected`: the passenger rejected the offer (`declined`) or cancelled the ride.
+ * - `taken`: another driver got the ride.
+ * - `expired`: the offer expired (30 s) without an answer.
+ * - `paused`: the passenger is modifying the request (offering is not possible).
  *
- * Los IDs resueltos, los rides terminales y los tokens de intento se conservan
- * de forma acotada: una respuesta HTTP atrasada no recrea `offered[rideId]`.
- * El estado se comparte entre la lista, el mapa y la pantalla de estado.
+ * Resolved IDs, terminal rides and attempt tokens are kept
+ * in a bounded way: a late HTTP response does not recreate `offered[rideId]`.
+ * The state is shared between the list, the map and the status screen.
  */
 import { useEffect } from 'react';
 import { create } from 'zustand';
 
-/** Datos de la oferta que el conductor envió a una solicitud. */
+/** Data of the offer the driver sent to a request. */
 export type SentOffer = {
   offerId: string;
   price: number;
-  /** Tarifa del pasajero cuando se envió la oferta; detecta renovaciones. */
+  /** The passenger's fare when the offer was sent; detects renewals. */
   rideFare: number;
   etaMin: number | null;
   expiresAt: string;
-  /** Intento local que la confirmó; ausente cuando procede de un snapshot. */
+  /** Local attempt that confirmed it; absent when it comes from a snapshot. */
   attemptToken?: number;
 };
 
@@ -51,7 +51,7 @@ export type DriverOfferSnapshot = {
   rideId: string;
   id: string;
   price: number;
-  /** Tarifa vigente de la solicitud, distinta del precio contraofertado. */
+  /** The request's current fare, different from the counter-offered price. */
   rideFare?: number;
   etaMin: number | null;
   expiresAt: string | null;
@@ -95,11 +95,11 @@ export type DriverPoolReductionKind =
 export type DriverPoolReduction = {
   projection: DriverPoolProjection;
   kind: DriverPoolReductionKind;
-  /** El payload puede refrescar la caché sin implicar una transición nueva. */
+  /** The payload can refresh the cache without implying a new transition. */
   acceptsPayload: boolean;
-  /** El evento puede mutar la caché y los estados visuales. */
+  /** The event can mutate the cache and the visual states. */
   applied: boolean;
-  /** Solo una publicación de versión estrictamente mayor limpia desenlaces. */
+  /** Only a publication of a strictly greater version clears outcomes. */
   clearsOutcomes: boolean;
 };
 
@@ -118,7 +118,7 @@ function rememberPoolCycle(
   cycle: DriverPoolCycle,
 ): DriverPoolProjection {
   const next = new Map(projection);
-  // El orden de inserción funciona como LRU sencillo para acotar tombstones.
+  // Insertion order works as a simple LRU to bound tombstones.
   next.delete(rideId);
   next.set(rideId, cycle);
   while (next.size > MAX_DRIVER_POOL_CYCLES) {
@@ -130,11 +130,11 @@ function rememberPoolCycle(
 }
 
 /**
- * Reduce el ciclo visible de una solicitud dentro del pool del conductor.
+ * Reduce a request's visible lifecycle within the driver's pool.
  *
- * `poolVersion` separa publicaciones reales. Dentro de una misma versión las
- * fases solo avanzan: un cierre puede anteceder a la notificación personal de
- * pausa, pero un `ride_created` repetido no puede reabrir ninguna de las dos.
+ * `poolVersion` separates real publications. Within the same version the
+ * phases only move forward: a close may precede the personal pause
+ * notification, but a repeated `ride_created` cannot reopen either of them.
  */
 export function reduceDriverPoolEvent(
   projection: DriverPoolProjection,
@@ -242,38 +242,38 @@ function advanceOfferAttempt(
 }
 
 type DriverRequestsState = {
-  /** Última versión/fase observada por ride; acota eventos atrasados del pool. */
+  /** Last version/phase observed per ride; bounds late pool events. */
   poolProjection: DriverPoolProjection;
-  /** Versión descartada de cada solicitud; evita revivirla por un WS repetido. */
+  /** Dismissed version of each request; avoids reviving it through a repeated WS event. */
   dismissed: Map<string, number>;
   offered: Record<string, SentOffer>;
-  /** Oferta rechazada por el pasajero, o viaje cancelado. */
+  /** Offer rejected by the passenger, or ride cancelled. */
   rejected: Set<string>;
-  /** Viaje que otro conductor se llevó. */
+  /** Ride that another driver got. */
   taken: Set<string>;
-  /** Oferta que venció (30 s) sin respuesta del pasajero. */
+  /** Offer that expired (30 s) without an answer from the passenger. */
   expired: Set<string>;
-  /** Tarifa vigente al expirar cada oferta; persiste el contexto para reconexión. */
+  /** Current fare when each offer expired; keeps the context for reconnection. */
   expiredFares: Record<string, number>;
-  /** Solicitud pausada por el pasajero (modificándola). */
+  /** Request paused by the passenger (modifying it). */
   paused: Set<string>;
   /** IDs terminales conservados para descartar respuestas HTTP atrasadas. */
   settledOfferIds: Set<string>;
-  /** Rides que ya no admiten ninguna oferta nueva en esta sesión. */
+  /** Rides that no longer accept any new offer in this session. */
   terminalRideIds: Set<string>;
-  /** Token vigente de la última petición de oferta iniciada por ride. */
+  /** Current token of the latest offer request started per ride. */
   offerAttemptTokens: Map<string, number>;
   offerAttemptSequence: number;
-  /** Secuencia local de intentos ya cubierta por el último snapshot de ofertas. */
+  /** Local sequence of attempts already covered by the latest offers snapshot. */
   offerSnapshotAttemptSequence: number | null;
-  /** Secuencia luego de que el snapshot invalidó intentos de rides incluidos. */
+  /** Sequence after the snapshot invalidated attempts of included rides. */
   offerSnapshotAppliedAttemptSequence: number | null;
   offerIdsAtSnapshot: Set<string>;
-  /** Solicita al hook WS un handshake nuevo ante una carrera HTTP ambigua. */
+  /** Ask the WS hook for a new handshake after an ambiguous HTTP race. */
   realtimeResyncSequence: number;
   applyPoolEvent: (event: DriverPoolEvent) => DriverPoolReduction;
   reconcilePoolSnapshot: (rides: DriverPoolSnapshotRide[]) => void;
-  /** Aplica todo el snapshot v2 mediante una única transición observable. */
+  /** Apply the whole v2 snapshot through a single observable transition. */
   reconcileRealtimeSnapshot: (snapshot: DriverRealtimeSnapshot) => void;
   dismiss: (rideId: string, poolVersion: number) => void;
   beginOfferAttempt: (rideId: string) => number;
@@ -291,7 +291,7 @@ type DriverRequestsState = {
     rideFare: number | undefined,
     attemptToken: number,
   ) => boolean;
-  /** Reemplaza solo las ofertas vivas con el snapshot autoritativo del backend. */
+  /** Replace only the live offers with the backend's authoritative snapshot. */
   reconcileOffered: (
     offers: DriverOfferSnapshot[],
     cut?: OfferSnapshotCut,
@@ -300,13 +300,13 @@ type DriverRequestsState = {
   markTaken: (rideId: string, offerId?: string) => boolean;
   markCancelled: (rideId: string, offerId?: string) => boolean;
   markAssigned: (rideId: string) => boolean;
-  /** Confirma por identidad el retiro de una oferta sin cambiar el desenlace visual. */
+  /** Confirm an offer's withdrawal by identity without changing the visual outcome. */
   markWithdrawn: (rideId: string, offerId: string) => boolean;
-  /** Expira solo la oferta vigente esperada; devuelve si aplicó el cambio. */
+  /** Expire only the expected current offer; returns whether the change applied. */
   markExpired: (rideId: string, offerId: string) => boolean;
-  /** Retira únicamente las ofertas de los rides incluidos; devuelve cuántas quitó. */
+  /** Withdraw only the offers of the included rides; returns how many it removed. */
   withdrawOffered: (rideIds: string[]) => number;
-  /** Retira por identidad exacta sin afectar una reoferta posterior del mismo ride. */
+  /** Withdraw by exact identity without affecting a later re-offer on the same ride. */
   withdrawExactOffers: (offers: ExactWithdrawnOffer[]) => number;
   markPaused: (rideId: string, offerId?: string) => boolean;
   getOffer: (rideId: string) => SentOffer | null;
@@ -385,8 +385,8 @@ function reduceOfferedSnapshot(
         ? reportedExpiresAt
         : new Date(now + FALLBACK_TTL_MS).toISOString();
     liveRideIds.add(offer.rideId);
-    // PostgreSQL confirma que sigue PENDING: corrige expiraciones locales
-    // por reloj adelantado o cualquier guard contradictorio del cliente.
+    // PostgreSQL confirms it is still PENDING: it corrects local expiries
+    // caused by a clock running ahead or any contradictory client guard.
     settledOfferIds.delete(offer.id);
     terminalRideIds.delete(offer.rideId);
     const advanced = advanceOfferAttempt(
@@ -418,9 +418,9 @@ function reduceOfferedSnapshot(
         !offerIdsAtSnapshot.has(current.offerId),
     );
 
-  // No se comparan timestamps del servidor: PostgreSQL ``now()`` ordena
-  // inicios de transacción, no commits. El corte local detecta tanto un 201
-  // posterior como uno que resolvió mientras se aplicaba el snapshot.
+  // Server timestamps are not compared: PostgreSQL ``now()`` orders
+  // transaction starts, not commits. The local cut detects both a later 201
+  // and one that resolved while the snapshot was being applied.
   const offerSnapshotAttemptSequence =
     cut != null ? cut.attemptSequence : state.offerSnapshotAttemptSequence;
   const offerSnapshotAppliedAttemptSequence =
@@ -428,7 +428,7 @@ function reduceOfferedSnapshot(
       ? offerAttemptSequence
       : state.offerSnapshotAppliedAttemptSequence;
 
-  // El snapshot PENDING limpia desenlaces visuales viejos del mismo ride.
+  // The PENDING snapshot clears old visual outcomes of the same ride.
   const rejected = new Set(state.rejected);
   const taken = new Set(state.taken);
   const expired = new Set(state.expired);
@@ -681,7 +681,7 @@ export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
             price: offer.price,
             rideFare: rideFare ?? offer.price,
             etaMin: offer.etaMin,
-            // Sin fecha del backend, asumimos la ventana de oferta (30 s) desde ahora.
+            // Without a date from the backend, we assume the offer window (30 s) from now.
             expiresAt: offer.expiresAt ?? new Date(Date.now() + FALLBACK_TTL_MS).toISOString(),
             attemptToken,
           },
@@ -702,8 +702,8 @@ export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
   },
   reconcileOffered: (snapshot, cut) =>
     set((s) => reduceOfferedSnapshot(s, snapshot, cut)),
-  // Cada desenlace limpia la entrada de `offered` (sin zombies) y crea sets nuevos
-  // para que los selectores re-rendericen.
+  // Each outcome clears the `offered` entry (no zombies) and creates new sets
+  // so the selectors re-render.
   markRejected: (rideId, offerId) => {
     let applied = false;
     set((s) => {
@@ -809,8 +809,8 @@ export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
       if (current && current.offerId !== offerId) return { settledOfferIds };
 
       applied = true;
-      // El tombstone exacto ya bloquea un 201 tardío de esta oferta. No se
-      // invalida el token del ride: puede pertenecer a una reoferta B en vuelo.
+      // The exact tombstone already blocks a late 201 for this offer. The ride's
+      // token is not invalidated: it may belong to a re-offer B in flight.
       if (!current) return { settledOfferIds };
       const offered = { ...s.offered };
       delete offered[rideId];
@@ -915,7 +915,7 @@ export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
   },
   getOffer: (rideId) => get().offered[rideId] ?? null,
   isDismissed: (rideId) => get().dismissed.has(rideId),
-  // Hay oferta "en pie" si existe, no expiró (30 s) y no tuvo desenlace terminal.
+  // There is a "standing" offer if it exists, has not expired (30 s) and had no terminal outcome.
   isOffered: (rideId) => {
     const offer = get().offered[rideId];
     return (
@@ -949,13 +949,13 @@ export const useDriverRequests = create<DriverRequestsState>((set, get) => ({
 }));
 
 /**
- * Autocuración: pasa a `expired` cualquier oferta cuyo TTL (30 s) ya venció.
+ * Self-healing: move to `expired` any offer whose TTL (30 s) already ran out.
  *
- * El estado `expired` normalmente lo puebla el WS `offer_expired`, pero si el
- * conductor cambió de cuenta o se cayó la conexión durante la ventana de la
- * oferta, el evento se pierde y la tarjeta quedaba pegada en "Expirando…".
- * Este hook hace tick cada segundo (y al montar) y marca lo vencido. Cuelga de
- * la pantalla principal del conductor (lista + mapa comparten el mismo estado).
+ * The `expired` state is normally filled by the `offer_expired` WS event, but if the
+ * driver switched accounts or the connection dropped during the offer's
+ * window, the event is lost and the card stayed stuck on "Expirando…".
+ * This hook ticks every second (and on mount) and marks what expired. It hangs from
+ * the driver's main screen (list + map share the same state).
  */
 export function useAutoExpireOffers(): void {
   useEffect(() => {

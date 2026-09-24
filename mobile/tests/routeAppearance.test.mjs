@@ -6,8 +6,8 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import ts from 'typescript';
 
-// Se renderizan los componentes productivos; solo se sustituyen las vistas
-// nativas. Estas pruebas comprueban sus props, no el bitmap real de Android.
+// The production components are rendered; only the native views are replaced.
+// These tests check their props, not the real Android bitmap.
 const dobles = {
   'react-native-maps': `
     export const lineas = [], marcadores = [];

@@ -181,7 +181,7 @@ test('driver_snapshot reemplaza open, paused, offers y active_ride null', async 
   });
   assert.equal(state.offerSnapshotAttemptSequence, 2);
   assert.equal(state.offerSnapshotAppliedAttemptSequence, 3);
-  // La oferta HTTP local ausente se limpia y pide una segunda confirmación.
+  // The missing local HTTP offer is cleared and a second confirmation is requested.
   assert.equal(state.realtimeResyncSequence, 1);
   assert.equal(notifications, 1);
   assert.equal(queryStateObservedFromStore.active, null);

@@ -1,4 +1,4 @@
-"""Migración, backfill y concurrencia real de ``scheduled_actions``."""
+"""Migration, backfill and real concurrency of ``scheduled_actions``."""
 
 from __future__ import annotations
 

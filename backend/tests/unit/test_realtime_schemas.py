@@ -1,4 +1,4 @@
-"""Pruebas del contrato discriminado de mensajes de negociación."""
+"""Tests of the discriminated contract of negotiation messages."""
 
 from __future__ import annotations
 

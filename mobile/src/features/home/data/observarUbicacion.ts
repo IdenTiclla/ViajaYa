@@ -5,15 +5,15 @@ import { rumboDeBrujula, rumboDelMovimiento, type MuestraMovimiento } from '../d
 
 export type DisponibilidadUbicacion = 'granted' | 'denied' | 'disabled';
 
-/** Consulta silenciosa: volver a la app no debe abrir otro diálogo de permisos. */
+/** Silent query: coming back to the app must not open another permission dialog. */
 export async function consultarDisponibilidadUbicacion(): Promise<DisponibilidadUbicacion> {
   const permiso = await Location.getForegroundPermissionsAsync();
   if (permiso.status !== Location.PermissionStatus.GRANTED) return 'denied';
   return await Location.hasServicesEnabledAsync() ? 'granted' : 'disabled';
 }
 
-// La solicitud puntual no es cancelable en Expo. Compartirla evita acumular
-// solicitudes nativas al reintentar mientras el proveedor todavía responde.
+// The one-off request cannot be cancelled in Expo. Sharing it avoids piling up
+// native requests when retrying while the provider is still answering.
 let posicionInicialPendiente: Promise<Location.LocationObject> | null = null;
 function obtenerPosicionInicial() {
   if (!posicionInicialPendiente) {
@@ -29,7 +29,7 @@ function obtenerPosicionInicial() {
   return posicionInicialPendiente;
 }
 
-/** GPS y brújula comparten una cancelación, también si el alta nativa llega tarde. */
+/** GPS and compass share a cancellation, even if the native subscription arrives late. */
 export async function observarUbicacion(
   actualizar: (coordinates: Coordinates, rumbo: number | null) => void,
   error?: (motivo: 'error' | 'disabled') => void,
@@ -78,7 +78,7 @@ export async function observarUbicacion(
       : orientacion != null && ahora - instanteBrujula <= 3000 ? orientacion : ultimoRumbo;
     const cambio = rumbo != null && ultimoRumbo != null
       ? Math.abs(((rumbo - ultimoRumbo + 540) % 360) - 180) : Infinity;
-    // La brújula no debe redibujar toda la lista de solicitudes a la frecuencia del sensor.
+    // The compass must not redraw the whole request list at the sensor's frequency.
     if (!nuevaPosicion && ultimoRumbo != null && (ahora - ultimaEmision < 150 || cambio < 2)) return;
     ultimoRumbo = rumbo;
     ultimaEmision = ahora;
@@ -101,8 +101,8 @@ export async function observarUbicacion(
   };
   signal?.addEventListener('abort', remove, { once: true });
 
-  // Una única escucha continua. El SDK pausa/reanuda el proveedor al cambiar
-  // de Activity; desactivar su diálogo automático evita ciclos de pausa y alta.
+  // A single continuous listener. The SDK pauses/resumes the provider when the
+  // Activity changes; disabling its automatic dialog avoids pause/subscribe loops.
   void Location.watchPositionAsync(
     { accuracy: Location.Accuracy.High, timeInterval: 1000, distanceInterval: 0,
       mayShowUserSettingsDialog: false },
@@ -113,13 +113,13 @@ export async function observarUbicacion(
     else suscripcion.remove();
   }).catch(fallar);
 
-  // Arranque puntual con el proveedor combinado (red/GPS): no espera a que
-  // termine la adquisición de alta precisión ni se repite por cada render.
+  // One-off start with the fused provider (network/GPS): it does not wait for
+  // the high-accuracy acquisition to finish, nor repeat on every render.
   void obtenerPosicionInicial().then((lectura) => {
     if (!ultima) recibirPosicion(lectura);
   }).catch(() => undefined);
 
-  // Un dispositivo sin brújula mantiene el seguimiento GPS.
+  // A device without a compass keeps GPS tracking.
   void Location.watchHeadingAsync((lectura) => {
     if (!activo) return;
     orientacion = rumboDeBrujula(lectura);

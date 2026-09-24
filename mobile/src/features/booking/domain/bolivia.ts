@@ -6,7 +6,7 @@ export const BOLIVIA_COUNTRY_CODE = 'BO';
 export const BOLIVIA_SERVICE_AREA_MESSAGE =
   'ViajaYa opera actualmente solo dentro de Bolivia.';
 
-// El rectángulo limita la cámara y evita recorrer el contorno para puntos lejanos.
+// The rectangle bounds the camera and avoids walking the outline for distant points.
 export const BOLIVIA_NORTH_EAST: Coordinates = {
   latitude: -9.65,
   longitude: -57.4,
@@ -24,8 +24,8 @@ export const BOLIVIA_DEFAULT_COORDINATES: Coordinates = {
 
 type PuntoContorno = readonly [longitud: number, latitud: number];
 
-// Copia byte a byte del recurso autoritativo del backend. El JSON conserva la
-// fuente, commit reproducible y licencia de dominio público de Natural Earth.
+// Byte-for-byte copy of the backend's authoritative resource. The JSON keeps the
+// source, reproducible commit and Natural Earth's public-domain license.
 const CONTORNO_BOLIVIA =
   boliviaBoundary.geometry.coordinates[0] as unknown as readonly PuntoContorno[];
 const EPSILON_CONTORNO = 1e-10;
@@ -49,7 +49,7 @@ function puntoEstaEnSegmento(
   );
 }
 
-/** Ray casting con el borde incluido, equivalente a la validación del backend. */
+/** Ray casting with the boundary included, equivalent to the backend validation. */
 function contornoCubre(punto: PuntoContorno): boolean {
   let estaDentro = false;
   let anterior = CONTORNO_BOLIVIA[CONTORNO_BOLIVIA.length - 1];
@@ -92,8 +92,8 @@ export function isPlaceInBolivia(place: Place): boolean {
 export function getBoliviaPlaceError(place: Place): string | null {
   const countryCode = normalizeCountryCode(place.countryCode);
   if (!isCoordinatesInBolivia(place.coordinates)) return BOLIVIA_SERVICE_AREA_MESSAGE;
-  // El geocoder solo mejora la etiqueta y puede no estar disponible. Como en
-  // el backend, el contorno local es la autoridad y el código de país una pista.
+  // The geocoder only improves the label and may be unavailable. As in
+  // the backend, the local outline is the authority and the country code is a hint.
   if (place.countryCode != null && countryCode == null) return BOLIVIA_SERVICE_AREA_MESSAGE;
   if (countryCode != null && countryCode !== BOLIVIA_COUNTRY_CODE) {
     return BOLIVIA_SERVICE_AREA_MESSAGE;

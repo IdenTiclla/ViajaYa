@@ -7,7 +7,7 @@ import {
   longitudeDelta,
   mercatorY,
   projectRouteRelativeToPin,
-  ROUTE_PIN_SIZE,
+  labelBaseOffset,
   placeTooltipClearOfRoute,
   chooseTooltipPlacement,
 } from '../src/features/rides/presentation/routeTooltipLayout.ts';
@@ -41,7 +41,7 @@ function labelRect(label, route, fit) {
   );
   if (!placed.visible) return null;
   const pin = fit.toScreen(label.coordinate);
-  const near = ROUTE_PIN_SIZE / 2 + placed.separation;
+  const near = labelBaseOffset(placed.placement) + placed.separation;
   const [top, bottom] = placed.placement === 'above'
     ? [pin.y - near - label.size.height, pin.y - near]
     : [pin.y + near, pin.y + near + label.size.height];

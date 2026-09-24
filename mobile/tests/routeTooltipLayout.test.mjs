@@ -3,9 +3,12 @@ import test from 'node:test';
 
 import {
   computePinAnchor,
+  labelBaseOffset,
   chooseTooltipPlacement,
   projectRouteRelativeToPin,
-  ROUTE_PIN_SIZE,
+  PIN_BLOCK_HEIGHT,
+  PIN_TIP_TO_TOP,
+  ROUTE_PIN_DOT,
   placeTooltipClearOfRoute,
 } from '../src/features/rides/presentation/routeTooltipLayout.ts';
 
@@ -51,17 +54,19 @@ test('without a route or with coincident points it keeps valid placements', () =
   assert.equal(chooseTooltipPlacement('B', south, [south, south]), 'below');
 });
 
-test('the pin center does not move when the label grows or shows Editar', () => {
-  for (const blockHeight of [ROUTE_PIN_SIZE, 44, 62, 92]) {
+test('the stem tip does not move when the label grows or shows Editar', () => {
+  for (const blockHeight of [PIN_BLOCK_HEIGHT, 44, 62, 92]) {
     const aboveAnchor = computePinAnchor(blockHeight, 'above');
     const belowAnchor = computePinAnchor(blockHeight, 'below');
-    // The center stays half a diameter from the edge, independent of the tooltip.
-    assert.ok(Math.abs(blockHeight - aboveAnchor.y * blockHeight - ROUTE_PIN_SIZE / 2) < 0.000001);
-    assert.ok(Math.abs(belowAnchor.y * blockHeight - ROUTE_PIN_SIZE / 2) < 0.000001);
+    // Labels above: the tip sits half a dot from the bottom edge.
+    assert.ok(Math.abs(blockHeight - aboveAnchor.y * blockHeight - ROUTE_PIN_DOT / 2) < 0.000001);
+    // Labels below: the tip sits a circle plus a stem from the top edge.
+    assert.ok(Math.abs(belowAnchor.y * blockHeight - PIN_TIP_TO_TOP) < 0.000001);
     assert.equal(aboveAnchor.x, 0.5);
     assert.equal(belowAnchor.x, 0.5);
   }
-  assert.deepEqual(computePinAnchor(0, 'above'), { x: 0.5, y: 0.5 });
+  // Before the first measurement the bare pin block is assumed.
+  assert.deepEqual(computePinAnchor(0, 'above'), computePinAnchor(PIN_BLOCK_HEIGHT, 'above'));
 });
 
 const size = { width: 140, height: 32 };
@@ -75,7 +80,8 @@ test('a curve coming back behind the text forces moving it further from the pin'
   ]);
   assert.equal(result.placement, 'above');
   assert.equal(result.visible, true);
-  assert.ok(result.separation > 28, 'Must clear the street crossing 30 from the pin');
+  assert.ok(labelBaseOffset('above') + result.separation > 30,
+    'Must clear the street crossing 30 from the pin');
 });
 
 test('detects a segment crossing even if both its vertices are outside the tooltip', () => {
@@ -105,8 +111,8 @@ test('the projection uses the zoom scale and the camera bearing', () => {
 
 test('recomputes collisions when zooming in and rotating the map', () => {
   const route = [
-    { latitude: south.latitude + 0.001, longitude: south.longitude - 0.01 },
-    { latitude: south.latitude + 0.001, longitude: south.longitude + 0.01 },
+    { latitude: south.latitude + 0.0015, longitude: south.longitude - 0.01 },
+    { latitude: south.latitude + 0.0015, longitude: south.longitude + 0.01 },
   ];
   const normal = projectRouteRelativeToPin(south, route, 0, 15);
   const near = projectRouteRelativeToPin(south, route, 0, 18);

@@ -422,7 +422,13 @@ npm run lint               # expo lint (eslint-config-expo)
   visible sin perder zoom en el resto. La proyección Mercator (`mercatorY`,
   `longitudeDelta`) vive solo en ese archivo. No dupliques la polilínea ni
   los estilos del pin en una pantalla. Conserva el contenedor nativo no aplanable,
-  el anclaje al centro del símbolo y el redibujado cancelable tras cambios de layout.
+  el redibujado cancelable tras cambios de layout y el segundo redibujado tardío
+  (400 ms, evita bitmaps en blanco). El pin A/B de ruta tiene la misma forma que el
+  pin de selección (círculo, tallo y punto): la punta del tallo es la coordenada exacta
+  en todas las vistas (pasajero y conductor). `computePinAnchor` recibe la altura
+  derivada de la etiqueta medida (no la del `onLayout` del contenedor, que puede
+  llegar tarde y subir el pin con etiqueta abajo). El `Marker` usa `key={placement}`:
+  Android conserva un bitmap viejo cuando la etiqueta cambia de lado.
   La colocación de tooltips comprueba todos los segmentos en la proyección de
   pantalla y mide el bloque completo (texto y Editar). Los mapas con ruta son
   cenitales y bloqueados (sin arrastre, zoom ni giro), por solicitud del usuario

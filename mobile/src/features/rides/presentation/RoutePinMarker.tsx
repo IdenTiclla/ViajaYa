@@ -23,7 +23,10 @@ import {
   projectRouteRelativeToPin,
   TOOLTIP_SEPARATION,
   ROUTE_PIN_LETTER_SIZE,
+  PIN_BLOCK_HEIGHT,
+  ROUTE_PIN_DOT,
   ROUTE_PIN_SIZE,
+  ROUTE_PIN_STEM,
   placeTooltipClearOfRoute,
   type LabelSize,
 } from '@/features/rides/presentation/routeTooltipLayout';
@@ -73,7 +76,7 @@ export function RoutePinMarker({
 }: Props) {
   const { colors, styles, mode } = useThemedStyles(createStyles);
   const marker = useRef<MapMarker>(null);
-  const [size, setSize] = useState({ width: 0, height: ROUTE_PIN_SIZE });
+  const [size, setSize] = useState({ width: 0, height: PIN_BLOCK_HEIGHT });
   const [labelSize, setLabelSize] = useState({
     width: 178, height: showEditControl ? 70 : 40,
   });
@@ -89,19 +92,33 @@ export function RoutePinMarker({
     );
   }, [kind, coordinate, route, mapBearing, mapZoom, hasLabels, labelSize]);
   const { placement, separation, visible } = location;
-  useEffect(() => scheduleMarkerRedraw(() => marker.current?.redraw()), [
-    size.width, size.height, label, kind, placement, showTooltip,
-    showEditControl, loading, dim, separation, visible, mode,
-  ]);
+  const redrawKey = [size.width, size.height, label, kind, placement, showTooltip,
+    showEditControl, loading, dim, separation, visible, mode].join('|');
+  useEffect(() => scheduleMarkerRedraw(() => marker.current?.redraw()), [redrawKey]);
+  // Android may capture the bitmap before the label text finishes laying out,
+  // leaving an empty box; a late second capture repairs it.
+  useEffect(() => {
+    const timer = setTimeout(() => marker.current?.redraw(), LATE_REDRAW_MS);
+    return () => clearTimeout(timer);
+  }, [redrawKey]);
+  // Derive the bitmap height from the measured label instead of waiting for the
+  // container's onLayout: a stale height would shift a label-below pin upward.
+  const bitmapHeight = hasLabels
+    ? PIN_BLOCK_HEIGHT + separation + labelSize.height
+    : PIN_BLOCK_HEIGHT;
+  const pinColor = kind === 'A' ? colors.primary : colors.danger;
 
   return (
     <Marker
+      // Android keeps a stale bitmap when the label flips sides (the pin would
+      // be drawn with the other side's anchor); a fresh native marker fixes it.
+      key={placement}
       ref={marker}
       coordinate={coordinate}
       // On Google Maps Android polylines and markers are separate
       // layers; an explicit z-index keeps the pin visible above the route.
       zIndex={zIndex ?? 10}
-      anchor={computePinAnchor(size.height, placement)}
+      anchor={computePinAnchor(bitmapHeight, placement)}
       accessibilityLabel={label}
       title={!visible ? label : undefined}
       onPress={onPress}>
@@ -153,21 +170,38 @@ export function RoutePinMarker({
             </View>
           )}
         </View>
-        <MapPointBadge
-          kind={kind === 'A' ? 'origin' : 'destination'}
-          size={ROUTE_PIN_SIZE}
-          border={ROUTE_PIN_BORDER}
-          letterSize={ROUTE_PIN_LETTER_SIZE}
-          loading={loading}
-          dimmed={dim}
-        />
+        {/* Same shape as the selection pin: the stem tip is the exact coordinate. */}
+        <View style={[styles.pin, dim && styles.dimmed]}>
+          <MapPointBadge
+            kind={kind === 'A' ? 'origin' : 'destination'}
+            size={ROUTE_PIN_SIZE}
+            border={ROUTE_PIN_BORDER}
+            letterSize={ROUTE_PIN_LETTER_SIZE}
+            loading={loading}
+          />
+          <View style={[styles.stem, { backgroundColor: pinColor }]} />
+          <View style={[styles.exactPoint, { backgroundColor: pinColor }]} />
+        </View>
       </View>
     </Marker>
   );
 }
 
+const LATE_REDRAW_MS = 400;
+
 const createStyles = ({ colors }: Theme) => StyleSheet.create({
   wrap: { alignItems: 'center' },
+  pin: { height: PIN_BLOCK_HEIGHT, alignItems: 'center' },
+  dimmed: { opacity: 0.5 },
+  stem: { width: 2, height: ROUTE_PIN_STEM },
+  exactPoint: {
+    width: ROUTE_PIN_DOT,
+    height: ROUTE_PIN_DOT,
+    marginTop: -ROUTE_PIN_DOT / 2,
+    borderRadius: ROUTE_PIN_DOT / 2,
+    borderWidth: 1,
+    borderColor: colors.surface,
+  },
   labels: { alignItems: 'center', gap: spacing.sm },
   wrapBelow: { flexDirection: 'column-reverse' },
   editControl: {

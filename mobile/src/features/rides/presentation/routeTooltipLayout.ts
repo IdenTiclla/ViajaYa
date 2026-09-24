@@ -8,11 +8,23 @@ export const ROUTE_OUTLINE_WIDTH = 5;
 export const ROUTE_PIN_SIZE = 16;
 export const ROUTE_PIN_BORDER = 1.5;
 export const ROUTE_PIN_LETTER_SIZE = 9;
+// Same shape as the selection pin: the tip of the stem is the exact coordinate.
+export const ROUTE_PIN_STEM = 10;
+export const ROUTE_PIN_DOT = 6;
+/** Distance from the coordinate (stem tip) up to the top of the circle. */
+export const PIN_TIP_TO_TOP = ROUTE_PIN_SIZE + ROUTE_PIN_STEM;
+/** Full pin block: circle, stem and the half of the exact dot below the tip. */
+export const PIN_BLOCK_HEIGHT = PIN_TIP_TO_TOP + ROUTE_PIN_DOT / 2;
 export const ROUTE_TOOLTIP_MARGIN = 96;
 export const EDITABLE_TOOLTIP_MARGIN = 126;
 export const TOOLTIP_SEPARATION = 8;
 const MAX_TOOLTIP_SEPARATION = 48;
 const ROUTE_CLEARANCE = ROUTE_OUTLINE_WIDTH / 2 + 4;
+
+/** Distance from the coordinate to the label's near edge before the separation. */
+export function labelBaseOffset(placement: TooltipPlacement): number {
+  return placement === 'above' ? PIN_TIP_TO_TOP : ROUTE_PIN_DOT / 2;
+}
 
 export type MapPoint = { x: number; y: number };
 export type LabelSize = { width: number; height: number };
@@ -61,7 +73,6 @@ export function placeTooltipClearOfRoute(
   size: LabelSize,
   preferred: TooltipPlacement,
 ): { placement: TooltipPlacement; separation: number; visible: boolean } {
-  const radio = ROUTE_PIN_SIZE / 2;
   const limitX = size.width / 2 + ROUTE_CLEARANCE;
   const occupied: [number, number][] = [];
   for (let i = 1; i < route.length; i += 1) {
@@ -90,13 +101,14 @@ export function placeTooltipClearOfRoute(
     const intervals = occupied.map(([min, max]): [number, number] =>
       placement === 'above' ? [-max, -min] : [min, max],
     ).sort((a, b) => a[0] - b[0]);
-    let border = radio + TOOLTIP_SEPARATION;
+    const base = labelBaseOffset(placement);
+    let border = base + TOOLTIP_SEPARATION;
     for (const [start, end] of intervals) {
       if (end < border) continue;
       if (start > border + size.height) break;
       border = end + 1;
     }
-    return border - radio;
+    return border - base;
   };
   const opposite = preferred === 'above' ? 'below' : 'above';
   const primary = freeSeparation(preferred);
@@ -141,13 +153,12 @@ export function chooseTooltipPlacement(
   return upward > 0 ? 'below' : 'above';
 }
 
-/** Keep the symbol's center on the coordinate, even with several lines. */
+/** Keep the stem tip on the coordinate, even with several label lines. */
 export function computePinAnchor(height: number, placement: TooltipPlacement) {
-  const actualHeight = Math.max(height, ROUTE_PIN_SIZE);
-  const pinCenter = placement === 'above'
-    ? actualHeight - ROUTE_PIN_SIZE / 2
-    : ROUTE_PIN_SIZE / 2;
-  return { x: 0.5, y: pinCenter / actualHeight };
+  const actualHeight = Math.max(height, PIN_BLOCK_HEIGHT);
+  // Labels above: the pin block closes the bitmap; below: it opens it.
+  const tip = placement === 'above' ? actualHeight - ROUTE_PIN_DOT / 2 : PIN_TIP_TO_TOP;
+  return { x: 0.5, y: tip / actualHeight };
 }
 
 /** Give the native layout room before regenerating the Google Maps bitmap. */
@@ -227,9 +238,13 @@ export function getLabelAwareFitCoordinates(
       const { placement, separation, visible } = placeTooltipClearOfRoute(
         projectRouteRelativeToPin(pin.coordinate, route, 0, zoom), pin.size, pin.preferred,
       );
+      // The pin itself always rises above the coordinate.
+      const pinHalf = ROUTE_PIN_SIZE / 2 / scale;
+      const pinTop = pin.y + PIN_TIP_TO_TOP / scale;
+      corners.push({ x: pin.x - pinHalf, y: pinTop }, { x: pin.x + pinHalf, y: pinTop });
       if (!visible) continue;
       const halfWidth = pin.size.width / 2 / scale;
-      const reach = (ROUTE_PIN_SIZE / 2 + separation + pin.size.height) / scale;
+      const reach = (labelBaseOffset(placement) + separation + pin.size.height) / scale;
       const y = placement === 'above' ? pin.y + reach : pin.y - reach;
       corners.push({ x: pin.x - halfWidth, y }, { x: pin.x + halfWidth, y });
     }

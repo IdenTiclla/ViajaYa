@@ -22,12 +22,12 @@ import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useCountdown } from '@/core/hooks/useCountdown';
-import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import { MotorcycleRouteNotice } from '@/features/rides/presentation/MotorcycleRouteNotice';
 import { getTripMapPadding } from '@/features/rides/presentation/tripMapLayout';
 import { useRoute } from '@/features/booking/application/useRoute';
 import { SERVICE_META } from '@/features/booking/domain/serviceCatalog';
-import { useEstiloMapa } from '@/features/booking/presentation/mapStyle';
+import { useMapStyle } from '@/features/booking/presentation/mapStyle';
 import { getPlaceStreetName } from '@/features/booking/domain/placeLabels';
 import type { Coordinates } from '@/features/booking/domain/types';
 import type { SentOffer } from '@/features/driver/application/useDriverRequests';
@@ -35,7 +35,7 @@ import { formatKm, haversineKm, pricePerKm } from '@/features/rides/domain/geo';
 import { formatBolivianos } from '@/features/rides/domain/money';
 import { OfferLifeTimer } from '@/features/rides/presentation/OfferLifeTimer';
 import { RoutePinMarker } from '@/features/rides/presentation/RoutePinMarker';
-import { useRumboMapa } from '@/features/rides/application/useRumboMapa';
+import { useMapBearing } from '@/features/rides/application/useRumboMapa';
 import { RoutePolyline } from '@/features/rides/presentation/RoutePolyline';
 import type { OpenRide } from '@/features/rides/domain/types';
 import Animated, { SlideInDown } from 'react-native-reanimated';
@@ -70,7 +70,7 @@ type Props = {
   onWithdraw: (ride: OpenRide) => void;
 };
 
-export function SolicitudesMapa({
+export function RequestsMap({
   rides,
   topOverlayHeight = 140,
   disabled,
@@ -92,12 +92,12 @@ export function SolicitudesMapa({
   onOpenPriceInput,
   onWithdraw,
 }: Props) {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   const mapRef = useRef<MapView>(null);
   const [mapReady, setMapReady] = useState(false);
   const [mapSize, setMapSize] = useState({ width: 0, height: 0 });
-  const { estiloMapa, modoMapa } = useEstiloMapa(true);
-  const { rumboMapa, zoomMapa, actualizarRumbo } = useRumboMapa(mapRef);
+  const { mapStyle, mapMode } = useMapStyle(true);
+  const { mapBearing, mapZoom, updateBearing } = useMapBearing(mapRef);
   const listRef = useRef<FlatList<OpenRide>>(null);
   const { width: windowWidth } = useWindowDimensions();
   const cardWidth = windowWidth - spacing.sm * 2;
@@ -162,8 +162,8 @@ export function SolicitudesMapa({
         showsIndoorLevelPicker={false}
         style={StyleSheet.absoluteFill}
         initialRegion={initialRegion}
-        customMapStyle={estiloMapa}
-        userInterfaceStyle={modoMapa}
+        customMapStyle={mapStyle}
+        userInterfaceStyle={mapMode}
         pitchEnabled={false}
         scrollEnabled={false}
         zoomEnabled={false}
@@ -171,7 +171,7 @@ export function SolicitudesMapa({
         zoomTapEnabled={false}
         toolbarEnabled={false}
         moveOnMarkerPress={false}
-        onRegionChangeComplete={actualizarRumbo}
+        onRegionChangeComplete={updateBearing}
         onMapReady={() => { setMapReady(true); fitSelected(); }}
         onLayout={({ nativeEvent: { layout } }) => setMapSize((current) =>
           current.width === layout.width && current.height === layout.height
@@ -202,9 +202,9 @@ export function SolicitudesMapa({
               key={`selected-a-${selectedRide.id}`}
               kind="A"
               coordinate={selectedRide.origin.coordinates}
-              ruta={polyline}
-              rumboMapa={rumboMapa}
-              zoomMapa={zoomMapa}
+              route={polyline}
+              mapBearing={mapBearing}
+              mapZoom={mapZoom}
               label={`Origen: ${getPlaceStreetName(selectedRide.origin)}`}
               zIndex={20}
             />
@@ -212,9 +212,9 @@ export function SolicitudesMapa({
               key={`selected-b-${selectedRide.id}`}
               kind="B"
               coordinate={selectedRide.destination.coordinates}
-              ruta={polyline}
-              rumboMapa={rumboMapa}
-              zoomMapa={zoomMapa}
+              route={polyline}
+              mapBearing={mapBearing}
+              mapZoom={mapZoom}
               label={`Destino: ${getPlaceStreetName(selectedRide.destination)}`}
               zIndex={21}
             />
@@ -372,7 +372,7 @@ function MapCard({
   onOpenPriceInput: () => void;
   onWithdraw: () => void;
 }) {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   const secondsLeft = useCountdown(offerExpiresAt);
   const tripKm = haversineKm(ride.origin.coordinates, ride.destination.coordinates);
   // With a sent offer we show the amount the driver proposed (not the passenger's
@@ -424,7 +424,7 @@ function MapCard({
       )}
       {expired && (
         <View style={styles.expiredBanner}>
-          <Ionicons name="time-outline" size={15} color={colors.textoSobreAcento} />
+          <Ionicons name="time-outline" size={15} color={colors.textOnAccent} />
           <Text style={styles.bannerTextDark}>Tu oferta expiró · vuelve a ofertar</Text>
         </View>
       )}
@@ -512,7 +512,7 @@ function MapCard({
               disabled={disabled}
               accessibilityRole="button"
               accessibilityLabel="Contraofertar con un monto personalizado">
-              <Ionicons name="create-outline" size={16} color={colors.aviso} />
+              <Ionicons name="create-outline" size={16} color={colors.warning} />
               <Text style={styles.quickPillText}>Monto</Text>
             </TouchableOpacity>
           </View>
@@ -588,7 +588,7 @@ function MapCard({
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   root: { flex: 1 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm, padding: spacing.xl },
   emptyText: { fontSize: fontSize.md, color: colors.textSecondary, textAlign: 'center' },
@@ -631,7 +631,7 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: radius.pill,
-    backgroundColor: colors.primarioSuave,
+    backgroundColor: colors.primarySoft,
   },
   pagerButtonDisabled: { backgroundColor: colors.surfaceMuted },
   pagerCopy: { minWidth: 146, alignItems: 'center' },
@@ -674,7 +674,7 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.surface,
   },
-  ratingBadgeText: { color: colors.textoSobreAcento, fontSize: 10, fontWeight: fontWeight.bold },
+  ratingBadgeText: { color: colors.textOnAccent, fontSize: 10, fontWeight: fontWeight.bold },
   cardInfo: { flex: 1, gap: 3, justifyContent: 'center' },
   riderName: { fontSize: fontSize.md, fontWeight: fontWeight.bold, color: colors.text },
   meta: { fontSize: fontSize.xs, color: colors.textSecondary },
@@ -777,7 +777,7 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs + 2,
     borderRadius: radius.pill,
-    backgroundColor: colors.avisoSuave,
+    backgroundColor: colors.warningSoft,
     borderWidth: 1,
     borderColor: 'rgba(245,197,24,0.5)',
   },
@@ -788,12 +788,12 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs + 2,
     borderRadius: radius.pill,
-    backgroundColor: colors.avisoSuave,
+    backgroundColor: colors.warningSoft,
     borderWidth: 1,
     borderColor: 'rgba(245,197,24,0.5)',
     marginLeft: 'auto',
   },
-  quickPillText: { color: colors.aviso, fontSize: fontSize.sm, fontWeight: fontWeight.bold },
+  quickPillText: { color: colors.warning, fontSize: fontSize.sm, fontWeight: fontWeight.bold },
 
   routeRow: { flexDirection: 'row', gap: spacing.md },
   routeStop: { flex: 1, minWidth: 0 },
@@ -816,7 +816,7 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   actions: { flexDirection: 'row', gap: spacing.sm },
   actionBtn: { flex: 1, height: 46, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
   withdrawAction: { flexDirection: 'row', gap: spacing.xs },
-  decline: { flex: 1, backgroundColor: colors.peligroSuave, borderWidth: 1, borderColor: colors.bordePeligro },
+  decline: { flex: 1, backgroundColor: colors.dangerSoft, borderWidth: 1, borderColor: colors.dangerBorder },
   declineText: { color: colors.danger, fontSize: fontSize.md, fontWeight: fontWeight.bold },
   accept: { flex: 1.6, backgroundColor: colors.primary },
   acceptText: { color: colors.textOnPrimary, fontSize: fontSize.md, fontWeight: fontWeight.bold },

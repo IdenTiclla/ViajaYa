@@ -2,7 +2,7 @@ import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useState, type ComponentProps } from 'react';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
-import { controles, fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { controls, fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -23,22 +23,22 @@ type Props<T extends string> = {
 
 /** Uniform cards to pick a single option within a form. */
 export function SelectableOptionCards<T extends string>({ options, value, onChange, disabled = false, columns }: Props<T>) {
-  const { colors, styles, estiloFoco } = useEstilos(crearEstilos);
+  const { colors, styles, focusStyle } = useThemedStyles(createStyles);
   const { fontScale } = useWindowDimensions();
-  const [enfocada, setEnfocada] = useState<T | null>(null);
-  const enColumna = fontScale > 1.3;
+  const [focused, setFocused] = useState<T | null>(null);
+  const inColumn = fontScale > 1.3;
   return (
-    <View style={[styles.cards, columns === 2 && !enColumna && styles.cardsGrid, enColumna && styles.cardsColumn]} accessibilityRole="radiogroup">
+    <View style={[styles.cards, columns === 2 && !inColumn && styles.cardsGrid, inColumn && styles.cardsColumn]} accessibilityRole="radiogroup">
       {options.map((option) => {
         const selected = value === option.id;
         return (
           <Pressable
             key={option.id}
-            style={({ pressed }) => [styles.card, columns === 2 && !enColumna && styles.cardGrid, enColumna && styles.cardRow, selected && styles.cardSelected, pressed && styles.pressed, enfocada === option.id && estiloFoco]}
+            style={({ pressed }) => [styles.card, columns === 2 && !inColumn && styles.cardGrid, inColumn && styles.cardRow, selected && styles.cardSelected, pressed && styles.pressed, focused === option.id && focusStyle]}
             disabled={disabled}
             onPress={() => { if (!selected) onChange(option.id); }}
-            onFocus={() => setEnfocada(option.id)}
-            onBlur={() => setEnfocada(null)}
+            onFocus={() => setFocused(option.id)}
+            onBlur={() => setFocused(null)}
             accessibilityRole="radio"
             accessibilityState={{ checked: selected, disabled }}
             aria-checked={selected}
@@ -51,7 +51,7 @@ export function SelectableOptionCards<T extends string>({ options, value, onChan
                 color={selected ? colors.primary : colors.textSecondary}
               />
             </View>
-            <Text style={[styles.label, enColumna && styles.labelRow, selected && styles.labelSelected]}>
+            <Text style={[styles.label, inColumn && styles.labelRow, selected && styles.labelSelected]}>
               {option.label}
             </Text>
             <Ionicons
@@ -59,7 +59,7 @@ export function SelectableOptionCards<T extends string>({ options, value, onChan
               name="checkmark-circle"
               size={16}
               color={colors.primary}
-              style={[enColumna ? styles.checkRow : styles.check, !selected && styles.hiddenBadge]}
+              style={[inColumn ? styles.checkRow : styles.check, !selected && styles.hiddenBadge]}
             />
           </Pressable>
         );
@@ -68,7 +68,7 @@ export function SelectableOptionCards<T extends string>({ options, value, onChan
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   cards: { flexDirection: 'row', gap: spacing.sm },
   cardsColumn: { flexDirection: 'column' },
   cardsGrid: { flexWrap: 'wrap' },
@@ -82,13 +82,13 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     borderRadius: radius.md,
     backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: colors.bordeControl,
+    borderColor: colors.controlBorder,
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.xs,
   },
-  cardRow: { flex: 0, minHeight: controles.altoMinimo, flexDirection: 'row', gap: spacing.sm, justifyContent: 'flex-start' },
-  cardSelected: { borderColor: colors.primary, backgroundColor: colors.primarioSuave },
+  cardRow: { flex: 0, minHeight: controls.minHeight, flexDirection: 'row', gap: spacing.sm, justifyContent: 'flex-start' },
+  cardSelected: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
   icon: {
     width: 20,
     height: 20,
@@ -96,7 +96,7 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  iconSelected: { backgroundColor: colors.primarioSuave },
+  iconSelected: { backgroundColor: colors.primarySoft },
   label: {
     fontSize: fontSize.sm,
     fontWeight: fontWeight.semibold,

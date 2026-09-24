@@ -8,7 +8,7 @@ import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 
 const MIN_DISPLAY_MS = 500;
 const FALLBACK_MS = 3000;
@@ -20,7 +20,7 @@ export function ConfirmationOverlay({
   visible: boolean;
   onDone: () => void;
 }) {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   const [scale] = useState(() => new Animated.Value(0));
   // Ref (not state): onPress reads it on tap; avoids cascading re-renders.
   const canDismissRef = useRef(false);
@@ -79,7 +79,7 @@ export function ConfirmationOverlay({
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   overlay: {
     position: 'absolute',
     top: 0,
@@ -108,7 +108,7 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     width: 88,
     height: 88,
     borderRadius: radius.pill,
-    backgroundColor: colors.exitoSuave,
+    backgroundColor: colors.successSoft,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.xs,

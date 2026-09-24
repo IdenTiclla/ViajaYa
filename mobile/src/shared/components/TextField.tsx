@@ -9,7 +9,7 @@ import {
   View,
 } from 'react-native';
 
-import { controles, fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { controls, fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 
 type Props = TextInputProps & {
   label?: string;
@@ -50,7 +50,7 @@ export const TextField = forwardRef<TextInput, Props>(function TextField(
   },
   ref,
 ) {
-  const { colors, styles, estiloFoco } = useEstilos(crearEstilos);
+  const { colors, styles, focusStyle } = useThemedStyles(createStyles);
   const [hidden, setHidden] = useState(password);
   const [focused, setFocused] = useState(false);
   const [passwordFocused, setPasswordFocused] = useState(false);
@@ -63,7 +63,7 @@ export const TextField = forwardRef<TextInput, Props>(function TextField(
         style={[
           styles.field,
           multiline && styles.multilineField,
-          focused && [styles.fieldFocused, estiloFoco],
+          focused && [styles.fieldFocused, focusStyle],
           error && styles.fieldError,
           !editable && styles.fieldDisabled,
         ]}>
@@ -104,7 +104,7 @@ export const TextField = forwardRef<TextInput, Props>(function TextField(
             disabled={!editable}
             onPress={() => setHidden((v) => !v)}
             onFocus={() => setPasswordFocused(true)} onBlur={() => setPasswordFocused(false)}
-            style={[styles.passwordButton, passwordFocused && estiloFoco]}>
+            style={[styles.passwordButton, passwordFocused && focusStyle]}>
             <Ionicons
               name={hidden ? 'eye-outline' : 'eye-off-outline'}
               size={20}
@@ -129,7 +129,7 @@ export const TextField = forwardRef<TextInput, Props>(function TextField(
   );
 });
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   wrapper: { gap: spacing.sm },
   label: { fontSize: fontSize.sm, color: colors.text, fontWeight: fontWeight.semibold },
   field: {
@@ -138,22 +138,22 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     backgroundColor: colors.surfaceMuted,
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: colors.bordeControl,
+    borderColor: colors.controlBorder,
     paddingHorizontal: spacing.sm + spacing.xs,
-    minHeight: controles.altoMinimo,
+    minHeight: controls.minHeight,
   },
   fieldFocused: { borderColor: colors.primary, backgroundColor: colors.surface },
   fieldError: { borderColor: colors.danger },
-  fieldDisabled: { backgroundColor: colors.fondoDeshabilitado },
-  disabledText: { color: colors.textoDeshabilitado },
+  fieldDisabled: { backgroundColor: colors.disabledBackground },
+  disabledText: { color: colors.disabledText },
   multilineField: { alignItems: 'flex-start' },
   multilineInput: { minHeight: 96, textAlignVertical: 'top' },
   lead: { marginRight: spacing.sm },
   prefix: { marginRight: spacing.sm, fontSize: fontSize.md, color: colors.text, fontWeight: '500' },
-  input: { flex: 1, minWidth: 0, minHeight: controles.altoMinimo - 2, paddingVertical: spacing.sm, fontSize: fontSize.md, color: colors.text },
+  input: { flex: 1, minWidth: 0, minHeight: controls.minHeight - 2, paddingVertical: spacing.sm, fontSize: fontSize.md, color: colors.text },
   passwordButton: {
-    width: controles.altoMinimo,
-    minHeight: controles.altoMinimo,
+    width: controls.minHeight,
+    minHeight: controls.minHeight,
     alignItems: 'center',
     justifyContent: 'center',
   },

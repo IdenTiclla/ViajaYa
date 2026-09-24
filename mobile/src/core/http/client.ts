@@ -27,14 +27,14 @@ declare module 'axios' {
 
 type RetriableConfig = InternalAxiosRequestConfig & {
   _retry?: boolean;
-  _generacionSesion?: number;
+  _sessionGeneration?: number;
 };
 
-let generacionSesion = 0;
+let sessionGeneration = 0;
 
 /** Discard pending responses when signing out or starting another session. */
-export function invalidarSolicitudesSesion(): void {
-  generacionSesion += 1;
+export function invalidateSessionRequests(): void {
+  sessionGeneration += 1;
   refreshPromise = null;
 }
 
@@ -57,7 +57,7 @@ export const api = axios.create({
 api.interceptors.request.use(async (config) => {
   // Include the environment on login and refresh as well as authenticated requests.
   config.headers.set('X-App-Environment', env.appEnv);
-  (config as RetriableConfig)._generacionSesion ??= generacionSesion;
+  (config as RetriableConfig)._sessionGeneration ??= sessionGeneration;
   if (config.skipAuth) return config;
   const tokens = await tokenStorage.get();
   if (tokens?.accessToken) {
@@ -76,9 +76,9 @@ const NO_REFRESH_PATHS = ['/auth/refresh', '/auth/phone/', '/auth/social/'];
 let refreshPromise: Promise<string | null> | null = null;
 
 async function refreshAccessToken(): Promise<string | null> {
-  const generacion = generacionSesion;
+  const generation = sessionGeneration;
   const tokens = await tokenStorage.prepareRefresh();
-  if (generacion !== generacionSesion) return null;
+  if (generation !== sessionGeneration) return null;
   if (!tokens?.refreshToken) return null;
   try {
     // Shares the client's timeout. skipAuth avoids attaching the expired token
@@ -87,12 +87,12 @@ async function refreshAccessToken(): Promise<string | null> {
       refresh_token: tokens.refreshToken,
       request_id: tokens.refreshRequestId,
     }, { skipAuth: true });
-    if (generacion !== generacionSesion) return null;
+    if (generation !== sessionGeneration) return null;
     await tokenStorage.save({
       accessToken: data.access_token,
       refreshToken: data.refresh_token,
     });
-    if (generacion !== generacionSesion) return null;
+    if (generation !== sessionGeneration) return null;
     return data.access_token as string;
   } catch (error) {
     // A network/server outage does not prove the session expired.
@@ -102,13 +102,13 @@ async function refreshAccessToken(): Promise<string | null> {
   }
 }
 
-async function cerrarSesionInvalida(): Promise<void> {
-  invalidarSolicitudesSesion();
-  const generacion = generacionSesion;
+async function signOutInvalidSession(): Promise<void> {
+  invalidateSessionRequests();
+  const generation = sessionGeneration;
   try {
     await tokenStorage.clear();
   } finally {
-    if (generacion === generacionSesion) onSessionExpired?.();
+    if (generation === sessionGeneration) onSessionExpired?.();
   }
 }
 
@@ -119,11 +119,11 @@ api.interceptors.response.use(
     const skipRefresh =
       original?.skipAuth || NO_REFRESH_PATHS.some((path) => original?.url?.includes(path));
 
-    if (original?._generacionSesion !== generacionSesion) return Promise.reject(error);
+    if (original?._sessionGeneration !== sessionGeneration) return Promise.reject(error);
 
     // If even the renewed token gets a 401, the identity is no longer valid.
     if (error.response?.status === 401 && original?._retry && !skipRefresh) {
-      await cerrarSesionInvalida();
+      await signOutInvalidSession();
       return Promise.reject(error);
     }
 
@@ -139,13 +139,13 @@ api.interceptors.response.use(
         if (refreshPromise === pending) refreshPromise = null;
       }
 
-      if (original._generacionSesion !== generacionSesion) return Promise.reject(error);
+      if (original._sessionGeneration !== sessionGeneration) return Promise.reject(error);
 
       if (newToken) {
         original.headers.Authorization = `Bearer ${newToken}`;
         return api(original as AxiosRequestConfig);
       }
-      await cerrarSesionInvalida();
+      await signOutInvalidSession();
     }
     return Promise.reject(error);
   },

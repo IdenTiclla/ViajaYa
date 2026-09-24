@@ -19,7 +19,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
-import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import { SERVICE_META } from '@/features/booking/domain/serviceCatalog';
 import { useRideHistory } from '@/features/rides/application/useCloseFlow';
 import { formatBolivianos } from '@/features/rides/domain/money';
@@ -45,7 +45,7 @@ function formatDate(iso: string | null): string {
 }
 
 export function RideHistoryScreen() {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   const [tab, setTab] = useState<'completed' | 'cancelled'>('completed');
   const {
     data,
@@ -163,7 +163,7 @@ export function RideHistoryScreen() {
 }
 
 function HistoryCard({ item }: { item: RideHistoryItem }) {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   const cp = item.counterpart;
   const vehicle = cp
     ? [vehicleLabel(cp.vehicleType), cp.vehicleModel]
@@ -226,7 +226,7 @@ function HistoryCard({ item }: { item: RideHistoryItem }) {
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
   header: {
     fontSize: fontSize.xl,

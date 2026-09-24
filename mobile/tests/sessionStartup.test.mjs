@@ -4,13 +4,13 @@ import test from 'node:test';
 
 const mocks = {
   '@/core/http/tokenStorage': `export const tokenStorage = {
-    async get() { return { accessToken: 'anterior', refreshToken: 'válido' }; },
+    async get() { return { accessToken: 'previous', refreshToken: 'válido' }; },
     async save() {}, async clear() {},
   };`,
   '@/core/http/client': `export let expired;
     export const api = { async post() {} };
     export function setOnSessionExpired(fn) { expired = fn; }
-    export function invalidarSolicitudesSesion() {}`,
+    export function invalidateSessionRequests() {}`,
   '@/features/auth/data/authRepository': `export const authRepository = {
     async me() { return { id: 'pasajero' }; },
   };`,

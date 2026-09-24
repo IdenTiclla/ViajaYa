@@ -11,7 +11,7 @@ import { useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
-import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 
 const AUTO_HIDE_MS = 1200;
 
@@ -22,7 +22,7 @@ export function OfferSentOverlay({
   visible: boolean;
   onDone: () => void;
 }) {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   useEffect(() => {
     if (!visible) return;
     const timer = setTimeout(onDone, AUTO_HIDE_MS);
@@ -49,12 +49,12 @@ export function OfferSentOverlay({
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   overlay: { position: 'absolute', left: spacing.md, right: spacing.md, bottom: spacing.md, zIndex: 90, alignItems: 'center' },
   card: { backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1,
     borderColor: colors.success, padding: spacing.sm, flexDirection: 'row', alignItems: 'center',
     gap: spacing.sm, width: '100%', maxWidth: 400, elevation: 6 },
-  iconCircle: { width: 36, height: 36, borderRadius: radius.pill, backgroundColor: colors.exitoSuave,
+  iconCircle: { width: 36, height: 36, borderRadius: radius.pill, backgroundColor: colors.successSoft,
     alignItems: 'center', justifyContent: 'center' },
   copy: { flex: 1 },
   title: { fontSize: fontSize.sm, fontWeight: fontWeight.bold, color: colors.text },

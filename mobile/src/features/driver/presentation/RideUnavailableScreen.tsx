@@ -12,7 +12,7 @@ import { Animated, Easing, StyleSheet, Text, TouchableOpacity, View } from 'reac
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '@/shared/components';
 
-import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import { formatBolivianos } from '@/features/rides/domain/money';
 
 export function RideUnavailableScreen({
@@ -38,7 +38,7 @@ export function RideUnavailableScreen({
    */
   badge?: string;
 }) {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   return (
     <View style={styles.root}>
       <SafeAreaView edges={['top']} style={styles.topBar}>
@@ -114,7 +114,7 @@ export function RideUnavailableScreen({
 
 /** Central icon with expanding ripples, looping forever. */
 function RippleIcon() {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   const [wave] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
@@ -145,7 +145,7 @@ function RippleIcon() {
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceMuted },
 
   topBar: {

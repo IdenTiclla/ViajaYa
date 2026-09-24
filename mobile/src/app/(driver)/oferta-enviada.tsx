@@ -1,5 +1,5 @@
-import { OfertaEnviadaScreen } from '@/features/driver/presentation/OfertaEnviadaScreen';
+import { OfferSentScreen } from '@/features/driver/presentation/OfertaEnviadaScreen';
 
-export default function OfertaEnviadaRoute() {
-  return <OfertaEnviadaScreen />;
+export default function OfferSentRoute() {
+  return <OfferSentScreen />;
 }

@@ -8,8 +8,8 @@ import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { fontSize, spacing, useEstilos, type Tema } from '@/core/theme';
-import { useEstiloMapa } from '@/features/booking/presentation/mapStyle';
+import { fontSize, spacing, useThemedStyles, type Theme } from '@/core/theme';
+import { useMapStyle } from '@/features/booking/presentation/mapStyle';
 import type { Ride } from '@/features/rides/domain/types';
 import { Button } from '@/shared/components';
 import { DriverSharingStatus } from '@/features/tracking/presentation/DriverSharingStatus';
@@ -27,8 +27,8 @@ export function NativeDriverNavigation({ ride }: { ride: Ride }) {
   </NavigationProvider>;
 }
 function NavigationContent({ ride }: { ride: Ride }) {
-  const { styles } = useEstilos(createStyles);
-  const { estiloMapa, modoMapa } = useEstiloMapa();
+  const { styles } = useThemedStyles(createStyles);
+  const { mapStyle, mapMode } = useMapStyle();
   const router = useRouter();
   const { navigationController, setOnLocationChanged, setOnArrival } = useNavigation();
   const target = navigationTarget(ride)!;
@@ -105,9 +105,9 @@ function NavigationContent({ ride }: { ride: Ride }) {
     <View style={styles.map}>
       <NavigationView style={StyleSheet.absoluteFill} onMapReady={() => setMapReady(true)}
         onNavigationViewControllerCreated={controller => { view.current = controller; }}
-        mapStyle={JSON.stringify(estiloMapa)}
-        mapColorScheme={modoMapa === 'dark' ? MapColorScheme.DARK : MapColorScheme.LIGHT}
-        navigationNightMode={modoMapa === 'dark' ? NavigationNightMode.FORCE_NIGHT : NavigationNightMode.FORCE_DAY}
+        mapStyle={JSON.stringify(mapStyle)}
+        mapColorScheme={mapMode === 'dark' ? MapColorScheme.DARK : MapColorScheme.LIGHT}
+        navigationNightMode={mapMode === 'dark' ? NavigationNightMode.FORCE_NIGHT : NavigationNightMode.FORCE_DAY}
         buildingsEnabled={false} indoorEnabled={false} indoorLevelPickerEnabled={false}
         myLocationEnabled={locationAllowed}
         tiltGesturesEnabled={false} rotateGesturesEnabled={false} scrollGesturesEnabled={false}
@@ -131,7 +131,7 @@ function NavigationContent({ ride }: { ride: Ride }) {
     </ScrollView>
   </SafeAreaView>;
 }
-const createStyles = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background }, map: { flex: 1, minHeight: 180 },
   panel: { maxHeight: '42%', flexGrow: 0, backgroundColor: colors.surface },
   content: { padding: spacing.md, gap: spacing.sm }, title: { color: colors.text, fontSize: fontSize.md, fontWeight: '600' },

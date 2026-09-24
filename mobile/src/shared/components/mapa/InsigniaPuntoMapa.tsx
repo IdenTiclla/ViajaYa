@@ -1,24 +1,24 @@
 import { StyleSheet, Text, View } from 'react-native';
 
-import { fontWeight, useEstilos, type Tema } from '@/core/theme';
+import { fontWeight, useThemedStyles, type Theme } from '@/core/theme';
 import { PinLoadingIndicator } from '@/shared/components/PinLoadingIndicator';
 
-export type TipoPuntoMapa = 'origen' | 'destino' | 'lugar';
+export type MapPointKind = 'origin' | 'destination' | 'place';
 
 type Props = {
-  tipo: TipoPuntoMapa;
-  tamano: number;
-  borde: number;
-  tamanoLetra: number;
-  cargando?: boolean;
-  atenuado?: boolean;
+  kind: MapPointKind;
+  size: number;
+  border: number;
+  letterSize: number;
+  loading?: boolean;
+  dimmed?: boolean;
 };
 
 /** Shared circular pins: A for origin and B for destination. */
-export function InsigniaPuntoMapa({
-  tipo, tamano, borde, tamanoLetra, cargando = false, atenuado = false,
+export function MapPointBadge({
+  kind, size, border, letterSize, loading = false, dimmed = false,
 }: Props) {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   return (
     <View
       pointerEvents="none"
@@ -27,48 +27,48 @@ export function InsigniaPuntoMapa({
       style={[
         styles.base,
         {
-          width: tamano,
-          height: tamano,
-          borderWidth: borde,
-          borderRadius: tamano / 2,
-          backgroundColor: tipo === 'destino' ? colors.danger : colors.primary,
-          opacity: atenuado ? 0.5 : 1,
+          width: size,
+          height: size,
+          borderWidth: border,
+          borderRadius: size / 2,
+          backgroundColor: kind === 'destination' ? colors.danger : colors.primary,
+          opacity: dimmed ? 0.5 : 1,
         },
       ]}>
       {/* The letter is part of the symbol; the accessible label lives on the marker. */}
       <Text
         allowFontScaling={false}
         style={[
-          styles.letra,
-          { fontSize: tamanoLetra, lineHeight: tamano - borde * 2, opacity: cargando ? 0 : 1 },
+          styles.letter,
+          { fontSize: letterSize, lineHeight: size - border * 2, opacity: loading ? 0 : 1 },
         ]}>
-        {tipo === 'origen' ? 'A' : tipo === 'destino' ? 'B' : '+'}
+        {kind === 'origin' ? 'A' : kind === 'destination' ? 'B' : '+'}
       </Text>
-      <View style={styles.carga}>
-        <PinLoadingIndicator loading={cargando} color={colors.textOnPrimary} compact />
+      <View style={styles.loader}>
+        <PinLoadingIndicator loading={loading} color={colors.textOnPrimary} compact />
       </View>
     </View>
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   base: {
     alignItems: 'center',
     justifyContent: 'center',
     borderColor: colors.surface,
-    shadowColor: colors.vehiculoContorno,
+    shadowColor: colors.vehicleOutline,
     shadowOpacity: 0.24,
     shadowRadius: 3,
     shadowOffset: { width: 0, height: 1 },
     elevation: 3,
   },
-  letra: {
+  letter: {
     color: colors.textOnPrimary,
     fontWeight: fontWeight.bold,
     includeFontPadding: false,
     textAlign: 'center',
   },
-  carga: {
+  loader: {
     position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
     alignItems: 'center', justifyContent: 'center',
   },

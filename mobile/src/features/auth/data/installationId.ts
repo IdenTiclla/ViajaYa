@@ -2,12 +2,12 @@
 import * as Crypto from 'expo-crypto';
 import * as SecureStore from 'expo-secure-store';
 
-import { conTiempoLimite } from '@/core/async/conTiempoLimite';
+import { withTimeout } from '@/core/async/conTiempoLimite';
 
 let pending: Promise<string> | null = null;
 export function getInstallationId(): Promise<string> {
   if (!pending) {
-    pending = conTiempoLimite((async () => {
+    pending = withTimeout((async () => {
       const saved = await SecureStore.getItemAsync('viajaya.installationId');
       if (saved && /^[0-9a-f-]{36}$/i.test(saved)) return saved;
       const value = Crypto.randomUUID();

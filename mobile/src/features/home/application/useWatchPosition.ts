@@ -19,116 +19,116 @@ export type WatchedPosition = {
   retry: () => void;
 };
 
-export function useWatchPosition(habilitado = true): WatchedPosition {
+export function useWatchPosition(enabled = true): WatchedPosition {
   const [attempt, setAttempt] = useState(0);
   const [position, setPosition] = useState<Omit<WatchedPosition, 'retry'>>({
     status: 'loading', coordinates: null, heading: null,
   });
 
   useEffect(() => {
-    if (!habilitado) return;
+    if (!enabled) return;
     let active = true;
     let subscription: { remove: () => void } | null = null;
-    let cancelacion: AbortController | null = null;
-    let generacion = 0;
-    let estadoApp = AppState.currentState;
-    let iniciando = false;
-    let tienePosicion = false;
-    let salidaEn = 0;
-    let espera: ReturnType<typeof setTimeout> | undefined;
+    let cancellation: AbortController | null = null;
+    let generation = 0;
+    let appState = AppState.currentState;
+    let starting = false;
+    let hasPosition = false;
+    let backgroundedAt = 0;
+    let wait: ReturnType<typeof setTimeout> | undefined;
 
-    const cancelarEspera = () => { clearTimeout(espera); };
-    const esperarPosicion = () => {
-      cancelarEspera();
-      if (tienePosicion || estadoApp === 'background') return;
-      espera = setTimeout(() => {
-        if (!active || tienePosicion) return;
+    const cancelWait = () => { clearTimeout(wait); };
+    const waitForPosition = () => {
+      cancelWait();
+      if (hasPosition || appState === 'background') return;
+      wait = setTimeout(() => {
+        if (!active || hasPosition) return;
         // The listener stays alive: a late signal recovers the map.
         setPosition({ status: 'error', coordinates: null, heading: null });
       }, 15_000);
     };
-    const detener = () => {
-      generacion += 1;
-      cancelarEspera();
-      cancelacion?.abort();
-      cancelacion = null;
+    const stop = () => {
+      generation += 1;
+      cancelWait();
+      cancellation?.abort();
+      cancellation = null;
       subscription?.remove();
       subscription = null;
-      iniciando = false;
+      starting = false;
     };
-    const iniciar = () => {
-      if (!active || subscription || iniciando) return;
-      detener();
-      iniciando = true;
-      tienePosicion = false;
-      const controlador = new AbortController();
-      cancelacion = controlador;
-      const intento = generacion;
+    const start = () => {
+      if (!active || subscription || starting) return;
+      stop();
+      starting = true;
+      hasPosition = false;
+      const controller = new AbortController();
+      cancellation = controller;
+      const watchGeneration = generation;
       setPosition({ status: 'loading', coordinates: null, heading: null });
-      const vigente = () => active && intento === generacion;
-      const fallar = (motivo: 'error' | 'disabled' = 'error') => {
-        if (!vigente()) return;
-        detener();
-        setPosition({ status: motivo, coordinates: null, heading: null });
+      const current = () => active && watchGeneration === generation;
+      const fail = (reason: 'error' | 'disabled' = 'error') => {
+        if (!current()) return;
+        stop();
+        setPosition({ status: reason, coordinates: null, heading: null });
       };
 
       void locationService
         .watchPosition((coords, hd) => {
-          if (!vigente() || estadoApp === 'background') return;
-          tienePosicion = true;
-          cancelarEspera();
+          if (!current() || appState === 'background') return;
+          hasPosition = true;
+          cancelWait();
           setPosition({ status: 'granted', coordinates: coords, heading: hd });
-        }, fallar, controlador.signal)
+        }, fail, controller.signal)
         .then((sub) => {
-          if (!vigente()) {
+          if (!current()) {
             sub?.remove();
             return;
           }
-          iniciando = false;
+          starting = false;
           if (sub == null) {
-            cancelarEspera();
+            cancelWait();
             setPosition({ status: 'denied', coordinates: null, heading: null });
           } else {
             subscription = sub;
-            esperarPosicion();
+            waitForPosition();
           }
         })
-        .catch(() => fallar());
+        .catch(() => fail());
     };
-    const escucha = AppState.addEventListener('change', (siguiente) => {
-      const anterior = estadoApp;
-      if (siguiente !== 'inactive') estadoApp = siguiente;
-      if (siguiente === 'background') {
-        salidaEn = Date.now();
-        cancelarEspera();
+    const listener = AppState.addEventListener('change', (next) => {
+      const previous = appState;
+      if (next !== 'inactive') appState = next;
+      if (next === 'background') {
+        backgroundedAt = Date.now();
+        cancelWait();
       }
-      if (siguiente !== 'active' || anterior !== 'background' || iniciando) return;
-      if (!subscription) { iniciar(); return; }
-      if (Date.now() - salidaEn > 30_000) {
-        tienePosicion = false;
+      if (next !== 'active' || previous !== 'background' || starting) return;
+      if (!subscription) { start(); return; }
+      if (Date.now() - backgroundedAt > 30_000) {
+        hasPosition = false;
         setPosition({ status: 'loading', coordinates: null, heading: null });
       }
       // Keep the healthy watcher. Only remove it if the permissions changed or
       // location was turned off while the app was in the background.
-      const intento = generacion;
-      void locationService.consultarDisponibilidad().then((disponibilidad) => {
-        if (!active || intento !== generacion || estadoApp !== 'active') return;
-        if (disponibilidad !== 'granted') {
-          detener();
-          setPosition({ status: disponibilidad, coordinates: null, heading: null });
+      const watchGeneration = generation;
+      void locationService.checkAvailability().then((availability) => {
+        if (!active || watchGeneration !== generation || appState !== 'active') return;
+        if (availability !== 'granted') {
+          stop();
+          setPosition({ status: availability, coordinates: null, heading: null });
           return;
         }
-        esperarPosicion();
+        waitForPosition();
       }).catch(() => { /* Una consulta fallida no interrumpe un GPS activo. */ });
     });
-    if (estadoApp !== 'background') iniciar();
+    if (appState !== 'background') start();
 
     return () => {
       active = false;
-      detener();
-      escucha.remove();
+      stop();
+      listener.remove();
     };
-  }, [attempt, habilitado]);
+  }, [attempt, enabled]);
 
   return {
     ...position,

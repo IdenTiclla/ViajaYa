@@ -5,11 +5,11 @@
 import * as Location from 'expo-location';
 
 import type { Coordinates, PlaceLabel } from '@/core/domain/geo';
-import { consultarDisponibilidadUbicacion, observarUbicacion } from './observarUbicacion';
+import { checkLocationAvailability, watchLocation } from './observarUbicacion';
 import { isPlaceLabelResolved } from '@/features/booking/domain/placeLabels';
 import {
   reverseGeocodeWithGoogle,
-  type CalidadGeocodificacion,
+  type GeocodingQuality,
 } from '@/features/home/data/googleGeocodingService';
 
 export type { Coordinates, PlaceLabel } from '@/core/domain/geo';
@@ -28,58 +28,58 @@ function formatCoords({ latitude, longitude }: Coordinates): string {
 // Google Plus Codes (e.g. "6R66+9P5"): alphanumeric block + '+' + suffix.
 // We do not want them as a label; we prefer the street and number.
 const PLUS_CODE_RE = /\b[A-Z0-9]{4,}\+[A-Z0-9]{2,}\b/i;
-const CALLE_SIN_NOMBRE_RE = /^(?:unnamed road|calle sin nombre|v[ií]a sin nombre|camino sin nombre)$/i;
-const PREFIJO_CALLE_RE =
+const UNNAMED_STREET_RE = /^(?:unnamed road|calle sin nombre|v[ií]a sin nombre|camino sin nombre)$/i;
+const STREET_PREFIX_RE =
   /^(?:av(?:enida)?\.?|calle|c\.?|pasaje|pje\.?|ruta|carretera|anillo|camino)\b/i;
 
 function clean(value: string | null | undefined): string | null {
   const trimmed = value?.trim();
-  return trimmed && !PLUS_CODE_RE.test(trimmed) && !CALLE_SIN_NOMBRE_RE.test(trimmed)
+  return trimmed && !PLUS_CODE_RE.test(trimmed) && !UNNAMED_STREET_RE.test(trimmed)
     ? trimmed
     : null;
 }
 
-const EDAD_MAXIMA_ULTIMA_UBICACION_MS = 2 * 60_000;
-const PRECISION_REQUERIDA_ULTIMA_UBICACION_METROS = 200;
-const GRACIA_UBICACION_ACTUAL_MS = 1_200;
-const TIEMPO_MAXIMO_ULTIMA_UBICACION_MS = 800;
-const TIEMPO_MAXIMO_UBICACION_ACTUAL_MS = 10_000;
-const TIEMPO_MAXIMO_GEOCODIFICACION_MS = 5_000;
-const GRACIA_GEOCODIFICACION_NATIVA_MS = 350;
-const DURACION_CACHE_REFERENCIA_MS = 15_000;
-const MAX_ETIQUETAS_GEOCODIFICADAS = 32;
+const LAST_LOCATION_MAX_AGE_MS = 2 * 60_000;
+const LAST_LOCATION_REQUIRED_ACCURACY_METERS = 200;
+const CURRENT_LOCATION_GRACE_MS = 1_200;
+const LAST_LOCATION_TIMEOUT_MS = 800;
+const CURRENT_LOCATION_TIMEOUT_MS = 10_000;
+const GEOCODING_TIMEOUT_MS = 5_000;
+const NATIVE_GEOCODING_GRACE_MS = 350;
+const REFERENCE_CACHE_DURATION_MS = 15_000;
+const MAX_GEOCODED_LABELS = 32;
 
-type EtiquetaGeocodificada = {
-  etiqueta: PlaceLabel;
-  calidad: CalidadGeocodificacion;
+type GeocodedLabel = {
+  label: PlaceLabel;
+  quality: GeocodingQuality;
 };
 
-type EntradaCacheEtiqueta = EtiquetaGeocodificada & { guardadaEn: number };
+type LabelCacheEntry = GeocodedLabel & { savedAt: number };
 
-const etiquetasGeocodificadas = new Map<string, EntradaCacheEtiqueta>();
+const geocodedLabels = new Map<string, LabelCacheEntry>();
 
-class TiempoMaximoSuperadoError extends Error {}
+class TimeoutExceededError extends Error {}
 
-function conTiempoMaximo<T>(promise: Promise<T>, tiempoMs: number, mensaje: string): Promise<T> {
+function withTimeLimit<T>(promise: Promise<T>, timeMs: number, message: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const temporizador = setTimeout(
-      () => reject(new TiempoMaximoSuperadoError(mensaje)),
-      tiempoMs,
+    const timer = setTimeout(
+      () => reject(new TimeoutExceededError(message)),
+      timeMs,
     );
     promise.then(
       (value) => {
-        clearTimeout(temporizador);
+        clearTimeout(timer);
         resolve(value);
       },
       (error: unknown) => {
-        clearTimeout(temporizador);
+        clearTimeout(timer);
         reject(error);
       },
     );
   });
 }
 
-function crearResultadoUbicacion(
+function createLocationResult(
   position: Location.LocationObject,
   isEstimated: boolean,
 ): GrantedLocationResult {
@@ -93,169 +93,169 @@ function crearResultadoUbicacion(
   };
 }
 
-type SolicitudPosicionActual = {
-  iniciadaEn: number;
+type CurrentPositionRequest = {
+  startedAt: number;
   promise: Promise<Location.LocationObject>;
 };
 
-let solicitudPosicionActual: SolicitudPosicionActual | null = null;
+let currentPositionRequest: CurrentPositionRequest | null = null;
 
-function obtenerPosicionActual(): Promise<Location.LocationObject> {
+function getCurrentPosition(): Promise<Location.LocationObject> {
   if (
-    solicitudPosicionActual &&
-    Date.now() - solicitudPosicionActual.iniciadaEn < TIEMPO_MAXIMO_UBICACION_ACTUAL_MS
+    currentPositionRequest &&
+    Date.now() - currentPositionRequest.startedAt < CURRENT_LOCATION_TIMEOUT_MS
   ) {
-    return solicitudPosicionActual.promise;
+    return currentPositionRequest.promise;
   }
 
   const promise = Location.getCurrentPositionAsync({
     accuracy: Location.Accuracy.Balanced,
   });
-  const solicitud = { iniciadaEn: Date.now(), promise };
-  solicitudPosicionActual = solicitud;
+  const request = { startedAt: Date.now(), promise };
+  currentPositionRequest = request;
   void promise.then(
     () => {
-      if (solicitudPosicionActual === solicitud) solicitudPosicionActual = null;
+      if (currentPositionRequest === request) currentPositionRequest = null;
     },
     () => {
-      if (solicitudPosicionActual === solicitud) solicitudPosicionActual = null;
+      if (currentPositionRequest === request) currentPositionRequest = null;
     },
   );
   return promise;
 }
 
-function publicarPosicionAlResolver(
-  solicitud: Promise<Location.LocationObject>,
+function publishPositionOnResolve(
+  request: Promise<Location.LocationObject>,
   onUpdate: LocationUpdate | undefined,
 ): void {
   if (!onUpdate) return;
-  void solicitud
-    .then((position) => onUpdate(crearResultadoUbicacion(position, false)))
+  void request
+    .then((position) => onUpdate(createLocationResult(position, false)))
     .catch(() => undefined);
 }
 
-type SolicitudGeocodificacion = {
+type GeocodingRequest = {
   coordinates: Coordinates;
   promise: Promise<Location.LocationGeocodedAddress[]>;
 };
 
-let solicitudGeocodificacion: SolicitudGeocodificacion | null = null;
-let operacionGeocodificacionNativa: Promise<Location.LocationGeocodedAddress[]> | null = null;
+let geocodingRequest: GeocodingRequest | null = null;
+let nativeGeocodingOperation: Promise<Location.LocationGeocodedAddress[]> | null = null;
 
-function mismasCoordenadas(a: Coordinates, b: Coordinates): boolean {
+function sameCoordinates(a: Coordinates, b: Coordinates): boolean {
   return (
     Math.abs(a.latitude - b.latitude) < 0.00001 &&
     Math.abs(a.longitude - b.longitude) < 0.00001
   );
 }
 
-function claveCoordenadas({ latitude, longitude }: Coordinates): string {
+function coordinateKey({ latitude, longitude }: Coordinates): string {
   return `${latitude.toFixed(5)},${longitude.toFixed(5)}`;
 }
 
-function obtenerEtiquetaGuardada(
+function getSavedLabel(
   coordinates: Coordinates,
-  soloCalle = false,
-): EtiquetaGeocodificada | null {
-  const key = claveCoordenadas(coordinates);
-  const entrada = etiquetasGeocodificadas.get(key);
-  if (!entrada) return null;
-  if (soloCalle && entrada.calidad !== 'calle') return null;
+  streetOnly = false,
+): GeocodedLabel | null {
+  const key = coordinateKey(coordinates);
+  const entry = geocodedLabels.get(key);
+  if (!entry) return null;
+  if (streetOnly && entry.quality !== 'street') return null;
   if (
-    entrada.calidad !== 'calle' &&
-    Date.now() - entrada.guardadaEn >= DURACION_CACHE_REFERENCIA_MS
+    entry.quality !== 'street' &&
+    Date.now() - entry.savedAt >= REFERENCE_CACHE_DURATION_MS
   ) {
-    etiquetasGeocodificadas.delete(key);
+    geocodedLabels.delete(key);
     return null;
   }
-  return { etiqueta: entrada.etiqueta, calidad: entrada.calidad };
+  return { label: entry.label, quality: entry.quality };
 }
 
-function guardarEtiqueta(coordinates: Coordinates, resultado: EtiquetaGeocodificada): void {
-  const key = claveCoordenadas(coordinates);
-  etiquetasGeocodificadas.delete(key);
-  etiquetasGeocodificadas.set(key, { ...resultado, guardadaEn: Date.now() });
-  if (etiquetasGeocodificadas.size <= MAX_ETIQUETAS_GEOCODIFICADAS) return;
-  const oldestKey = etiquetasGeocodificadas.keys().next().value;
-  if (oldestKey) etiquetasGeocodificadas.delete(oldestKey);
+function saveLabel(coordinates: Coordinates, result: GeocodedLabel): void {
+  const key = coordinateKey(coordinates);
+  geocodedLabels.delete(key);
+  geocodedLabels.set(key, { ...result, savedAt: Date.now() });
+  if (geocodedLabels.size <= MAX_GEOCODED_LABELS) return;
+  const oldestKey = geocodedLabels.keys().next().value;
+  if (oldestKey) geocodedLabels.delete(oldestKey);
 }
 
-function iniciarGeocodificacion(
+function startGeocoding(
   coordinates: Coordinates,
 ): Promise<Location.LocationGeocodedAddress[]> {
   // The JavaScript timeout cannot cancel Android Geocoder. If the previous native
   // operation is still running, we use the HTTP fallback and avoid stacking calls.
-  if (operacionGeocodificacionNativa) {
+  if (nativeGeocodingOperation) {
     return Promise.reject(
-      new TiempoMaximoSuperadoError('El geocoder nativo anterior sigue ocupado.'),
+      new TimeoutExceededError('El geocoder nativo anterior sigue ocupado.'),
     );
   }
-  const operacionNativa = Location.reverseGeocodeAsync(coordinates);
-  operacionGeocodificacionNativa = operacionNativa;
-  void operacionNativa.then(
+  const nativeOperation = Location.reverseGeocodeAsync(coordinates);
+  nativeGeocodingOperation = nativeOperation;
+  void nativeOperation.then(
     () => {
-      if (operacionGeocodificacionNativa === operacionNativa) {
-        operacionGeocodificacionNativa = null;
+      if (nativeGeocodingOperation === nativeOperation) {
+        nativeGeocodingOperation = null;
       }
     },
     () => {
-      if (operacionGeocodificacionNativa === operacionNativa) {
-        operacionGeocodificacionNativa = null;
+      if (nativeGeocodingOperation === nativeOperation) {
+        nativeGeocodingOperation = null;
       }
     },
   );
-  const promise = conTiempoMaximo(
-    operacionNativa,
-    TIEMPO_MAXIMO_GEOCODIFICACION_MS,
+  const promise = withTimeLimit(
+    nativeOperation,
+    GEOCODING_TIMEOUT_MS,
     'La dirección tardó demasiado en resolverse.',
   );
-  const solicitud = { coordinates, promise };
-  solicitudGeocodificacion = solicitud;
+  const request = { coordinates, promise };
+  geocodingRequest = request;
 
-  const finalizar = () => {
-    if (solicitudGeocodificacion !== solicitud) return;
-    solicitudGeocodificacion = null;
+  const finish = () => {
+    if (geocodingRequest !== request) return;
+    geocodingRequest = null;
   };
   void promise.then(
-    finalizar,
-    finalizar,
+    finish,
+    finish,
   );
   return promise;
 }
 
-function obtenerGeocodificacion(
+function getGeocoding(
   coordinates: Coordinates,
 ): Promise<Location.LocationGeocodedAddress[]> {
-  const activa = solicitudGeocodificacion;
-  if (!activa) return iniciarGeocodificacion(coordinates);
+  const active = geocodingRequest;
+  if (!active) return startGeocoding(coordinates);
 
-  if (mismasCoordenadas(activa.coordinates, coordinates)) return activa.promise;
+  if (sameCoordinates(active.coordinates, coordinates)) return active.promise;
 
   // A new coordinate never waits behind Android Geocoder: if the native one
   // is busy, resolverEtiqueta immediately starts the HTTP fallback.
   return Promise.reject(
-    new TiempoMaximoSuperadoError('El geocoder nativo está resolviendo otro punto.'),
+    new TimeoutExceededError('El geocoder nativo está resolviendo otro punto.'),
   );
 }
 
-type EtiquetaNativaResuelta = {
-  estado: 'resuelta';
-  etiqueta: PlaceLabel;
-  calidad: CalidadGeocodificacion;
+type ResolvedNativeLabel = {
+  status: 'resolved';
+  label: PlaceLabel;
+  quality: GeocodingQuality;
 };
 
-type ResultadoEtiquetaNativa = EtiquetaNativaResuelta | { estado: 'sin_resultado' };
+type NativeLabelResult = ResolvedNativeLabel | { status: 'no_result' };
 
-function crearEtiquetaNativa(
+function createNativeLabel(
   result: Location.LocationGeocodedAddress | undefined,
   coordinates: Coordinates,
-): EtiquetaNativaResuelta | null {
+): ResolvedNativeLabel | null {
   if (!result) return null;
 
   const countryCode = clean(result.isoCountryCode)?.toUpperCase() ?? null;
   const nativeStreet = clean(result.street);
   const street =
-    nativeStreet && !CALLE_SIN_NOMBRE_RE.test(nativeStreet) ? nativeStreet : null;
+    nativeStreet && !UNNAMED_STREET_RE.test(nativeStreet) ? nativeStreet : null;
   // Street + house number (if any): "Av. Perú 1500".
   const streetLine = street && result.streetNumber ? `${street} ${result.streetNumber}` : street;
 
@@ -269,8 +269,8 @@ function crearEtiquetaNativa(
   const formattedName = formattedAddress?.split(',')[0]?.trim() || null;
   const formattedStreet =
     formattedName &&
-    PREFIJO_CALLE_RE.test(formattedName) &&
-    !CALLE_SIN_NOMBRE_RE.test(formattedName)
+    STREET_PREFIX_RE.test(formattedName) &&
+    !UNNAMED_STREET_RE.test(formattedName)
       ? formattedName
       : null;
   const bestStreetLine = streetLine ?? formattedStreet;
@@ -293,140 +293,140 @@ function crearEtiquetaNativa(
     address: formattedAddress ?? (ordered.slice(1).join(', ') || formatCoords(coordinates)),
     countryCode,
   };
-  const calidad: CalidadGeocodificacion = bestStreetLine
-    ? 'calle'
+  const quality: GeocodingQuality = bestStreetLine
+    ? 'street'
     : nativeName && !areaNames.includes(nativeName)
-      ? 'lugar'
+      ? 'place'
       : 'area';
   return isPlaceLabelResolved(label)
-    ? { estado: 'resuelta', etiqueta: label, calidad }
+    ? { status: 'resolved', label, quality }
     : null;
 }
 
-async function obtenerEtiquetaNativa(
+async function getNativeLabel(
   coordinates: Coordinates,
-): Promise<ResultadoEtiquetaNativa> {
+): Promise<NativeLabelResult> {
   try {
-    const resultados = await obtenerGeocodificacion(coordinates);
-    const etiquetas = resultados
-      .map((resultado) => crearEtiquetaNativa(resultado, coordinates))
-      .filter((resultado): resultado is EtiquetaNativaResuelta => resultado != null);
+    const results = await getGeocoding(coordinates);
+    const labels = results
+      .map((result) => createNativeLabel(result, coordinates))
+      .filter((result): result is ResolvedNativeLabel => result != null);
     return (
-      etiquetas.find((resultado) => resultado.calidad === 'calle') ??
-      etiquetas.find((resultado) => resultado.calidad === 'lugar') ??
-      etiquetas[0] ?? { estado: 'sin_resultado' }
+      labels.find((result) => result.quality === 'street') ??
+      labels.find((result) => result.quality === 'place') ??
+      labels[0] ?? { status: 'no_result' }
     );
   } catch {
-    return { estado: 'sin_resultado' };
+    return { status: 'no_result' };
   }
 }
 
-function esperarGraciaNativa(
-  solicitud: Promise<ResultadoEtiquetaNativa>,
-): Promise<ResultadoEtiquetaNativa | null> {
+function waitNativeGrace(
+  request: Promise<NativeLabelResult>,
+): Promise<NativeLabelResult | null> {
   return new Promise((resolve) => {
-    let termino = false;
-    const temporizador = setTimeout(() => {
-      termino = true;
+    let term = false;
+    const timer = setTimeout(() => {
+      term = true;
       resolve(null);
-    }, GRACIA_GEOCODIFICACION_NATIVA_MS);
+    }, NATIVE_GEOCODING_GRACE_MS);
 
-    void solicitud.then((resultado) => {
-      if (termino) return;
-      termino = true;
-      clearTimeout(temporizador);
-      resolve(resultado);
+    void request.then((result) => {
+      if (term) return;
+      term = true;
+      clearTimeout(timer);
+      resolve(result);
     });
   });
 }
 
-const PUNTUACION_CALIDAD: Record<CalidadGeocodificacion, number> = {
+const QUALITY_SCORE: Record<GeocodingQuality, number> = {
   area: 1,
-  lugar: 2,
-  calle: 3,
+  place: 2,
+  street: 3,
 };
 
-function elegirMejorEtiqueta(
-  preferidaEnEmpate: EtiquetaGeocodificada | null,
-  alternativa: EtiquetaGeocodificada | null,
-): EtiquetaGeocodificada | null {
-  if (!preferidaEnEmpate) return alternativa;
-  if (!alternativa) return preferidaEnEmpate;
-  return PUNTUACION_CALIDAD[alternativa.calidad] >
-    PUNTUACION_CALIDAD[preferidaEnEmpate.calidad]
-    ? alternativa
-    : preferidaEnEmpate;
+function chooseBestLabel(
+  preferredOnTie: GeocodedLabel | null,
+  alternative: GeocodedLabel | null,
+): GeocodedLabel | null {
+  if (!preferredOnTie) return alternative;
+  if (!alternative) return preferredOnTie;
+  return QUALITY_SCORE[alternative.quality] >
+    QUALITY_SCORE[preferredOnTie.quality]
+    ? alternative
+    : preferredOnTie;
 }
 
-async function resolverEtiqueta(
+async function resolveLabel(
   coordinates: Coordinates,
-): Promise<EtiquetaGeocodificada | null> {
-  const nativa = obtenerEtiquetaNativa(coordinates);
-  const resultadoTemprano = await esperarGraciaNativa(nativa);
+): Promise<GeocodedLabel | null> {
+  const nativeLookup = getNativeLabel(coordinates);
+  const earlyResult = await waitNativeGrace(nativeLookup);
 
   // A native street is precise enough and avoids an HTTP call. A
   // neighborhood or city, instead, waits for Google because there may be a better
   // nearby street even though that generic reference arrived first.
-  if (resultadoTemprano?.estado === 'resuelta' && resultadoTemprano.calidad === 'calle') {
-    return { etiqueta: resultadoTemprano.etiqueta, calidad: resultadoTemprano.calidad };
+  if (earlyResult?.status === 'resolved' && earlyResult.quality === 'street') {
+    return { label: earlyResult.label, quality: earlyResult.quality };
   }
 
-  const google = reverseGeocodeWithGoogle(coordinates).then((resultado) =>
-    resultado && isPlaceLabelResolved(resultado.etiqueta) ? resultado : null,
+  const google = reverseGeocodeWithGoogle(coordinates).then((result) =>
+    result && isPlaceLabelResolved(result.label) ? result : null,
   );
 
-  if (resultadoTemprano) {
-    const resultadoGoogle = await google;
-    const resultadoNativo =
-      resultadoTemprano.estado === 'resuelta'
+  if (earlyResult) {
+    const googleOutcome = await google;
+    const nativeOutcome =
+      earlyResult.status === 'resolved'
         ? {
-            etiqueta: resultadoTemprano.etiqueta,
-            calidad: resultadoTemprano.calidad,
+            label: earlyResult.label,
+            quality: earlyResult.quality,
           }
         : null;
-    return elegirMejorEtiqueta(resultadoGoogle, resultadoNativo);
+    return chooseBestLabel(googleOutcome, nativeOutcome);
   }
 
   // If both sources are still working, the first street wins. A generic
   // reference waits for the other source instead of hiding a slower street.
-  const candidataNativa = nativa.then((resultado) =>
-    resultado.estado === 'resuelta'
-      ? { etiqueta: resultado.etiqueta, calidad: resultado.calidad }
+  const nativeCandidate = nativeLookup.then((result) =>
+    result.status === 'resolved'
+      ? { label: result.label, quality: result.quality }
       : null,
   );
-  const fuenteNativa = candidataNativa.then((resultado) => ({
-    fuente: 'nativa' as const,
-    resultado,
+  const nativeSource = nativeCandidate.then((result) => ({
+    source: 'native' as const,
+    result,
   }));
-  const fuenteGoogle = google.then((resultado) => ({
-    fuente: 'google' as const,
-    resultado,
+  const googleSource = google.then((result) => ({
+    source: 'google' as const,
+    result,
   }));
-  const primero = await Promise.race([fuenteNativa, fuenteGoogle]);
-  if (primero.resultado?.calidad === 'calle') return primero.resultado;
+  const first = await Promise.race([nativeSource, googleSource]);
+  if (first.result?.quality === 'street') return first.result;
 
-  const segundo =
-    primero.fuente === 'nativa' ? await fuenteGoogle : await fuenteNativa;
-  if (segundo.resultado?.calidad === 'calle') return segundo.resultado;
+  const second =
+    first.source === 'native' ? await googleSource : await nativeSource;
+  if (second.result?.quality === 'street') return second.result;
 
-  const resultadoGoogle =
-    primero.fuente === 'google' ? primero.resultado : segundo.resultado;
-  const resultadoNativo =
-    primero.fuente === 'nativa' ? primero.resultado : segundo.resultado;
-  return elegirMejorEtiqueta(resultadoGoogle, resultadoNativo);
+  const finalGoogle =
+    first.source === 'google' ? first.result : second.result;
+  const finalNative =
+    first.source === 'native' ? first.result : second.result;
+  return chooseBestLabel(finalGoogle, finalNative);
 }
 
-async function obtenerEtiquetaGeocodificada(
+async function getGeocodedLabel(
   coordinates: Coordinates,
-  soloCalle = false,
-): Promise<EtiquetaGeocodificada | null> {
-  const cached = obtenerEtiquetaGuardada(coordinates, soloCalle);
+  streetOnly = false,
+): Promise<GeocodedLabel | null> {
+  const cached = getSavedLabel(coordinates, streetOnly);
   if (cached) return cached;
 
-  const resultado = await resolverEtiqueta(coordinates);
-  if (!resultado || !isPlaceLabelResolved(resultado.etiqueta)) return null;
-  guardarEtiqueta(coordinates, resultado);
-  return resultado;
+  const result = await resolveLabel(coordinates);
+  if (!result || !isPlaceLabelResolved(result.label)) return null;
+  saveLabel(coordinates, result);
+  return result;
 }
 
 export const locationService = {
@@ -442,44 +442,44 @@ export const locationService = {
 
     // A fresh position can take a long time indoors or on devices
     // with slow GPS. We first query the native cache, which does not wake the sensors.
-    const lastKnownPosition = await conTiempoMaximo(
+    const lastKnownPosition = await withTimeLimit(
       Location.getLastKnownPositionAsync({
-        maxAge: EDAD_MAXIMA_ULTIMA_UBICACION_MS,
-        requiredAccuracy: PRECISION_REQUERIDA_ULTIMA_UBICACION_METROS,
+        maxAge: LAST_LOCATION_MAX_AGE_MS,
+        requiredAccuracy: LAST_LOCATION_REQUIRED_ACCURACY_METERS,
       }),
-      TIEMPO_MAXIMO_ULTIMA_UBICACION_MS,
+      LAST_LOCATION_TIMEOUT_MS,
       'La última ubicación tardó demasiado.',
     ).catch(() => null);
-    const currentPositionPromise = obtenerPosicionActual();
+    const currentPositionPromise = getCurrentPosition();
 
     // We prefer the fresh position. If it is slow, the last position is only
     // provisional and the shared native promise will update the cache when it resolves.
     if (lastKnownPosition) {
       try {
-        const position = await conTiempoMaximo(
+        const position = await withTimeLimit(
           currentPositionPromise,
-          GRACIA_UBICACION_ACTUAL_MS,
+          CURRENT_LOCATION_GRACE_MS,
           'La ubicación actual todavía no está disponible.',
         );
-        return crearResultadoUbicacion(position, false);
+        return createLocationResult(position, false);
       } catch (error: unknown) {
-        if (error instanceof TiempoMaximoSuperadoError) {
-          publicarPosicionAlResolver(currentPositionPromise, onUpdate);
+        if (error instanceof TimeoutExceededError) {
+          publishPositionOnResolve(currentPositionPromise, onUpdate);
         }
-        return crearResultadoUbicacion(lastKnownPosition, true);
+        return createLocationResult(lastKnownPosition, true);
       }
     }
 
     try {
-      const position = await conTiempoMaximo(
+      const position = await withTimeLimit(
         currentPositionPromise,
-        TIEMPO_MAXIMO_UBICACION_ACTUAL_MS,
+        CURRENT_LOCATION_TIMEOUT_MS,
         'La ubicación actual tardó demasiado.',
       );
-      return crearResultadoUbicacion(position, false);
+      return createLocationResult(position, false);
     } catch (error: unknown) {
-      if (error instanceof TiempoMaximoSuperadoError) {
-        publicarPosicionAlResolver(currentPositionPromise, onUpdate);
+      if (error instanceof TimeoutExceededError) {
+        publishPositionOnResolve(currentPositionPromise, onUpdate);
       }
       throw error;
     }
@@ -494,7 +494,7 @@ export const locationService = {
     if (!await Location.hasServicesEnabledAsync()) {
       throw new Error('Activa la ubicación del teléfono para calcular la llegada.');
     }
-    const position = await conTiempoMaximo(obtenerPosicionActual().catch(() => {
+    const position = await withTimeLimit(getCurrentPosition().catch(() => {
       throw new Error('No pudimos obtener tu ubicación actual. Intenta de nuevo.');
     }), 10_000,
       'No pudimos obtener tu ubicación actual. Intenta de nuevo.');
@@ -503,12 +503,12 @@ export const locationService = {
       || position.coords.accuracy < 0 || position.coords.accuracy > 200) {
       throw new Error('Tu señal de ubicación todavía es imprecisa. Intenta de nuevo.');
     }
-    return crearResultadoUbicacion(position, false).coordinates;
+    return createLocationResult(position, false).coordinates;
   },
 
   /** Driver tracking: GPS and compass, with joint cancellation. */
-  watchPosition: observarUbicacion,
-  consultarDisponibilidad: consultarDisponibilidadUbicacion,
+  watchPosition: watchLocation,
+  checkAvailability: checkLocationAvailability,
 
   /**
    * Reverse geocoding: turns coordinates into a readable label.
@@ -518,13 +518,13 @@ export const locationService = {
    * A failure is expressed as `null`; it never becomes a fake label.
    */
   async reverseGeocode(coordinates: Coordinates): Promise<PlaceLabel | null> {
-    const resultado = await obtenerEtiquetaGeocodificada(coordinates);
-    return resultado?.etiqueta ?? null;
+    const result = await getGeocodedLabel(coordinates);
+    return result?.label ?? null;
   },
 
   /** Return only a nearby street; a POI, neighborhood or city is not enough. */
   async reverseGeocodeNearestStreet(coordinates: Coordinates): Promise<PlaceLabel | null> {
-    const resultado = await obtenerEtiquetaGeocodificada(coordinates, true);
-    return resultado?.calidad === 'calle' ? resultado.etiqueta : null;
+    const result = await getGeocodedLabel(coordinates, true);
+    return result?.quality === 'street' ? result.label : null;
   },
 };

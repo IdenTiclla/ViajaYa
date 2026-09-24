@@ -9,7 +9,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInDown, FadeOutUp, LinearTransition } from 'react-native-reanimated';
 
-import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import {
   type PassengerToast,
   type PassengerToastKind,
@@ -17,7 +17,7 @@ import {
 } from '@/features/booking/application/usePassengerToasts';
 
 function ToastItem({ toast, onDismiss }: { toast: PassengerToast; onDismiss: () => void }) {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   useEffect(() => {
     const timer = setTimeout(onDismiss, 3500);
     return () => clearTimeout(timer);
@@ -25,7 +25,7 @@ function ToastItem({ toast, onDismiss }: { toast: PassengerToast; onDismiss: () 
 
   const META: Record<PassengerToastKind, { icon: IoniconsIconName; color: string }> = {
     offer_received: { icon: 'pricetag', color: colors.success },
-    offer_expired: { icon: 'time-outline', color: colors.aviso },
+    offer_expired: { icon: 'time-outline', color: colors.warning },
     offer_withdrawn: { icon: 'remove-circle-outline', color: colors.textSecondary },
   };
   const meta = META[toast.kind];
@@ -53,7 +53,7 @@ function ToastItem({ toast, onDismiss }: { toast: PassengerToast; onDismiss: () 
 }
 
 export function PassengerToaster() {
-  const { styles } = useEstilos(crearEstilos);
+  const { styles } = useThemedStyles(createStyles);
   const toasts = usePassengerToasts((s) => s.toasts);
   const dismiss = usePassengerToasts((s) => s.dismiss);
 
@@ -69,7 +69,7 @@ export function PassengerToaster() {
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   wrap: {
     position: 'absolute',
     top: 0,

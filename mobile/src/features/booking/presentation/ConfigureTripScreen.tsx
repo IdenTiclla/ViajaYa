@@ -24,7 +24,7 @@ import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
-import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
 import { useRoute } from '@/features/booking/application/useRoute';
 import { useTripPlaceLabels } from '@/features/booking/application/useTripPlaceLabels';
@@ -49,14 +49,14 @@ import {
   PASSENGER_ACTIVE_RIDE_KEY,
   useRide,
 } from '@/features/rides/application/useRides';
-import { useEstiloMapa } from '@/features/booking/presentation/mapStyle';
+import { useMapStyle } from '@/features/booking/presentation/mapStyle';
 import { RoutePinMarker } from '@/features/rides/presentation/RoutePinMarker';
 import {
   getLabelAwareFitCoordinates,
-  type MedidasEtiqueta,
+  type LabelSize,
 } from '@/features/rides/presentation/routeTooltipLayout';
 import { RoutePolyline } from '@/features/rides/presentation/RoutePolyline';
-import { useRumboMapa } from '@/features/rides/application/useRumboMapa';
+import { useMapBearing } from '@/features/rides/application/useRumboMapa';
 import { MotorcycleRouteNotice } from '@/features/rides/presentation/MotorcycleRouteNotice';
 import { Button, ConfirmDialog, FeedbackState } from '@/shared/components';
 
@@ -70,7 +70,7 @@ const FIT_INSET = 16;
 // Smallest route area the camera keeps when the viewport is tiny.
 const MIN_FIT_SPAN = 48;
 // RoutePinMarker's initial label estimate, used until it reports the real size.
-const DEFAULT_LABEL_SIZE: MedidasEtiqueta = { ancho: 178, alto: 40 };
+const DEFAULT_LABEL_SIZE: LabelSize = { width: 178, height: 40 };
 const MIN_KEYBOARD_TRANSLATION = 280;
 
 function formatDistance(meters: number): string {
@@ -82,7 +82,7 @@ function formatDuration(seconds: number): string {
 }
 
 export function ConfigureTripScreen() {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   const insets = useSafeAreaInsets();
   const { fontScale } = useWindowDimensions();
   const router = useRouter();
@@ -106,7 +106,7 @@ export function ConfigureTripScreen() {
     retry: retryLabels,
   } = useTripPlaceLabels();
   const mapRef = useRef<MapView>(null);
-  const { rumboMapa, zoomMapa, actualizarRumbo } = useRumboMapa(mapRef);
+  const { mapBearing, mapZoom, updateBearing } = useMapBearing(mapRef);
   const queryClient = useQueryClient();
   const editRide = useEditRide();
   const cancelRecoveryRide = useCancelRide();
@@ -116,12 +116,12 @@ export function ConfigureTripScreen() {
   const [mapReady, setMapReady] = useState(false);
   const [mapSize, setMapSize] = useState({ width: 0, height: 0 });
   const [labelSizes, setLabelSizes] = useState({ A: DEFAULT_LABEL_SIZE, B: DEFAULT_LABEL_SIZE });
-  const reportLabelSize = (kind: 'A' | 'B') => (size: MedidasEtiqueta) =>
-    setLabelSizes((current) => current[kind].ancho === size.ancho && current[kind].alto === size.alto
+  const reportLabelSize = (kind: 'A' | 'B') => (size: LabelSize) =>
+    setLabelSizes((current) => current[kind].width === size.width && current[kind].height === size.height
       ? current : { ...current, [kind]: size });
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [keyboardOffset, setKeyboardOffset] = useState(0);
-  const { estiloMapa, modoMapa } = useEstiloMapa();
+  const { mapStyle, mapMode } = useMapStyle();
   const [confirmExit, setConfirmExit] = useState(false);
   const [manualExit, setAllowExit] = useState(false);
   const [exitAfterSave, setExitAfterSave] = useState(false);
@@ -437,8 +437,8 @@ export function ConfigureTripScreen() {
           showsIndoorLevelPicker={false}
           style={StyleSheet.absoluteFill}
           initialRegion={region}
-          customMapStyle={estiloMapa}
-          userInterfaceStyle={modoMapa}
+          customMapStyle={mapStyle}
+          userInterfaceStyle={mapMode}
           pitchEnabled={false}
           scrollEnabled={false}
           zoomEnabled={false}
@@ -446,15 +446,15 @@ export function ConfigureTripScreen() {
           zoomTapEnabled={false}
           toolbarEnabled={false}
           moveOnMarkerPress={false}
-          onRegionChangeComplete={actualizarRumbo}
+          onRegionChangeComplete={updateBearing}
           onMapReady={() => { setMapReady(true); fitToTrip(false); }}>
           <RoutePinMarker
             key={`origin-${tripMapKey}`}
             kind="A"
             coordinate={origin.coordinates}
-            ruta={fitCoordinates}
-            rumboMapa={rumboMapa}
-            zoomMapa={zoomMapa}
+            route={fitCoordinates}
+            mapBearing={mapBearing}
+            mapZoom={mapZoom}
             label={`Origen: ${originMapLabel}`}
             onLabelSize={reportLabelSize('A')}
             loading={originMapLoading}
@@ -465,9 +465,9 @@ export function ConfigureTripScreen() {
             key={`destination-${tripMapKey}`}
             kind="B"
             coordinate={destination.coordinates}
-            ruta={fitCoordinates}
-            rumboMapa={rumboMapa}
-            zoomMapa={zoomMapa}
+            route={fitCoordinates}
+            mapBearing={mapBearing}
+            mapZoom={mapZoom}
             label={`Destino: ${destinationMapLabel}`}
             onLabelSize={reportLabelSize('B')}
             loading={destinationMapLoading}
@@ -636,7 +636,7 @@ export function ConfigureTripScreen() {
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceMuted },
   mapViewport: { position: 'absolute', top: 0, left: 0, right: 0 },
   fallback: { alignItems: 'center', justifyContent: 'center', gap: spacing.md, padding: spacing.lg },
@@ -730,7 +730,7 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.bordeControl,
+    borderColor: colors.controlBorder,
     backgroundColor: colors.surface,
   },
   fareCurrency: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.textSecondary },

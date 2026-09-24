@@ -8,19 +8,19 @@ import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-nat
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
-import { fontSize, fontWeight, spacing, useEstilos, type Tema } from '@/core/theme';
+import { fontSize, fontWeight, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import type { VehicleType } from '@/features/auth/domain/types';
 import {
   approvedVehicles,
   useDriverVehicles,
   useSwitchAccountMode,
 } from '@/features/driver/application/useDriverAccount';
-import { SelectorVehiculo } from '@/features/driver/presentation/SelectorVehiculo';
+import { VehicleSelector } from '@/features/driver/presentation/SelectorVehiculo';
 import { Button } from '@/shared/components';
 import { useAuthStore } from '@/store/authStore';
 
-export function ElegirModoScreen() {
-  const { colors, styles } = useEstilos(crearEstilos);
+export function ChooseModeScreen() {
+  const { colors, styles } = useThemedStyles(createStyles);
   const user = useAuthStore((s) => s.user);
   const vehicles = useDriverVehicles();
   const switchMode = useSwitchAccountMode();
@@ -69,7 +69,7 @@ export function ElegirModoScreen() {
           ) : approved.length === 0 ? (
             <Text style={styles.hint}>Aún no tienes un vehículo aprobado.</Text>
           ) : (
-            <SelectorVehiculo
+            <VehicleSelector
               vehicles={approved}
               onPick={enterAsDriver}
               pending={switchMode.isPending ? pendingVehicle : null}
@@ -89,7 +89,7 @@ export function ElegirModoScreen() {
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   content: {
     flexGrow: 1,

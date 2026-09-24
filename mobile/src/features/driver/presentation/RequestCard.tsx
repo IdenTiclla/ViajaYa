@@ -16,7 +16,7 @@ import ReanimatedSwipeable, {
 } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import Animated, { SlideInDown } from 'react-native-reanimated';
 
-import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import { useCountdown } from '@/core/hooks/useCountdown';
 import { SERVICE_META } from '@/features/booking/domain/serviceCatalog';
 import { formatKm, haversineKm, pricePerKm } from '@/features/rides/domain/geo';
@@ -76,7 +76,7 @@ export function RequestCard({
   onOpenPriceInput,
   onWithdraw,
 }: Props) {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   const swipeRef = useRef<SwipeableMethods>(null);
   const tripKm = useMemo(
     () => haversineKm(ride.origin.coordinates, ride.destination.coordinates),
@@ -121,7 +121,7 @@ export function RequestCard({
         )}
         {expired && (
           <View style={styles.expiredBanner}>
-            <Ionicons name="time-outline" size={15} color={colors.textoSobreAcento} />
+            <Ionicons name="time-outline" size={15} color={colors.textOnAccent} />
             <Text style={styles.expiredBannerText}>Tu oferta expiró · vuelve a ofertar</Text>
           </View>
         )}
@@ -315,7 +315,7 @@ function OfferedBanner({
 }: {
   expiresAt: string | null;
 }) {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   const secondsLeft = useCountdown(expiresAt);
   const expiring = secondsLeft != null && secondsLeft <= 0;
   return (
@@ -327,7 +327,7 @@ function OfferedBanner({
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   swipeAction: {
     width: 96,
     backgroundColor: colors.textSecondary,
@@ -381,7 +381,7 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     backgroundColor: colors.accent,
   },
-  expiredBannerText: { color: colors.textoSobreAcento, fontSize: fontSize.xs, fontWeight: fontWeight.bold },
+  expiredBannerText: { color: colors.textOnAccent, fontSize: fontSize.xs, fontWeight: fontWeight.bold },
   pausedBanner: {
     minHeight: 42,
     flexDirection: 'row',
@@ -448,7 +448,7 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.surface,
   },
-  ratingBadgeText: { color: colors.textoSobreAcento, fontSize: 10, fontWeight: fontWeight.bold },
+  ratingBadgeText: { color: colors.textOnAccent, fontSize: 10, fontWeight: fontWeight.bold },
 
   cardInfo: { flex: 1, gap: 3, justifyContent: 'center' },
   riderName: { fontSize: fontSize.md, fontWeight: fontWeight.bold, color: colors.text },
@@ -467,11 +467,11 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs + 2,
     borderRadius: radius.pill,
-    backgroundColor: colors.avisoSuave,
+    backgroundColor: colors.warningSoft,
     borderWidth: 1,
     borderColor: 'rgba(245,197,24,0.5)',
   },
-  quickPillText: { color: colors.aviso, fontSize: fontSize.sm, fontWeight: fontWeight.bold },
+  quickPillText: { color: colors.warning, fontSize: fontSize.sm, fontWeight: fontWeight.bold },
   pencilBtn: {
     width: 34,
     height: 34,
@@ -503,7 +503,7 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     justifyContent: 'center',
   },
   withdrawAction: { flexDirection: 'row', gap: spacing.xs },
-  decline: { flex: 1, backgroundColor: colors.peligroSuave, borderWidth: 1, borderColor: colors.bordePeligro },
+  decline: { flex: 1, backgroundColor: colors.dangerSoft, borderWidth: 1, borderColor: colors.dangerBorder },
   declineText: { color: colors.danger, fontSize: fontSize.md, fontWeight: fontWeight.bold },
   accept: { flex: 1.6, backgroundColor: colors.primary },
   acceptText: { color: colors.textOnPrimary, fontSize: fontSize.md, fontWeight: fontWeight.bold },

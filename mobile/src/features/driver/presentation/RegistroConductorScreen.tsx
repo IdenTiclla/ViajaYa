@@ -18,7 +18,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
-import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import type { VehicleType } from '@/features/auth/domain/types';
 import {
   SERVICES_FOR_VEHICLE,
@@ -58,7 +58,7 @@ const SERVICE_HINTS: Record<ServiceType, string> = {
   moving: 'Traslado de muebles y cargas grandes.',
 };
 
-export function RegistroConductorScreen() {
+export function DriverRegistrationScreen() {
   const router = useRouter();
   const { vehicle: vehicleParam } = useLocalSearchParams<{ vehicle?: string }>();
   const editingType = isVehicleType(vehicleParam) ? vehicleParam : null;
@@ -101,7 +101,7 @@ export function RegistroConductorScreen() {
 
 /** Result actions stay reachable on short screens and with enlarged text. */
 function RegistrationState({ children }: { children: ReactNode }) {
-  const { styles } = useEstilos(crearEstilos);
+  const { styles } = useThemedStyles(createStyles);
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <ScrollView contentContainerStyle={styles.result}>
@@ -118,7 +118,7 @@ function VehicleForm({
   vehicles: DriverVehicle[];
   editing: DriverVehicle | null;
 }) {
-  const { colors, styles, estiloFoco } = useEstilos(crearEstilos);
+  const { colors, styles, focusStyle } = useThemedStyles(createStyles);
   const router = useRouter();
   const register = useRegisterDriverVehicle();
   const switchMode = useSwitchAccountMode();
@@ -247,7 +247,7 @@ function VehicleForm({
               accessibilityRole="button"
               accessibilityLabel="Volver"
               accessibilityState={{ disabled: busy }}
-              style={[styles.back, focusedControl === 'back' && estiloFoco]}>
+              style={[styles.back, focusedControl === 'back' && focusStyle]}>
               <Ionicons accessible={false} name="arrow-back" size={24} color={colors.text} />
               <Text style={styles.backText}>Volver</Text>
             </Pressable>
@@ -287,7 +287,7 @@ function VehicleForm({
                       onBlur={() => setFocusedControl(null)}
                       onPress={() => toggleService(service)}
                       style={({ pressed }) => [styles.serviceRow, checked && styles.serviceSelected,
-                        pressed && styles.pressed, focusedControl === service && estiloFoco]}>
+                        pressed && styles.pressed, focusedControl === service && focusStyle]}>
                       <View style={[styles.box, checked && styles.boxChecked]}>
                         {checked && (
                           <Ionicons accessible={false} name="checkmark" size={16} color={colors.textOnPrimary} />
@@ -361,7 +361,7 @@ function VehicleForm({
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
   scrollContent: { flexGrow: 1, padding: spacing.md, paddingBottom: spacing.xxl },
@@ -387,17 +387,17 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     padding: spacing.sm,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.bordeControl,
+    borderColor: colors.controlBorder,
     backgroundColor: colors.surface,
   },
   pressed: { opacity: 0.85 },
-  serviceSelected: { borderColor: colors.primary, backgroundColor: colors.primarioSuave },
+  serviceSelected: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
   box: {
     width: 24,
     height: 24,
     borderRadius: radius.sm,
     borderWidth: 2,
-    borderColor: colors.bordeControl,
+    borderColor: colors.controlBorder,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.surface,

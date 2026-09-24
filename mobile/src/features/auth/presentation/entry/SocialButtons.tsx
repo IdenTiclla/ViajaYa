@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
 
-import { fontSize, spacing, useEstilos, type Tema } from '@/core/theme';
+import { fontSize, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import { Button } from '@/shared/components';
 import type { SocialProvider } from '../../domain/phoneAccess';
 
@@ -9,7 +9,7 @@ type Props = { providers: SocialProvider[]; google: ProviderControl; facebook: P
 
 /** "o continúa con" divider + provider buttons. Renders nothing when the server offers none. */
 export function SocialButtons({ providers, google, facebook }: Props) {
-  const { styles } = useEstilos(createStyles);
+  const { styles } = useThemedStyles(createStyles);
   if (providers.length === 0) return null;
   return (
     <View style={styles.wrapper}>
@@ -30,7 +30,7 @@ export function SocialButtons({ providers, google, facebook }: Props) {
   );
 }
 
-const createStyles = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   wrapper: { gap: spacing.sm },
   divider: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginVertical: spacing.xs },
   line: { flex: 1, height: 1, backgroundColor: colors.border },

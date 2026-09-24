@@ -22,52 +22,52 @@ export const BOLIVIA_DEFAULT_COORDINATES: Coordinates = {
   longitude: -68.15,
 };
 
-type PuntoContorno = readonly [longitud: number, latitud: number];
+type OutlinePoint = readonly [longitud: number, latitud: number];
 
 // Byte-for-byte copy of the backend's authoritative resource. The JSON keeps the
 // source, reproducible commit and Natural Earth's public-domain license.
-const CONTORNO_BOLIVIA =
-  boliviaBoundary.geometry.coordinates[0] as unknown as readonly PuntoContorno[];
-const EPSILON_CONTORNO = 1e-10;
+const BOLIVIA_OUTLINE =
+  boliviaBoundary.geometry.coordinates[0] as unknown as readonly OutlinePoint[];
+const OUTLINE_EPSILON = 1e-10;
 
-function puntoEstaEnSegmento(
-  punto: PuntoContorno,
-  inicio: PuntoContorno,
-  fin: PuntoContorno,
+function pointIsOnSegment(
+  point: OutlinePoint,
+  start: OutlinePoint,
+  end: OutlinePoint,
 ): boolean {
-  const [px, py] = punto;
-  const [ax, ay] = inicio;
-  const [bx, by] = fin;
-  const productoCruzado = (px - ax) * (by - ay) - (py - ay) * (bx - ax);
-  const escala = Math.max(1, Math.abs(bx - ax), Math.abs(by - ay));
-  if (Math.abs(productoCruzado) > EPSILON_CONTORNO * escala) return false;
+  const [px, py] = point;
+  const [ax, ay] = start;
+  const [bx, by] = end;
+  const crossProduct = (px - ax) * (by - ay) - (py - ay) * (bx - ax);
+  const scale = Math.max(1, Math.abs(bx - ax), Math.abs(by - ay));
+  if (Math.abs(crossProduct) > OUTLINE_EPSILON * scale) return false;
   return (
-    px >= Math.min(ax, bx) - EPSILON_CONTORNO &&
-    px <= Math.max(ax, bx) + EPSILON_CONTORNO &&
-    py >= Math.min(ay, by) - EPSILON_CONTORNO &&
-    py <= Math.max(ay, by) + EPSILON_CONTORNO
+    px >= Math.min(ax, bx) - OUTLINE_EPSILON &&
+    px <= Math.max(ax, bx) + OUTLINE_EPSILON &&
+    py >= Math.min(ay, by) - OUTLINE_EPSILON &&
+    py <= Math.max(ay, by) + OUTLINE_EPSILON
   );
 }
 
 /** Ray casting with the boundary included, equivalent to the backend validation. */
-function contornoCubre(punto: PuntoContorno): boolean {
-  let estaDentro = false;
-  let anterior = CONTORNO_BOLIVIA[CONTORNO_BOLIVIA.length - 1];
+function outlineCovers(point: OutlinePoint): boolean {
+  let isInside = false;
+  let previous = BOLIVIA_OUTLINE[BOLIVIA_OUTLINE.length - 1];
 
-  for (const actual of CONTORNO_BOLIVIA) {
-    if (puntoEstaEnSegmento(punto, anterior, actual)) return true;
+  for (const current of BOLIVIA_OUTLINE) {
+    if (pointIsOnSegment(point, previous, current)) return true;
 
-    const [px, py] = punto;
-    const [ax, ay] = anterior;
-    const [bx, by] = actual;
+    const [px, py] = point;
+    const [ax, ay] = previous;
+    const [bx, by] = current;
     if ((ay > py) !== (by > py)) {
-      const cruceX = ax + ((py - ay) * (bx - ax)) / (by - ay);
-      if (cruceX > px) estaDentro = !estaDentro;
+      const crossingX = ax + ((py - ay) * (bx - ax)) / (by - ay);
+      if (crossingX > px) isInside = !isInside;
     }
-    anterior = actual;
+    previous = current;
   }
 
-  return estaDentro;
+  return isInside;
 }
 
 export function normalizeCountryCode(value: string | null | undefined): string | null {
@@ -76,13 +76,13 @@ export function normalizeCountryCode(value: string | null | undefined): string |
 }
 
 export function isCoordinatesInBolivia(coordinates: Coordinates): boolean {
-  const dentroDelRectangulo =
+  const insideBounds =
     coordinates.latitude >= BOLIVIA_SOUTH_WEST.latitude &&
     coordinates.latitude <= BOLIVIA_NORTH_EAST.latitude &&
     coordinates.longitude >= BOLIVIA_SOUTH_WEST.longitude &&
     coordinates.longitude <= BOLIVIA_NORTH_EAST.longitude;
-  if (!dentroDelRectangulo) return false;
-  return contornoCubre([coordinates.longitude, coordinates.latitude]);
+  if (!insideBounds) return false;
+  return outlineCovers([coordinates.longitude, coordinates.latitude]);
 }
 
 export function isPlaceInBolivia(place: Place): boolean {

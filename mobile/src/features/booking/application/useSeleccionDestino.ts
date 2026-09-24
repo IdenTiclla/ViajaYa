@@ -1,62 +1,62 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { conTiempoLimite } from '@/core/async/conTiempoLimite';
+import { withTimeout } from '@/core/async/conTiempoLimite';
 import { getBoliviaPlaceError } from '@/features/booking/domain/bolivia';
 import type { Place, PlaceSuggestion } from '@/features/booking/domain/types';
 
 /** Only the current selection can set a destination or show an error. */
-export function useSeleccionDestino(
-  resolver: (sugerencia: PlaceSuggestion) => Promise<Place | null>,
-  alSeleccionar: (lugar: Place) => void,
+export function useDestinationSelection(
+  resolver: (suggestion: PlaceSuggestion) => Promise<Place | null>,
+  onSelect: (place: Place) => void,
 ) {
-  const generacion = useRef(0);
-  const enCurso = useRef(false);
-  const [resolviendoId, setResolviendoId] = useState<string | null>(null);
-  const [errorSeleccion, setErrorSeleccion] = useState<string | null>(null);
+  const generation = useRef(0);
+  const inProgress = useRef(false);
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
+  const [selectionError, setSelectionError] = useState<string | null>(null);
 
-  useEffect(() => () => { generacion.current += 1; }, []);
+  useEffect(() => () => { generation.current += 1; }, []);
 
-  const cancelarSeleccion = useCallback(() => {
-    generacion.current += 1;
-    enCurso.current = false;
-    setResolviendoId(null);
-    setErrorSeleccion(null);
+  const cancelSelection = useCallback(() => {
+    generation.current += 1;
+    inProgress.current = false;
+    setResolvingId(null);
+    setSelectionError(null);
   }, []);
 
-  const seleccionarLugar = useCallback((lugar: Place) => {
-    cancelarSeleccion();
-    const error = getBoliviaPlaceError(lugar);
-    if (error) setErrorSeleccion(error);
-    else alSeleccionar(lugar);
-  }, [alSeleccionar, cancelarSeleccion]);
+  const selectPlace = useCallback((place: Place) => {
+    cancelSelection();
+    const error = getBoliviaPlaceError(place);
+    if (error) setSelectionError(error);
+    else onSelect(place);
+  }, [onSelect, cancelSelection]);
 
-  const seleccionarSugerencia = useCallback(async (sugerencia: PlaceSuggestion) => {
-    if (enCurso.current) return;
-    enCurso.current = true;
-    const solicitud = ++generacion.current;
-    setResolviendoId(sugerencia.placeId);
-    setErrorSeleccion(null);
+  const selectSuggestion = useCallback(async (suggestion: PlaceSuggestion) => {
+    if (inProgress.current) return;
+    inProgress.current = true;
+    const request = ++generation.current;
+    setResolvingId(suggestion.placeId);
+    setSelectionError(null);
     try {
-      const lugar = await conTiempoLimite(
-        resolver(sugerencia), 30_000,
+      const place = await withTimeout(
+        resolver(suggestion), 30_000,
         'La ubicación tardó demasiado. Vuelve a intentarlo o elige el punto en el mapa.',
       );
-      if (solicitud !== generacion.current) return;
-      if (!lugar) throw new Error('No pudimos ubicar este lugar. Prueba otra opción o usa el mapa.');
-      const error = getBoliviaPlaceError(lugar);
+      if (request !== generation.current) return;
+      if (!place) throw new Error('No pudimos ubicar este lugar. Prueba otra opción o usa el mapa.');
+      const error = getBoliviaPlaceError(place);
       if (error) throw new Error(error);
-      alSeleccionar(lugar);
+      onSelect(place);
     } catch (error) {
-      if (solicitud === generacion.current) {
-        setErrorSeleccion(error instanceof Error ? error.message : 'No pudimos obtener la ubicación. Vuelve a intentarlo.');
+      if (request === generation.current) {
+        setSelectionError(error instanceof Error ? error.message : 'No pudimos obtener la ubicación. Vuelve a intentarlo.');
       }
     } finally {
-      if (solicitud === generacion.current) {
-        enCurso.current = false;
-        setResolviendoId(null);
+      if (request === generation.current) {
+        inProgress.current = false;
+        setResolvingId(null);
       }
     }
-  }, [alSeleccionar, resolver]);
+  }, [onSelect, resolver]);
 
-  return { resolviendoId, errorSeleccion, seleccionarSugerencia, seleccionarLugar, cancelarSeleccion };
+  return { resolvingId, selectionError, selectSuggestion, selectPlace, cancelSelection };
 }

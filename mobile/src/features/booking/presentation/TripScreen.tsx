@@ -24,7 +24,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
 import { useBlockHardwareBack } from '@/core/navigation/useBlockHardwareBack';
-import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import { useTripActions, useTripContact } from '@/features/rides/application/useTripActions';
 import {
   PASSENGER_ACTIVE_RIDE_KEY,
@@ -80,7 +80,7 @@ const DELIVERY_BANNER: Record<RideStatus, Banner> = {
 const CANCELLABLE: RideStatus[] = ['searching', 'accepted', 'arriving'];
 
 export function TripScreen() {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   const router = useRouter();
   const queryClient = useQueryClient();
   const { rideId } = useLocalSearchParams<{ rideId?: string }>();
@@ -189,7 +189,7 @@ export function TripScreen() {
           <Ionicons
             name={ride.service === 'moto' && ride.status === 'accepted' ? 'bicycle' : banner.icon}
             size={26}
-            color={banner.accent ? colors.textoSobreAcento : colors.primary}
+            color={banner.accent ? colors.textOnAccent : colors.primary}
           />
           <View style={styles.bannerText}>
             <Text accessibilityRole="header" style={[styles.bannerTitle, banner.accent && styles.bannerAccentText]}>{banner.title}</Text>
@@ -264,7 +264,7 @@ export function TripScreen() {
 }
 
 function DriverCard({ ride }: { ride: Ride }) {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   const driver = ride.driver!;
   const contact = useTripContact(ride, driver.phone);
   const vehicle = [
@@ -316,7 +316,7 @@ function ContactButton({
   onPress: () => void;
   disabled?: boolean;
 }) {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   return (
     <TouchableOpacity
       style={[styles.contactBtn, disabled && styles.contactDisabled]}
@@ -331,7 +331,7 @@ function ContactButton({
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   tripActions: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, gap: spacing.xs, borderTopWidth: 1, borderTopColor: colors.border },
   root: { flex: 1, backgroundColor: colors.surfaceMuted },
   fallback: { flex: 1, backgroundColor: colors.background, padding: spacing.lg, gap: spacing.md },
@@ -373,9 +373,9 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
   sheetHandle: { width: 40, height: 4, borderRadius: radius.pill, backgroundColor: colors.border, alignSelf: 'center' },
 
   banner: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
-    backgroundColor: colors.primarioSuave, padding: spacing.sm, borderRadius: radius.md },
+    backgroundColor: colors.primarySoft, padding: spacing.sm, borderRadius: radius.md },
   bannerAccent: { backgroundColor: colors.accent },
-  bannerAccentText: { color: colors.textoSobreAcento },
+  bannerAccentText: { color: colors.textOnAccent },
   bannerText: { flex: 1, gap: 2 },
   bannerTitle: { fontSize: fontSize.md, fontWeight: fontWeight.bold, color: colors.text },
 

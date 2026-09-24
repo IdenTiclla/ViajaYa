@@ -6,16 +6,16 @@
  */
 import { create } from 'zustand';
 
-import { conTiempoLimite } from '@/core/async/conTiempoLimite';
+import { withTimeout } from '@/core/async/conTiempoLimite';
 import { getApiErrorMessage } from '@/core/errors/apiError';
-import { api, invalidarSolicitudesSesion, setOnSessionExpired } from '@/core/http/client';
+import { api, invalidateSessionRequests, setOnSessionExpired } from '@/core/http/client';
 import { tokenStorage } from '@/core/http/tokenStorage';
 import { authRepository } from '@/features/auth/data/authRepository';
 import type { AuthResult, User } from '@/features/auth/domain/types';
 
 type Status = 'loading' | 'error' | 'authenticated' | 'unauthenticated';
 
-let generacionSesion = 0;
+let sessionGeneration = 0;
 
 type AuthState = {
   user: User | null;
@@ -36,10 +36,10 @@ type AuthState = {
 
 export const useAuthStore = create<AuthState>((set) => {
   async function applySession(result: AuthResult): Promise<void> {
-    const generation = ++generacionSesion;
-    invalidarSolicitudesSesion();
+    const generation = ++sessionGeneration;
+    invalidateSessionRequests();
     await tokenStorage.save(result.tokens);
-    if (generation !== generacionSesion) return;
+    if (generation !== sessionGeneration) return;
     set({
       user: result.user,
       status: 'authenticated',
@@ -62,20 +62,20 @@ export const useAuthStore = create<AuthState>((set) => {
     },
 
     async bootstrap() {
-      const generacion = ++generacionSesion;
+      const generation = ++sessionGeneration;
       set({ status: 'loading', startupError: null });
       try {
-        const restaurar = async () => {
+        const restore = async () => {
           const tokens = await tokenStorage.get();
           return tokens ? authRepository.me() : null;
         };
-        const user = await conTiempoLimite(
-          restaurar(), 30_000, 'La sesión tardó demasiado en cargar. Vuelve a intentar.',
+        const user = await withTimeout(
+          restore(), 30_000, 'La sesión tardó demasiado en cargar. Vuelve a intentar.',
         );
-        if (generacion !== generacionSesion) return;
+        if (generation !== sessionGeneration) return;
         set({ user, status: user ? 'authenticated' : 'unauthenticated', modeChoicePending: false });
       } catch (error) {
-        if (generacion !== generacionSesion) return;
+        if (generation !== sessionGeneration) return;
         set({
           user: null,
           status: 'error',
@@ -86,8 +86,8 @@ export const useAuthStore = create<AuthState>((set) => {
     },
 
     async signOut() {
-      const generacion = ++generacionSesion;
-      invalidarSolicitudesSesion();
+      const generation = ++sessionGeneration;
+      invalidateSessionRequests();
       try {
         const tokens = await tokenStorage.get().catch(() => null);
         if (tokens?.refreshToken) {
@@ -96,12 +96,12 @@ export const useAuthStore = create<AuthState>((set) => {
             skipAuth: true, timeout: 5_000,
           }).catch(() => {});
         }
-        if (generacion !== generacionSesion) return;
+        if (generation !== sessionGeneration) return;
         await tokenStorage.clear();
       } catch {
         // Un fallo nativo no debe impedir volver al formulario de acceso.
       } finally {
-        if (generacion === generacionSesion) {
+        if (generation === sessionGeneration) {
           set({ user: null, status: 'unauthenticated', startupError: null, modeChoicePending: false });
         }
       }
@@ -111,7 +111,7 @@ export const useAuthStore = create<AuthState>((set) => {
 
 // The HTTP client already removed the credentials. Do not duplicate the native deletion.
 setOnSessionExpired(() => {
-  generacionSesion += 1;
+  sessionGeneration += 1;
   useAuthStore.setState({
     user: null, status: 'unauthenticated', startupError: null, modeChoicePending: false,
   });

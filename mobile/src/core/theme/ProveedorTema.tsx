@@ -4,46 +4,46 @@ import * as SystemUI from 'expo-system-ui';
 import { useEffect, useLayoutEffect, useMemo, type PropsWithChildren } from 'react';
 import { Appearance, Platform } from 'react-native';
 
-import { obtenerTema, TEMA_PREDETERMINADO } from './tokens';
-import { usePreferenciaTema } from './usePreferenciaTema';
-import { ContextoTema } from './useTema';
+import { getTheme, DEFAULT_THEME_MODE } from './tokens';
+import { useThemePreference } from './usePreferenciaTema';
+import { ThemeContext } from './useTema';
 
 // Also controls native dialogs and fields from JS startup.
-if (Platform.OS !== 'web') Appearance.setColorScheme(TEMA_PREDETERMINADO);
+if (Platform.OS !== 'web') Appearance.setColorScheme(DEFAULT_THEME_MODE);
 
-export function ProveedorTema({ children }: PropsWithChildren) {
-  const { modo, cargar } = usePreferenciaTema();
-  const tema = useMemo(() => obtenerTema(modo), [modo]);
-  const navegacion = useMemo(() => ({
-    ...(modo === 'dark' ? DarkTheme : DefaultTheme),
+export function AppThemeProvider({ children }: PropsWithChildren) {
+  const { mode, load } = useThemePreference();
+  const theme = useMemo(() => getTheme(mode), [mode]);
+  const navigation = useMemo(() => ({
+    ...(mode === 'dark' ? DarkTheme : DefaultTheme),
     colors: {
-      ...(modo === 'dark' ? DarkTheme : DefaultTheme).colors,
-      primary: tema.colors.primary,
-      background: tema.colors.background,
-      card: tema.colors.surface,
-      text: tema.colors.text,
-      border: tema.colors.border,
-      notification: tema.colors.danger,
+      ...(mode === 'dark' ? DarkTheme : DefaultTheme).colors,
+      primary: theme.colors.primary,
+      background: theme.colors.background,
+      card: theme.colors.surface,
+      text: theme.colors.text,
+      border: theme.colors.border,
+      notification: theme.colors.danger,
     },
-  }), [modo, tema]);
+  }), [mode, theme]);
 
-  useEffect(() => { void cargar(); }, [cargar]);
+  useEffect(() => { void load(); }, [load]);
 
   useLayoutEffect(() => {
     if (Platform.OS === 'web') {
-      document.documentElement.style.colorScheme = modo;
+      document.documentElement.style.colorScheme = mode;
     } else {
-      Appearance.setColorScheme(modo);
+      Appearance.setColorScheme(mode);
     }
-    void SystemUI.setBackgroundColorAsync(tema.colors.background).catch(() => undefined);
-  }, [modo, tema]);
+    void SystemUI.setBackgroundColorAsync(theme.colors.background).catch(() => undefined);
+  }, [mode, theme]);
 
   return (
-    <ContextoTema.Provider value={tema}>
-      <ThemeProvider value={navegacion}>
-        <StatusBar style={modo === 'dark' ? 'light' : 'dark'} />
+    <ThemeContext.Provider value={theme}>
+      <ThemeProvider value={navigation}>
+        <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
         {children}
       </ThemeProvider>
-    </ContextoTema.Provider>
+    </ThemeContext.Provider>
   );
 }

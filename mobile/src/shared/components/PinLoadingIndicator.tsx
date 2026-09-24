@@ -1,6 +1,6 @@
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
-import { useEstilos } from '@/core/theme';
+import { useThemedStyles } from '@/core/theme';
 
 type Props = {
   loading: boolean;
@@ -20,7 +20,7 @@ export function PinLoadingIndicator({
   color,
   compact = false,
 }: Props) {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   return (
     <View
       style={[styles.slot, compact && styles.slotCompact]}
@@ -40,7 +40,7 @@ export function PinLoadingIndicator({
   );
 }
 
-const crearEstilos = () => StyleSheet.create({
+const createStyles = () => StyleSheet.create({
   slot: {
     width: 18,
     height: 18,

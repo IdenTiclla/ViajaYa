@@ -1,13 +1,13 @@
 import { StyleSheet, Text, View } from 'react-native';
 
-import { fontSize, fontWeight, spacing, useEstilos, type Tema } from '@/core/theme';
+import { fontSize, fontWeight, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import type { RideStatus } from '../domain/types';
 
 const STAGES = ['Negociación', 'Recogida', 'Viaje', 'Calificación'] as const;
 
 /** A compact stage indicator shared by both participants, including large text. */
 export function TripProgress({ status }: { status: RideStatus }) {
-  const { styles } = useEstilos(createStyles);
+  const { styles } = useThemedStyles(createStyles);
   if (status === 'cancelled') return null;
   const index = status === 'searching' ? 0 : status === 'in_progress' ? 2 : status === 'completed' ? 3 : 1;
   const label = `Paso ${index + 1} de 4 · ${STAGES[index]}`;
@@ -21,7 +21,7 @@ export function TripProgress({ status }: { status: RideStatus }) {
   );
 }
 
-const createStyles = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   root: { gap: spacing.sm, paddingVertical: spacing.xs },
   label: { color: colors.textSecondary, fontSize: fontSize.sm, fontWeight: fontWeight.medium },
   track: { flexDirection: 'row', gap: spacing.xs },

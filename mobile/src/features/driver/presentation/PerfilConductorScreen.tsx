@@ -7,11 +7,11 @@ import { useState } from 'react';
 import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import { Button } from '@/shared/components';
 import { getApiErrorMessage } from '@/core/errors/apiError';
 import { useAuthStore } from '@/store/authStore';
-import { SelectorTema } from '@/features/profile/presentation/SelectorTema';
+import { ThemeSelector } from '@/features/profile/presentation/SelectorTema';
 import { AccountSecurityPanel } from '@/features/auth/presentation/AccountSecurityPanel';
 import type { VehicleType } from '@/features/auth/domain/types';
 import { VEHICLE_META } from '@/features/auth/domain/vehicleCatalog';
@@ -21,10 +21,10 @@ import {
   useDriverVehicles,
   useSwitchAccountMode,
 } from '@/features/driver/application/useDriverAccount';
-import { SelectorVehiculo } from '@/features/driver/presentation/SelectorVehiculo';
+import { VehicleSelector } from '@/features/driver/presentation/SelectorVehiculo';
 
-export function PerfilConductorScreen() {
-  const { colors, styles } = useEstilos(crearEstilos);
+export function DriverProfileScreen() {
+  const { colors, styles } = useThemedStyles(createStyles);
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const signOut = useAuthStore((s) => s.signOut);
@@ -72,7 +72,7 @@ export function PerfilConductorScreen() {
                 ? 'Te desconectaremos y volverás a conectarte con el vehículo elegido.'
                 : 'Las solicitudes que verás dependen de los servicios de ese vehículo.'}
             </Text>
-            <SelectorVehiculo
+            <VehicleSelector
               vehicles={otherVehicles}
               onPick={(vehicleType) => {
                 setPendingVehicle(vehicleType);
@@ -110,7 +110,7 @@ export function PerfilConductorScreen() {
           />
         </View>
 
-        <SelectorTema />
+        <ThemeSelector />
         <AccountSecurityPanel />
         <View style={styles.actions}>
           <Button
@@ -134,19 +134,19 @@ function Detail({
   label: string;
   value: string;
 }) {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   const { fontScale } = useWindowDimensions();
-  const enColumna = fontScale > 1.3;
+  const inColumn = fontScale > 1.3;
   return (
-    <View style={[styles.detailRow, enColumna && styles.detailColumn]}>
-      {!enColumna && <Ionicons accessible={false} name={icon} size={20} color={colors.primary} />}
-      <Text style={[styles.detailLabel, enColumna && styles.detailFullWidth]}>{label}</Text>
-      <Text style={[styles.detailValue, enColumna && styles.detailFullWidth]}>{value}</Text>
+    <View style={[styles.detailRow, inColumn && styles.detailColumn]}>
+      {!inColumn && <Ionicons accessible={false} name={icon} size={20} color={colors.primary} />}
+      <Text style={[styles.detailLabel, inColumn && styles.detailFullWidth]}>{label}</Text>
+      <Text style={[styles.detailValue, inColumn && styles.detailFullWidth]}>{value}</Text>
     </View>
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   content: { flexGrow: 1, alignItems: 'center', padding: spacing.lg, gap: spacing.xs },
   avatar: {

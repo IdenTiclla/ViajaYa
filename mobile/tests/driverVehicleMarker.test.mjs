@@ -11,9 +11,9 @@ const mocks = {
   'react-native': 'export const View="View"; export const StyleSheet={create:value=>value};',
   'react-native-maps': 'export const Marker="Marker";',
   'react-native-reanimated': 'export const useReducedMotion=()=>true;',
-  '@/core/theme': 'export const useEstilos=f=>({styles:f({colors:{}}),modo:"light"});',
-  '@/shared/components/mapa/VehiculoMapa': 'export const VehiculoMapa="VehicleDrawing";',
-  '@/features/rides/presentation/routeTooltipLayout': 'export const programarRedibujadoMarcador=()=>{};',
+  '@/core/theme': 'export const useThemedStyles=f=>({styles:f({colors:{}}),mode:"light"});',
+  '@/shared/components/mapa/VehiculoMapa': 'export const MapVehicle="VehicleDrawing";',
+  '@/features/rides/presentation/routeTooltipLayout': 'export const scheduleMarkerRedraw=()=>{};',
 };
 const hooks=registerHooks({
   resolve(specifier,context,next){
@@ -29,16 +29,16 @@ const hooks=registerHooks({
     return next(url,context);
   },
 });
-const {MarcadorVehiculo}=await import('../src/features/driver/presentation/MarcadorVehiculo.tsx');
+const {VehicleMarker}=await import('../src/features/driver/presentation/MarcadorVehiculo.tsx');
 hooks.deregister();
 const coordinates={latitude:-17.79,longitude:-63.19};
 for(const vehicle of ['taxi','moto'])for(const heading of [null,-1]){
   test(`${vehicle} remains visible when GPS heading is ${heading}`,()=>{
-    const marker=MarcadorVehiculo({coordinates,heading,tipoVehiculo:vehicle});
+    const marker=VehicleMarker({coordinates,heading,vehicleType:vehicle});
     const [slot,dot]=marker.props.children.props.children;
     assert.equal(slot.props.style.at(-1).opacity,1);
     assert.equal(slot.props.children[0].type,'VehicleDrawing');
-    assert.equal(slot.props.children[0].props.tipo,vehicle);
+    assert.equal(slot.props.children[0].props.kind,vehicle);
     assert.equal(slot.props.children[1].props.style.at(-1).opacity,0);
     assert.equal(dot.props.style.at(-1).opacity,0);
     assert.equal(marker.props.coordinate,coordinates);
@@ -46,7 +46,7 @@ for(const vehicle of ['taxi','moto'])for(const heading of [null,-1]){
 }
 test('new GPS positions update the vehicle marker and retain stale-signal opacity',()=>{
   const next={latitude:-17.7901,longitude:-63.1901};
-  const marker=MarcadorVehiculo({coordinates:next,heading:90,tipoVehiculo:'moto',opacity:0.5,label:'Ubicación del conductor'});
+  const marker=VehicleMarker({coordinates:next,heading:90,vehicleType:'moto',opacity:0.5,label:'Ubicación del conductor'});
   assert.equal(marker.props.coordinate,next);
   assert.equal(marker.props.rotation,90);
   assert.equal(marker.props.opacity,0.5);

@@ -12,20 +12,20 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Marker, type MapMarker } from 'react-native-maps';
 
-import { fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import type { Coordinates } from '@/features/booking/domain/types';
-import { InsigniaPuntoMapa } from '@/shared/components/mapa/InsigniaPuntoMapa';
+import { MapPointBadge } from '@/shared/components/mapa/InsigniaPuntoMapa';
 import {
-  BORDE_PIN_RUTA,
-  calcularAnclajePin,
-  elegirPosicionTooltip,
-  programarRedibujadoMarcador,
-  proyectarRutaRespectoAlPin,
-  SEPARACION_TOOLTIP,
-  TAMANO_LETRA_PIN_RUTA,
-  TAMANO_PIN_RUTA,
-  ubicarTooltipSinCruzarRuta,
-  type MedidasEtiqueta,
+  ROUTE_PIN_BORDER,
+  computePinAnchor,
+  chooseTooltipPlacement,
+  scheduleMarkerRedraw,
+  projectRouteRelativeToPin,
+  TOOLTIP_SEPARATION,
+  ROUTE_PIN_LETTER_SIZE,
+  ROUTE_PIN_SIZE,
+  placeTooltipClearOfRoute,
+  type LabelSize,
 } from '@/features/rides/presentation/routeTooltipLayout';
 
 type Props = {
@@ -34,11 +34,11 @@ type Props = {
   /** Texto del tooltip (p. ej. "Origen", "Destino"). */
   label: string;
   /** Visible route: lets the label move away from the route next to the pin. */
-  ruta?: readonly Coordinates[];
+  route?: readonly Coordinates[];
   /** Current camera bearing, in degrees. */
-  rumboMapa?: number;
+  mapBearing?: number;
   /** Google Maps zoom to compare the text size with the route. */
-  zoomMapa?: number;
+  mapZoom?: number;
   /** Hide the tooltip when the information is shown outside the map. */
   showTooltip?: boolean;
   /** Show an edit control attached to the marker. */
@@ -51,18 +51,18 @@ type Props = {
   loading?: boolean;
   onPress?: () => void;
   /** Reports the measured label block so the camera can frame it. */
-  onLabelSize?: (size: MedidasEtiqueta) => void;
+  onLabelSize?: (size: LabelSize) => void;
 };
 
-const RUTA_VACIA: readonly Coordinates[] = [];
+const EMPTY_ROUTE: readonly Coordinates[] = [];
 
 export function RoutePinMarker({
   kind,
   coordinate,
   label,
-  ruta = RUTA_VACIA,
-  rumboMapa = 0,
-  zoomMapa,
+  route = EMPTY_ROUTE,
+  mapBearing = 0,
+  mapZoom,
   showTooltip = true,
   showEditControl,
   dim,
@@ -71,37 +71,37 @@ export function RoutePinMarker({
   onPress,
   onLabelSize,
 }: Props) {
-  const { colors, styles, modo } = useEstilos(crearEstilos);
-  const marcador = useRef<MapMarker>(null);
-  const [medidas, setMedidas] = useState({ ancho: 0, alto: TAMANO_PIN_RUTA });
-  const [medidasEtiquetas, setMedidasEtiquetas] = useState({
-    ancho: 178, alto: showEditControl ? 70 : 40,
+  const { colors, styles, mode } = useThemedStyles(createStyles);
+  const marker = useRef<MapMarker>(null);
+  const [size, setSize] = useState({ width: 0, height: ROUTE_PIN_SIZE });
+  const [labelSize, setLabelSize] = useState({
+    width: 178, height: showEditControl ? 70 : 40,
   });
-  const tieneEtiquetas = Boolean(showTooltip || showEditControl);
-  const ubicacion = useMemo(() => {
-    const preferida = elegirPosicionTooltip(kind, coordinate, ruta, rumboMapa);
-    if (!tieneEtiquetas || zoomMapa == null) {
-      return { posicion: preferida, separacion: SEPARACION_TOOLTIP, visible: true };
+  const hasLabels = Boolean(showTooltip || showEditControl);
+  const location = useMemo(() => {
+    const preferred = chooseTooltipPlacement(kind, coordinate, route, mapBearing);
+    if (!hasLabels || mapZoom == null) {
+      return { placement: preferred, separation: TOOLTIP_SEPARATION, visible: true };
     }
-    return ubicarTooltipSinCruzarRuta(
-      proyectarRutaRespectoAlPin(coordinate, ruta, rumboMapa, zoomMapa),
-      medidasEtiquetas, preferida,
+    return placeTooltipClearOfRoute(
+      projectRouteRelativeToPin(coordinate, route, mapBearing, mapZoom),
+      labelSize, preferred,
     );
-  }, [kind, coordinate, ruta, rumboMapa, zoomMapa, tieneEtiquetas, medidasEtiquetas]);
-  const { posicion, separacion, visible } = ubicacion;
-  useEffect(() => programarRedibujadoMarcador(() => marcador.current?.redraw()), [
-    medidas.ancho, medidas.alto, label, kind, posicion, showTooltip,
-    showEditControl, loading, dim, separacion, visible, modo,
+  }, [kind, coordinate, route, mapBearing, mapZoom, hasLabels, labelSize]);
+  const { placement, separation, visible } = location;
+  useEffect(() => scheduleMarkerRedraw(() => marker.current?.redraw()), [
+    size.width, size.height, label, kind, placement, showTooltip,
+    showEditControl, loading, dim, separation, visible, mode,
   ]);
 
   return (
     <Marker
-      ref={marcador}
+      ref={marker}
       coordinate={coordinate}
       // On Google Maps Android polylines and markers are separate
       // layers; an explicit z-index keeps the pin visible above the route.
       zIndex={zIndex ?? 10}
-      anchor={calcularAnclajePin(medidas.alto, posicion)}
+      anchor={computePinAnchor(size.height, placement)}
       accessibilityLabel={label}
       title={!visible ? label : undefined}
       onPress={onPress}>
@@ -109,28 +109,28 @@ export function RoutePinMarker({
         // Fabric must not flatten this container: Android measures the first native
         // child to size the whole bitmap (text, Editar and symbol).
         collapsable={false}
-        style={[styles.wrap, posicion === 'abajo' && styles.wrapAbajo]}
+        style={[styles.wrap, placement === 'below' && styles.wrapBelow]}
         onLayout={(event) => {
           const { width, height } = event.nativeEvent.layout;
-          setMedidas((actuales) => actuales.ancho === width && actuales.alto === height
-            ? actuales
-            : { ancho: width, alto: height });
+          setSize((current) => current.width === width && current.height === height
+            ? current
+            : { width, height });
         }}>
         <View
           style={[
-            styles.etiquetas,
-            posicion === 'abajo' && styles.wrapAbajo,
+            styles.labels,
+            placement === 'below' && styles.wrapBelow,
             {
               opacity: visible ? 1 : 0,
-              marginTop: tieneEtiquetas && posicion === 'abajo' ? separacion : 0,
-              marginBottom: tieneEtiquetas && posicion === 'arriba' ? separacion : 0,
+              marginTop: hasLabels && placement === 'below' ? separation : 0,
+              marginBottom: hasLabels && placement === 'above' ? separation : 0,
             },
           ]}
           onLayout={(event) => {
             const { width, height } = event.nativeEvent.layout;
-            setMedidasEtiquetas((actuales) => actuales.ancho === width && actuales.alto === height
-              ? actuales : { ancho: width, alto: height });
-            onLabelSize?.({ ancho: width, alto: height });
+            setLabelSize((current) => current.width === width && current.height === height
+              ? current : { width, height });
+            onLabelSize?.({ width, height });
           }}>
           {showEditControl && (
             <View
@@ -153,23 +153,23 @@ export function RoutePinMarker({
             </View>
           )}
         </View>
-        <InsigniaPuntoMapa
-          tipo={kind === 'A' ? 'origen' : 'destino'}
-          tamano={TAMANO_PIN_RUTA}
-          borde={BORDE_PIN_RUTA}
-          tamanoLetra={TAMANO_LETRA_PIN_RUTA}
-          cargando={loading}
-          atenuado={dim}
+        <MapPointBadge
+          kind={kind === 'A' ? 'origin' : 'destination'}
+          size={ROUTE_PIN_SIZE}
+          border={ROUTE_PIN_BORDER}
+          letterSize={ROUTE_PIN_LETTER_SIZE}
+          loading={loading}
+          dimmed={dim}
         />
       </View>
     </Marker>
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   wrap: { alignItems: 'center' },
-  etiquetas: { alignItems: 'center', gap: spacing.sm },
-  wrapAbajo: { flexDirection: 'column-reverse' },
+  labels: { alignItems: 'center', gap: spacing.sm },
+  wrapBelow: { flexDirection: 'column-reverse' },
   editControl: {
     width: 56,
     height: 22,

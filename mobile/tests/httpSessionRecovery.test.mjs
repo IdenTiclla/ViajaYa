@@ -31,7 +31,7 @@ const hooks = registerHooks({
     return nextLoad(url, context);
   },
 });
-const { api, setOnSessionExpired, invalidarSolicitudesSesion } = await import('../src/core/http/client.ts');
+const { api, setOnSessionExpired, invalidateSessionRequests } = await import('../src/core/http/client.ts');
 const { tokenStorage } = await import('@/core/http/tokenStorage');
 hooks.deregister();
 
@@ -198,7 +198,7 @@ test('volver al login descarta una renovación anterior que responde tarde', asy
   };
   const pendiente = assert.rejects(api.get('/auth/me'));
   await iniciado;
-  invalidarSolicitudesSesion();
+  invalidateSessionRequests();
   tokenStorage.tokens = { accessToken: 'otra-cuenta', refreshToken: 'otra-cuenta' };
   resolver();
   await pendiente;

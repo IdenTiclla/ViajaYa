@@ -31,11 +31,11 @@ import { useReducedMotion } from 'react-native-reanimated';
 
 import { getApiErrorMessage, getApiErrorStatus } from '@/core/errors/apiError';
 import { useBlockHardwareBack } from '@/core/navigation/useBlockHardwareBack';
-import { controles, fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { controls, fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
 import { ConfirmationOverlay } from '@/features/booking/presentation/ConfirmationOverlay';
 import { SearchingDriversScreen } from '@/features/booking/presentation/SearchingDriversScreen';
-import { TarjetaOferta } from '@/features/booking/presentation/TarjetaOferta';
+import { OfferCard } from '@/features/booking/presentation/TarjetaOferta';
 import {
   useAcceptOffer,
   useCancelRide,
@@ -51,7 +51,7 @@ import { TripSecondaryAction } from '@/features/rides/presentation/TripSecondary
 import { Button, ConfirmDialog, FeedbackState } from '@/shared/components';
 
 export function OffersScreen() {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   const router = useRouter();
   const { rideId } = useLocalSearchParams<{ rideId?: string }>();
   const id = rideId ?? null;
@@ -379,7 +379,7 @@ export function OffersScreen() {
             </Text>
           )}
           {orderedOffers.map((offer) => (
-            <TarjetaOferta
+            <OfferCard
               key={offer.id}
               offer={offer}
               tag={primaryTag(tagsMap[offer.id])}
@@ -469,7 +469,7 @@ export function OffersScreen() {
 }
 
 function OfferOrderControl({ value, onChange }: { value: OfferOrder; onChange: (order: OfferOrder) => void }) {
-  const { styles, estiloFoco } = useEstilos(crearEstilos);
+  const { styles, focusStyle } = useThemedStyles(createStyles);
   const [focused, setFocused] = useState<OfferOrder | null>(null);
   const choices: { value: OfferOrder; label: string; description: string }[] = [
     { value: 'recent', label: 'Recientes', description: 'Ofertas más recientes primero' },
@@ -480,7 +480,7 @@ function OfferOrderControl({ value, onChange }: { value: OfferOrder; onChange: (
     {choices.map(choice => <TouchableOpacity key={choice.value} accessibilityRole="tab"
       accessibilityLabel={choice.description} accessibilityState={{ selected: value === choice.value }}
       onPress={() => onChange(choice.value)} onFocus={() => setFocused(choice.value)} onBlur={() => setFocused(null)}
-      style={[styles.orderButton, value === choice.value && styles.orderSelected, focused === choice.value && estiloFoco]}>
+      style={[styles.orderButton, value === choice.value && styles.orderSelected, focused === choice.value && focusStyle]}>
       {value === choice.value && <Ionicons accessible={false} name="checkmark" size={16} color={styles.orderSelectedLabel.color} />}
       <Text style={[styles.orderLabel, value === choice.value && styles.orderSelectedLabel]}>{choice.label}</Text>
     </TouchableOpacity>)}
@@ -489,11 +489,11 @@ function OfferOrderControl({ value, onChange }: { value: OfferOrder; onChange: (
 
 /** Punto verde que late: indicador "en vivo". */
 function LiveDot() {
-  const { styles } = useEstilos(crearEstilos);
-  const reducirMovimiento = useReducedMotion();
+  const { styles } = useThemedStyles(createStyles);
+  const reduceMotion = useReducedMotion();
   const [value] = useState(() => new Animated.Value(0));
   useEffect(() => {
-    if (reducirMovimiento) return;
+    if (reduceMotion) return;
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(value, {
@@ -512,16 +512,16 @@ function LiveDot() {
     );
     loop.start();
     return () => loop.stop();
-  }, [value, reducirMovimiento]);
+  }, [value, reduceMotion]);
   return (
     <Animated.View
       accessible={false}
-      style={[styles.liveDot, { opacity: reducirMovimiento ? 1 : value.interpolate({ inputRange: [0, 1], outputRange: [1, 0.35] }) }]}
+      style={[styles.liveDot, { opacity: reduceMotion ? 1 : value.interpolate({ inputRange: [0, 1], outputRange: [1, 0.35] }) }]}
     />
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceMuted },
   mapFallback: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: colors.surfaceMuted },
 
@@ -530,7 +530,7 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     paddingTop: spacing.sm, overflow: 'hidden' },
   orderControl: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs,
     padding: spacing.xs, borderRadius: radius.md, backgroundColor: colors.surfaceMuted },
-  orderButton: { minHeight: controles.altoMinimo, flexDirection: 'row', gap: spacing.xs,
+  orderButton: { minHeight: controls.minHeight, flexDirection: 'row', gap: spacing.xs,
     flexBasis: 80, flexGrow: 1, justifyContent: 'center', alignItems: 'center',
     paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderRadius: radius.sm },
   orderSelected: { backgroundColor: colors.primary },
@@ -556,7 +556,7 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     paddingVertical: spacing.sm,
     borderRadius: radius.sm,
     borderWidth: 1,
-    borderColor: colors.bordePeligro,
+    borderColor: colors.dangerBorder,
     backgroundColor: colors.surface,
   },
   connectionWarningText: {

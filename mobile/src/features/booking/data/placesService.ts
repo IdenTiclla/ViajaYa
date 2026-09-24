@@ -23,7 +23,7 @@ import { locationService } from '@/features/home/data/locationService';
 
 const AUTOCOMPLETE_ENDPOINT = 'https://places.googleapis.com/v1/places:autocomplete';
 const DETAILS_ENDPOINT = 'https://places.googleapis.com/v1/places';
-const CALLE_SIN_NOMBRE_RE = /^(?:unnamed road|calle sin nombre|v[ií]a sin nombre|camino sin nombre)$/i;
+const UNNAMED_STREET_RE = /^(?:unnamed road|calle sin nombre|v[ií]a sin nombre|camino sin nombre)$/i;
 
 /** Radius (m) around the origin to prioritize nearby results. */
 const BIAS_RADIUS_METERS = 50_000;
@@ -117,7 +117,7 @@ function streetFromAddressComponents(
   components: DetailsResponse['addressComponents'],
 ): string | null {
   const street = addressComponentText(components, 'route');
-  if (!street || CALLE_SIN_NOMBRE_RE.test(street)) return null;
+  if (!street || UNNAMED_STREET_RE.test(street)) return null;
   const number = addressComponentText(components, 'street_number');
   return number ? `${street} ${number}` : street;
 }

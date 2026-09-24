@@ -14,7 +14,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 
 const LOW_THRESHOLD = 10;
 
@@ -25,7 +25,7 @@ export function OfferLifeTimer({
   secondsLeft: number | null;
   label?: string;
 }) {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   const low = secondsLeft != null && secondsLeft <= LOW_THRESHOLD;
   const reduceMotion = useReducedMotion();
   // Pulse only in the last seconds (and if the user did not ask to reduce motion).
@@ -63,7 +63,7 @@ export function OfferLifeTimer({
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   chip: {
     alignSelf: 'flex-start',
     maxWidth: '100%',
@@ -75,7 +75,7 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     borderRadius: radius.pill,
     backgroundColor: colors.surfaceMuted,
   },
-  chipLow: { backgroundColor: colors.peligroSuave },
+  chipLow: { backgroundColor: colors.dangerSoft },
   text: { flexShrink: 1, fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.primary },
   textLow: { color: colors.danger },
 });

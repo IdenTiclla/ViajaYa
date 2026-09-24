@@ -1,6 +1,6 @@
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
-import { fontSize, spacing, useEstilos, type Tema } from '@/core/theme';
+import { fontSize, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import { Button } from '@/shared/components';
 import { AuthNotice } from './AuthScaffold';
 
@@ -8,7 +8,7 @@ type Props = { busy: boolean; error: string | null; onRetry: () => void; onBack:
 
 /** Last step: the session is being accepted; the root gate navigates away on success. */
 export function SessionEntering({ busy, error, onRetry, onBack }: Props) {
-  const { colors, styles } = useEstilos(createStyles);
+  const { colors, styles } = useThemedStyles(createStyles);
   return (
     <View style={styles.wrapper}>
       {busy && <ActivityIndicator size="large" color={colors.primary} />}
@@ -20,7 +20,7 @@ export function SessionEntering({ busy, error, onRetry, onBack }: Props) {
   );
 }
 
-const createStyles = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   wrapper: { gap: spacing.md, paddingVertical: spacing.md },
   text: { fontSize: fontSize.md, color: colors.textSecondary, textAlign: 'center' },
 });

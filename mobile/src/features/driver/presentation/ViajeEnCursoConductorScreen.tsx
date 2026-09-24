@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import { useRoute } from '@/features/booking/application/useRoute';
 import { useTripActions, useTripContact } from '@/features/rides/application/useTripActions';
 import { DRIVER_ACTIVE_RIDE_KEY } from '@/features/rides/application/useRides';
@@ -45,8 +45,8 @@ function getStage(ride: Ride) {
   };
 }
 
-export function ViajeEnCursoConductorScreen({ ride }: { ride: Ride }) {
-  const { styles } = useEstilos(createStyles);
+export function DriverTripInProgressScreen({ ride }: { ride: Ride }) {
+  const { styles } = useThemedStyles(createStyles);
   const router = useRouter();
   const queryClient = useQueryClient();
   const sharing = useLocationSharingStore();
@@ -172,7 +172,7 @@ export function ViajeEnCursoConductorScreen({ ride }: { ride: Ride }) {
   );
 }
 
-const createStyles = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceMuted },
   safe: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
@@ -185,7 +185,7 @@ const createStyles = ({ colors }: Tema) => StyleSheet.create({
   handle: { width: 40, height: 4, borderRadius: radius.pill, backgroundColor: colors.border, alignSelf: 'center' },
   sheetContent: { padding: spacing.md, gap: spacing.sm },
   actions: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, gap: spacing.xs, borderTopWidth: 1, borderTopColor: colors.border },
-  stage: { padding: spacing.sm, gap: spacing.xs, backgroundColor: colors.primarioSuave, borderRadius: radius.md },
+  stage: { padding: spacing.sm, gap: spacing.xs, backgroundColor: colors.primarySoft, borderRadius: radius.md },
   stageTitle: { fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.primary },
   hint: { fontSize: fontSize.sm, color: colors.textSecondary, lineHeight: 20 },
   passenger: { gap: spacing.xs, padding: spacing.sm, backgroundColor: colors.surfaceMuted, borderRadius: radius.md },

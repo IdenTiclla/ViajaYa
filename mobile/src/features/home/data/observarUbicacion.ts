@@ -1,103 +1,103 @@
 import * as Location from 'expo-location';
 
 import type { Coordinates } from '@/core/domain/geo';
-import { rumboDeBrujula, rumboDelMovimiento, type MuestraMovimiento } from '../domain/orientacionUbicacion';
+import { compassHeading, movementHeading, type MovementSample } from '../domain/orientacionUbicacion';
 
-export type DisponibilidadUbicacion = 'granted' | 'denied' | 'disabled';
+export type LocationAvailability = 'granted' | 'denied' | 'disabled';
 
 /** Silent query: coming back to the app must not open another permission dialog. */
-export async function consultarDisponibilidadUbicacion(): Promise<DisponibilidadUbicacion> {
-  const permiso = await Location.getForegroundPermissionsAsync();
-  if (permiso.status !== Location.PermissionStatus.GRANTED) return 'denied';
+export async function checkLocationAvailability(): Promise<LocationAvailability> {
+  const permission = await Location.getForegroundPermissionsAsync();
+  if (permission.status !== Location.PermissionStatus.GRANTED) return 'denied';
   return await Location.hasServicesEnabledAsync() ? 'granted' : 'disabled';
 }
 
 // The one-off request cannot be cancelled in Expo. Sharing it avoids piling up
 // native requests when retrying while the provider is still answering.
-let posicionInicialPendiente: Promise<Location.LocationObject> | null = null;
-function obtenerPosicionInicial() {
-  if (!posicionInicialPendiente) {
-    const solicitud = Location.getCurrentPositionAsync({
+let pendingInitialPosition: Promise<Location.LocationObject> | null = null;
+function getInitialPosition() {
+  if (!pendingInitialPosition) {
+    const request = Location.getCurrentPositionAsync({
       accuracy: Location.Accuracy.Balanced, mayShowUserSettingsDialog: false,
     });
-    posicionInicialPendiente = solicitud;
-    void solicitud.then(
-      () => { if (posicionInicialPendiente === solicitud) posicionInicialPendiente = null; },
-      () => { if (posicionInicialPendiente === solicitud) posicionInicialPendiente = null; },
+    pendingInitialPosition = request;
+    void request.then(
+      () => { if (pendingInitialPosition === request) pendingInitialPosition = null; },
+      () => { if (pendingInitialPosition === request) pendingInitialPosition = null; },
     );
   }
-  return posicionInicialPendiente;
+  return pendingInitialPosition;
 }
 
 /** GPS and compass share a cancellation, even if the native subscription arrives late. */
-export async function observarUbicacion(
-  actualizar: (coordinates: Coordinates, rumbo: number | null) => void,
-  error?: (motivo: 'error' | 'disabled') => void,
+export async function watchLocation(
+  update: (coordinates: Coordinates, heading: number | null) => void,
+  error?: (reason: 'error' | 'disabled') => void,
   signal?: AbortSignal,
 ): Promise<{ remove: () => void } | null> {
   if (signal?.aborted) return null;
-  let permiso = await Location.getForegroundPermissionsAsync();
+  let permission = await Location.getForegroundPermissionsAsync();
   if (signal?.aborted) return null;
-  if (permiso.status !== Location.PermissionStatus.GRANTED && permiso.canAskAgain) {
-    permiso = await Location.requestForegroundPermissionsAsync();
+  if (permission.status !== Location.PermissionStatus.GRANTED && permission.canAskAgain) {
+    permission = await Location.requestForegroundPermissionsAsync();
   }
   if (signal?.aborted) return null;
-  if (permiso.status !== Location.PermissionStatus.GRANTED) return null;
-  const serviciosActivos = await Location.hasServicesEnabledAsync();
+  if (permission.status !== Location.PermissionStatus.GRANTED) return null;
+  const activeServices = await Location.hasServicesEnabledAsync();
   if (signal?.aborted) return null;
-  if (!serviciosActivos) { error?.('disabled'); return null; }
+  if (!activeServices) { error?.('disabled'); return null; }
 
-  let activo = true;
-  let posicion: Location.LocationSubscription | null = null;
-  let brujula: Location.LocationSubscription | null = null;
-  let ultima: MuestraMovimiento | null = null;
-  let movimiento: number | null = null;
-  let orientacion: number | null = null;
-  let instanteBrujula = 0;
-  let ultimoRumbo: number | null = null;
-  let ultimaEmision = 0;
+  let active = true;
+  let positionSubscription: Location.LocationSubscription | null = null;
+  let compass: Location.LocationSubscription | null = null;
+  let last: MovementSample | null = null;
+  let movement: number | null = null;
+  let orientation: number | null = null;
+  let compassInstant = 0;
+  let lastHeading: number | null = null;
+  let lastEmission = 0;
 
   const remove = () => {
-    if (!activo) return;
-    activo = false;
+    if (!active) return;
+    active = false;
     signal?.removeEventListener('abort', remove);
-    posicion?.remove();
-    brujula?.remove();
+    positionSubscription?.remove();
+    compass?.remove();
   };
-  const fallar = () => {
-    if (!activo) return;
+  const fail = () => {
+    if (!active) return;
     remove();
     error?.('error');
   };
-  const emitir = (nuevaPosicion: boolean) => {
-    if (!activo || !ultima) return;
-    const ahora = Date.now();
-    if (ahora - ultima.timestamp > 30_000) return;
-    const rumbo = movimiento != null && ahora - ultima.timestamp <= 5000
-      ? movimiento
-      : orientacion != null && ahora - instanteBrujula <= 3000 ? orientacion : ultimoRumbo;
-    const cambio = rumbo != null && ultimoRumbo != null
-      ? Math.abs(((rumbo - ultimoRumbo + 540) % 360) - 180) : Infinity;
+  const emit = (newPosition: boolean) => {
+    if (!active || !last) return;
+    const now = Date.now();
+    if (now - last.timestamp > 30_000) return;
+    const heading = movement != null && now - last.timestamp <= 5000
+      ? movement
+      : orientation != null && now - compassInstant <= 3000 ? orientation : lastHeading;
+    const change = heading != null && lastHeading != null
+      ? Math.abs(((heading - lastHeading + 540) % 360) - 180) : Infinity;
     // The compass must not redraw the whole request list at the sensor's frequency.
-    if (!nuevaPosicion && ultimoRumbo != null && (ahora - ultimaEmision < 150 || cambio < 2)) return;
-    ultimoRumbo = rumbo;
-    ultimaEmision = ahora;
-    actualizar(ultima.coordinates, rumbo);
+    if (!newPosition && lastHeading != null && (now - lastEmission < 150 || change < 2)) return;
+    lastHeading = heading;
+    lastEmission = now;
+    update(last.coordinates, heading);
   };
 
-  const recibirPosicion = (lectura: Location.LocationObject) => {
-    if (!activo || (ultima && lectura.timestamp <= ultima.timestamp)) return;
-    const { latitude, longitude, heading, speed, accuracy } = lectura.coords;
+  const receivePosition = (reading: Location.LocationObject) => {
+    if (!active || (last && reading.timestamp <= last.timestamp)) return;
+    const { latitude, longitude, heading, speed, accuracy } = reading.coords;
     if (!Number.isFinite(latitude) || !Number.isFinite(longitude)
-      || Math.abs(latitude) > 90 || Math.abs(longitude) > 180 || !Number.isFinite(lectura.timestamp)
-      || Date.now() - lectura.timestamp > 30_000 || lectura.timestamp > Date.now() + 5000) return;
-    const nueva: MuestraMovimiento = {
-      coordinates: { latitude, longitude }, rumbo: heading,
-      velocidad: speed, precision: accuracy, timestamp: lectura.timestamp,
+      || Math.abs(latitude) > 90 || Math.abs(longitude) > 180 || !Number.isFinite(reading.timestamp)
+      || Date.now() - reading.timestamp > 30_000 || reading.timestamp > Date.now() + 5000) return;
+    const sample: MovementSample = {
+      coordinates: { latitude, longitude }, heading,
+      speed, precision: accuracy, timestamp: reading.timestamp,
     };
-    movimiento = rumboDelMovimiento(ultima, nueva);
-    ultima = nueva;
-    emitir(true);
+    movement = movementHeading(last, sample);
+    last = sample;
+    emit(true);
   };
   signal?.addEventListener('abort', remove, { once: true });
 
@@ -106,29 +106,29 @@ export async function observarUbicacion(
   void Location.watchPositionAsync(
     { accuracy: Location.Accuracy.High, timeInterval: 1000, distanceInterval: 0,
       mayShowUserSettingsDialog: false },
-    recibirPosicion,
-    fallar,
-  ).then((suscripcion) => {
-    if (activo) posicion = suscripcion;
-    else suscripcion.remove();
-  }).catch(fallar);
+    receivePosition,
+    fail,
+  ).then((subscription) => {
+    if (active) positionSubscription = subscription;
+    else subscription.remove();
+  }).catch(fail);
 
   // One-off start with the fused provider (network/GPS): it does not wait for
   // the high-accuracy acquisition to finish, nor repeat on every render.
-  void obtenerPosicionInicial().then((lectura) => {
-    if (!ultima) recibirPosicion(lectura);
+  void getInitialPosition().then((reading) => {
+    if (!last) receivePosition(reading);
   }).catch(() => undefined);
 
   // A device without a compass keeps GPS tracking.
-  void Location.watchHeadingAsync((lectura) => {
-    if (!activo) return;
-    orientacion = rumboDeBrujula(lectura);
-    instanteBrujula = Date.now();
-    emitir(false);
-  }, () => { orientacion = null; }).then((suscripcion) => {
-    if (activo) brujula = suscripcion;
-    else suscripcion.remove();
-  }).catch(() => { orientacion = null; });
+  void Location.watchHeadingAsync((reading) => {
+    if (!active) return;
+    orientation = compassHeading(reading);
+    compassInstant = Date.now();
+    emit(false);
+  }, () => { orientation = null; }).then((subscription) => {
+    if (active) compass = subscription;
+    else subscription.remove();
+  }).catch(() => { orientation = null; });
 
   return { remove };
 }

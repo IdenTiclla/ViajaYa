@@ -38,12 +38,12 @@ import { Button } from '@/shared/components';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
 import { useCountdown } from '@/core/hooks/useCountdown';
-import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import { useRoute } from '@/features/booking/application/useRoute';
 import { useDriverRequests } from '@/features/driver/application/useDriverRequests';
 import { useNegotiationRide } from '@/features/driver/application/useNegotiationRide';
 import { RideUnavailableScreen } from '@/features/driver/presentation/RideUnavailableScreen';
-import { ViajeEnCursoConductorScreen } from '@/features/driver/presentation/ViajeEnCursoConductorScreen';
+import { DriverTripInProgressScreen } from '@/features/driver/presentation/ViajeEnCursoConductorScreen';
 import {
   useWithdrawOffer,
 } from '@/features/rides/application/useRideMutations';
@@ -57,8 +57,8 @@ function formatDuration(seconds: number): string {
   return `${Math.max(1, Math.round(seconds / 60))} min est.`;
 }
 
-export function OfertaEnviadaScreen() {
-  const { colors, styles } = useEstilos(crearEstilos);
+export function OfferSentScreen() {
+  const { colors, styles } = useThemedStyles(createStyles);
   const router = useRouter();
   const { rideId } = useLocalSearchParams<{ rideId?: string }>();
 
@@ -248,7 +248,7 @@ export function OfertaEnviadaScreen() {
 
   // Any assigned ride takes priority, even while viewing another negotiation.
   if (activeRide) {
-    return <ViajeEnCursoConductorScreen ride={activeRide} />;
+    return <DriverTripInProgressScreen ride={activeRide} />;
   }
 
   if (
@@ -344,7 +344,7 @@ export function OfertaEnviadaScreen() {
     );
   }
 
-  const retirar = () => {
+  const withdraw = () => {
     if (offerActionBusy) return;
     Alert.alert(
       'Retirar propuesta',
@@ -484,7 +484,7 @@ export function OfertaEnviadaScreen() {
             leadingIcon="close"
             loading={withdrawOffer.isPending}
             loadingLabel="Retirando…"
-            onPress={retirar}
+            onPress={withdraw}
             disabled={offerActionBusy}
           />
           <Text style={styles.actionsHint}>
@@ -509,7 +509,7 @@ function OfferRecoveryScreen({
   onBack: () => void;
   onRetry?: () => void;
 }) {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   return (
     <SafeAreaView style={styles.recoveryRoot}>
       <View style={styles.recoveryTop}>
@@ -570,7 +570,7 @@ function ReofferScreen({
   onImprove: () => void;
   onBack: () => void;
 }) {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   return (
     <SafeAreaView style={styles.reofferRoot}>
       <View style={styles.reofferIcon}>
@@ -636,7 +636,7 @@ function ReofferScreen({
 
 /** Loading ring that spins (indeterminate) around a clock icon. */
 function SpinnerRing() {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   const [spin] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
@@ -662,7 +662,7 @@ function SpinnerRing() {
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   recoveryRoot: {
     flex: 1,
     backgroundColor: colors.background,
@@ -836,7 +836,7 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     width: 88,
     height: 88,
     borderRadius: radius.pill,
-    backgroundColor: colors.peligroSuave,
+    backgroundColor: colors.dangerSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },

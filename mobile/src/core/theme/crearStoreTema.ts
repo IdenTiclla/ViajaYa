@@ -1,57 +1,57 @@
 import { createStore } from 'zustand/vanilla';
 
-import { conTiempoLimite } from '../async/conTiempoLimite';
-import { resolverModoTema, TEMA_PREDETERMINADO, type ModoTema } from './tokens';
+import { withTimeout } from '../async/conTiempoLimite';
+import { resolveThemeMode, DEFAULT_THEME_MODE, type ThemeMode } from './tokens';
 
-export type AlmacenTema = {
-  leer: () => Promise<string | null>;
-  guardar: (modo: ModoTema) => Promise<void>;
+export type ThemeStorage = {
+  read: () => Promise<string | null>;
+  save: (mode: ThemeMode) => Promise<void>;
 };
 
-type EstadoTema = {
-  modo: ModoTema;
-  cargado: boolean;
-  guardando: boolean;
+type ThemeState = {
+  mode: ThemeMode;
+  loaded: boolean;
+  saving: boolean;
   error: string | null;
-  cargar: () => Promise<void>;
-  elegir: (modo: ModoTema) => Promise<void>;
+  load: () => Promise<void>;
+  choose: (mode: ThemeMode) => Promise<void>;
 };
 
 /** Local preference: it does not depend on the session and is not cleared on sign-out. */
-export function crearStoreTema(almacen: AlmacenTema) {
-  let lectura: Promise<void> | null = null;
+export function createThemeStore(storage: ThemeStorage) {
+  let reading: Promise<void> | null = null;
   let revision = 0;
-  return createStore<EstadoTema>((set, get) => ({
-    modo: TEMA_PREDETERMINADO,
-    cargado: false,
-    guardando: false,
+  return createStore<ThemeState>((set, get) => ({
+    mode: DEFAULT_THEME_MODE,
+    loaded: false,
+    saving: false,
     error: null,
-    cargar: () => {
-      if (get().cargado) return Promise.resolve();
-      if (lectura) return lectura;
-      const revisionInicial = revision;
-      lectura = conTiempoLimite(almacen.leer(), 5_000, 'No pudimos leer el tema guardado.')
+    load: () => {
+      if (get().loaded) return Promise.resolve();
+      if (reading) return reading;
+      const initialCheck = revision;
+      reading = withTimeout(storage.read(), 5_000, 'No pudimos leer el tema guardado.')
         .then((valor) => {
-          if (revision === revisionInicial) set({ modo: resolverModoTema(valor) });
+          if (revision === initialCheck) set({ mode: resolveThemeMode(valor) });
         })
         .catch(() => {
-          if (revision === revisionInicial) {
+          if (revision === initialCheck) {
             set({ error: 'No pudimos recuperar tu tema. Puedes volver a elegirlo aquí.' });
           }
         })
-        .finally(() => { set({ cargado: true }); lectura = null; });
-      return lectura;
+        .finally(() => { set({ loaded: true }); reading = null; });
+      return reading;
     },
-    elegir: async (modo) => {
-      if (get().guardando) return;
+    choose: async (mode) => {
+      if (get().saving) return;
       revision += 1;
-      set({ modo, guardando: true, error: null });
+      set({ mode, saving: true, error: null });
       try {
-        await almacen.guardar(modo);
+        await storage.save(mode);
       } catch {
         set({ error: 'El tema está aplicado, pero no pudimos guardarlo. Vuelve a intentarlo.' });
       } finally {
-        set({ guardando: false, cargado: true });
+        set({ saving: false, loaded: true });
       }
     },
   }));

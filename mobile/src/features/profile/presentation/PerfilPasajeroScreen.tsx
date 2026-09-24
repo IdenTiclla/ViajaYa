@@ -1,15 +1,15 @@
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import { Button } from '@/shared/components';
 import { useAuthStore } from '@/store/authStore';
 import { AccountSecurityPanel } from '@/features/auth/presentation/AccountSecurityPanel';
 import { DriverAccountCard } from '@/features/driver/presentation/DriverAccountCard';
-import { SelectorTema } from './SelectorTema';
+import { ThemeSelector } from './SelectorTema';
 
-export function PerfilPasajeroScreen() {
-  const { styles } = useEstilos(crearEstilos);
+export function PassengerProfileScreen() {
+  const { styles } = useThemedStyles(createStyles);
   const user = useAuthStore((s) => s.user);
   const signOut = useAuthStore((s) => s.signOut);
   const initial = (user?.fullName?.trim().charAt(0) ?? 'V').toUpperCase();
@@ -25,7 +25,7 @@ export function PerfilPasajeroScreen() {
         {user?.phone ? <Text style={styles.detail}>{user.phone}</Text> : null}
 
         <DriverAccountCard />
-        <SelectorTema />
+        <ThemeSelector />
         <AccountSecurityPanel />
         <View style={styles.actions}>
           <Button title="Cerrar sesión" variant="secondary" onPress={() => void signOut()} />
@@ -35,7 +35,7 @@ export function PerfilPasajeroScreen() {
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   content: { flexGrow: 1, alignItems: 'center', padding: spacing.lg, gap: spacing.xs },
   avatar: {

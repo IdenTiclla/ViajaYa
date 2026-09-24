@@ -1,5 +1,5 @@
-import { SolicitudesEntrantesScreen } from '@/features/driver/presentation/SolicitudesEntrantesScreen';
+import { IncomingRequestsScreen } from '@/features/driver/presentation/SolicitudesEntrantesScreen';
 
-export default function DriverSolicitudesTab() {
-  return <SolicitudesEntrantesScreen />;
+export default function DriverRequestsTab() {
+  return <IncomingRequestsScreen />;
 }

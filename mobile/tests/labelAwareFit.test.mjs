@@ -6,10 +6,10 @@ import {
   latitudeFromMercatorY,
   longitudeDelta,
   mercatorY,
-  proyectarRutaRespectoAlPin,
-  TAMANO_PIN_RUTA,
-  ubicarTooltipSinCruzarRuta,
-  elegirPosicionTooltip,
+  projectRouteRelativeToPin,
+  ROUTE_PIN_SIZE,
+  placeTooltipClearOfRoute,
+  chooseTooltipPlacement,
 } from '../src/features/rides/presentation/routeTooltipLayout.ts';
 
 // Emulates fitToCoordinates on a north-up map: the bounding box fills the padded viewport.
@@ -35,17 +35,17 @@ function projectFit(points, width, height, padding) {
 
 // Where RoutePinMarker really draws the label at the fitted zoom.
 function labelRect(label, route, fit) {
-  const preferred = elegirPosicionTooltip(label.kind, label.coordinate, route);
-  const placed = ubicarTooltipSinCruzarRuta(
-    proyectarRutaRespectoAlPin(label.coordinate, route, 0, fit.zoom), label.size, preferred,
+  const preferred = chooseTooltipPlacement(label.kind, label.coordinate, route);
+  const placed = placeTooltipClearOfRoute(
+    projectRouteRelativeToPin(label.coordinate, route, 0, fit.zoom), label.size, preferred,
   );
   if (!placed.visible) return null;
   const pin = fit.toScreen(label.coordinate);
-  const near = TAMANO_PIN_RUTA / 2 + placed.separacion;
-  const [top, bottom] = placed.posicion === 'arriba'
-    ? [pin.y - near - label.size.alto, pin.y - near]
-    : [pin.y + near, pin.y + near + label.size.alto];
-  return { left: pin.x - label.size.ancho / 2, right: pin.x + label.size.ancho / 2, top, bottom };
+  const near = ROUTE_PIN_SIZE / 2 + placed.separation;
+  const [top, bottom] = placed.placement === 'above'
+    ? [pin.y - near - label.size.height, pin.y - near]
+    : [pin.y + near, pin.y + near + label.size.height];
+  return { left: pin.x - label.size.width / 2, right: pin.x + label.size.width / 2, top, bottom };
 }
 
 const A = { latitude: -17.3935, longitude: -66.1570 };
@@ -62,16 +62,16 @@ const routes = {
 };
 test('the looping route really makes the marker move the origin label', () => {
   const route = routes['route looping back past the origin'];
-  const placed = ubicarTooltipSinCruzarRuta(
-    proyectarRutaRespectoAlPin(A, route, 0, 16.5), { ancho: 178, alto: 40 },
-    elegirPosicionTooltip('A', A, route),
+  const placed = placeTooltipClearOfRoute(
+    projectRouteRelativeToPin(A, route, 0, 16.5), { width: 178, height: 40 },
+    chooseTooltipPlacement('A', A, route),
   );
-  assert.equal(elegirPosicionTooltip('A', A, route), 'arriba');
-  assert.equal(placed.posicion, 'abajo');
-  assert.ok(placed.separacion > 8);
+  assert.equal(chooseTooltipPlacement('A', A, route), 'above');
+  assert.equal(placed.placement, 'below');
+  assert.ok(placed.separation > 8);
 });
 
-const sizes = { 'default font': { ancho: 178, alto: 40 }, '200% font': { ancho: 178, alto: 72 } };
+const sizes = { 'default font': { width: 178, height: 40 }, '200% font': { width: 178, height: 72 } };
 const [width, height] = [390, 360];
 const padding = { top: 88, bottom: 16, left: 16, right: 16 };
 

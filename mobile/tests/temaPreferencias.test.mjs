@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { registerHooks } from 'node:module';
 import test from 'node:test';
 
-import { coloresClaros, coloresOscuros, resolverModoTema } from '../src/core/theme/tokens.ts';
+import { lightColors, darkColors, resolveThemeMode } from '../src/core/theme/tokens.ts';
 
 const hooks = registerHooks({
   resolve(specifier, context, nextResolve) {
@@ -12,7 +12,7 @@ const hooks = registerHooks({
     return nextResolve(specifier, context);
   },
 });
-const { crearStoreTema } = await import('../src/core/theme/crearStoreTema.ts');
+const { createThemeStore } = await import('../src/core/theme/crearStoreTema.ts');
 hooks.deregister();
 
 const pendiente = () => {
@@ -23,91 +23,91 @@ const pendiente = () => {
 
 test('el tema predeterminado es claro y solo una elección oscura válida lo cambia', async () => {
   for (const valor of [null, undefined, 'system', 'automatic', 'corrupto', 'light', 'dark']) {
-    const store = crearStoreTema({ leer: async () => valor, guardar: async () => {} });
-    assert.equal(store.getState().modo, 'light');
-    await store.getState().cargar();
-    assert.equal(store.getState().modo, valor === 'dark' ? 'dark' : 'light');
-    assert.equal(store.getState().cargado, true);
-    assert.equal(resolverModoTema(valor), store.getState().modo);
+    const store = createThemeStore({ read: async () => valor, save: async () => {} });
+    assert.equal(store.getState().mode, 'light');
+    await store.getState().load();
+    assert.equal(store.getState().mode, valor === 'dark' ? 'dark' : 'light');
+    assert.equal(store.getState().loaded, true);
+    assert.equal(resolveThemeMode(valor), store.getState().mode);
   }
 });
 
 test('la elección se aplica y se restaura al crear una nueva sesión de la app', async () => {
   let valor = null;
-  const almacen = { leer: async () => valor, guardar: async (modo) => { valor = modo; } };
-  const store = crearStoreTema(almacen);
-  await store.getState().cargar();
-  await store.getState().elegir('dark');
-  const reiniciado = crearStoreTema(almacen);
-  await reiniciado.getState().cargar();
-  assert.equal(reiniciado.getState().modo, 'dark');
-  await reiniciado.getState().elegir('light');
+  const almacen = { read: async () => valor, save: async (modo) => { valor = modo; } };
+  const store = createThemeStore(almacen);
+  await store.getState().load();
+  await store.getState().choose('dark');
+  const reiniciado = createThemeStore(almacen);
+  await reiniciado.getState().load();
+  assert.equal(reiniciado.getState().mode, 'dark');
+  await reiniciado.getState().choose('light');
   assert.equal(valor, 'light');
 });
 
 test('una lectura pendiente no pisa la elección más reciente', async () => {
   const lectura = pendiente();
   let consultas = 0;
-  const store = crearStoreTema({ leer: () => { consultas += 1; return lectura.promesa; }, guardar: async () => {} });
-  const inicio = store.getState().cargar();
-  assert.equal(store.getState().cargar(), inicio);
-  await store.getState().elegir('dark');
+  const store = createThemeStore({ read: () => { consultas += 1; return lectura.promesa; }, save: async () => {} });
+  const inicio = store.getState().load();
+  assert.equal(store.getState().load(), inicio);
+  await store.getState().choose('dark');
   lectura.resolver('light');
   await inicio;
   assert.equal(consultas, 1);
-  assert.equal(store.getState().modo, 'dark');
+  assert.equal(store.getState().mode, 'dark');
 });
 
 test('un fallo de lectura permite usar claro y guardar una elección nueva', async () => {
-  const store = crearStoreTema({ leer: async () => { throw new Error('Sin almacenamiento'); }, guardar: async () => {} });
-  await store.getState().cargar();
-  assert.equal(store.getState().cargado, true);
-  assert.equal(store.getState().modo, 'light');
+  const store = createThemeStore({ read: async () => { throw new Error('Sin almacenamiento'); }, save: async () => {} });
+  await store.getState().load();
+  assert.equal(store.getState().loaded, true);
+  assert.equal(store.getState().mode, 'light');
   assert.ok(store.getState().error);
-  await store.getState().elegir('dark');
+  await store.getState().choose('dark');
   assert.equal(store.getState().error, null);
 });
 
 test('una lectura bloqueada se libera a los cinco segundos y descarta su resultado tardío', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const lectura = pendiente();
-  const store = crearStoreTema({ leer: () => lectura.promesa, guardar: async () => {} });
-  const inicio = store.getState().cargar();
+  const store = createThemeStore({ read: () => lectura.promesa, save: async () => {} });
+  const inicio = store.getState().load();
   t.mock.timers.tick(5_001);
   await inicio;
-  assert.equal(store.getState().cargado, true);
-  assert.equal(store.getState().modo, 'light');
+  assert.equal(store.getState().loaded, true);
+  assert.equal(store.getState().mode, 'light');
   lectura.resolver('dark');
   await Promise.resolve();
-  assert.equal(store.getState().modo, 'light');
+  assert.equal(store.getState().mode, 'light');
 });
 
 test('un fallo al guardar conserva el tema aplicado y permite reintentar', async () => {
   let intentos = 0;
-  const store = crearStoreTema({
-    leer: async () => null,
-    guardar: async () => { if (++intentos === 1) throw new Error('No se pudo guardar'); },
+  const store = createThemeStore({
+    read: async () => null,
+    save: async () => { if (++intentos === 1) throw new Error('No se pudo guardar'); },
   });
-  await store.getState().elegir('dark');
-  assert.equal(store.getState().modo, 'dark');
-  assert.equal(store.getState().guardando, false);
+  await store.getState().choose('dark');
+  assert.equal(store.getState().mode, 'dark');
+  assert.equal(store.getState().saving, false);
   assert.ok(store.getState().error);
-  await store.getState().elegir('dark');
+  await store.getState().choose('dark');
   assert.equal(store.getState().error, null);
   assert.equal(intentos, 2);
 });
 
 test('guardar bloquea cambios simultáneos hasta persistir la selección', async () => {
   const escritura = pendiente(), guardados = [];
-  const store = crearStoreTema({ leer: async () => null, guardar: (modo) => { guardados.push(modo); return escritura.promesa; } });
-  const primera = store.getState().elegir('dark');
-  assert.equal(store.getState().modo, 'dark');
-  assert.equal(store.getState().guardando, true);
-  await store.getState().elegir('light');
+  const store = createThemeStore({ read: async () => null, save: (modo) => { guardados.push(modo); return escritura.promesa; } });
+  const primera = store.getState().choose('dark');
+  assert.equal(store.getState().mode, 'dark');
+  assert.equal(store.getState().saving, true);
+  await store.getState().choose('light');
   assert.deepEqual(guardados, ['dark']);
   escritura.resolver();
   await primera;
-  assert.equal(store.getState().guardando, false);
+  assert.equal(store.getState().saving, false);
 });
 
 function luminancia(hex) {
@@ -119,13 +119,13 @@ function luminancia(hex) {
 test('ambas paletas conservan contraste de texto y controles', () => {
   const pares = [
     ['text', 'background', 4.5], ['text', 'surface', 4.5], ['textSecondary', 'surfaceMuted', 4.5],
-    ['primary', 'primarioSuave', 4.5], ['textOnPrimary', 'primary', 4.5],
+    ['primary', 'primarySoft', 4.5], ['textOnPrimary', 'primary', 4.5],
     ['textOnPrimary', 'danger', 4.5], ['textOnPrimary', 'success', 4.5],
-    ['danger', 'peligroSuave', 4.5], ['success', 'exitoSuave', 4.5], ['aviso', 'avisoSuave', 4.5],
-    ['placeholder', 'surface', 4.5], ['textoSobreAcento', 'accent', 4.5],
-    ['bordeControl', 'surface', 3], ['bordeControl', 'surfaceMuted', 3],
+    ['danger', 'dangerSoft', 4.5], ['success', 'successSoft', 4.5], ['warning', 'warningSoft', 4.5],
+    ['placeholder', 'surface', 4.5], ['textOnAccent', 'accent', 4.5],
+    ['controlBorder', 'surface', 3], ['controlBorder', 'surfaceMuted', 3],
   ];
-  for (const [nombre, paleta] of Object.entries({ claro: coloresClaros, oscuro: coloresOscuros })) {
+  for (const [nombre, paleta] of Object.entries({ claro: lightColors, oscuro: darkColors })) {
     for (const [texto, fondo, minimo] of pares) {
       const a = luminancia(paleta[texto]), b = luminancia(paleta[fondo]);
       const contraste = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);

@@ -18,8 +18,8 @@ import MapView, { PROVIDER_GOOGLE, type Details, type Region } from 'react-nativ
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
-import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
-import { useEstiloMapa } from '@/features/booking/presentation/mapStyle';
+import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
+import { useMapStyle } from '@/features/booking/presentation/mapStyle';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
 import { useRecentDestinations } from '@/features/booking/application/useRecentDestinations';
 import { useRegionPlace } from '@/features/booking/application/useRegionPlace';
@@ -38,7 +38,7 @@ import {
 import type { Coordinates, Place } from '@/features/booking/domain/types';
 import { CenterPin } from '@/features/booking/presentation/CenterPin';
 import { ServiceTypeSelector } from '@/features/booking/presentation/ServiceTypeSelector';
-import { confirmarRecuperacion } from '@/features/home/application/confirmarRecuperacion';
+import { confirmRecovery } from '@/features/home/application/confirmarRecuperacion';
 import { useCurrentLocation } from '@/features/home/application/useCurrentLocation';
 import {
   PASSENGER_ACTIVE_RIDE_KEY,
@@ -59,7 +59,7 @@ function firstName(fullName: string | undefined): string {
   return fullName?.trim().split(/\s+/)[0] ?? 'viajero';
 }
 
-function coordenadasCasiIguales(a: Coordinates, b: Coordinates): boolean {
+function coordinatesNearlyEqual(a: Coordinates, b: Coordinates): boolean {
   return (
     Math.abs(a.latitude - b.latitude) < 0.00001 &&
     Math.abs(a.longitude - b.longitude) < 0.00001
@@ -67,7 +67,7 @@ function coordenadasCasiIguales(a: Coordinates, b: Coordinates): boolean {
 }
 
 export function HomeScreen() {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   const user = useAuthStore((s) => s.user);
   const insets = useSafeAreaInsets();
   const { height: screenHeight } = useWindowDimensions();
@@ -100,7 +100,7 @@ export function HomeScreen() {
   } = usePendingRatingRide();
   const { status, coordinates, canAskAgain, isEstimated, retry } = useCurrentLocation();
   const mapRef = useRef<MapView>(null);
-  const { estiloMapa, modoMapa } = useEstiloMapa(false);
+  const { mapStyle, mapMode } = useMapStyle(false);
   const mapReady = useRef(false);
   const pendingAutomaticRegion = useRef<Region | null>(null);
   const lastLocationRefresh = useRef(0);
@@ -211,14 +211,14 @@ export function HomeScreen() {
     if (
       previousCoordinates &&
       origin &&
-      !coordenadasCasiIguales(origin.coordinates, previousCoordinates)
+      !coordinatesNearlyEqual(origin.coordinates, previousCoordinates)
     ) {
       originAdjustedByUser.current = true;
       setOriginManuallyAdjusted(true);
       cancelOriginResolution();
       return;
     }
-    if (previousCoordinates && coordenadasCasiIguales(previousCoordinates, nextCoordinates)) return;
+    if (previousCoordinates && coordinatesNearlyEqual(previousCoordinates, nextCoordinates)) return;
 
     if (!mapReady.current) {
       pendingAutomaticRegion.current = region;
@@ -242,7 +242,7 @@ export function HomeScreen() {
 
       const recover = async () => {
         try {
-          await confirmarRecuperacion(refetchActiveRide, refetchPendingRating);
+          await confirmRecovery(refetchActiveRide, refetchPendingRating);
         } catch (error) {
           if (focused) {
             setRecoveryFailure(getApiErrorMessage(
@@ -372,7 +372,7 @@ export function HomeScreen() {
       // echo so it does not replace the origin with another provisional one.
       return;
     }
-    if (automaticCoordinates && coordenadasCasiIguales(nextRegion, automaticCoordinates)) return;
+    if (automaticCoordinates && coordinatesNearlyEqual(nextRegion, automaticCoordinates)) return;
     handleRegionChange(nextRegion);
   };
 
@@ -457,8 +457,8 @@ export function HomeScreen() {
     <View style={styles.root}>
       {status === 'granted' && region ? (
         <MapView
-          customMapStyle={estiloMapa}
-          userInterfaceStyle={modoMapa}
+          customMapStyle={mapStyle}
+          userInterfaceStyle={mapMode}
           ref={mapRef}
           provider={PROVIDER_GOOGLE}
           showsBuildings={false}
@@ -584,7 +584,7 @@ export function HomeScreen() {
 }
 
 function ActiveRideGate() {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   return (
     <SafeAreaView style={styles.recovery}>
       <ActivityIndicator size="large" color={colors.primary} />
@@ -604,7 +604,7 @@ function MapPlaceholder({
   outsideArea: boolean;
   onRetry: () => void;
 }) {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   if (status === 'loading') {
     return (
       <View style={[styles.placeholder, styles.placeholderBg]}>
@@ -638,7 +638,7 @@ function MapPlaceholder({
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceMuted },
   recovery: {
     flex: 1,

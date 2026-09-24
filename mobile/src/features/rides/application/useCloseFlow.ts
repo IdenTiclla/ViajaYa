@@ -11,7 +11,7 @@ import {
 } from '@tanstack/react-query';
 
 import { recoverCommittedMutation } from './recoverCommittedMutation';
-import { actualizarTrasCalificacion } from '@/features/rides/application/actualizarTrasCalificacion';
+import { refreshAfterRating } from '@/features/rides/application/actualizarTrasCalificacion';
 import { ridesRepository } from '@/features/rides/data/ridesRepository';
 import type { RatingInput, RideStatus } from '@/features/rides/domain/types';
 
@@ -50,7 +50,7 @@ export function useRateRide() {
         () => ridesRepository.hasRating(vars.rideId),
         (saved) => saved,
       ),
-    onSuccess: (_data, vars) => actualizarTrasCalificacion(queryClient, vars.rideId),
+    onSuccess: (_data, vars) => refreshAfterRating(queryClient, vars.rideId),
   });
 }
 
@@ -59,6 +59,6 @@ export function useSkipRating() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (rideId: string) => ridesRepository.skipRating(rideId),
-    onSuccess: (_data, rideId) => actualizarTrasCalificacion(queryClient, rideId),
+    onSuccess: (_data, rideId) => refreshAfterRating(queryClient, rideId),
   });
 }

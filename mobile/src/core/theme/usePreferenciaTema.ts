@@ -1,10 +1,10 @@
 import { useStore } from 'zustand';
 
-import { almacenTema } from './almacenTema';
-import { crearStoreTema } from './crearStoreTema';
+import { themeStorage } from './almacenTema';
+import { createThemeStore } from './crearStoreTema';
 
-const storeTema = crearStoreTema(almacenTema);
+const themeStore = createThemeStore(themeStorage);
 
-export function usePreferenciaTema() {
-  return useStore(storeTema);
+export function useThemePreference() {
+  return useStore(themeStore);
 }

@@ -1,29 +1,29 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 
-type MapaConCamara = { getCamera: () => Promise<{ heading: number; zoom?: number }> };
+type MapWithCamera = { getCamera: () => Promise<{ heading: number; zoom?: number }> };
 
 /** Update the scale and orientation used to separate labels from the route. */
-export function useRumboMapa(mapa: RefObject<MapaConCamara | null>) {
-  const [camara, setCamara] = useState<{ rumboMapa: number; zoomMapa?: number }>({ rumboMapa: 0 });
-  const generacion = useRef(0);
-  useEffect(() => () => { generacion.current += 1; }, []);
+export function useMapBearing(map: RefObject<MapWithCamera | null>) {
+  const [camera, setCamera] = useState<{ mapBearing: number; mapZoom?: number }>({ mapBearing: 0 });
+  const generation = useRef(0);
+  useEffect(() => () => { generation.current += 1; }, []);
 
-  const actualizarRumbo = useCallback(() => {
-    const instancia = mapa.current;
-    if (!instancia) return;
-    const solicitud = ++generacion.current;
-    void instancia.getCamera().then(({ heading, zoom }) => {
-      if (solicitud === generacion.current && mapa.current === instancia && Number.isFinite(heading)) {
-        setCamara((actual) => {
-          const zoomMapa = Number.isFinite(zoom) ? zoom : actual.zoomMapa;
-          return actual.rumboMapa === heading && actual.zoomMapa === zoomMapa
-            ? actual : { rumboMapa: heading, zoomMapa };
+  const updateBearing = useCallback(() => {
+    const instance = map.current;
+    if (!instance) return;
+    const request = ++generation.current;
+    void instance.getCamera().then(({ heading, zoom }) => {
+      if (request === generation.current && map.current === instance && Number.isFinite(heading)) {
+        setCamera((current) => {
+          const mapZoom = Number.isFinite(zoom) ? zoom : current.mapZoom;
+          return current.mapBearing === heading && current.mapZoom === mapZoom
+            ? current : { mapBearing: heading, mapZoom };
         });
       }
     }).catch(() => {
       // Un mapa desmontándose conserva el último rumbo válido.
     });
-  }, [mapa]);
+  }, [map]);
 
-  return { ...camara, actualizarRumbo };
+  return { ...camera, updateBearing };
 }

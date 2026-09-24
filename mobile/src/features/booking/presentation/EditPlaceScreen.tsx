@@ -20,8 +20,8 @@ import {
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
-import { useEstiloMapa } from '@/features/booking/presentation/mapStyle';
+import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
+import { useMapStyle } from '@/features/booking/presentation/mapStyle';
 import { useDeletePlace, useSavePlace } from '@/features/booking/application/useSavedPlaces';
 import { getBoliviaPlaceError } from '@/features/booking/domain/bolivia';
 import { Button, ConfirmDialog } from '@/shared/components';
@@ -36,8 +36,8 @@ function isCategory(value: string | undefined): value is SavedPlaceCategory {
 }
 
 export function EditPlaceScreen() {
-  const { colors, styles } = useEstilos(crearEstilos);
-  const { estiloMapa, modoMapa } = useEstiloMapa(false);
+  const { colors, styles } = useThemedStyles(createStyles);
+  const { mapStyle, mapMode } = useMapStyle(false);
   const router = useRouter();
   const params = useLocalSearchParams<{
     id?: string;
@@ -137,8 +137,8 @@ export function EditPlaceScreen() {
         {hasPoint && (
           <View style={styles.mapPreview}>
             <MapView
-              customMapStyle={estiloMapa}
-              userInterfaceStyle={modoMapa}
+              customMapStyle={mapStyle}
+              userInterfaceStyle={mapMode}
               provider={PROVIDER_GOOGLE}
               showsBuildings={false}
               showsIndoors={false}
@@ -246,7 +246,7 @@ export function EditPlaceScreen() {
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
   header: {
     flexDirection: 'row',

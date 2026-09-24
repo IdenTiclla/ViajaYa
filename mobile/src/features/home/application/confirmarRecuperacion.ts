@@ -1,38 +1,38 @@
 /** Check the active ride and pending rating with a single time limit for the whole recovery. */
-type ResultadoConsulta = {
+type QueryOutcome = {
   isSuccess: boolean;
   data?: unknown;
   error: unknown;
 };
 
-type Consultar = () => Promise<ResultadoConsulta>;
+type Fetcher = () => Promise<QueryOutcome>;
 
-export async function confirmarRecuperacion(
-  consultarActivo: Consultar,
-  consultarCalificacion: Consultar,
-  limiteMs = 30_000,
+export async function confirmRecovery(
+  fetchActive: Fetcher,
+  fetchRating: Fetcher,
+  limitMs = 30_000,
 ): Promise<void> {
-  let agotado = false;
-  let temporizador: ReturnType<typeof setTimeout> | undefined;
-  const limite = new Promise<never>((_, reject) => {
-    temporizador = setTimeout(() => {
-      agotado = true;
+  let exhausted = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const limit = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      exhausted = true;
       reject(new Error('La verificación tardó demasiado. Revisa tu conexión y vuelve a intentar.'));
-    }, limiteMs);
+    }, limitMs);
   });
-  const verificar = async () => {
-    const activo = await consultarActivo();
-    if (agotado) return;
-    if (!activo.isSuccess) throw activo.error;
-    if (activo.data == null) {
-      const calificacion = await consultarCalificacion();
-      if (!calificacion.isSuccess) throw calificacion.error;
+  const verify = async () => {
+    const active = await fetchActive();
+    if (exhausted) return;
+    if (!active.isSuccess) throw active.error;
+    if (active.data == null) {
+      const rating = await fetchRating();
+      if (!rating.isSuccess) throw rating.error;
     }
   };
   try {
     // It also bounds queries paused by connectivity or internal retries.
-    await Promise.race([verificar(), limite]);
+    await Promise.race([verify(), limit]);
   } finally {
-    clearTimeout(temporizador);
+    clearTimeout(timer);
   }
 }

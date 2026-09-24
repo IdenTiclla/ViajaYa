@@ -11,7 +11,7 @@ import { useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
-import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import { useRateRide, useSkipRating } from '@/features/rides/application/useCloseFlow';
 import { formatBolivianos } from '@/features/rides/domain/money';
 import type { Ride } from '@/features/rides/domain/types';
@@ -30,7 +30,7 @@ type Props = {
   onDone: () => void;
 };
 
-const VALORACIONES = ['Mala', 'Regular', 'Buena', 'Muy buena', 'Excelente'];
+const RATING_LABELS = ['Mala', 'Regular', 'Buena', 'Muy buena', 'Excelente'];
 
 export function RideRatingCard({
   ride,
@@ -39,12 +39,12 @@ export function RideRatingCard({
   rateeRole,
   onDone,
 }: Props) {
-  const { colors, styles, estiloFoco } = useEstilos(crearEstilos);
+  const { colors, styles, focusStyle } = useThemedStyles(createStyles);
   const { fontScale } = useWindowDimensions();
   const [score, setScore] = useState(0);
   const [comment, setComment] = useState('');
   const [showComment, setShowComment] = useState(false);
-  const [estrellaEnfocada, setEstrellaEnfocada] = useState<number | null>(null);
+  const [focusedStar, setFocusedStar] = useState<number | null>(null);
   const rate = useRateRide();
   const skip = useSkipRating();
   const submissionLock = useRef(false);
@@ -121,18 +121,18 @@ export function RideRatingCard({
               key={n}
               disabled={submitting}
               onPress={() => setScore(n)}
-              onFocus={() => setEstrellaEnfocada(n)}
-              onBlur={() => setEstrellaEnfocada(null)}
+              onFocus={() => setFocusedStar(n)}
+              onBlur={() => setFocusedStar(null)}
               style={({ pressed }) => [
                 styles.starButton,
                 score === n && styles.starSelected,
                 pressed && styles.starPressed,
-                estrellaEnfocada === n && estiloFoco,
+                focusedStar === n && focusStyle,
               ]}
               accessibilityRole="radio"
               accessibilityState={{ checked: score === n, disabled: submitting }}
               aria-checked={score === n}
-              accessibilityLabel={`${n} ${n === 1 ? 'estrella' : 'estrellas'}: ${VALORACIONES[n - 1]}`}>
+              accessibilityLabel={`${n} ${n === 1 ? 'estrella' : 'estrellas'}: ${RATING_LABELS[n - 1]}`}>
               <Ionicons
                 accessible={false}
                 name={n <= score ? 'star' : 'star-outline'}
@@ -143,7 +143,7 @@ export function RideRatingCard({
           ))}
         </View>
         <Text style={styles.scoreLabel} accessibilityLiveRegion="polite">
-          {score > 0 ? `${VALORACIONES[score - 1]} · ${score} de 5 estrellas` : 'Selecciona de 1 a 5 estrellas'}
+          {score > 0 ? `${RATING_LABELS[score - 1]} · ${score} de 5 estrellas` : 'Selecciona de 1 a 5 estrellas'}
         </Text>
       </View>
 
@@ -187,7 +187,7 @@ export function RideRatingCard({
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   root: { gap: spacing.md },
   successHeader: { alignItems: 'center', gap: spacing.xs },
   checkCircle: {
@@ -238,7 +238,7 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     borderRadius: radius.pill,
   },
   starPressed: { backgroundColor: colors.surfaceMuted },
-  starSelected: { backgroundColor: colors.primarioSuave },
+  starSelected: { backgroundColor: colors.primarySoft },
   scoreLabel: { color: colors.textSecondary, fontSize: fontSize.sm, textAlign: 'center' },
 
   error: { color: colors.danger, fontSize: fontSize.sm, textAlign: 'center' },

@@ -1,23 +1,23 @@
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
-import type { AlmacenTema } from './crearStoreTema';
+import type { ThemeStorage } from './crearStoreTema';
 
-const CLAVE = 'viajaya.tema';
+const KEY = 'viajaya.tema';
 
 /** Reuse the installed native storage; on web only this preference is stored. */
-export const almacenTema: AlmacenTema = {
-  async leer() {
+export const themeStorage: ThemeStorage = {
+  async read() {
     if (Platform.OS === 'web') {
-      return typeof localStorage === 'undefined' ? null : localStorage.getItem(CLAVE);
+      return typeof localStorage === 'undefined' ? null : localStorage.getItem(KEY);
     }
-    return SecureStore.getItemAsync(CLAVE);
+    return SecureStore.getItemAsync(KEY);
   },
-  async guardar(modo) {
+  async save(mode) {
     if (Platform.OS === 'web') {
-      localStorage.setItem(CLAVE, modo);
+      localStorage.setItem(KEY, mode);
       return;
     }
-    await SecureStore.setItemAsync(CLAVE, modo);
+    await SecureStore.setItemAsync(KEY, mode);
   },
 };

@@ -18,7 +18,7 @@ type Props = {
   titlePrefix?: string;
 };
 
-export function SelectorVehiculo({
+export function VehicleSelector({
   vehicles,
   onPick,
   pending = null,

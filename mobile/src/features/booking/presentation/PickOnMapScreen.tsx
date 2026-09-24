@@ -20,8 +20,8 @@ import {
 import MapView, { PROVIDER_GOOGLE, type Details, type Region } from 'react-native-maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
-import { useEstiloMapa } from '@/features/booking/presentation/mapStyle';
+import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
+import { useMapStyle } from '@/features/booking/presentation/mapStyle';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
 import { useRegionPlace } from '@/features/booking/application/useRegionPlace';
 import {
@@ -45,7 +45,7 @@ import { Button, PinLoadingIndicator } from '@/shared/components';
 
 const MIN_DESTINATION_DISTANCE_METERS = 50;
 
-function coordenadasCasiIguales(a: Place['coordinates'], b: Place['coordinates']): boolean {
+function coordinatesNearlyEqual(a: Place['coordinates'], b: Place['coordinates']): boolean {
   return (
     Math.abs(a.latitude - b.latitude) < 0.00001 &&
     Math.abs(a.longitude - b.longitude) < 0.00001
@@ -53,7 +53,7 @@ function coordenadasCasiIguales(a: Place['coordinates'], b: Place['coordinates']
 }
 
 export function PickOnMapScreen() {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { target, saveAs, category, id, label, rideId } = useLocalSearchParams<{
@@ -83,7 +83,7 @@ export function PickOnMapScreen() {
     retry: retryLocation,
   } = useCurrentLocation();
   const mapRef = useRef<MapView>(null);
-  const { estiloMapa, modoMapa } = useEstiloMapa(false);
+  const { mapStyle, mapMode } = useMapStyle(false);
   const mapReady = useRef(false);
   const pendingGpsRegion = useRef<{ region: Region; isEstimated: boolean } | null>(null);
   const usableOrigin = origin && isPlaceInBolivia(origin) ? origin : null;
@@ -220,7 +220,7 @@ export function PickOnMapScreen() {
     // Automatic centers are already sent explicitly to the hook. MapView
     // notifies them again when the animation ends and they must not duplicate the query.
     if (!centerAdjustedByUser.current) return;
-    if (coordenadasCasiIguales(nextRegion, automaticCenterCoordinates.current)) return;
+    if (coordinatesNearlyEqual(nextRegion, automaticCenterCoordinates.current)) return;
     handleRegionChange(nextRegion);
   };
 
@@ -288,8 +288,8 @@ export function PickOnMapScreen() {
   return (
     <View style={styles.root}>
       <MapView
-        customMapStyle={estiloMapa}
-        userInterfaceStyle={modoMapa}
+        customMapStyle={mapStyle}
+        userInterfaceStyle={mapMode}
         ref={mapRef}
         provider={PROVIDER_GOOGLE}
         showsBuildings={false}
@@ -332,7 +332,7 @@ export function PickOnMapScreen() {
 
       <CenterPin
         label={centerPinLabel}
-        tipo={isSaveAs ? 'lugar' : isOrigin ? 'origen' : 'destino'}
+        kind={isSaveAs ? 'place' : isOrigin ? 'origin' : 'destination'}
         loading={isResolving}
       />
 
@@ -495,7 +495,7 @@ function SelectionPointRow({
   error?: boolean;
   loading?: boolean;
 }) {
-  const { colors, styles } = useEstilos(crearEstilos);
+  const { colors, styles } = useThemedStyles(createStyles);
   return (
     <View
       style={[
@@ -537,7 +537,7 @@ function SelectionPointRow({
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceMuted },
 
   topArea: {
@@ -612,8 +612,8 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     paddingVertical: spacing.xs,
     borderRadius: radius.sm,
   },
-  routePointActiveOrigin: { backgroundColor: colors.primarioSuave },
-  routePointActiveDestination: { backgroundColor: colors.peligroSuave },
+  routePointActiveOrigin: { backgroundColor: colors.primarySoft },
+  routePointActiveDestination: { backgroundColor: colors.dangerSoft },
   routePointBadge: {
     width: 28,
     height: 28,

@@ -11,7 +11,7 @@ import type { Region } from 'react-native-maps';
 import type { Coordinates, Place } from '@/features/booking/domain/types';
 import { locationService } from '@/features/home/data/locationService';
 
-function mismasCoordenadas(a: Coordinates, b: Coordinates): boolean {
+function sameCoordinates(a: Coordinates, b: Coordinates): boolean {
   // MapView may return the same center with a tiny decimal variation
   // after animateToRegion. Treating it as a new point restarts (or even
   // cancels) the first address even though the passenger did not move the map.
@@ -21,7 +21,7 @@ function mismasCoordenadas(a: Coordinates, b: Coordinates): boolean {
   );
 }
 
-function direccionCoordenadas({ latitude, longitude }: Coordinates): string {
+function coordinateAddress({ latitude, longitude }: Coordinates): string {
   return `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
 }
 
@@ -54,7 +54,7 @@ export function useRegionPlace(onPlace: (place: Place) => void) {
   const onRegionChangeComplete = useCallback(
     (region: Region) => {
       const coordinates = { latitude: region.latitude, longitude: region.longitude };
-      if (pending.current && mismasCoordenadas(pending.current, coordinates)) return;
+      if (pending.current && sameCoordinates(pending.current, coordinates)) return;
 
       const requestId = latestRequestId.current + 1;
       latestRequestId.current = requestId;
@@ -65,7 +65,7 @@ export function useRegionPlace(onPlace: (place: Place) => void) {
       onPlace({
         coordinates,
         name: '',
-        address: direccionCoordenadas(coordinates),
+        address: coordinateAddress(coordinates),
         countryCode: null,
         labelStatus: 'provisional',
       });
@@ -78,7 +78,7 @@ export function useRegionPlace(onPlace: (place: Place) => void) {
             label &&
             latestRequestId.current === requestId &&
             current &&
-            mismasCoordenadas(current, coordinates)
+            sameCoordinates(current, coordinates)
           ) {
             onPlace({ coordinates, ...label });
           } else if (latestRequestId.current === requestId && !label) {

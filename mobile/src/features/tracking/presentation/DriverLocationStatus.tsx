@@ -1,11 +1,11 @@
 import { StyleSheet, Text, View } from 'react-native';
-import { useEstilos, fontSize, spacing, type Tema } from '@/core/theme';
+import { useThemedStyles, fontSize, spacing, type Theme } from '@/core/theme';
 import { Button } from '@/shared/components';
 
 export function DriverLocationStatus({ freshness, onRetry }: {
   freshness: 'waiting' | 'unavailable' | 'stale' | 'live'; onRetry: () => void;
 }) {
-  const { styles } = useEstilos(createStyles);
+  const { styles } = useThemedStyles(createStyles);
   return <View style={styles.status} accessibilityLiveRegion="polite">
     <Text style={styles.text}>{freshness === 'live' ? 'Ubicación del conductor en vivo'
       : freshness === 'stale' ? 'Última ubicación conocida · esperando señal nueva'
@@ -15,7 +15,7 @@ export function DriverLocationStatus({ freshness, onRetry }: {
     {freshness === 'unavailable' && <Button title="Actualizar ubicación" variant="secondary" onPress={onRetry} />}
   </View>;
 }
-const createStyles = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   status: { padding: spacing.sm, gap: spacing.xs, backgroundColor: colors.surfaceMuted },
   text: { color: colors.text, fontSize: fontSize.sm },
   hint: { color: colors.textSecondary, fontSize: fontSize.xs },

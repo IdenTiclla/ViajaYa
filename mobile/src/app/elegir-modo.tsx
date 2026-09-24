@@ -1,5 +1,5 @@
-import { ElegirModoScreen } from '@/features/driver/presentation/ElegirModoScreen';
+import { ChooseModeScreen } from '@/features/driver/presentation/ElegirModoScreen';
 
-export default function ElegirModoRoute() {
-  return <ElegirModoScreen />;
+export default function ChooseModeRoute() {
+  return <ChooseModeScreen />;
 }

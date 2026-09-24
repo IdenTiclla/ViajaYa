@@ -15,7 +15,7 @@ import { locationService } from '@/features/home/data/locationService';
 
 type PointKey = 'origin' | 'destination';
 
-function mismasCoordenadas(a: Place['coordinates'], b: Place['coordinates']): boolean {
+function sameCoordinates(a: Place['coordinates'], b: Place['coordinates']): boolean {
   return a.latitude === b.latitude && a.longitude === b.longitude;
 }
 
@@ -93,7 +93,7 @@ export function useTripPlaceLabels(): {
         isUsefulLabel(item.label) &&
         currentPlace &&
         !isPlaceLabelResolved(currentPlace) &&
-        mismasCoordenadas(currentPlace.coordinates, item.coordinates)
+        sameCoordinates(currentPlace.coordinates, item.coordinates)
       ) {
         updates[item.key] = {
           coordinates: currentPlace.coordinates,

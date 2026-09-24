@@ -1,21 +1,21 @@
 import type { Coordinates } from '@/core/domain/geo';
 
-export type PosicionTooltip = 'arriba' | 'abajo';
+export type TooltipPlacement = 'above' | 'below';
 // A single visual scale for every map, with no variants per role or screen.
 // Logical sizes: react-native-maps applies each device's native density.
-export const ANCHO_RUTA = 3;
-export const ANCHO_CONTORNO_RUTA = 5;
-export const TAMANO_PIN_RUTA = 16;
-export const BORDE_PIN_RUTA = 1.5;
-export const TAMANO_LETRA_PIN_RUTA = 9;
-export const MARGEN_TOOLTIP_RUTA = 96;
-export const MARGEN_TOOLTIP_EDITABLE = 126;
-export const SEPARACION_TOOLTIP = 8;
-const SEPARACION_MAXIMA_TOOLTIP = 48;
-const HOLGURA_RUTA = ANCHO_CONTORNO_RUTA / 2 + 4;
+export const ROUTE_WIDTH = 3;
+export const ROUTE_OUTLINE_WIDTH = 5;
+export const ROUTE_PIN_SIZE = 16;
+export const ROUTE_PIN_BORDER = 1.5;
+export const ROUTE_PIN_LETTER_SIZE = 9;
+export const ROUTE_TOOLTIP_MARGIN = 96;
+export const EDITABLE_TOOLTIP_MARGIN = 126;
+export const TOOLTIP_SEPARATION = 8;
+const MAX_TOOLTIP_SEPARATION = 48;
+const ROUTE_CLEARANCE = ROUTE_OUTLINE_WIDTH / 2 + 4;
 
-export type PuntoMapa = { x: number; y: number };
-export type MedidasEtiqueta = { ancho: number; alto: number };
+export type MapPoint = { x: number; y: number };
+export type LabelSize = { width: number; height: number };
 
 /**
  * Web Mercator in world units (the whole world spans 1 × 1). Shared by label
@@ -36,136 +36,136 @@ export function longitudeDelta(from: number, to: number): number {
 }
 
 /** Top-down Google Maps projection in logical units, relative to the pin. */
-export function proyectarRutaRespectoAlPin(
-  punto: Coordinates,
-  ruta: readonly Coordinates[],
-  rumboMapa: number,
-  zoomMapa: number,
-): PuntoMapa[] {
-  const escala = 256 * 2 ** zoomMapa;
-  const origenY = mercatorY(punto.latitude);
-  const rumbo = rumboMapa * Math.PI / 180;
-  return ruta.map((coordenada) => {
-    const este = longitudeDelta(punto.longitude, coordenada.longitude) / 360 * escala;
-    const norte = (mercatorY(coordenada.latitude) - origenY) * escala;
+export function projectRouteRelativeToPin(
+  point: Coordinates,
+  route: readonly Coordinates[],
+  mapBearing: number,
+  mapZoom: number,
+): MapPoint[] {
+  const scale = 256 * 2 ** mapZoom;
+  const originY = mercatorY(point.latitude);
+  const heading = mapBearing * Math.PI / 180;
+  return route.map((coordinate) => {
+    const east = longitudeDelta(point.longitude, coordinate.longitude) / 360 * scale;
+    const north = (mercatorY(coordinate.latitude) - originY) * scale;
     return {
-      x: este * Math.cos(rumbo) - norte * Math.sin(rumbo),
-      y: -norte * Math.cos(rumbo) - este * Math.sin(rumbo),
+      x: east * Math.cos(heading) - north * Math.sin(heading),
+      y: -north * Math.cos(heading) - east * Math.sin(heading),
     };
   });
 }
 
 /** Find room for the whole label, including Editar, in front of every segment. */
-export function ubicarTooltipSinCruzarRuta(
-  ruta: readonly PuntoMapa[],
-  medidas: MedidasEtiqueta,
-  preferida: PosicionTooltip,
-): { posicion: PosicionTooltip; separacion: number; visible: boolean } {
-  const radio = TAMANO_PIN_RUTA / 2;
-  const limiteX = medidas.ancho / 2 + HOLGURA_RUTA;
-  const ocupados: [number, number][] = [];
-  for (let i = 1; i < ruta.length; i += 1) {
-    const a = ruta[i - 1];
-    const b = ruta[i];
+export function placeTooltipClearOfRoute(
+  route: readonly MapPoint[],
+  size: LabelSize,
+  preferred: TooltipPlacement,
+): { placement: TooltipPlacement; separation: number; visible: boolean } {
+  const radio = ROUTE_PIN_SIZE / 2;
+  const limitX = size.width / 2 + ROUTE_CLEARANCE;
+  const occupied: [number, number][] = [];
+  for (let i = 1; i < route.length; i += 1) {
+    const a = route[i - 1];
+    const b = route[i];
     // Clip the segment against the tooltip's horizontal band: checking
     // only vertices would miss a long street crossing behind the text.
     const dx = b.x - a.x;
-    let inicio = 0;
-    let fin = 1;
+    let start = 0;
+    let end = 1;
     if (Math.abs(dx) < 0.000001) {
-      if (Math.abs(a.x) > limiteX) continue;
+      if (Math.abs(a.x) > limitX) continue;
     } else {
-      const t1 = (-limiteX - a.x) / dx;
-      const t2 = (limiteX - a.x) / dx;
-      inicio = Math.max(0, Math.min(t1, t2));
-      fin = Math.min(1, Math.max(t1, t2));
-      if (inicio > fin) continue;
+      const t1 = (-limitX - a.x) / dx;
+      const t2 = (limitX - a.x) / dx;
+      start = Math.max(0, Math.min(t1, t2));
+      end = Math.min(1, Math.max(t1, t2));
+      if (start > end) continue;
     }
-    const y1 = a.y + (b.y - a.y) * inicio;
-    const y2 = a.y + (b.y - a.y) * fin;
-    ocupados.push([Math.min(y1, y2) - HOLGURA_RUTA, Math.max(y1, y2) + HOLGURA_RUTA]);
+    const y1 = a.y + (b.y - a.y) * start;
+    const y2 = a.y + (b.y - a.y) * end;
+    occupied.push([Math.min(y1, y2) - ROUTE_CLEARANCE, Math.max(y1, y2) + ROUTE_CLEARANCE]);
   }
 
-  const separacionLibre = (posicion: PosicionTooltip) => {
-    const intervalos = ocupados.map(([min, max]): [number, number] =>
-      posicion === 'arriba' ? [-max, -min] : [min, max],
+  const freeSeparation = (placement: TooltipPlacement) => {
+    const intervals = occupied.map(([min, max]): [number, number] =>
+      placement === 'above' ? [-max, -min] : [min, max],
     ).sort((a, b) => a[0] - b[0]);
-    let borde = radio + SEPARACION_TOOLTIP;
-    for (const [inicio, fin] of intervalos) {
-      if (fin < borde) continue;
-      if (inicio > borde + medidas.alto) break;
-      borde = fin + 1;
+    let border = radio + TOOLTIP_SEPARATION;
+    for (const [start, end] of intervals) {
+      if (end < border) continue;
+      if (start > border + size.height) break;
+      border = end + 1;
     }
-    return borde - radio;
+    return border - radio;
   };
-  const opuesta = preferida === 'arriba' ? 'abajo' : 'arriba';
-  const principal = separacionLibre(preferida);
-  const alternativa = separacionLibre(opuesta);
-  const posicion = principal <= alternativa ? preferida : opuesta;
-  const separacion = Math.min(principal, alternativa);
+  const opposite = preferred === 'above' ? 'below' : 'above';
+  const primary = freeSeparation(preferred);
+  const alternative = freeSeparation(opposite);
+  const chosenPlacement = primary <= alternative ? preferred : opposite;
+  const separation = Math.min(primary, alternative);
   // At a zoom that is too far out no label may fit. We prioritize
   // the route and keep its native title available when tapping A/B; we never create
   // a giant bitmap nor place text over the route as a fallback.
-  return separacion <= SEPARACION_MAXIMA_TOOLTIP
-    ? { posicion, separacion, visible: true }
-    : { posicion: preferida, separacion: SEPARACION_TOOLTIP, visible: false };
+  return separation <= MAX_TOOLTIP_SEPARATION
+    ? { placement: chosenPlacement, separation, visible: true }
+    : { placement: preferred, separation: TOOLTIP_SEPARATION, visible: false };
 }
 
 /** Place the text on the side opposite the segment entering or leaving the point. */
-export function elegirPosicionTooltip(
+export function chooseTooltipPlacement(
   kind: 'A' | 'B',
-  punto: Coordinates,
-  ruta: readonly Coordinates[],
-  rumboMapa = 0,
-): PosicionTooltip {
-  const preferida = kind === 'A' ? 'arriba' : 'abajo';
-  const cosLatitud = Math.cos(punto.latitude * Math.PI / 180);
-  const rumbo = rumboMapa * Math.PI / 180;
-  let este = 0;
-  let norte = 0;
+  point: Coordinates,
+  route: readonly Coordinates[],
+  mapBearing = 0,
+): TooltipPlacement {
+  const preferred = kind === 'A' ? 'above' : 'below';
+  const cosLatitude = Math.cos(point.latitude * Math.PI / 180);
+  const heading = mapBearing * Math.PI / 180;
+  let east = 0;
+  let north = 0;
   // Skip duplicates and the provider's small snap to the street. Using the
   // opposite end would fail on routes that first turn in another direction.
-  for (let i = 0; i < ruta.length; i += 1) {
-    const vecino = ruta[kind === 'A' ? i : ruta.length - 1 - i];
-    este = (vecino.longitude - punto.longitude) * cosLatitud;
-    norte = vecino.latitude - punto.latitude;
-    if (Math.hypot(este, norte) >= 0.0001) break;
+  for (let i = 0; i < route.length; i += 1) {
+    const neighbor = route[kind === 'A' ? i : route.length - 1 - i];
+    east = (neighbor.longitude - point.longitude) * cosLatitude;
+    north = neighbor.latitude - point.latitude;
+    if (Math.hypot(east, north) >= 0.0001) break;
   }
-  const longitud = Math.hypot(este, norte);
-  if (longitud === 0) return preferida;
+  const longitude = Math.hypot(east, north);
+  if (longitude === 0) return preferred;
   // The camera bearing also counts: after rotating the map, geographic north
   // no longer matches the top of the screen. A horizontal segment uses each letter's
   // stable side so labels do not flip due to rounding.
-  const haciaArriba = norte * Math.cos(rumbo) + este * Math.sin(rumbo);
-  if (Math.abs(haciaArriba) < longitud * 0.1) return preferida;
-  return haciaArriba > 0 ? 'abajo' : 'arriba';
+  const upward = north * Math.cos(heading) + east * Math.sin(heading);
+  if (Math.abs(upward) < longitude * 0.1) return preferred;
+  return upward > 0 ? 'below' : 'above';
 }
 
 /** Keep the symbol's center on the coordinate, even with several lines. */
-export function calcularAnclajePin(altura: number, posicion: PosicionTooltip) {
-  const alturaReal = Math.max(altura, TAMANO_PIN_RUTA);
-  const centroPin = posicion === 'arriba'
-    ? alturaReal - TAMANO_PIN_RUTA / 2
-    : TAMANO_PIN_RUTA / 2;
-  return { x: 0.5, y: centroPin / alturaReal };
+export function computePinAnchor(height: number, placement: TooltipPlacement) {
+  const actualHeight = Math.max(height, ROUTE_PIN_SIZE);
+  const pinCenter = placement === 'above'
+    ? actualHeight - ROUTE_PIN_SIZE / 2
+    : ROUTE_PIN_SIZE / 2;
+  return { x: 0.5, y: pinCenter / actualHeight };
 }
 
 /** Give the native layout room before regenerating the Google Maps bitmap. */
-export function programarRedibujadoMarcador(
-  redibujar: () => void,
-  pedirFrame = requestAnimationFrame,
-  cancelarFrame = cancelAnimationFrame,
+export function scheduleMarkerRedraw(
+  redraw: () => void,
+  requestFrame = requestAnimationFrame,
+  cancelFrame = cancelAnimationFrame,
 ): () => void {
-  let cancelado = false;
-  let frame = pedirFrame(() => {
-    if (cancelado) return;
-    frame = pedirFrame(() => {
-      if (!cancelado) redibujar();
+  let cancelled = false;
+  let frame = requestFrame(() => {
+    if (cancelled) return;
+    frame = requestFrame(() => {
+      if (!cancelled) redraw();
     });
   });
   return () => {
-    cancelado = true;
-    cancelarFrame(frame);
+    cancelled = true;
+    cancelFrame(frame);
   };
 }
 
@@ -173,7 +173,7 @@ export type RoutePinLabel = {
   kind: 'A' | 'B';
   coordinate: Coordinates;
   /** Measured label block (RoutePinMarker reports it), in logical pixels. */
-  size: MedidasEtiqueta;
+  size: LabelSize;
 };
 
 type EdgePadding = { top: number; bottom: number; left: number; right: number };
@@ -217,26 +217,26 @@ export function getLabelAwareFitCoordinates(
     ...label,
     x: longitudeDelta(ref, label.coordinate.longitude) / 360,
     y: mercatorY(label.coordinate.latitude),
-    preferred: elegirPosicionTooltip(label.kind, label.coordinate, route),
+    preferred: chooseTooltipPlacement(label.kind, label.coordinate, route),
   }));
 
   const cornersAt = (scale: number) => {
     const zoom = Math.log2(scale / 256);
-    const corners: PuntoMapa[] = [];
+    const corners: MapPoint[] = [];
     for (const pin of pins) {
-      const { posicion, separacion, visible } = ubicarTooltipSinCruzarRuta(
-        proyectarRutaRespectoAlPin(pin.coordinate, route, 0, zoom), pin.size, pin.preferred,
+      const { placement, separation, visible } = placeTooltipClearOfRoute(
+        projectRouteRelativeToPin(pin.coordinate, route, 0, zoom), pin.size, pin.preferred,
       );
       if (!visible) continue;
-      const halfWidth = pin.size.ancho / 2 / scale;
-      const reach = (TAMANO_PIN_RUTA / 2 + separacion + pin.size.alto) / scale;
-      const y = posicion === 'arriba' ? pin.y + reach : pin.y - reach;
+      const halfWidth = pin.size.width / 2 / scale;
+      const reach = (ROUTE_PIN_SIZE / 2 + separation + pin.size.height) / scale;
+      const y = placement === 'above' ? pin.y + reach : pin.y - reach;
       corners.push({ x: pin.x - halfWidth, y }, { x: pin.x + halfWidth, y });
     }
     return corners;
   };
 
-  const fitScale = (corners: readonly PuntoMapa[]) => {
+  const fitScale = (corners: readonly MapPoint[]) => {
     let x0 = minX;
     let x1 = maxX;
     let y0 = minY;

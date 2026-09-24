@@ -66,9 +66,9 @@ const hooks = registerHooks({
 });
 const { RoutePolyline } = await import('../src/features/rides/presentation/RoutePolyline.tsx');
 const { RoutePinMarker } = await import('../src/features/rides/presentation/RoutePinMarker.tsx');
-const { ContextoTema } = await import('../src/core/theme/useTema.ts');
-const { obtenerTema } = await import('../src/core/theme/tokens.ts');
-const { useEstiloMapa } = await import('../src/features/booking/presentation/mapStyle.ts');
+const { ThemeContext } = await import('../src/core/theme/useTema.ts');
+const { getTheme } = await import('../src/core/theme/tokens.ts');
+const { useMapStyle } = await import('../src/features/booking/presentation/mapStyle.ts');
 const { lineas, marcadores } = await import('react-native-maps');
 const { vistas, textos } = await import('react-native');
 hooks.deregister();
@@ -80,25 +80,25 @@ const ruta = [origen, destino];
 test('mapa y trayecto siguen el tema elegido sin cambiar la visibilidad de lugares', () => {
   let estilo;
   function Mapa({ ocultar }) {
-    estilo = useEstiloMapa(ocultar);
+    estilo = useMapStyle(ocultar);
     return createElement(RoutePolyline, { coordinates: ruta });
   }
   for (const modo of ['light', 'dark']) {
     for (const ocultar of [true, false]) {
       lineas.length = 0;
-      const tema = obtenerTema(modo);
-      renderToStaticMarkup(createElement(ContextoTema.Provider, { value: tema }, createElement(Mapa, { ocultar })));
-      assert.equal(estilo.modoMapa, modo);
-      assert.equal(estilo.estiloMapa[0].stylers[0].color, tema.colors.mapaTierra);
+      const tema = getTheme(modo);
+      renderToStaticMarkup(createElement(ThemeContext.Provider, { value: tema }, createElement(Mapa, { ocultar })));
+      assert.equal(estilo.mapMode, modo);
+      assert.equal(estilo.mapStyle[0].stylers[0].color, tema.colors.mapLand);
       assert.deepEqual(lineas.map((linea) => linea.strokeColor), [tema.colors.surface, tema.colors.primary]);
-      assert.equal(estilo.estiloMapa.some((regla) => regla.featureType === 'poi' && regla.elementType === 'labels'
+      assert.equal(estilo.mapStyle.some((regla) => regla.featureType === 'poi' && regla.elementType === 'labels'
         && regla.stylers.some((valor) => valor.visibility === 'off')), ocultar);
       for (const feature of ['landscape.man_made', 'landscape.natural.terrain', 'poi']) {
-        assert.deepEqual(estilo.estiloMapa.find(rule => rule.featureType === feature
+        assert.deepEqual(estilo.mapStyle.find(rule => rule.featureType === feature
           && rule.elementType === 'geometry').stylers, [{ visibility: 'off' }]);
       }
-      assert.deepEqual(estilo.estiloMapa.find(rule => rule.featureType === 'poi.park'
-        && rule.elementType === 'geometry').stylers, [{ visibility: 'on' }, { color: tema.colors.mapaParque }]);
+      assert.deepEqual(estilo.mapStyle.find(rule => rule.featureType === 'poi.park'
+        && rule.elementType === 'geometry').stylers, [{ visibility: 'on' }, { color: tema.colors.mapPark }]);
       assert.deepEqual(lineas.map((linea) => linea.strokeWidth), [5, 3]);
     }
   }
@@ -127,7 +127,7 @@ test('A y B mantienen tamaño y tipografía al editar, cargar u ocultar el toolt
       vistas.length = textos.length = marcadores.length = 0;
       renderToStaticMarkup(createElement(RoutePinMarker, {
         kind, coordinate: kind === 'A' ? origen : destino,
-        label: 'Una dirección larga que ocupa más de una línea', ruta, ...variante,
+        label: 'Una dirección larga que ocupa más de una línea', route: ruta, ...variante,
       }));
       const letra = textos.find((texto) => texto.children === kind);
       const pin = vistas.find((vista) => vista.style.width === 16 && vista.style.height === 16);
@@ -149,10 +149,10 @@ test('A y B mantienen tamaño y tipografía al editar, cargar u ocultar el toolt
 
 test('los pines conservan su forma y actualizan sus colores en ambos temas', () => {
   for (const modo of ['light', 'dark']) {
-    const tema = obtenerTema(modo);
+    const tema = getTheme(modo);
     for (const kind of ['A', 'B']) {
       vistas.length = textos.length = marcadores.length = 0;
-      renderToStaticMarkup(createElement(ContextoTema.Provider, { value: tema },
+      renderToStaticMarkup(createElement(ThemeContext.Provider, { value: tema },
         createElement(RoutePinMarker, { kind, coordinate: origen, label: 'Punto del viaje' })));
       const pin = vistas.find((vista) => vista.style.width === 16 && vista.style.height === 16);
       assert.equal(pin.style.backgroundColor, kind === 'A' ? tema.colors.primary : tema.colors.danger);
@@ -168,8 +168,8 @@ test('sin espacio para el tooltip conserva el pin, el título nativo y la acció
   const editar = () => {};
   renderToStaticMarkup(createElement(RoutePinMarker, {
     kind: 'A', coordinate: origen, label: 'Origen: Calle de prueba',
-    ruta: [{ ...origen, latitude: -17 }, { ...origen, latitude: -16 }],
-    zoomMapa: 15, showEditControl: true, onPress: editar,
+    route: [{ ...origen, latitude: -17 }, { ...origen, latitude: -16 }],
+    mapZoom: 15, showEditControl: true, onPress: editar,
   }));
   assert.equal(vistas[1].style.opacity, 0);
   assert.equal(marcadores[0].title, 'Origen: Calle de prueba');
@@ -200,8 +200,8 @@ test('every native map uses the shared style and disables buildings, interiors a
           const value = attributes.get(prop);
           assert.ok(value && ts.isJsxExpression(value) && value.expression?.kind === ts.SyntaxKind.FalseKeyword, file.pathname + ': ' + prop);
         }
-        assert.equal(attributes.get('customMapStyle')?.getText(source), '{estiloMapa}', file.pathname);
-        assert.equal(attributes.get('userInterfaceStyle')?.getText(source), '{modoMapa}', file.pathname);
+        assert.equal(attributes.get('customMapStyle')?.getText(source), '{mapStyle}', file.pathname);
+        assert.equal(attributes.get('userInterfaceStyle')?.getText(source), '{mapMode}', file.pathname);
       }
       ts.forEachChild(node, visit);
     }

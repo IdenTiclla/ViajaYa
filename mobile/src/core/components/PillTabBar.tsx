@@ -11,16 +11,16 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { controles, fontSize, fontWeight, radius, spacing, useEstilos, type Tema } from '@/core/theme';
+import { controls, fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 
 const ICON_SIZE = 22;
 
 export function PillTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
-  const { colors, styles, estiloFoco } = useEstilos(crearEstilos);
+  const { colors, styles, focusStyle } = useThemedStyles(createStyles);
   const insets = useSafeAreaInsets();
   const { fontScale } = useWindowDimensions();
-  const [enfocada, setEnfocada] = useState<string | null>(null);
-  const dosFilas = fontScale > 1.3;
+  const [focused, setFocused] = useState<string | null>(null);
+  const twoRows = fontScale > 1.3;
 
   // Focus by key (not by index) and filter hidden routes: a tab is hidden
   // by declaring `tabBarButton: () => null` (RN standard); visible ones do not
@@ -56,7 +56,7 @@ export function PillTabBar({ state, descriptors, navigation }: BottomTabBarProps
             ? options.title
             : route.name;
 
-        const iconColor = isFocused ? colors.textoSobreAcento : colors.textSecondary;
+        const iconColor = isFocused ? colors.textOnAccent : colors.textSecondary;
         const iconNode =
           typeof options.tabBarIcon === 'function'
             ? options.tabBarIcon({ focused: isFocused, color: iconColor, size: ICON_SIZE })
@@ -67,20 +67,20 @@ export function PillTabBar({ state, descriptors, navigation }: BottomTabBarProps
             key={route.key}
             onPress={onPress}
             onLongPress={onLongPress}
-            onFocus={() => setEnfocada(route.key)}
-            onBlur={() => setEnfocada(null)}
+            onFocus={() => setFocused(route.key)}
+            onBlur={() => setFocused(null)}
             android_ripple={{ color: 'transparent', borderless: false }}
             style={({ pressed }) => [
               styles.item,
-              dosFilas && styles.itemGrande,
+              twoRows && styles.largeItem,
               pressed && styles.pressed,
-              enfocada === route.key && estiloFoco,
+              focused === route.key && focusStyle,
             ]}
             accessibilityRole="tab"
             accessibilityState={{ selected: isFocused }}
             aria-selected={isFocused}
             accessibilityLabel={options.tabBarAccessibilityLabel ?? label}>
-            <View style={[styles.icono, isFocused && styles.iconoActivo]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+            <View style={[styles.icon, isFocused && styles.activeIcon]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
               {iconNode}
             </View>
             <Text
@@ -94,7 +94,7 @@ export function PillTabBar({ state, descriptors, navigation }: BottomTabBarProps
   );
 }
 
-const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
+const createStyles = ({ colors }: Theme) => StyleSheet.create({
   bar: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -112,16 +112,16 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     minWidth: 0,
-    minHeight: controles.altoMinimo,
+    minHeight: controls.minHeight,
     paddingHorizontal: spacing.xs,
     paddingVertical: spacing.xs,
     borderRadius: radius.md,
     flexDirection: 'column',
     gap: 2,
   },
-  itemGrande: { flexBasis: '45%' },
-  icono: { minWidth: 48, paddingVertical: 2, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center' },
-  iconoActivo: { backgroundColor: colors.accent },
+  largeItem: { flexBasis: '45%' },
+  icon: { minWidth: 48, paddingVertical: 2, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center' },
+  activeIcon: { backgroundColor: colors.accent },
   label: { fontSize: fontSize.xs, textAlign: 'center', maxWidth: '100%' },
   labelIdle: { color: colors.textSecondary },
   labelFocused: { color: colors.text, fontWeight: fontWeight.semibold },

@@ -1,11 +1,11 @@
 import { StatusBar } from 'expo-status-bar';
 import { Image, StyleSheet, View } from 'react-native';
 
-// Brand navy, fixed in both themes: it continues the native splash (app.config.ts).
-const BRAND_NAVY = '#16308C';
+import { useEstilos, type Tema } from '@/core/theme';
 
 /** Branded screen shown while the stored session is restored at startup. */
 export function LaunchScreen() {
+  const { styles } = useEstilos(createStyles);
   return (
     <View style={styles.root}>
       <StatusBar style="light" />
@@ -21,7 +21,8 @@ export function LaunchScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: BRAND_NAVY },
+// Brand navy (fixed in both themes) continues the native splash from app.config.ts.
+const createStyles = ({ colors }: Tema) => StyleSheet.create({
+  root: { flex: 1, backgroundColor: colors.brand },
   art: { flex: 1, width: '100%' },
 });

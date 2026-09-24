@@ -503,10 +503,9 @@ export function HomeScreen() {
       )}
 
       <SafeAreaView style={styles.topBar} edges={['top']} pointerEvents="box-none">
-        <View style={styles.brandMark} accessibilityElementsHidden>
-          <Ionicons name="car-sport" size={22} color={colors.primary} />
+        <View style={styles.brand} accessible accessibilityRole="header" accessibilityLabel="ViajaYa">
+          <Text style={styles.brandText}>Viaja<Text style={styles.brandAccent}>Ya</Text></Text>
         </View>
-        <Text style={styles.brand}>ViajaYa</Text>
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>{firstName(user?.fullName).charAt(0).toUpperCase()}</Text>
         </View>
@@ -691,20 +690,21 @@ const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  brandMark: {
-    width: 44,
-    height: 44,
+  // Same wordmark as the logo: white "Viaja" + yellow "Ya" on brand navy.
+  brand: {
+    minHeight: 44,
+    paddingHorizontal: spacing.md,
     borderRadius: radius.pill,
-    backgroundColor: colors.surface,
-    alignItems: 'center',
+    backgroundColor: colors.brand,
     justifyContent: 'center',
     shadowColor: '#000',
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.15,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
     elevation: 3,
   },
-  brand: { fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.primary },
+  brandText: { fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textOnBrand },
+  brandAccent: { color: colors.accent },
   avatar: {
     width: 44,
     height: 44,

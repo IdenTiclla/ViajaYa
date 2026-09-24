@@ -15,7 +15,25 @@ const SEPARACION_MAXIMA_TOOLTIP = 48;
 const HOLGURA_RUTA = ANCHO_CONTORNO_RUTA / 2 + 4;
 
 export type PuntoMapa = { x: number; y: number };
-type MedidasEtiqueta = { ancho: number; alto: number };
+export type MedidasEtiqueta = { ancho: number; alto: number };
+
+/**
+ * Web Mercator in world units (the whole world spans 1 × 1). Shared by label
+ * placement and camera framing so both agree on the screen geometry.
+ */
+export function mercatorY(latitude: number): number {
+  const radians = Math.max(-85, Math.min(85, latitude)) * Math.PI / 180;
+  return Math.log(Math.tan(Math.PI / 4 + radians / 2)) / (2 * Math.PI);
+}
+
+export function latitudeFromMercatorY(y: number): number {
+  return (2 * Math.atan(Math.exp(y * 2 * Math.PI)) - Math.PI / 2) * 180 / Math.PI;
+}
+
+/** Signed longitude difference in degrees, wrapped across the antimeridian. */
+export function longitudeDelta(from: number, to: number): number {
+  return ((to - from + 540) % 360) - 180;
+}
 
 /** Proyección cenital de Google Maps en unidades lógicas, relativa al pin. */
 export function proyectarRutaRespectoAlPin(
@@ -25,16 +43,11 @@ export function proyectarRutaRespectoAlPin(
   zoomMapa: number,
 ): PuntoMapa[] {
   const escala = 256 * 2 ** zoomMapa;
-  const mercator = (latitud: number) => {
-    const radianes = Math.max(-85, Math.min(85, latitud)) * Math.PI / 180;
-    return Math.log(Math.tan(Math.PI / 4 + radianes / 2)) / (2 * Math.PI);
-  };
-  const origenY = mercator(punto.latitude);
+  const origenY = mercatorY(punto.latitude);
   const rumbo = rumboMapa * Math.PI / 180;
   return ruta.map((coordenada) => {
-    const longitud = ((coordenada.longitude - punto.longitude + 540) % 360) - 180;
-    const este = longitud / 360 * escala;
-    const norte = (mercator(coordenada.latitude) - origenY) * escala;
+    const este = longitudeDelta(punto.longitude, coordenada.longitude) / 360 * escala;
+    const norte = (mercatorY(coordenada.latitude) - origenY) * escala;
     return {
       x: este * Math.cos(rumbo) - norte * Math.sin(rumbo),
       y: -norte * Math.cos(rumbo) - este * Math.sin(rumbo),
@@ -154,4 +167,111 @@ export function programarRedibujadoMarcador(
     cancelado = true;
     cancelarFrame(frame);
   };
+}
+
+export type RoutePinLabel = {
+  kind: 'A' | 'B';
+  coordinate: Coordinates;
+  /** Measured label block (RoutePinMarker reports it), in logical pixels. */
+  size: MedidasEtiqueta;
+};
+
+type EdgePadding = { top: number; bottom: number; left: number; right: number };
+
+/**
+ * Extra points so `fitToCoordinates` frames the route *and* its A/B labels on a
+ * north-up map. Each label is placed with the same rules RoutePinMarker uses
+ * (side, separation and visibility depend on the zoom), so the scale is refined
+ * until the labels' outer corners fit the padded viewport.
+ */
+export function getLabelAwareFitCoordinates(
+  route: readonly Coordinates[],
+  labels: readonly RoutePinLabel[],
+  width: number,
+  height: number,
+  padding: EdgePadding,
+): Coordinates[] {
+  const innerWidth = width - padding.left - padding.right;
+  const innerHeight = height - padding.top - padding.bottom;
+  if (route.length < 2 || labels.length === 0 || innerWidth <= 0 || innerHeight <= 0) {
+    return [...route];
+  }
+
+  // World units relative to the first point; route bounds never change.
+  const ref = route[0].longitude;
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const point of route) {
+    const x = longitudeDelta(ref, point.longitude) / 360;
+    const y = mercatorY(point.latitude);
+    minX = Math.min(minX, x);
+    maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y);
+    maxY = Math.max(maxY, y);
+  }
+  if (maxX - minX <= 0 && maxY - minY <= 0) return [...route];
+
+  const pins = labels.map((label) => ({
+    ...label,
+    x: longitudeDelta(ref, label.coordinate.longitude) / 360,
+    y: mercatorY(label.coordinate.latitude),
+    preferred: elegirPosicionTooltip(label.kind, label.coordinate, route),
+  }));
+
+  const cornersAt = (scale: number) => {
+    const zoom = Math.log2(scale / 256);
+    const corners: PuntoMapa[] = [];
+    for (const pin of pins) {
+      const { posicion, separacion, visible } = ubicarTooltipSinCruzarRuta(
+        proyectarRutaRespectoAlPin(pin.coordinate, route, 0, zoom), pin.size, pin.preferred,
+      );
+      if (!visible) continue;
+      const halfWidth = pin.size.ancho / 2 / scale;
+      const reach = (TAMANO_PIN_RUTA / 2 + separacion + pin.size.alto) / scale;
+      const y = posicion === 'arriba' ? pin.y + reach : pin.y - reach;
+      corners.push({ x: pin.x - halfWidth, y }, { x: pin.x + halfWidth, y });
+    }
+    return corners;
+  };
+
+  const fitScale = (corners: readonly PuntoMapa[]) => {
+    let x0 = minX;
+    let x1 = maxX;
+    let y0 = minY;
+    let y1 = maxY;
+    for (const corner of corners) {
+      x0 = Math.min(x0, corner.x);
+      x1 = Math.max(x1, corner.x);
+      y0 = Math.min(y0, corner.y);
+      y1 = Math.max(y1, corner.y);
+    }
+    return Math.min(
+      x1 - x0 > 0 ? innerWidth / (x1 - x0) : Infinity,
+      y1 - y0 > 0 ? innerHeight / (y1 - y0) : Infinity,
+    );
+  };
+
+  let scale = fitScale([]);
+  let previous = scale;
+  let converged = false;
+  for (let i = 0; i < 12 && Number.isFinite(scale) && scale > 0; i += 1) {
+    const next = fitScale(cornersAt(scale));
+    previous = scale;
+    scale = next;
+    if (Math.abs(next - previous) / previous < 0.001) {
+      converged = true;
+      break;
+    }
+  }
+  // A label that flips sides between two zooms can oscillate; keep the safer one.
+  if (!converged) scale = Math.min(scale, previous);
+  if (!Number.isFinite(scale) || scale <= 0) return [...route];
+
+  const extra = cornersAt(scale).map((corner) => ({
+    latitude: latitudeFromMercatorY(corner.y),
+    longitude: ref + corner.x * 360,
+  }));
+  return [...route, ...extra];
 }

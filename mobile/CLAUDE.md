@@ -222,7 +222,9 @@ anteriores a una elección y permite reintentar si el almacenamiento falla.
 Paleta clara:
 
 - `colors.primary #16308C` (azul TaxiGo) · `colors.primaryDark #0F2266` · `colors.accent #F5C518`
-  (amarillo Stitch: tab activo, estrellas, acentos) · `success #167347` · `danger #C52C22` ·
+  (amarillo Stitch: tab activo, estrellas, acentos) · `brand #16308C` + `textOnBrand #FFFFFF`
+  (fijos en ambos temas: el nombre «Viaja» blanco + «Ya» `accent` sobre azul, como logo y splash;
+  lo usan el encabezado de Home y `LaunchScreen`) · `success #167347` · `danger #C52C22` ·
   `text #182230` · `textSecondary #536174` · `surfaceMuted #F3F5F8` · `border #DCE2EB`.
 - `bordeControl #7D8796` identifica campos y opciones; `border` se reserva para
   separadores decorativos. `primarioSuave` y `peligroSuave` acompañan las acciones
@@ -253,7 +255,8 @@ Splash/adaptiveIcon conservan el azul de marca `#16308C`. Logo ("F2", 23/09/2026
 monochrome` (dentro del círculo seguro de 66 dp) y `splash-icon.png` (`imageWidth: 200`) lo usan;
 cambiarlos exige prebuild + recompilar el APK. Tras el splash nativo, `core/components/LaunchScreen`
 muestra `launch-screen.png` (ruta amarilla con taxi y mototaxi, nombre y lema «Taxi o moto, tú pones
-el precio.») mientras `bootstrap` restaura la sesión, con un mínimo de 1,2 s (`LAUNCH_MIN_MS`).
+el precio.») mientras `bootstrap` restaura la sesión, con un mínimo de 1,2 s (`LAUNCH_MIN_MS`), solo en el
+arranque en frío; login, logout y Reintentar muestran el spinner ligero.
 
 ### Controles y accesibilidad
 
@@ -412,9 +415,12 @@ npm run lint               # expo lint (eslint-config-expo)
   contorno 5 y pin A/B de 16, sin variantes de tamaño por rol. Configuración
   conserva la edición al tocar los marcadores y muestra siempre los tooltips
   Origen/Destino; se retiraron los dos bloques A/B superiores y el toggle de
-  nombres de lugares para ampliar el mapa. Su encuadre usa márgenes mínimos y
-  `getTooltipFitCoordinates` (`tripMapLayout.ts`) añade las esquinas de cada
-  tooltip para que no salgan del área visible sin perder zoom en el resto. No dupliques la polilínea ni
+  nombres de lugares para ampliar el mapa. Su encuadre reserva la cabecera completa y
+  márgenes mínimos; `getLabelAwareFitCoordinates` (`routeTooltipLayout.ts`) añade las
+  esquinas de cada tooltip con su tamaño medido (`onLabelSize` de `RoutePinMarker`) y
+  el lado/separación reales de `ubicarTooltipSinCruzarRuta`, así no salen del área
+  visible sin perder zoom en el resto. La proyección Mercator (`mercatorY`,
+  `longitudeDelta`) vive solo en ese archivo. No dupliques la polilínea ni
   los estilos del pin en una pantalla. Conserva el contenedor nativo no aplanable,
   el anclaje al centro del símbolo y el redibujado cancelable tras cambios de layout.
   La colocación de tooltips comprueba todos los segmentos en la proyección de

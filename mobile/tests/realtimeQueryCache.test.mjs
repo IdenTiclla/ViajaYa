@@ -13,7 +13,7 @@ function deferred() {
   return { promise, resolve };
 }
 
-test('una respuesta HTTP vieja no pisa la escritura posterior del WebSocket', async () => {
+test('an old HTTP response does not overwrite the later WebSocket write', async () => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -39,7 +39,7 @@ test('una respuesta HTTP vieja no pisa la escritura posterior del WebSocket', as
   queryClient.clear();
 });
 
-test('un handler invalidado mientras cancela no escribe la caché', async () => {
+test('a handler invalidated while cancelling does not write the cache', async () => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });

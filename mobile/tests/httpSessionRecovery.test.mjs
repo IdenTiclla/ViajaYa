@@ -49,12 +49,12 @@ test('authentication requests always declare their build environment', async (t)
 });
 
 function unauthorized(config) {
-  return new AxiosError('Sesión vencida', 'ERR_BAD_REQUEST', config, null, {
+  return new AxiosError('Session expired', 'ERR_BAD_REQUEST', config, null, {
     data: {}, status: 401, statusText: 'Unauthorized', headers: {}, config,
   });
 }
 
-test('una sesión antigua no deja la recuperación esperando un refresh sin límite', async (t) => {
+test('an old session does not leave recovery waiting on an unbounded refresh', async (t) => {
   const adapter = api.defaults.adapter;
   const globalAdapter = axios.defaults.adapter;
   const timeout = api.defaults.timeout;
@@ -84,7 +84,7 @@ test('una sesión antigua no deja la recuperación esperando un refresh sin lím
   api.defaults.adapter = simulate;
   axios.defaults.adapter = simulate;
   const result = await Promise.race([
-    api.get('/rides/me/active').then(() => 'éxito', () => 'error'),
+    api.get('/rides/me/active').then(() => 'success', () => 'error'),
     new Promise((resolve) => setTimeout(() => resolve('bloqueado'), 150)),
   ]);
   assert.equal(result, 'error');
@@ -93,7 +93,7 @@ test('una sesión antigua no deja la recuperación esperando un refresh sin lím
   assert.equal(tokenStorage.tokens.refreshToken, 'anterior');
 });
 
-test('consultas concurrentes comparten el refresh y recuperan un inicio sin viaje', async (t) => {
+test('concurrent queries share the refresh and recover a start without a ride', async (t) => {
   const adapter = api.defaults.adapter;
   t.after(() => { api.defaults.adapter = adapter; });
   tokenStorage.tokens = { accessToken: 'vencido', refreshToken: 'anterior' };
@@ -116,19 +116,19 @@ test('consultas concurrentes comparten el refresh y recuperan un inicio sin viaj
   assert.equal(tokenStorage.tokens.accessToken, 'nuevo');
 });
 
-test('un refresh vencido cierra sesión sin renovar recursivamente', async (t) => {
+test('an expired refresh signs out without renewing recursively', async (t) => {
   const adapter = api.defaults.adapter;
   t.after(() => {
     api.defaults.adapter = adapter;
     setOnSessionExpired(null);
   });
-  tokenStorage.tokens = { accessToken: 'vencido', refreshToken: 'también vencido' };
+  tokenStorage.tokens = { accessToken: 'vencido', refreshToken: 'also expired' };
   let requests = 0;
   let expired = 0;
   setOnSessionExpired(() => { expired += 1; });
   api.defaults.adapter = async (config) => {
     requests += 1;
-    assert.ok(requests <= 2, 'La renovación entró en un bucle');
+    assert.ok(requests <= 2, 'The renewal entered a loop');
     throw unauthorized(config);
   };
   await assert.rejects(api.get('/rides/me/active'));
@@ -137,7 +137,7 @@ test('un refresh vencido cierra sesión sin renovar recursivamente', async (t) =
   assert.equal(tokenStorage.tokens, null);
 });
 
-test('una lectura fallida durante el refresh no bloquea renovaciones futuras', async (t) => {
+test('a failed read during the refresh does not block future renewals', async (t) => {
   const adapter = api.defaults.adapter;
   const get = tokenStorage.get;
   t.after(() => { api.defaults.adapter = adapter; tokenStorage.get = get; });
@@ -160,15 +160,15 @@ test('una lectura fallida durante el refresh no bloquea renovaciones futuras', a
   assert.equal((await api.get('/rides/me/active')).status, 200);
 });
 
-test('un token renovado rechazado devuelve al login en lugar de repetir la recuperación', async (t) => {
+test('a rejected renewed token goes back to login instead of repeating recovery', async (t) => {
   const adapter = api.defaults.adapter;
   t.after(() => { api.defaults.adapter = adapter; setOnSessionExpired(null); });
   tokenStorage.tokens = { accessToken: 'linux', refreshToken: 'linux-refresh' };
-  let peticiones = 0;
-  let expiraciones = 0;
-  setOnSessionExpired(() => { expiraciones += 1; });
+  let requestLog = 0;
+  let expirations = 0;
+  setOnSessionExpired(() => { expirations += 1; });
   api.defaults.adapter = async (config) => {
-    peticiones += 1;
+    requestLog += 1;
     if (config.url === '/auth/refresh') return {
       data: { access_token: 'renovado', refresh_token: 'renovado-refresh' },
       status: 200, statusText: 'OK', headers: {}, config,
@@ -176,31 +176,31 @@ test('un token renovado rechazado devuelve al login en lugar de repetir la recup
     throw unauthorized(config);
   };
   await assert.rejects(api.get('/auth/me'));
-  assert.equal(peticiones, 3);
-  assert.equal(expiraciones, 1);
+  assert.equal(requestLog, 3);
+  assert.equal(expirations, 1);
   assert.equal(tokenStorage.tokens, null);
 });
 
-test('volver al login descarta una renovación anterior que responde tarde', async (t) => {
+test('going back to login discards an earlier renewal that answers late', async (t) => {
   const adapter = api.defaults.adapter;
   t.after(() => { api.defaults.adapter = adapter; });
   tokenStorage.tokens = { accessToken: 'anterior', refreshToken: 'anterior-refresh' };
-  let resolver;
-  let avisarInicio;
-  const iniciado = new Promise((resolve) => { avisarInicio = resolve; });
+  let release;
+  let notifyStart;
+  const started = new Promise((resolve) => { notifyStart = resolve; });
   api.defaults.adapter = async (config) => {
     if (config.url !== '/auth/refresh') throw unauthorized(config);
     return new Promise((resolve) => {
-      resolver = () => resolve({ data: { access_token: 'tardío', refresh_token: 'tardío' },
+      release = () => resolve({ data: { access_token: 'late', refresh_token: 'late' },
         status: 200, statusText: 'OK', headers: {}, config });
-      avisarInicio();
+      notifyStart();
     });
   };
-  const pendiente = assert.rejects(api.get('/auth/me'));
-  await iniciado;
+  const pending = assert.rejects(api.get('/auth/me'));
+  await started;
   invalidateSessionRequests();
   tokenStorage.tokens = { accessToken: 'otra-cuenta', refreshToken: 'otra-cuenta' };
-  resolver();
-  await pendiente;
+  release();
+  await pending;
   assert.equal(tokenStorage.tokens.accessToken, 'otra-cuenta');
 });

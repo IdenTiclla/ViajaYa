@@ -14,7 +14,7 @@ const parsers = {
   driver: driverRealtimeMessageParser,
 };
 
-test('el fixture backend declara una matriz versionada y sin casos duplicados', () => {
+test('the backend fixture declares a versioned matrix without duplicate cases', () => {
   assert.equal(contract.fixture_version, 1);
   assert.ok(contract.cases.length > 0);
   assert.equal(
@@ -24,12 +24,12 @@ test('el fixture backend declara una matriz versionada y sin casos duplicados', 
 });
 
 for (const contractCase of contract.cases) {
-  test(`acepta el contrato backend ${contractCase.name}`, () => {
+  test(`accepts the backend contract ${contractCase.name}`, () => {
     assert.ok(contractCase.audiences.length > 0);
 
     for (const audience of contractCase.audiences) {
       const parser = parsers[audience];
-      assert.ok(parser, `Público desconocido: ${audience}`);
+      assert.ok(parser, `Unknown audience: ${audience}`);
 
       const result = parser.safeParse(contractCase.message);
       assert.equal(

@@ -3,54 +3,54 @@ import test from 'node:test';
 
 import { confirmRecovery } from '../src/features/home/application/confirmRecovery.ts';
 
-const exito = (data = null) => ({ isSuccess: true, data, error: null });
+const success = (data = null) => ({ isSuccess: true, data, error: null });
 
-test('sin viaje activo verifica la calificación y permite terminar la carga', async () => {
-  const llamadas = [];
+test('without an active ride it checks the rating and lets loading finish', async () => {
+  const calls = [];
   await confirmRecovery(
-    async () => { llamadas.push('activo'); return exito(); },
-    async () => { llamadas.push('calificación'); return exito(); },
+    async () => { calls.push('activo'); return success(); },
+    async () => { calls.push('calificación'); return success(); },
   );
-  assert.deepEqual(llamadas, ['activo', 'calificación']);
+  assert.deepEqual(calls, ['activo', 'calificación']);
 });
 
-test('un viaje vigente conserva prioridad sobre calificaciones antiguas', async () => {
+test('a current ride keeps priority over old ratings', async () => {
   await confirmRecovery(
-    async () => exito({ id: 'vigente' }),
-    async () => assert.fail('No debe recuperar una calificación con viaje activo'),
+    async () => success({ id: 'vigente' }),
+    async () => assert.fail('Must not recover a rating while a ride is active'),
   );
 });
 
-for (const etapa of ['activo', 'calificación']) {
-  test(`una consulta de ${etapa} bloqueada termina con error y permite reintentar`, async () => {
-    const bloqueada = () => new Promise(() => {});
+for (const stage of ['activo', 'calificación']) {
+  test(`a blocked ${stage} query ends with an error and allows retrying`, async () => {
+    const blocked = () => new Promise(() => {});
     await assert.rejects(confirmRecovery(
-      etapa === 'activo' ? bloqueada : async () => exito(),
-      bloqueada,
+      stage === 'activo' ? blocked : async () => success(),
+      blocked,
       10,
     ), /La verificación tardó demasiado/);
-    await confirmRecovery(async () => exito(), async () => exito());
+    await confirmRecovery(async () => success(), async () => success());
   });
 }
 
-test('un error de consulta no se interpreta como ausencia de viaje', async () => {
+test('a query error is not interpreted as having no ride', async () => {
   const error = new Error('Servidor inaccesible');
   await assert.rejects(confirmRecovery(
     async () => ({ isSuccess: false, error }),
-    async () => assert.fail('No debe consultar calificaciones tras el error'),
+    async () => assert.fail('Must not query ratings after the error'),
   ), error);
 });
 
-test('una respuesta posterior al límite no inicia otra consulta', async () => {
-  let resolver;
-  const pendiente = new Promise((resolve) => { resolver = resolve; });
-  let calificaciones = 0;
+test('a response after the limit does not start another query', async () => {
+  let release;
+  const pending = new Promise((resolve) => { release = resolve; });
+  let ratings = 0;
   await assert.rejects(confirmRecovery(
-    () => pendiente,
-    async () => { calificaciones += 1; return exito(); },
+    () => pending,
+    async () => { ratings += 1; return success(); },
     10,
   ), /La verificación tardó demasiado/);
-  resolver(exito());
+  release(success());
   await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(calificaciones, 0);
+  assert.equal(ratings, 0);
 });

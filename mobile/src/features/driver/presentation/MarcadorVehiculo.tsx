@@ -79,21 +79,18 @@ export function MarcadorVehiculo({ coordinates, heading, tipoVehiculo, label, op
   );
 }
 
+// Compact marker: the vehicle drawing sits directly on the street, no background disc.
 const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
-  marco: {
-    width: 56, height: 56, borderRadius: 28, borderWidth: 1,
-    borderColor: colors.bordeControl, backgroundColor: colors.vehiculoFondo,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  vehiculo: { width: 54, height: 54, alignItems: 'center', justifyContent: 'center' },
+  marco: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
+  vehiculo: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
   frente: {
-    position: 'absolute', top: 1, width: 0, height: 0,
-    borderLeftWidth: 4, borderRightWidth: 4, borderBottomWidth: 5,
+    position: 'absolute', top: 0, width: 0, height: 0,
+    borderLeftWidth: 3, borderRightWidth: 3, borderBottomWidth: 4,
     borderLeftColor: 'transparent', borderRightColor: 'transparent',
     borderBottomColor: colors.vehiculoContorno,
   },
   sinRumbo: {
-    position: 'absolute', width: 18, height: 18, borderRadius: 9,
-    backgroundColor: colors.vehiculoContorno,
+    position: 'absolute', width: 14, height: 14, borderRadius: 7, borderWidth: 2.5,
+    borderColor: colors.vehiculoReflejo, backgroundColor: colors.vehiculoContorno,
   },
 });

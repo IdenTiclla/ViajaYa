@@ -25,6 +25,7 @@ import {
   TAMANO_LETRA_PIN_RUTA,
   TAMANO_PIN_RUTA,
   ubicarTooltipSinCruzarRuta,
+  type MedidasEtiqueta,
 } from '@/features/rides/presentation/routeTooltipLayout';
 
 type Props = {
@@ -49,6 +50,8 @@ type Props = {
   /** Indica que todavía se está resolviendo el nombre de este punto. */
   loading?: boolean;
   onPress?: () => void;
+  /** Reports the measured label block so the camera can frame it. */
+  onLabelSize?: (size: MedidasEtiqueta) => void;
 };
 
 const RUTA_VACIA: readonly Coordinates[] = [];
@@ -66,6 +69,7 @@ export function RoutePinMarker({
   zIndex,
   loading = false,
   onPress,
+  onLabelSize,
 }: Props) {
   const { colors, styles, modo } = useEstilos(crearEstilos);
   const marcador = useRef<MapMarker>(null);
@@ -126,6 +130,7 @@ export function RoutePinMarker({
             const { width, height } = event.nativeEvent.layout;
             setMedidasEtiquetas((actuales) => actuales.ancho === width && actuales.alto === height
               ? actuales : { ancho: width, alto: height });
+            onLabelSize?.({ ancho: width, alto: height });
           }}>
           {showEditControl && (
             <View

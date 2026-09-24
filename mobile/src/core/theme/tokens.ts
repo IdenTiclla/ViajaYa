@@ -8,6 +8,9 @@ export const coloresClaros = {
   primary: '#16308C', // azul principal (botones, marca)
   primaryDark: '#0F2266',
   accent: '#F5C518', // amarillo (íconos de servicio, tab activo)
+  // Brand wordmark ground/text: fixed in both themes, like the logo and splash.
+  brand: '#16308C',
+  textOnBrand: '#FFFFFF',
 
   // Superficies
   background: '#FFFFFF',
@@ -44,7 +47,6 @@ export const coloresClaros = {
   // Detalles del vehículo: conservan su identidad sobre ambos estilos de mapa.
   vehiculoContorno: '#162238',
   vehiculoReflejo: '#E8F7FF',
-  vehiculoFondo: '#EAF0F5',
 
   // Social
   google: '#FFFFFF',

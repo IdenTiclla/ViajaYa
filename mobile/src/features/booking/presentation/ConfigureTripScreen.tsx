@@ -51,6 +51,10 @@ import {
 } from '@/features/rides/application/useRides';
 import { useEstiloMapa } from '@/features/booking/presentation/mapStyle';
 import { RoutePinMarker } from '@/features/rides/presentation/RoutePinMarker';
+import {
+  getLabelAwareFitCoordinates,
+  type MedidasEtiqueta,
+} from '@/features/rides/presentation/routeTooltipLayout';
 import { RoutePolyline } from '@/features/rides/presentation/RoutePolyline';
 import { useRumboMapa } from '@/features/rides/application/useRumboMapa';
 import { MotorcycleRouteNotice } from '@/features/rides/presentation/MotorcycleRouteNotice';
@@ -61,9 +65,12 @@ const PAYMENTS: readonly SelectableOption<PaymentMethod>[] = [
   { id: 'qr', label: 'QR', icon: 'qr-code', accessibilityLabel: 'Pagar con QR' },
 ];
 
-// Mismo encuadre lateral del mapa de solicitudes del conductor. Abajo se usa el
-// alto real del panel para mantener todo el trayecto en el área visible.
-const FIT_SIDES = 32;
+// Tight fit around the route; the A/B labels get room only where they need it.
+const FIT_INSET = 16;
+// Smallest route area the camera keeps when the viewport is tiny.
+const MIN_FIT_SPAN = 48;
+// RoutePinMarker's initial label estimate, used until it reports the real size.
+const DEFAULT_LABEL_SIZE: MedidasEtiqueta = { ancho: 178, alto: 40 };
 const MIN_KEYBOARD_TRANSLATION = 280;
 
 function formatDistance(meters: number): string {
@@ -108,11 +115,13 @@ export function ConfigureTripScreen() {
   const [headerHeight, setHeaderHeight] = useState(insets.top + 56);
   const [mapReady, setMapReady] = useState(false);
   const [mapSize, setMapSize] = useState({ width: 0, height: 0 });
+  const [labelSizes, setLabelSizes] = useState({ A: DEFAULT_LABEL_SIZE, B: DEFAULT_LABEL_SIZE });
+  const reportLabelSize = (kind: 'A' | 'B') => (size: MedidasEtiqueta) =>
+    setLabelSizes((current) => current[kind].ancho === size.ancho && current[kind].alto === size.alto
+      ? current : { ...current, [kind]: size });
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [keyboardOffset, setKeyboardOffset] = useState(0);
-  // Mostrar/ocultar etiquetas de lugares (el usuario lo controla con el toggle).
-  const [showPlaces, setShowPlaces] = useState(false);
-  const { estiloMapa, modoMapa } = useEstiloMapa(!showPlaces);
+  const { estiloMapa, modoMapa } = useEstiloMapa();
   const [confirmExit, setConfirmExit] = useState(false);
   const [manualExit, setAllowExit] = useState(false);
   const [exitAfterSave, setExitAfterSave] = useState(false);
@@ -254,17 +263,27 @@ export function ConfigureTripScreen() {
   const fitToTrip = useCallback(
     (animated: boolean) => {
       if (!mapReady || mapSize.width <= 0 || mapSize.height <= 0 || fitCoordinates.length < 2) return;
-      mapRef.current?.fitToCoordinates(fitCoordinates, {
-        edgePadding: {
-          top: Math.ceil(headerHeight + spacing.sm),
-          right: FIT_SIDES,
-          bottom: 24,
-          left: FIT_SIDES,
+      // The floating header always keeps its full height; only a viewport too
+      // small to show anything else gives some of it back.
+      const top = Math.max(0, Math.min(Math.ceil(headerHeight + spacing.sm), mapSize.height - MIN_FIT_SPAN));
+      const bottom = Math.max(0, Math.min(FIT_INSET, mapSize.height - top - MIN_FIT_SPAN));
+      const side = Math.max(0, Math.min(FIT_INSET, (mapSize.width - MIN_FIT_SPAN) / 2));
+      const edgePadding = { top, bottom, left: side, right: side };
+      const labels = [
+        { kind: 'A' as const, coordinate: origin?.coordinates ?? fitCoordinates[0], size: labelSizes.A },
+        {
+          kind: 'B' as const,
+          coordinate: destination?.coordinates ?? fitCoordinates[fitCoordinates.length - 1],
+          size: labelSizes.B,
         },
-        animated,
-      });
+      ];
+      mapRef.current?.fitToCoordinates(
+        getLabelAwareFitCoordinates(fitCoordinates, labels, mapSize.width, mapSize.height, edgePadding),
+        { edgePadding, animated },
+      );
     },
-    [fitCoordinates, mapReady, mapSize.width, mapSize.height, headerHeight],
+    [fitCoordinates, origin?.coordinates, destination?.coordinates, mapReady, mapSize.width,
+      mapSize.height, headerHeight, labelSizes],
   );
 
   // Reajusta la cámara cuando llega/cambia el trayecto o se mide el sheet.
@@ -322,6 +341,11 @@ export function ConfigureTripScreen() {
         />
       </SafeAreaView>
     );
+  }
+
+  // Leaving clears the trip before the screen unmounts; don't flash the fallback.
+  if (allowExit && (!origin || !destination || !region)) {
+    return <View style={styles.root} />;
   }
 
   if (!origin || !destination || !region) {
@@ -432,7 +456,7 @@ export function ConfigureTripScreen() {
             rumboMapa={rumboMapa}
             zoomMapa={zoomMapa}
             label={`Origen: ${originMapLabel}`}
-            showTooltip={false}
+            onLabelSize={reportLabelSize('A')}
             loading={originMapLoading}
             zIndex={20}
             onPress={editOrigin}
@@ -445,7 +469,7 @@ export function ConfigureTripScreen() {
             rumboMapa={rumboMapa}
             zoomMapa={zoomMapa}
             label={`Destino: ${destinationMapLabel}`}
-            showTooltip={false}
+            onLabelSize={reportLabelSize('B')}
             loading={destinationMapLoading}
             zIndex={21}
             onPress={editDestination}
@@ -473,18 +497,6 @@ export function ConfigureTripScreen() {
             accessibilityRole="button"
             accessibilityLabel="Volver">
             <Ionicons name="arrow-back" size={24} color={colors.text} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.back}
-            onPress={() => setShowPlaces((v) => !v)}
-            accessibilityRole="button"
-            accessibilityState={{ selected: showPlaces }}
-            accessibilityLabel={showPlaces ? 'Ocultar nombres de lugares' : 'Mostrar nombres de lugares'}>
-            <Ionicons
-              name={showPlaces ? 'business' : 'business-outline'}
-              size={22}
-              color={showPlaces ? colors.primary : colors.textSecondary}
-            />
           </TouchableOpacity>
         </View>
       </SafeAreaView>

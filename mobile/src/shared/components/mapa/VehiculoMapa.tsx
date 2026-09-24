@@ -60,85 +60,86 @@ export function VehiculoMapa({ tipo }: { tipo: VehicleType }) {
   );
 }
 
+// Compact top-down scale (~street width at city zoom); no background disc.
 const crearEstilos = ({ colors }: Tema) => StyleSheet.create({
-  marco: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  marco: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
   carroceria: {
-    width: 24, height: 38, borderRadius: 7, borderWidth: 1.5,
+    width: 14, height: 24, borderRadius: 4.5, borderWidth: 1,
     borderColor: colors.vehiculoContorno, backgroundColor: colors.accent,
   },
   ruedas: {
-    position: 'absolute', width: 29, height: 7, borderRadius: 2,
+    position: 'absolute', width: 17, height: 4, borderRadius: 1.5,
     backgroundColor: colors.vehiculoContorno,
   },
-  ruedasDelanteras: { top: 10 },
-  ruedasTraseras: { bottom: 8 },
-  ruedasCamionDelanteras: { top: 6 },
-  ruedasCamionTraseras: { bottom: 5 },
+  ruedasDelanteras: { top: 6 },
+  ruedasTraseras: { bottom: 5 },
+  ruedasCamionDelanteras: { top: 4 },
+  ruedasCamionTraseras: { bottom: 3 },
   cabina: {
-    position: 'absolute', top: 1, width: 24, height: 14, borderTopLeftRadius: 7,
-    borderTopRightRadius: 7, borderBottomLeftRadius: 2, borderBottomRightRadius: 2,
-    borderWidth: 1.5, borderColor: colors.vehiculoContorno, backgroundColor: colors.accent,
+    position: 'absolute', top: 1, width: 14.5, height: 8.5, borderTopLeftRadius: 4,
+    borderTopRightRadius: 4, borderBottomLeftRadius: 1, borderBottomRightRadius: 1,
+    borderWidth: 1, borderColor: colors.vehiculoContorno, backgroundColor: colors.accent,
   },
   parabrisasCabina: {
-    position: 'absolute', top: 5, left: 2, right: 2, height: 5,
-    borderRadius: 2, backgroundColor: colors.vehiculoContorno, overflow: 'hidden',
+    position: 'absolute', top: 3, left: 1.5, right: 1.5, height: 3,
+    borderRadius: 1, backgroundColor: colors.vehiculoContorno, overflow: 'hidden',
   },
   caja: {
-    position: 'absolute', top: 16, width: 26, height: 27, borderRadius: 3,
-    borderWidth: 1.5, borderColor: colors.vehiculoContorno, backgroundColor: colors.surface,
+    position: 'absolute', top: 10, width: 15.5, height: 16.5, borderRadius: 2,
+    borderWidth: 1, borderColor: colors.vehiculoContorno, backgroundColor: colors.surface,
   },
   espejos: {
-    position: 'absolute', top: 16, width: 32, height: 3, borderRadius: 2,
+    position: 'absolute', top: 9, width: 19, height: 2, borderRadius: 1,
     backgroundColor: colors.vehiculoContorno,
   },
   parabrisas: {
-    position: 'absolute', top: 8, left: 2, right: 2, height: 7,
-    borderTopLeftRadius: 4, borderTopRightRadius: 4, borderBottomLeftRadius: 2,
-    borderBottomRightRadius: 2, backgroundColor: colors.vehiculoContorno,
+    position: 'absolute', top: 5, left: 1.5, right: 1.5, height: 4,
+    borderTopLeftRadius: 2.5, borderTopRightRadius: 2.5, borderBottomLeftRadius: 1,
+    borderBottomRightRadius: 1, backgroundColor: colors.vehiculoContorno,
     overflow: 'hidden',
   },
   reflejo: {
-    position: 'absolute', top: 1.5, left: 3, right: 3, height: 1.5,
-    borderRadius: 1, backgroundColor: colors.vehiculoReflejo,
+    position: 'absolute', top: 1, left: 2, right: 2, height: 1,
+    borderRadius: 0.5, backgroundColor: colors.vehiculoReflejo,
   },
   distintivoTaxi: {
-    position: 'absolute', top: 18, left: 7, width: 7, height: 3,
-    borderRadius: 1, backgroundColor: colors.vehiculoContorno,
+    position: 'absolute', top: 11, left: 4, width: 4, height: 2,
+    borderRadius: 0.5, backgroundColor: colors.vehiculoContorno,
   },
   ventanaTrasera: {
-    position: 'absolute', bottom: 6, left: 3, right: 3, height: 5,
-    borderRadius: 2, backgroundColor: colors.vehiculoContorno,
+    position: 'absolute', bottom: 3.5, left: 2, right: 2, height: 3,
+    borderRadius: 1, backgroundColor: colors.vehiculoContorno,
   },
   faro: {
-    position: 'absolute', top: 2, width: 4, height: 2,
-    borderRadius: 1, backgroundColor: colors.vehiculoReflejo,
+    position: 'absolute', top: 1, width: 2.5, height: 1.5,
+    borderRadius: 0.5, backgroundColor: colors.vehiculoReflejo,
   },
   piloto: {
-    position: 'absolute', bottom: 2, width: 4, height: 2,
-    borderRadius: 1, backgroundColor: colors.danger,
+    position: 'absolute', bottom: 1, width: 2.5, height: 1.5,
+    borderRadius: 0.5, backgroundColor: colors.danger,
   },
-  izquierdo: { left: 2 },
-  derecho: { right: 2 },
+  izquierdo: { left: 1.5 },
+  derecho: { right: 1.5 },
   ruedaMoto: {
-    position: 'absolute', width: 6, height: 10,
-    borderRadius: 3, backgroundColor: colors.vehiculoContorno,
-  },
-  ruedaDelantera: { top: 1 },
-  ruedaTrasera: { bottom: 1 },
-  manillar: {
-    position: 'absolute', top: 11, width: 26, height: 4,
+    position: 'absolute', width: 3.5, height: 6,
     borderRadius: 2, backgroundColor: colors.vehiculoContorno,
   },
+  ruedaDelantera: { top: 3 },
+  ruedaTrasera: { bottom: 3 },
+  manillar: {
+    position: 'absolute', top: 9, width: 16, height: 2.5,
+    borderRadius: 1.5, backgroundColor: colors.vehiculoContorno,
+  },
   moto: {
-    width: 14, height: 30, borderRadius: 7, borderWidth: 1.5,
+    width: 8.5, height: 18, borderRadius: 4.5, borderWidth: 1,
     backgroundColor: colors.accent, borderColor: colors.vehiculoContorno,
   },
   faroMoto: {
-    position: 'absolute', top: 2, left: 2.5, right: 2.5, height: 3,
-    borderRadius: 2, backgroundColor: colors.vehiculoReflejo,
+    position: 'absolute', top: 1.5, left: 1.5, right: 1.5, height: 2,
+    borderRadius: 1, backgroundColor: colors.vehiculoReflejo,
   },
   asiento: {
-    position: 'absolute', top: 12, bottom: 2, left: 2, right: 2,
-    borderRadius: 3, backgroundColor: colors.vehiculoContorno,
+    position: 'absolute', top: 7, bottom: 1.5, left: 1.5, right: 1.5,
+    borderRadius: 2, backgroundColor: colors.vehiculoContorno,
   },
 });

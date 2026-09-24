@@ -106,7 +106,7 @@ async def present_rides_shared(
             [detail.ride.id for detail in page.items]
         )
     except PassengerPresenceUnavailableError:
-        logger.warning("No se pudo filtrar el pool por presencia compartida.")
+        logger.warning("Could not filter the pool by shared presence.")
         return page
     return Page(
         items=[
@@ -184,7 +184,7 @@ async def on_shared_passenger_disconnect(
         # A Redis outage does not prove absence. The previous action will be postponed
         # by health/recovery and the expired lease keeps the fail-safe decision.
         logger.warning(
-            "No se pudo registrar una desconexión de presencia compartida (%s).",
+            "Could not record a shared presence disconnection (%s).",
             type(error).__name__,
         )
 
@@ -202,7 +202,7 @@ async def _announce_present_ride(
 
             await events.publish_ride_created(detail)
     except Exception:
-        logger.exception("No se pudo anunciar la presencia del viaje %s", ride_id)
+        logger.exception("Could not announce presence for ride %s", ride_id)
 
 
 async def on_passenger_connect(
@@ -276,7 +276,7 @@ async def _revalidate_passenger_connect(
         # The live connection is still a valid presence signal. A failed
         # announcement must not close the socket and turn it into an absence;
         # snapshots/polling keep convergence while the outbox alerts.
-        logger.exception("No se pudo anunciar la presencia del viaje %s", ride_id)
+        logger.exception("Could not announce presence for ride %s", ride_id)
 
 
 async def _revalidate_passenger_activity(
@@ -442,7 +442,7 @@ async def _run_cancel_after_grace(
         raise
     except Exception:
         # Best-effort notification: polling keeps the client converging.
-        logger.exception("No se pudo cerrar el viaje ausente %s", ride_id)
+        logger.exception("Could not close absent ride %s", ride_id)
         return
     finally:
         if _critical_cancels.get(ride_id) is current:

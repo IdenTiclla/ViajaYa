@@ -48,11 +48,11 @@ class ShadowRealtimeOutboxDispatcher:
         process_guard: Callable[[], Awaitable[bool]] | None = None,
     ) -> None:
         if poll_interval_seconds <= 0:
-            raise ValueError("El intervalo de polling debe ser positivo.")
+            raise ValueError("The polling interval must be positive.")
         if retry_base_seconds <= 0:
-            raise ValueError("El backoff base debe ser positivo.")
+            raise ValueError("The base backoff must be positive.")
         if retry_max_seconds < retry_base_seconds:
-            raise ValueError("El backoff máximo no puede ser menor al base.")
+            raise ValueError("The maximum backoff cannot be lower than the base.")
         self._session_factory = session_factory
         self._validator = validator
         self._poll_interval_seconds = poll_interval_seconds
@@ -61,7 +61,7 @@ class ShadowRealtimeOutboxDispatcher:
         self._retry_base_seconds = retry_base_seconds
         self._retry_max_seconds = retry_max_seconds
         self._publisher: RealtimeOutboxBatchPublisher | None = None
-        self._mode_label = "sombra"
+        self._mode_label = "shadow"
         self._clock = clock
         self._process_guard = process_guard
         self._stop_event = asyncio.Event()
@@ -126,7 +126,7 @@ class ShadowRealtimeOutboxDispatcher:
                 )
                 if incomplete_batch_id is not None:
                     raise RuntimeError(
-                        "La outbox contiene un batch pendiente incompleto."
+                        "The outbox contains an incomplete pending batch."
                     )
             finally:
                 await session.rollback()
@@ -148,9 +148,9 @@ class ShadowRealtimeOutboxDispatcher:
     async def run(self) -> None:
         """Drain the backlog and wait cancellably when it is empty."""
         if self._running:
-            raise RuntimeError(f"El dispatcher {self._mode_label} ya está en ejecución.")
+            raise RuntimeError(f"The dispatcher {self._mode_label} is already running.")
         self._running = True
-        logger.info("Dispatcher de outbox iniciado en modo %s.", self._mode_label)
+        logger.info("Outbox dispatcher started in %s mode.", self._mode_label)
         try:
             while not self._stop_event.is_set():
                 if (
@@ -159,7 +159,7 @@ class ShadowRealtimeOutboxDispatcher:
                 ):
                     self._last_error = "RealtimeProcessLockLost"
                     logger.critical(
-                        "El dispatcher %s perdió su lock de proceso y se detendrá.",
+                        "Dispatcher %s lost its process lock and will stop.",
                         self._mode_label,
                     )
                     break
@@ -171,7 +171,7 @@ class ShadowRealtimeOutboxDispatcher:
                 except Exception as error:  # noqa: BLE001 - loop resiliente
                     self._last_error = type(error).__name__
                     logger.error(
-                        "Falló una iteración del dispatcher %s (%s).",
+                        "A dispatcher %s iteration failed (%s).",
                         self._mode_label,
                         self._last_error,
                     )
@@ -185,22 +185,22 @@ class ShadowRealtimeOutboxDispatcher:
                     self._last_quarantined_batch_id = str(result.batch_id)
                     self._last_quarantine_code = result.quarantine_code
                     logger.error(
-                        "El dispatcher %s puso en cuarentena terminal "
-                        "el batch %s (%s).",
+                        "Dispatcher %s terminally quarantined "
+                        "batch %s (%s).",
                         self._mode_label,
                         self._last_quarantined_batch_id,
                         self._last_quarantine_code,
                     )
                 elif result.status == "failed":
                     logger.warning(
-                        "El dispatcher %s reprogramó el batch %s (%s eventos).",
+                        "Dispatcher %s rescheduled batch %s (%s events).",
                         self._mode_label,
                         result.batch_id,
                         result.event_count,
                     )
         finally:
             self._running = False
-            logger.info("Dispatcher de outbox %s detenido.", self._mode_label)
+            logger.info("Outbox dispatcher %s stopped.", self._mode_label)
 
     def stop(self) -> None:
         """Solicita un cierre coordinado y despierta el polling actual."""

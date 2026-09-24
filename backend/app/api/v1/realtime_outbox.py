@@ -79,24 +79,24 @@ def _invalid_batch(
 ) -> InvalidRealtimeOutboxBatchError:
     return InvalidRealtimeOutboxBatchError(
         code,
-        f"Lote realtime inválido: {reason}.",
+        f"Invalid realtime batch: {reason}.",
     )
 
 
 def validate_realtime_outbox_batch(events: Sequence[RealtimeOutboxEvent]) -> None:
     """Validate a claimed batch without exposing its payload in the errors."""
     if not events:
-        raise _invalid_batch("empty_batch", "está vacío")
+        raise _invalid_batch("empty_batch", "it is empty")
 
     batch_ids = {event.batch_id for event in events}
     if len(batch_ids) != 1:
-        raise _invalid_batch("mixed_batch", "contiene más de un batch_id")
+        raise _invalid_batch("mixed_batch", "contains more than one batch_id")
 
     batch_sizes = {event.batch_size for event in events}
     if len(batch_sizes) != 1 or next(iter(batch_sizes)) != len(events):
         raise _invalid_batch(
             "invalid_sequence",
-            "la cardinalidad durable no coincide con sus miembros",
+            "the durable cardinality does not match its members",
         )
 
     expected_sequences = list(range(len(events)))
@@ -104,7 +104,7 @@ def validate_realtime_outbox_batch(events: Sequence[RealtimeOutboxEvent]) -> Non
     if sequences != expected_sequences:
         raise _invalid_batch(
             "invalid_sequence",
-            "la secuencia no es contigua desde cero",
+            "the sequence is not contiguous from zero",
         )
 
     event_ids = [event.id for event in events]
@@ -116,15 +116,15 @@ def validate_realtime_outbox_batch(events: Sequence[RealtimeOutboxEvent]) -> Non
         if not 1 <= event.aggregate_version <= _MAX_SAFE_JSON_INTEGER:
             raise _invalid_batch(
                 "unsafe_version",
-                "contiene aggregate_version fuera del rango JSON seguro",
+                "contains aggregate_version outside the safe JSON range",
             )
         if not 1 <= event.stream_version <= _MAX_SAFE_JSON_INTEGER:
             raise _invalid_batch(
                 "unsafe_version",
-                "contiene stream_version fuera del rango JSON seguro",
+                "contains stream_version outside the safe JSON range",
             )
         if not _has_allowed_topic(event.topic):
-            raise _invalid_batch("invalid_topic", "contiene un topic no permitido")
+            raise _invalid_batch("invalid_topic", "contains a topic that is not allowed")
 
         previous_stream_version = last_stream_version.get(event.topic)
         if (
@@ -133,7 +133,7 @@ def validate_realtime_outbox_batch(events: Sequence[RealtimeOutboxEvent]) -> Non
         ):
             raise _invalid_batch(
                 "stream_gap",
-                "la secuencia del stream no es contigua en el lote",
+                "the stream sequence is not contiguous in the batch",
             )
         last_stream_version[event.topic] = event.stream_version
 
@@ -141,14 +141,14 @@ def validate_realtime_outbox_batch(events: Sequence[RealtimeOutboxEvent]) -> Non
         if event.event_type != payload_type:
             raise _invalid_batch(
                 "event_type_mismatch",
-                "event_type no coincide con payload.type",
+                "event_type does not match payload.type",
             )
         try:
             message = parse_negotiation_message(event.payload)
         except (TypeError, ValueError):
             raise _invalid_batch(
                 "invalid_payload",
-                "contiene un payload fuera del contrato",
+                "contains a payload outside the contract",
             ) from None
         try:
             validate_realtime_event_semantics(
@@ -168,7 +168,7 @@ def _serialize_realtime_outbox_event_v2(
 ) -> dict[str, object]:
     payload_data = event.payload.get("data")
     if not isinstance(payload_data, dict):
-        raise _invalid_batch("invalid_payload", "payload.data no es un objeto")
+        raise _invalid_batch("invalid_payload", "payload.data is not an object")
 
     envelope = RealtimeEventEnvelopeV2(
         schema_version=2,
@@ -213,7 +213,7 @@ class LocalHubRealtimeOutboxBatchPublisher(RealtimeOutboxBatchPublisher):
         except (TypeError, ValueError) as error:
             raise _invalid_batch(
                 "invalid_payload",
-                "no cumple el contrato v2",
+                "does not meet the v2 contract",
             ) from error
 
         for event, envelope in zip(events, envelopes, strict=True):

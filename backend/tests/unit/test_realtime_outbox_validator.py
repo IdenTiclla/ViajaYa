@@ -101,7 +101,7 @@ def test_historical_offers_withdrawn_is_valid_but_v2_requires_exact_offers() -> 
     )
 
     validate_realtime_outbox_batch([base])
-    with pytest.raises(ValueError, match="requiere offers"):
+    with pytest.raises(ValueError, match="requires offers"):
         serialize_realtime_outbox_batch_v2([base])
 
     exact = replace(
@@ -125,7 +125,7 @@ def test_historical_offers_withdrawn_is_valid_but_v2_requires_exact_offers() -> 
 
 
 def test_rejects_an_empty_batch() -> None:
-    with pytest.raises(InvalidRealtimeOutboxBatchError, match="vacío") as error:
+    with pytest.raises(InvalidRealtimeOutboxBatchError, match="empty") as error:
         validate_realtime_outbox_batch([])
 
     assert error.value.code == "empty_batch"
@@ -145,7 +145,7 @@ def test_rejects_inconsistent_durable_cardinality() -> None:
         _event(batch_id=batch_id, sequence=1, batch_size=3),
     ]
 
-    with pytest.raises(InvalidRealtimeOutboxBatchError, match="cardinalidad") as error:
+    with pytest.raises(InvalidRealtimeOutboxBatchError, match="cardinality") as error:
         validate_realtime_outbox_batch(events)
 
     assert error.value.code == "invalid_sequence"
@@ -159,7 +159,7 @@ def test_rejects_a_non_contiguous_sequence_from_zero(sequences: list[int]) -> No
         for sequence in sequences
     ]
 
-    with pytest.raises(InvalidRealtimeOutboxBatchError, match="secuencia"):
+    with pytest.raises(InvalidRealtimeOutboxBatchError, match="sequence"):
         validate_realtime_outbox_batch(events)
 
 
@@ -194,7 +194,7 @@ def test_rejects_non_contiguous_versions_of_the_same_stream_in_a_batch() -> None
         _event(batch_id=batch_id, sequence=1, batch_size=2, stream_version=6),
     ]
 
-    with pytest.raises(InvalidRealtimeOutboxBatchError, match="stream.*contigua"):
+    with pytest.raises(InvalidRealtimeOutboxBatchError, match="stream sequence is not contiguous"):
         validate_realtime_outbox_batch(events)
 
 
@@ -209,7 +209,7 @@ def test_rejects_non_contiguous_versions_of_the_same_stream_in_a_batch() -> None
     ],
 )
 def test_rejects_a_topic_outside_the_allowed_space(topic: str) -> None:
-    with pytest.raises(InvalidRealtimeOutboxBatchError, match="topic no permitido"):
+    with pytest.raises(InvalidRealtimeOutboxBatchError, match="topic that is not allowed"):
         validate_realtime_outbox_batch([_event(topic=topic)])
 
 
@@ -231,7 +231,7 @@ def test_rejects_a_payload_outside_the_contract_without_leaking_it() -> None:
         }
     )
 
-    with pytest.raises(InvalidRealtimeOutboxBatchError, match="fuera del contrato") as error:
+    with pytest.raises(InvalidRealtimeOutboxBatchError, match="outside the contract") as error:
         validate_realtime_outbox_batch([event])
 
     assert error.value.code == "invalid_payload"
@@ -243,7 +243,7 @@ def test_rejects_a_topic_not_allowed_by_the_event_type() -> None:
 
     with pytest.raises(
         InvalidRealtimeOutboxBatchError,
-        match="no admite el stream",
+        match="does not allow the given stream",
     ) as error:
         validate_realtime_outbox_batch([event])
 
@@ -320,7 +320,7 @@ def test_rejects_a_pool_that_does_not_match_the_service() -> None:
     )
     event = replace(event, aggregate_id=ride_id)
 
-    with pytest.raises(InvalidRealtimeOutboxBatchError, match="servicio.*pool"):
+    with pytest.raises(InvalidRealtimeOutboxBatchError, match="service does not match the pool"):
         validate_realtime_outbox_batch([event])
 
 
@@ -366,7 +366,7 @@ def test_serializes_a_canonical_batch_preserving_sequence_and_stream() -> None:
 
 
 def test_v2_serializer_rejects_a_non_canonical_batch() -> None:
-    with pytest.raises(InvalidRealtimeOutboxBatchError, match="secuencia"):
+    with pytest.raises(InvalidRealtimeOutboxBatchError, match="sequence"):
         serialize_realtime_outbox_batch_v2([_event(sequence=1)])
 
 
@@ -388,7 +388,7 @@ async def test_local_publisher_pre_serializes_everything_before_the_first_send(
     broadcast = AsyncMock()
     monkeypatch.setattr(realtime_hub_module.hub, "broadcast_versioned", broadcast)
 
-    with pytest.raises(InvalidRealtimeOutboxBatchError, match="contrato v2"):
+    with pytest.raises(InvalidRealtimeOutboxBatchError, match="v2 contract"):
         await LocalHubRealtimeOutboxBatchPublisher().publish(
             [first, invalid_second]
         )

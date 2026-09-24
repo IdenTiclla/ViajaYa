@@ -133,7 +133,7 @@ async def readiness(
     except Exception as error:  # noqa: BLE001 - probe sanitario
         database_ready = False
         logger.warning(
-            "Falló el probe de readiness de PostgreSQL (%s).",
+            "PostgreSQL readiness probe failed (%s).",
             type(error).__name__,
         )
 
@@ -173,7 +173,7 @@ async def readiness(
         presence_store = request.app.state.passenger_presence_store
         try:
             if presence_store is None:
-                raise RuntimeError("Presencia compartida no inicializada.")
+                raise RuntimeError("Shared presence is not initialized.")
             await asyncio.wait_for(presence_store.check(), timeout=2)
             presence_ready = presence_store.healthy
         except Exception:  # noqa: BLE001 - probe sanitario fail-closed
@@ -289,7 +289,7 @@ async def realtime_health(
             snapshot = await use_case.execute(datetime.now(UTC))
     except Exception as error:  # noqa: BLE001 - probe sanitario
         logger.warning(
-            "Falló el snapshot operativo de la outbox (%s).",
+            "Outbox operational snapshot failed (%s).",
             type(error).__name__,
         )
         response = RealtimeHealthResponse(
@@ -412,7 +412,7 @@ async def scheduled_actions_health(
             )
     except Exception as error:  # noqa: BLE001 - probe sanitario
         logger.warning(
-            "Falló el snapshot operativo de scheduled_actions (%s).",
+            "scheduled_actions operational snapshot failed (%s).",
             type(error).__name__,
         )
         response = ScheduledActionsHealthResponse(

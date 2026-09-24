@@ -29,5 +29,5 @@ async def database_utc_now(session: AsyncSession) -> datetime:
     else:
         moment = await session.scalar(select(func.current_timestamp()))
     if moment is None:  # pragma: no cover - a healthy database always returns a value
-        raise RuntimeError("La base de datos no devolvió su reloj.")
+        raise RuntimeError("The database did not return its clock.")
     return _as_utc(moment)

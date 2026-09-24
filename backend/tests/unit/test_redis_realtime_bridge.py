@@ -315,7 +315,7 @@ async def test_publishing_without_subscribers_does_not_confirm_the_fanout() -> N
     try:
         await bridge.wait_until_ready(1)
         broker.subscribers.clear()
-        with pytest.raises(RedisRealtimeUnavailableError, match="suscriptor"):
+        with pytest.raises(RedisRealtimeUnavailableError, match="subscriber"):
             await bridge.publish([_event()])
     finally:
         await _stop([(bridge, task)])

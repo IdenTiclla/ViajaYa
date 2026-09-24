@@ -26,7 +26,7 @@ class SqlAlchemyPublishedRealtimeOutboxRetention(PublishedRealtimeOutboxRetentio
         batch_limit: int,
     ) -> PublishedRealtimeOutboxRetentionResult:
         if batch_limit <= 0:
-            raise ValueError("El límite de batches debe ser positivo.")
+            raise ValueError("The batch limit must be positive.")
 
         anchor = aliased(RealtimeOutboxModel, name="retention_anchor")
         member = aliased(RealtimeOutboxModel, name="retention_member")

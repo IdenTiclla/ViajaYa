@@ -65,7 +65,7 @@ class PostgreSQLLiveLocalProcessLock:
         self._session_factory = session_factory
         self._mode = mode or ("live_local" if exclusive else "shadow")
         if allow_live_redis_multiworker and self._mode != "live_redis":
-            raise ValueError("Solo live_redis puede habilitar el lock multiworker.")
+            raise ValueError("Only live_redis can enable the multi-worker lock.")
         self._allow_live_redis_multiworker = allow_live_redis_multiworker
         self._connection: AsyncConnection | None = None
         self._dialect_name: str | None = None
@@ -87,15 +87,15 @@ class PostgreSQLLiveLocalProcessLock:
     async def acquire(self) -> bool:
         """Acquire the exclusion or fail if another instance already holds it."""
         if self._connection is not None or self._dialect_name is not None:
-            raise RuntimeError("El lock live_local ya fue inicializado.")
+            raise RuntimeError("The live_local lock was already initialized.")
 
         engine = await self._resolve_engine()
         self._dialect_name = engine.dialect.name
         if self._dialect_name == "sqlite":
-            logger.warning("SQLite no aplica coordinación multiproceso realtime.")
+            logger.warning("SQLite does not apply multi-process realtime coordination.")
             return False
         if self._dialect_name != "postgresql":
-            raise RuntimeError("El lock realtime requiere PostgreSQL.")
+            raise RuntimeError("The realtime lock requires PostgreSQL.")
 
         connection = await engine.connect()
         try:
@@ -141,7 +141,7 @@ class PostgreSQLLiveLocalProcessLock:
                 )
                 if not legacy_acquired:
                     raise LiveLocalProcessLockUnavailableError(
-                        "Existe un modo realtime incompatible activo para esta base."
+                        "An incompatible realtime mode is active for this database."
                     )
                 held_acquired = False
                 try:
@@ -152,7 +152,7 @@ class PostgreSQLLiveLocalProcessLock:
                     )
                     if not held_acquired:
                         raise LiveLocalProcessLockUnavailableError(
-                            "Existe un modo realtime incompatible activo para esta base."
+                            "An incompatible realtime mode is active for this database."
                         )
                     conflicting_acquired = await self._try_lock(
                         connection,
@@ -161,7 +161,7 @@ class PostgreSQLLiveLocalProcessLock:
                     )
                     if not conflicting_acquired:
                         raise LiveLocalProcessLockUnavailableError(
-                            "Existe un modo realtime incompatible activo para esta base."
+                            "An incompatible realtime mode is active for this database."
                         )
                     await self._unlock(
                         connection,
@@ -221,7 +221,7 @@ class PostgreSQLLiveLocalProcessLock:
                     ).scalar_one()
                 )
             except Exception:  # noqa: BLE001 - probe fail-closed y sanitizado
-                logger.error("Se perdió la sesión propietaria del lock realtime.")
+                logger.error("The session owning the realtime lock was lost.")
                 return False
             return current_pid == self._backend_pid
 
@@ -244,7 +244,7 @@ class PostgreSQLLiveLocalProcessLock:
                 if connection.invalidated:
                     return
                 if held_expression is None:
-                    raise RuntimeError("El lock realtime perdió su identidad.")
+                    raise RuntimeError("The realtime lock lost its identity.")
                 released = await self._unlock(
                     connection,
                     held_expression,
@@ -252,7 +252,7 @@ class PostgreSQLLiveLocalProcessLock:
                 )
                 if not released:
                     logger.error(
-                        "PostgreSQL informó que el lock realtime no estaba tomado."
+                        "PostgreSQL reported that the realtime lock was not held."
                     )
                 legacy_released = await self._unlock(
                     connection,
@@ -261,11 +261,11 @@ class PostgreSQLLiveLocalProcessLock:
                 )
                 if not legacy_released:
                     logger.error(
-                        "PostgreSQL informó que el lock realtime legado no estaba tomado."
+                        "PostgreSQL reported that the legacy realtime lock was not held."
                     )
             except Exception:  # noqa: BLE001 - cerrar libera el lock
                 # The driver error is not logged so the DSN does not leak.
-                logger.error("No se pudo liberar limpiamente el lock realtime.")
+                logger.error("Could not cleanly release the realtime lock.")
                 await connection.invalidate()
             finally:
                 await connection.close()
@@ -310,7 +310,7 @@ class PostgreSQLLiveLocalProcessLock:
         try:
             engine = session.bind
             if not isinstance(engine, AsyncEngine):
-                raise RuntimeError("La factoría de sesiones no tiene un AsyncEngine.")
+                raise RuntimeError("The session factory has no AsyncEngine.")
             return engine
         finally:
             await session.close()

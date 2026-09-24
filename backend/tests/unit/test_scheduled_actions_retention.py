@@ -167,5 +167,5 @@ async def test_retention_preflight_requires_index_0022(
         await session.execute(text("DROP INDEX ix_scheduled_actions_terminal_retention"))
         await session.commit()
 
-    with pytest.raises(RuntimeError, match="índice.*0022"):
+    with pytest.raises(RuntimeError, match="index.*0022"):
         await worker.preflight()

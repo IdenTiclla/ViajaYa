@@ -30,7 +30,7 @@ async def test_live_local_lock_excludes_another_process_and_is_recoverable(
     assert await owner.check() is True
     with pytest.raises(
         LiveLocalProcessLockUnavailableError,
-        match="modo realtime incompatible",
+        match="incompatible realtime mode",
     ):
         await contender.acquire()
 

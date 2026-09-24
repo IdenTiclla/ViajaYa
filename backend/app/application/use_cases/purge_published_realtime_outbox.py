@@ -27,9 +27,9 @@ class PurgePublishedRealtimeOutbox:
         batch_limit: int,
     ) -> PublishedRealtimeOutboxRetentionResult:
         if retention_days <= 0:
-            raise ValueError("La retención publicada debe ser mayor a cero.")
+            raise ValueError("Published retention must be greater than zero.")
         if batch_limit <= 0:
-            raise ValueError("El límite de batches debe ser positivo.")
+            raise ValueError("The batch limit must be positive.")
 
         if now.tzinfo is None:
             now = now.replace(tzinfo=UTC)

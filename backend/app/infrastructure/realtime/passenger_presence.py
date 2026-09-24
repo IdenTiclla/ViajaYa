@@ -91,9 +91,9 @@ class RedisPassengerPresenceStore(PassengerPresenceLeaseStore):
         transport_hub: RealtimeHub = hub,
     ) -> None:
         if not key_prefix or not _KEY_PREFIX_PATTERN.fullmatch(key_prefix):
-            raise ValueError("El prefijo Redis de presencia no es válido.")
+            raise ValueError("The Redis presence prefix is not valid.")
         if lease_seconds <= 0 or grace_seconds <= 0 or timeout_seconds <= 0:
-            raise ValueError("Los tiempos de presencia deben ser positivos.")
+            raise ValueError("Presence timings must be positive.")
         self._client = client
         self._key_prefix = key_prefix.rstrip(":")
         self._lease_ms = round(lease_seconds * 1000)
@@ -162,11 +162,11 @@ class RedisPassengerPresenceStore(PassengerPresenceLeaseStore):
         try:
             async with asyncio.timeout(self._timeout_seconds):
                 if not await self._client.ping():
-                    raise RuntimeError("Redis no respondió PONG.")
+                    raise RuntimeError("Redis did not answer PONG.")
         except Exception as error:
             self._mark_failure()
             raise PassengerPresenceUnavailableError(
-                "Redis no confirmó la presencia compartida."
+                "Redis did not confirm the shared presence."
             ) from error
         self._healthy = True
 
@@ -219,7 +219,7 @@ class RedisPassengerPresenceStore(PassengerPresenceLeaseStore):
         if not isinstance(raw, (list, tuple)) or len(raw) != 3:
             self._mark_failure()
             raise PassengerPresenceUnavailableError(
-                "Redis devolvió un corte de presencia inválido."
+                "Redis returned an invalid presence cut."
             )
         self._observation_count += 1
         return PassengerPresenceObservation(
@@ -248,7 +248,7 @@ class RedisPassengerPresenceStore(PassengerPresenceLeaseStore):
         if not isinstance(raw, (list, tuple)) or len(raw) != len(ride_ids):
             self._mark_failure()
             raise PassengerPresenceUnavailableError(
-                "Redis devolvió un filtro de presencia inválido."
+                "Redis returned an invalid presence filter."
             )
         self._observation_count += len(ride_ids)
         return {
@@ -280,7 +280,7 @@ class RedisPassengerPresenceStore(PassengerPresenceLeaseStore):
         except (TypeError, ValueError) as error:
             self._mark_failure()
             raise PassengerPresenceUnavailableError(
-                "Redis devolvió un deadline de presencia inválido."
+                "Redis returned an invalid presence deadline."
             ) from error
 
     async def _eval(
@@ -291,7 +291,7 @@ class RedisPassengerPresenceStore(PassengerPresenceLeaseStore):
     ) -> object:
         if self._closed:
             raise PassengerPresenceUnavailableError(
-                "El almacén de presencia ya fue cerrado."
+                "The presence store was already closed."
             )
         try:
             async with asyncio.timeout(self._timeout_seconds):
@@ -304,7 +304,7 @@ class RedisPassengerPresenceStore(PassengerPresenceLeaseStore):
         except Exception as error:
             self._mark_failure()
             raise PassengerPresenceUnavailableError(
-                "Redis no pudo coordinar la presencia compartida."
+                "Redis could not coordinate the shared presence."
             ) from error
         self._healthy = True
         return result
@@ -312,7 +312,7 @@ class RedisPassengerPresenceStore(PassengerPresenceLeaseStore):
     def _require_transport_health(self) -> None:
         if not self._hub.shared_transport_healthy:
             raise PassengerPresenceUnavailableError(
-                "El transporte compartido no está sano."
+                "The shared transport is not healthy."
             )
 
     def _mark_failure(self) -> None:

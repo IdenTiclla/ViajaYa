@@ -25,7 +25,7 @@ class SqlAlchemyTerminalScheduledActionsRetention(TerminalScheduledActionsRetent
         action_limit: int,
     ) -> int:
         if action_limit <= 0:
-            raise ValueError("El límite de acciones debe ser positivo.")
+            raise ValueError("The action limit must be positive.")
 
         candidate_ids = list(
             (

@@ -87,24 +87,24 @@ def create_app(
         and resolved_settings.realtime_outbox_dispatch_mode != "live_local"
     ):
         raise ValueError(
-            "Un publisher realtime inyectado requiere el modo live_local."
+            "An injected realtime publisher requires the live_local mode."
         )
     if (
         realtime_redis_bridge is not None
         and resolved_settings.realtime_outbox_dispatch_mode != "live_redis"
     ):
-        raise ValueError("Un bridge Redis inyectado requiere el modo live_redis.")
+        raise ValueError("An injected Redis bridge requires the live_redis mode.")
     if (
         realtime_outbox_batch_publisher is not None
         and realtime_redis_bridge is not None
     ):
-        raise ValueError("No se pueden inyectar dos transportes realtime live.")
+        raise ValueError("Two live realtime transports cannot be injected.")
     if (
         passenger_presence_store is not None
         and not resolved_settings.realtime_shared_presence_enabled
     ):
         raise ValueError(
-            "Un almacén de presencia inyectado requiere presencia compartida."
+            "An injected presence store requires shared presence."
         )
 
     @asynccontextmanager
@@ -405,7 +405,7 @@ def create_app(
                     )
                 except TimeoutError:
                     logger.error(
-                        "Los workers de scheduled_actions excedieron el tiempo de apagado."
+                        "The scheduled_actions workers exceeded the shutdown timeout."
                     )
                     for task in scheduled_background_tasks:
                         if not task.done():
@@ -437,8 +437,8 @@ def create_app(
                     )
                 except TimeoutError:
                     logger.error(
-                        "Los workers de outbox excedieron el tiempo de apagado; "
-                        "se cancelarán las tareas pendientes."
+                        "The outbox workers exceeded the shutdown timeout; "
+                        "pending tasks will be cancelled."
                     )
                     for task in background_tasks:
                         if not task.done():
@@ -455,7 +455,7 @@ def create_app(
                         ),
                     )
                 except TimeoutError:
-                    logger.error("El bridge Redis excedió el tiempo de apagado.")
+                    logger.error("The Redis bridge exceeded the shutdown timeout.")
                     redis_bridge_task.cancel()
                     await asyncio.gather(redis_bridge_task, return_exceptions=True)
             if redis_bridge is not None:

@@ -41,7 +41,7 @@ class ExecuteExpireOfferScheduledAction:
             or action.lock_token is None
         ):
             raise InvalidScheduledActionError(
-                "La acción expire_offer no coincide con su agregado."
+                "The expire_offer action does not match its aggregate."
             )
         try:
             offer = await self._offers.mark_expired_if_pending(action.aggregate_id)

@@ -133,7 +133,7 @@ def build_accept_offer_events(result: AcceptOfferResult) -> list[PendingRealtime
     ride = result.detail.ride
     driver = result.detail.driver
     if driver is None:
-        raise ValueError("Una aceptación exitosa debe incluir al conductor elegido.")
+        raise ValueError("A successful acceptance must include the chosen driver.")
     ride_response = RideResponse.from_detail(result.detail)
     withdrawn_offers = sorted(
         result.withdrawn_offers,

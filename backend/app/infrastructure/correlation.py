@@ -119,7 +119,7 @@ class CorrelationIdMiddleware:
                 if scope_type != "http" or response_started:
                     raise
                 logger.error(
-                    "Solicitud HTTP terminó con un error inesperado "
+                    "HTTP request ended with an unexpected error "
                     "error_type=%s correlation_id=%s.",
                     type(error).__name__,
                     correlation_id,

@@ -40,11 +40,11 @@ class PublishedRealtimeOutboxRetentionWorker:
         clock: Callable[[], datetime] = _utc_now,
     ) -> None:
         if retention_days <= 0:
-            raise ValueError("La retención publicada debe ser mayor a cero.")
+            raise ValueError("Published retention must be greater than zero.")
         if interval_seconds <= 0:
-            raise ValueError("El intervalo de retención debe ser positivo.")
+            raise ValueError("The retention interval must be positive.")
         if batch_limit <= 0:
-            raise ValueError("El límite de retención debe ser positivo.")
+            raise ValueError("The retention limit must be positive.")
         self._session_factory = session_factory
         self._retention_days = retention_days
         self._interval_seconds = interval_seconds
@@ -94,7 +94,7 @@ class PublishedRealtimeOutboxRetentionWorker:
                 )
                 if "ix_realtime_outbox_published_retention" not in index_names:
                     raise RuntimeError(
-                        "Falta el índice de retención de la migración 0021."
+                        "The retention index from migration 0021 is missing."
                     )
             finally:
                 await session.rollback()
@@ -113,9 +113,9 @@ class PublishedRealtimeOutboxRetentionWorker:
 
     async def run(self) -> None:
         if self._running:
-            raise RuntimeError("El worker de retención ya está en ejecución.")
+            raise RuntimeError("The retention worker is already running.")
         self._running = True
-        logger.info("Worker de retención de outbox publicado iniciado.")
+        logger.info("Published outbox retention worker started.")
         try:
             while not self._stop_event.is_set():
                 cycle_now = self._clock()
@@ -127,7 +127,7 @@ class PublishedRealtimeOutboxRetentionWorker:
                 except Exception as error:  # noqa: BLE001 - loop operativo resiliente
                     self._last_error = type(error).__name__
                     logger.error(
-                        "Falló un ciclo de retención de outbox (%s).",
+                        "An outbox retention cycle failed (%s).",
                         self._last_error,
                     )
                     await self._wait_for_cycle()
@@ -137,7 +137,7 @@ class PublishedRealtimeOutboxRetentionWorker:
                 self._deleted_event_count += result.event_count
                 if result.batch_count:
                     logger.info(
-                        "Retención de outbox eliminó %s batches y %s eventos publicados.",
+                        "Outbox retention deleted %s batches and %s published events.",
                         result.batch_count,
                         result.event_count,
                     )
@@ -147,7 +147,7 @@ class PublishedRealtimeOutboxRetentionWorker:
                 await self._wait_for_cycle()
         finally:
             self._running = False
-            logger.info("Worker de retención de outbox detenido.")
+            logger.info("Outbox retention worker stopped.")
 
     def stop(self) -> None:
         self._stop_event.set()

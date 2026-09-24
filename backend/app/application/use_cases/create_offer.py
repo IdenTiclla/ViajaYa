@@ -67,7 +67,7 @@ class CreateOffer:
         offer = result.detail.offer
         execute_at = offer_expires_at(offer)
         if execute_at is None:  # pragma: no cover - persistencia exige created_at
-            raise RuntimeError("La oferta persistida no tiene fecha de creación.")
+            raise RuntimeError("The persisted offer has no creation date.")
         await self._scheduled_actions.schedule(
             PendingScheduledAction(
                 dedupe_key=f"expire_offer:{offer.id}",

@@ -56,7 +56,7 @@ class ExecuteCancelAbsentRideScheduledAction:
             or action.lock_token is None
         ):
             raise InvalidScheduledActionError(
-                "La acción cancel_absent_ride no coincide con su agregado."
+                "The cancel_absent_ride action does not match its aggregate."
             )
         try:
             owned = await self._actions.lock_owned(

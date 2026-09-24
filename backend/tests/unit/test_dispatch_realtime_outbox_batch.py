@@ -410,7 +410,7 @@ async def test_partial_quarantine_rolls_back_and_propagates() -> None:
         InvalidRealtimeOutboxBatchError("invalid_payload", "invalid contract")
     )
 
-    with pytest.raises(RuntimeError, match="no alcanzó"):
+    with pytest.raises(RuntimeError, match="did not reach"):
         await _use_case(outbox, unit_of_work, validator).execute(datetime.now(UTC))
 
     assert unit_of_work.commits == 0

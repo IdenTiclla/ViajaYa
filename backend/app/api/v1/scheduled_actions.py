@@ -30,7 +30,7 @@ async def _publish_shadow_offer_expired(offer: Offer) -> None:
         await events.publish_offer_expired(offer)
     except Exception:  # noqa: BLE001 - entrega legacy best-effort
         logger.exception(
-            "No se pudo publicar la expiración shadow de la oferta %s.",
+            "Could not publish the shadow expiry of offer %s.",
             offer.id,
         )
 
@@ -57,7 +57,7 @@ async def shutdown_shadow_scheduled_action_publications(
             timeout=timeout_seconds,
         )
     except TimeoutError:
-        logger.error("Las publicaciones legacy shadow excedieron el apagado.")
+        logger.error("The shadow legacy publications exceeded the shutdown.")
         for task in tasks:
             if not task.done():
                 task.cancel()
@@ -100,7 +100,7 @@ class ApplicationScheduledActionExecutor(ScheduledActionExecutor):
                     return result.status
                 if action.action_type != "expire_offer":
                     raise UnsupportedScheduledActionError(
-                        f"Tipo de acción no soportado: {action.action_type}."
+                        f"Unsupported action type: {action.action_type}."
                     )
                 result = await build_execute_expire_offer_scheduled_action(
                     session,

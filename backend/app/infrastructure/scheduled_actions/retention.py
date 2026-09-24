@@ -34,11 +34,11 @@ class TerminalScheduledActionsRetentionWorker:
         clock: DatabaseClock = database_utc_now,
     ) -> None:
         if retention_days <= 0:
-            raise ValueError("La retención de acciones debe ser mayor a cero.")
+            raise ValueError("Action retention must be greater than zero.")
         if interval_seconds <= 0:
-            raise ValueError("El intervalo de retención debe ser positivo.")
+            raise ValueError("The retention interval must be positive.")
         if action_limit <= 0:
-            raise ValueError("El límite de acciones debe ser positivo.")
+            raise ValueError("The action limit must be positive.")
         self._session_factory = session_factory
         self._retention_days = retention_days
         self._interval_seconds = interval_seconds
@@ -83,7 +83,7 @@ class TerminalScheduledActionsRetentionWorker:
                 )
                 if "ix_scheduled_actions_terminal_retention" not in index_names:
                     raise RuntimeError(
-                        "Falta el índice de retención de la migración 0022."
+                        "The retention index from migration 0022 is missing."
                     )
             finally:
                 await session.rollback()
@@ -103,9 +103,9 @@ class TerminalScheduledActionsRetentionWorker:
 
     async def run(self) -> None:
         if self._running:
-            raise RuntimeError("El worker de retención ya está en ejecución.")
+            raise RuntimeError("The retention worker is already running.")
         self._running = True
-        logger.info("Worker de retención de acciones programadas iniciado.")
+        logger.info("Scheduled actions retention worker started.")
         try:
             while not self._stop_event.is_set():
                 try:
@@ -116,7 +116,7 @@ class TerminalScheduledActionsRetentionWorker:
                 except Exception as error:  # noqa: BLE001 - loop operativo resiliente
                     self._last_error = type(error).__name__
                     logger.error(
-                        "Falló un ciclo de retención de acciones programadas (%s).",
+                        "A scheduled actions retention cycle failed (%s).",
                         self._last_error,
                     )
                     await self._wait_for_cycle()
@@ -125,7 +125,7 @@ class TerminalScheduledActionsRetentionWorker:
                 self._deleted_action_count += deleted_count
                 if deleted_count:
                     logger.info(
-                        "Retención eliminó %s acciones programadas terminales.",
+                        "Retention deleted %s terminal scheduled actions.",
                         deleted_count,
                     )
 
@@ -134,7 +134,7 @@ class TerminalScheduledActionsRetentionWorker:
                 await self._wait_for_cycle()
         finally:
             self._running = False
-            logger.info("Worker de retención de acciones programadas detenido.")
+            logger.info("Scheduled actions retention worker stopped.")
 
     def stop(self) -> None:
         self._stop_event.set()

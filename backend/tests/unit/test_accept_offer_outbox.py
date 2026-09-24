@@ -275,7 +275,7 @@ async def test_accept_builder_rejects_result_without_driver() -> None:
     )
     invalid = replace(result, detail=replace(result.detail, driver=None))
 
-    with pytest.raises(ValueError, match="conductor elegido"):
+    with pytest.raises(ValueError, match="chosen driver"):
         events.build_accept_offer_events(invalid)
 
 

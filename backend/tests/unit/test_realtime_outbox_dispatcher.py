@@ -214,7 +214,7 @@ async def test_run_logs_a_sanitized_retry(
     await dispatcher.run()
 
     assert str(batch_id) in caplog.text
-    assert "2 eventos" in caplog.text
+    assert "2 events" in caplog.text
 
 
 async def test_run_sanitizes_unexpected_errors(
@@ -329,7 +329,7 @@ async def test_preflight_rejects_a_pending_batch_without_anchor(
         )
         await session.commit()
 
-    with pytest.raises(RuntimeError, match="batch pendiente incompleto"):
+    with pytest.raises(RuntimeError, match="incomplete pending batch"):
         await _dispatcher(outbox_sessions).preflight()
 
 
@@ -510,7 +510,7 @@ async def test_app_lifecycle_live_redis_starts_the_bridge_before_the_dispatcher(
 def test_app_rejects_an_injected_publisher_outside_live_local(
     outbox_sessions: async_sessionmaker[AsyncSession],
 ) -> None:
-    with pytest.raises(ValueError, match="requiere el modo live_local"):
+    with pytest.raises(ValueError, match="requires the live_local mode"):
         create_app(
             settings=Settings(_env_file=None),
             session_factory=outbox_sessions,
@@ -521,7 +521,7 @@ def test_app_rejects_an_injected_publisher_outside_live_local(
 def test_app_rejects_an_injected_redis_bridge_outside_live_redis(
     outbox_sessions: async_sessionmaker[AsyncSession],
 ) -> None:
-    with pytest.raises(ValueError, match="requiere el modo live_redis"):
+    with pytest.raises(ValueError, match="requires the live_redis mode"):
         create_app(
             settings=Settings(_env_file=None),
             session_factory=outbox_sessions,

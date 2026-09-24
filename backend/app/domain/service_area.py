@@ -25,13 +25,13 @@ def _bolivia_ring() -> tuple[Point, ...]:
     resource = files("app.domain.data").joinpath(_BOUNDARY_RESOURCE)
     feature = json.loads(resource.read_text(encoding="utf-8"))
     if feature.get("properties", {}).get("iso_a3") != "BOL":
-        raise RuntimeError("El contorno de la zona operativa no corresponde a Bolivia.")
+        raise RuntimeError("The operating area outline does not correspond to Bolivia.")
     geometry = feature.get("geometry", {})
     if geometry.get("type") != "Polygon":
-        raise RuntimeError("El contorno de Bolivia debe ser un poligono GeoJSON.")
+        raise RuntimeError("The Bolivia outline must be a GeoJSON polygon.")
     coordinates = geometry.get("coordinates", [])
     if not coordinates or len(coordinates[0]) < 4:
-        raise RuntimeError("El contorno de Bolivia esta vacio o incompleto.")
+        raise RuntimeError("The Bolivia outline is empty or incomplete.")
     return tuple((float(x), float(y)) for x, y in coordinates[0])
 
 

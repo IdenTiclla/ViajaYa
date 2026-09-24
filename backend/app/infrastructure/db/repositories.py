@@ -553,7 +553,7 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
                 )
             )
         if (before_created_at is None) != (before_id is None):
-            raise ValueError("El cursor del pool requiere fecha e id.")
+            raise ValueError("The pool cursor requires a date and an id.")
         if before_created_at is not None and before_id is not None:
             created_key = RideRequestModel.created_at
             cursor_key = before_created_at
@@ -837,7 +837,7 @@ class SqlAlchemyRideReadRepository(RideReadRepository):
         if has_more and items:
             last = items[-1].ride
             if last.created_at is None:  # pragma: no cover - la BD no permite NULL
-                raise ValueError("Un viaje persistido debe tener created_at.")
+                raise ValueError("A persisted ride must have created_at.")
             next_cursor = PageCursor(created_at=last.created_at, id=last.id)
         return Page(items=items, next_cursor=next_cursor)
 

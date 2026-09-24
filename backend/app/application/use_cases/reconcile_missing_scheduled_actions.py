@@ -18,7 +18,7 @@ class ReconcileMissingScheduledActions:
 
     async def execute(self, action_limit: int) -> int:
         if action_limit <= 0:
-            raise ValueError("El límite de reconciliación debe ser positivo.")
+            raise ValueError("The reconciliation limit must be positive.")
         try:
             created_count = await self._reconciler.reconcile(action_limit)
             await self._unit_of_work.commit()

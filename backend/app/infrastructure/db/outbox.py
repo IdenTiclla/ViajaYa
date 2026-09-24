@@ -66,7 +66,7 @@ class SqlAlchemyRealtimeOutbox(RealtimeOutbox):
         events: Sequence[PendingRealtimeEvent],
     ) -> list[RealtimeOutboxEvent]:
         if not events:
-            raise ValueError("El lote de eventos no puede estar vacío.")
+            raise ValueError("The event batch cannot be empty.")
 
         provided_correlation_ids = {
             event.correlation_id
@@ -74,7 +74,7 @@ class SqlAlchemyRealtimeOutbox(RealtimeOutbox):
             if event.correlation_id is not None
         }
         if len(provided_correlation_ids) > 1:
-            raise ValueError("El lote de eventos mezcla correlation_id.")
+            raise ValueError("The event batch mixes correlation_id values.")
         correlation_id = (
             next(iter(provided_correlation_ids))
             if provided_correlation_ids
@@ -264,7 +264,7 @@ class SqlAlchemyRealtimeOutbox(RealtimeOutbox):
         elif dialect_name == "sqlite":
             statement = sqlite_insert(RealtimeAggregateVersionModel).values(**values)
         else:  # pragma: no cover - the supported environments are PostgreSQL and SQLite
-            raise RuntimeError(f"Dialect de outbox no soportado: {dialect_name}")
+            raise RuntimeError(f"Unsupported outbox dialect: {dialect_name}")
 
         statement = statement.on_conflict_do_update(
             index_elements=[
@@ -286,7 +286,7 @@ class SqlAlchemyRealtimeOutbox(RealtimeOutbox):
         elif dialect_name == "sqlite":
             statement = sqlite_insert(RealtimeStreamVersionModel).values(**values)
         else:  # pragma: no cover - the supported environments are PostgreSQL and SQLite
-            raise RuntimeError(f"Dialect de outbox no soportado: {dialect_name}")
+            raise RuntimeError(f"Unsupported outbox dialect: {dialect_name}")
 
         statement = statement.on_conflict_do_update(
             index_elements=[RealtimeStreamVersionModel.topic],

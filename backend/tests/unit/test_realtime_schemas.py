@@ -292,7 +292,7 @@ def test_offers_withdrawn_requires_matching_order_between_summary_and_offers() -
     first_ride_id = uuid.uuid4()
     second_ride_id = uuid.uuid4()
 
-    with pytest.raises(ValidationError, match="coincidir en orden"):
+    with pytest.raises(ValidationError, match="in order"):
         parse_negotiation_message(
             {
                 "type": "offers_withdrawn",
@@ -440,7 +440,7 @@ def test_event_envelope_v2_is_strict_and_validates_type_data() -> None:
             for key, value in dumped["data"].items()
             if key != missing_field
         }
-        with pytest.raises(ValidationError, match="contrato"):
+        with pytest.raises(ValidationError, match="contract"):
             RealtimeEventEnvelopeV2.model_validate(
                 dumped | {"data": incomplete_data}
             )
@@ -481,7 +481,7 @@ def test_offers_withdrawn_v2_requires_exact_references() -> None:
     ]
 
     without_offers = base | {"data": {"ride_ids": [str(ride_id)]}}
-    with pytest.raises(ValidationError, match="requiere offers"):
+    with pytest.raises(ValidationError, match="requires offers"):
         RealtimeEventEnvelopeV2.model_validate(without_offers)
 
 

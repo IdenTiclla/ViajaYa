@@ -31,7 +31,7 @@ class SqlAlchemyMissingOfferScheduledActionsReconciler(
 
     async def reconcile(self, action_limit: int) -> int:
         if action_limit <= 0:
-            raise ValueError("El límite de reconciliación debe ser positivo.")
+            raise ValueError("The reconciliation limit must be positive.")
 
         already_scheduled = (
             select(ScheduledActionModel.id)
@@ -81,13 +81,13 @@ class SqlAlchemyMissingPassengerPresenceActionsReconciler(
 
     def __init__(self, session: AsyncSession, *, grace_seconds: float) -> None:
         if grace_seconds <= 0:
-            raise ValueError("La gracia de presencia debe ser positiva.")
+            raise ValueError("The presence grace period must be positive.")
         self._session = session
         self._grace = timedelta(seconds=grace_seconds)
 
     async def reconcile(self, action_limit: int) -> int:
         if action_limit <= 0:
-            raise ValueError("El límite de reconciliación debe ser positivo.")
+            raise ValueError("The reconciliation limit must be positive.")
 
         already_scheduled = (
             select(ScheduledActionModel.id)
@@ -138,12 +138,12 @@ class CompositeMissingScheduledActionsReconciler(MissingScheduledActionsReconcil
 
     def __init__(self, *reconcilers: MissingScheduledActionsReconciler) -> None:
         if not reconcilers:
-            raise ValueError("Se requiere al menos un reconciliador.")
+            raise ValueError("At least one reconciler is required.")
         self._reconcilers = reconcilers
 
     async def reconcile(self, action_limit: int) -> int:
         if action_limit <= 0:
-            raise ValueError("El límite de reconciliación debe ser positivo.")
+            raise ValueError("The reconciliation limit must be positive.")
         created_count = 0
         for reconciler in self._reconcilers:
             created_count += await reconciler.reconcile(action_limit)

@@ -119,7 +119,7 @@ async def _drain_passenger_with_shared_presence(
                 )
             except Exception as error:  # noqa: BLE001 - cierre fail-safe
                 logger.warning(
-                    "Falló la renovación del lease WebSocket (%s).",
+                    "WebSocket lease renewal failed (%s).",
                     type(error).__name__,
                 )
                 await websocket.close(code=1012)
@@ -224,7 +224,7 @@ async def passenger_ws(
                 )
             except Exception as error:  # noqa: BLE001 - cierre fail-safe
                 logger.warning(
-                    "No se pudo confirmar la presencia WebSocket (%s).",
+                    "Could not confirm WebSocket presence (%s).",
                     type(error).__name__,
                 )
                 await websocket.close(code=1012)

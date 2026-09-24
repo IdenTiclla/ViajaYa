@@ -252,7 +252,7 @@ class RideResponse(BaseModel):
     def from_detail(cls, detail: RideDetail) -> RideResponse:
         ride = detail.ride
         if detail.rider is None:
-            raise ValueError("RideDetail requiere el pasajero para responder por API.")
+            raise ValueError("RideDetail requires the passenger to build the API response.")
         r = detail.rider
         rider_schema = RideRiderSchema(
             id=r.id,

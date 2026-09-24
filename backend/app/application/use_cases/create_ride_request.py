@@ -22,7 +22,7 @@ class CreateRideRequest:
         passenger_presence_grace_seconds: float = 120.0,
     ) -> None:
         if passenger_presence_grace_seconds <= 0:
-            raise ValueError("La gracia de presencia debe ser positiva.")
+            raise ValueError("The presence grace period must be positive.")
         self._rides = rides
         self._unit_of_work = unit_of_work
         self._scheduled_actions = scheduled_actions
@@ -87,7 +87,7 @@ class CreateRideRequest:
         if self._scheduled_actions is None:
             return
         if ride.created_at is None:  # pragma: no cover - persistencia exige timestamp
-            raise RuntimeError("La solicitud persistida no tiene fecha de creación.")
+            raise RuntimeError("The persisted request has no creation date.")
         created_at = (
             ride.created_at.replace(tzinfo=UTC)
             if ride.created_at.tzinfo is None

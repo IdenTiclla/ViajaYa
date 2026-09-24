@@ -36,9 +36,9 @@ class DispatchRealtimeOutboxBatch:
         completion_clock: Callable[[], datetime] | None = None,
     ) -> None:
         if retry_base_seconds <= 0:
-            raise ValueError("El backoff base debe ser positivo.")
+            raise ValueError("The base backoff must be positive.")
         if retry_max_seconds < retry_base_seconds:
-            raise ValueError("El backoff máximo no puede ser menor al base.")
+            raise ValueError("The maximum backoff cannot be lower than the base.")
         self._outbox = outbox
         self._unit_of_work = unit_of_work
         self._validator = validator
@@ -114,7 +114,7 @@ class DispatchRealtimeOutboxBatch:
         )
         if quarantined_count != len(events):
             raise RuntimeError(
-                "La cuarentena no alcanzó a todos los eventos del batch reclamado."
+                "The quarantine did not reach every event of the claimed batch."
             ) from error
         await self._unit_of_work.commit()
         if self._publisher is not None:

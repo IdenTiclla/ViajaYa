@@ -99,7 +99,7 @@ async def test_add_batch_rejects_mixed_explicit_correlations(
     async with outbox_sessions() as session:
         outbox = SqlAlchemyRealtimeOutbox(session)
 
-        with pytest.raises(ValueError, match="mezcla correlation_id"):
+        with pytest.raises(ValueError, match="mixes correlation_id"):
             await outbox.add_batch(
                 [
                     _pending(
@@ -520,5 +520,5 @@ async def test_add_batch_rejects_an_empty_batch(
     outbox_sessions: async_sessionmaker[AsyncSession],
 ) -> None:
     async with outbox_sessions() as session:
-        with pytest.raises(ValueError, match="no puede estar vacío"):
+        with pytest.raises(ValueError, match="cannot be empty"):
             await SqlAlchemyRealtimeOutbox(session).add_batch([])

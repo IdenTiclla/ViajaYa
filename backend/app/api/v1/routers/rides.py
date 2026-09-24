@@ -138,7 +138,7 @@ async def _expire_offer_after(
             await events.publish_offer_expired(offer)
     except Exception:
         # Direct delivery is best-effort, but the failure must be observable.
-        logger.exception("No se pudo vencer la oferta %s", offer_id)
+        logger.exception("Could not expire offer %s", offer_id)
 
 
 @router.post("", response_model=RideRequestResponse, status_code=status.HTTP_201_CREATED)

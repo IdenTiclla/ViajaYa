@@ -77,20 +77,20 @@ def _validate_restart_target(
 ) -> None:
     parsed = urlsplit(redis_url)
     if parsed.scheme != "redis" or parsed.hostname not in {"127.0.0.1", "localhost"}:
-        raise RuntimeError("El restart smoke exige Redis loopback sin TLS.")
+        raise RuntimeError("The restart smoke requires loopback Redis without TLS.")
     if parsed.port is None or parsed.path != "/15":
-        raise RuntimeError("El restart smoke exige un Redis explícito en DB 15.")
+        raise RuntimeError("The restart smoke requires an explicit Redis on DB 15.")
     if not _SAFE_CONTAINER_NAME.fullmatch(container):
-        raise RuntimeError("El nombre del contenedor Redis no es seguro.")
+        raise RuntimeError("The Redis container name is not safe.")
     if parsed.port == 6379:
         if not allow_development_container or container != "viajaya_redis":
             raise RuntimeError(
-                "Reiniciar Redis de desarrollo requiere opt-in y nombre exacto."
+                "Restarting the development Redis requires opt-in and an exact name."
             )
         return
     lowered = container.lower()
     if "test" not in lowered and "ci" not in lowered:
-        raise RuntimeError("El contenedor Redis debe estar marcado como test o CI.")
+        raise RuntimeError("The Redis container must be labeled as test or CI.")
 
 
 async def _docker(*arguments: str) -> str:
@@ -108,10 +108,10 @@ async def _docker(*arguments: str) -> str:
     except TimeoutError:
         process.kill()
         await process.wait()
-        pytest.fail("Docker excedió el deadline del restart smoke.")
+        pytest.fail("Docker exceeded the restart smoke deadline.")
     if process.returncode != 0:
         detail = stderr.decode(errors="replace").strip()
-        pytest.fail(f"Docker falló durante el restart smoke: {detail}")
+        pytest.fail(f"Docker failed during the restart smoke: {detail}")
     return stdout.decode(errors="replace").strip()
 
 
@@ -132,7 +132,7 @@ async def _wait_redis(redis_url: str) -> None:
         finally:
             await client.aclose()
         if time.monotonic() >= deadline:
-            pytest.fail("El Redis reiniciado no volvió a responder PONG.")
+            pytest.fail("The restarted Redis did not answer PONG again.")
         await asyncio.sleep(0.05)
 
 
@@ -201,7 +201,7 @@ async def _wait_ready(base_url: str, process) -> None:
         while True:
             if process.exitcode is not None:
                 pytest.fail(
-                    "La API terminó antes de readiness "
+                    "The API exited before readiness "
                     f"(exitcode={process.exitcode})."
                 )
             try:
@@ -215,13 +215,13 @@ async def _wait_ready(base_url: str, process) -> None:
             except httpx.HTTPError:
                 pass
             if time.monotonic() >= deadline:
-                pytest.fail("La API live_redis no alcanzó readiness.")
+                pytest.fail("The live_redis API did not reach readiness.")
             await asyncio.sleep(0.05)
 
 
 async def _wait_event(event, label: str) -> None:
     reached = await asyncio.to_thread(event.wait, _OPERATION_TIMEOUT_SECONDS)
-    assert reached, f"No se alcanzó la compuerta {label}."
+    assert reached, f"Gate not reached: {label}."
 
 
 async def _load_offer_event(
@@ -261,7 +261,7 @@ async def _wait_event_state(
         if state.attempts >= attempts and state.published is published:
             return state
         if time.monotonic() >= deadline:
-            pytest.fail("La outbox no alcanzó el estado durable esperado.")
+            pytest.fail("The outbox did not reach the expected durable state.")
         await asyncio.sleep(0.05)
 
 
@@ -276,15 +276,15 @@ async def _stop_process(process, shutdown) -> None:
     process.close()
 
 
-async def test_restart_redis_reintenta_la_misma_identidad_durable(pg_test_db) -> None:
+async def test_redis_restart_retries_the_same_durable_identity(pg_test_db) -> None:
     if os.name != "posix":
-        pytest.skip("El smoke de restart usa sockets heredados y requiere POSIX.")
+        pytest.skip("The restart smoke uses inherited sockets and requires POSIX.")
     redis_url = os.getenv("VIAJAYA_TEST_REDIS_RESTART_URL")
     container = os.getenv("VIAJAYA_TEST_REDIS_RESTART_CONTAINER")
     if not redis_url or not container:
         pytest.skip(
-            "Define VIAJAYA_TEST_REDIS_RESTART_URL y "
-            "VIAJAYA_TEST_REDIS_RESTART_CONTAINER para el smoke destructivo."
+            "Set VIAJAYA_TEST_REDIS_RESTART_URL and "
+            "VIAJAYA_TEST_REDIS_RESTART_CONTAINER for the destructive smoke."
         )
     _validate_restart_target(
         redis_url,
@@ -294,7 +294,7 @@ async def test_restart_redis_reintenta_la_misma_identidad_durable(pg_test_db) ->
         ),
     )
     running = await _docker("inspect", "--format={{.State.Running}}", container)
-    assert running == "true", "El Redis dedicado debe comenzar sano."
+    assert running == "true", "The dedicated Redis must start healthy."
     await _wait_redis(redis_url)
 
     bootstrap = await _bootstrap_ride(pg_test_db)
@@ -364,7 +364,7 @@ async def test_restart_redis_reintenta_la_misma_identidad_durable(pg_test_db) ->
                 json={"accept_at_fare": True, "eta_min": 4},
             )
             assert offer.status_code == 201, offer.text
-            await _wait_event(first_reached, "antes del primer publish")
+            await _wait_event(first_reached, "before the first publish")
 
             await _docker("stop", "--time=0", container)
             redis_stopped = True
@@ -387,7 +387,7 @@ async def test_restart_redis_reintenta_la_misma_identidad_durable(pg_test_db) ->
             await _docker("start", container)
             redis_stopped = False
             await _wait_redis(redis_url)
-            await _wait_event(replay_reached, "replay después del restart")
+            await _wait_event(replay_reached, "replay after the restart")
             await _wait_ready(base_url, process)
 
             async with websockets.connect(

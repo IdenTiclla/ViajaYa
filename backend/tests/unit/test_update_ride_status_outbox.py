@@ -251,11 +251,11 @@ async def test_lost_compare_and_set_rolls_back_without_recording() -> None:
 async def test_recorder_failure_rolls_back_memory_mutation() -> None:
     rides, offers, users, _, driver, ride, _ = await _memory_scenario()
     recorder = InMemoryUpdateRideStatusEventRecorder(
-        error=RuntimeError("falló el recorder")
+        error=RuntimeError("the recorder failed")
     )
     unit_of_work = InMemoryUnitOfWork(rides=rides)
 
-    with pytest.raises(RuntimeError, match="falló el recorder"):
+    with pytest.raises(RuntimeError, match="the recorder failed"):
         await update_ride_status_use_case(
             rides,
             offers,
@@ -351,7 +351,7 @@ async def test_failure_after_outbox_flush_rolls_back_ride_and_counters(
         class RecordThenFail:
             async def record(self, detail: RideDetail) -> None:
                 await recorder.record(detail)
-                raise RuntimeError("fallo después de insertar la outbox")
+                raise RuntimeError("failure after inserting the outbox")
 
         use_case = UpdateRideStatus(
             SqlAlchemyRideRequestRepository(
@@ -363,7 +363,7 @@ async def test_failure_after_outbox_flush_rolls_back_ride_and_counters(
             SqlAlchemyUnitOfWork(session),
             RecordThenFail(),
         )
-        with pytest.raises(RuntimeError, match="después de insertar"):
+        with pytest.raises(RuntimeError, match="after inserting"):
             await use_case.execute(driver, ride.id, RideStatus.COMPLETED)
 
         row = await session.get(RideRequestModel, ride.id, populate_existing=True)

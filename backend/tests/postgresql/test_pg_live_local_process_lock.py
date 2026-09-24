@@ -65,7 +65,7 @@ async def test_shared_shadow_locks_block_live_but_not_each_other(pg_test_db) -> 
     await successor.release()
 
 
-async def test_live_redis_es_exclusivo_hasta_compartir_presencia(
+async def test_live_redis_is_exclusive_until_presence_is_shared(
     pg_test_db,
 ) -> None:
     sessions = async_sessionmaker(
@@ -92,7 +92,7 @@ async def test_live_redis_es_exclusivo_hasta_compartir_presencia(
     await successor.release()
 
 
-async def test_live_redis_comparte_lock_solo_con_presencia_durable(
+async def test_live_redis_shares_the_lock_only_with_durable_presence(
     pg_test_db,
 ) -> None:
     sessions = async_sessionmaker(
@@ -126,7 +126,7 @@ async def test_live_redis_comparte_lock_solo_con_presencia_durable(
     await redis_a.release()
 
 
-async def test_clave_legada_impide_mezclar_binarios_en_rolling_deploy(
+async def test_legacy_key_prevents_mixing_binaries_in_a_rolling_deploy(
     pg_test_db,
 ) -> None:
     sessions = async_sessionmaker(

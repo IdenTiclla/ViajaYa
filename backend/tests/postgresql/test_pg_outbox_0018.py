@@ -143,7 +143,7 @@ async def _assert_0018_schema(connection: AsyncConnection) -> None:
     assert "where ((published_at is null) and (sequence = 0))" in normalized_index
 
 
-async def test_upgrade_downgrade_y_reupgrade_0018(pg_test_db) -> None:
+async def test_upgrade_downgrade_and_reupgrade_0018(pg_test_db) -> None:
     await pg_test_db.migrate_async("downgrade", _REVISION_0017)
     try:
         async with pg_test_db.engine.connect() as connection:
@@ -197,7 +197,7 @@ async def _delete_batches(pg_test_db, batch_ids: list[uuid.UUID]) -> None:
         )
 
 
-async def test_skip_locked_reparte_batches_completos_sin_solaparlos(pg_test_db) -> None:
+async def test_skip_locked_splits_complete_batches_without_overlap(pg_test_db) -> None:
     batch_a = uuid.uuid4()
     batch_b = uuid.uuid4()
     expected_sequences = {
@@ -241,7 +241,7 @@ async def test_skip_locked_reparte_batches_completos_sin_solaparlos(pg_test_db) 
         await _delete_batches(pg_test_db, [batch_a, batch_b])
 
 
-async def test_rollback_libera_el_batch_completo_para_otro_worker(pg_test_db) -> None:
+async def test_rollback_releases_the_whole_batch_for_another_worker(pg_test_db) -> None:
     batch_id = uuid.uuid4()
     async with pg_test_db.engine.begin() as connection:
         await connection.execute(sa.insert(RealtimeOutboxModel), _outbox_rows(batch_id, 3))
@@ -272,7 +272,7 @@ async def test_rollback_libera_el_batch_completo_para_otro_worker(pg_test_db) ->
         await _delete_batches(pg_test_db, [batch_id])
 
 
-async def test_upsert_concurrente_asigna_versiones_distintas(pg_test_db) -> None:
+async def test_concurrent_upsert_assigns_distinct_versions(pg_test_db) -> None:
     aggregate_id = uuid.uuid4()
     sessions = async_sessionmaker(pg_test_db.engine, expire_on_commit=False)
 
@@ -314,7 +314,7 @@ async def test_upsert_concurrente_asigna_versiones_distintas(pg_test_db) -> None
             )
 
 
-async def test_rollback_no_consume_version_del_agregado(pg_test_db) -> None:
+async def test_rollback_does_not_consume_the_aggregate_version(pg_test_db) -> None:
     aggregate_id = uuid.uuid4()
     sessions = async_sessionmaker(pg_test_db.engine, expire_on_commit=False)
     pending = PendingRealtimeEvent(

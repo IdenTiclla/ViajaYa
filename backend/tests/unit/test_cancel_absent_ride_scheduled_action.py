@@ -74,7 +74,7 @@ class _Leases:
 
     async def observe(self, _ride_id: uuid.UUID) -> PassengerPresenceObservation:
         if self.unavailable:
-            raise PassengerPresenceUnavailableError("sin Redis")
+            raise PassengerPresenceUnavailableError("no Redis")
         return self.observation
 
 
@@ -138,7 +138,7 @@ async def _subject(leases: _Leases):
     return ride, actions, unit_of_work, use_case
 
 
-async def test_presencia_viva_aplaza_sin_consumir_intentos() -> None:
+async def test_live_presence_postpones_without_consuming_attempts() -> None:
     ride, actions, unit_of_work, use_case = await _subject(
         _Leases(
             PassengerPresenceObservation(
@@ -158,7 +158,7 @@ async def test_presencia_viva_aplaza_sin_consumir_intentos() -> None:
     assert unit_of_work.commits == 1
 
 
-async def test_redis_caido_aplaza_en_lugar_de_agotar_la_accion() -> None:
+async def test_redis_down_postpones_instead_of_exhausting_the_action() -> None:
     ride, actions, unit_of_work, use_case = await _subject(
         _Leases(unavailable=True)
     )
@@ -171,7 +171,7 @@ async def test_redis_caido_aplaza_en_lugar_de_agotar_la_accion() -> None:
     assert unit_of_work.commits == 1
 
 
-async def test_ausencia_confirmada_cancela_y_completa_la_accion() -> None:
+async def test_confirmed_absence_cancels_and_completes_the_action() -> None:
     ride, actions, unit_of_work, use_case = await _subject(_Leases())
 
     result = await use_case.execute(_action(ride.id), datetime.now(UTC))
@@ -183,7 +183,7 @@ async def test_ausencia_confirmada_cancela_y_completa_la_accion() -> None:
     assert unit_of_work.commits == 1
 
 
-async def test_lease_revocado_impide_tocar_el_viaje() -> None:
+async def test_revoked_lease_prevents_touching_the_ride() -> None:
     ride, actions, unit_of_work, use_case = await _subject(_Leases())
     actions.owned = False
 
@@ -194,7 +194,7 @@ async def test_lease_revocado_impide_tocar_el_viaje() -> None:
     assert unit_of_work.rollbacks == 1
 
 
-async def test_generacion_renovada_antes_del_ack_revierte_el_cierre() -> None:
+async def test_generation_renewed_before_the_ack_rolls_back_the_close() -> None:
     ride, actions, unit_of_work, use_case = await _subject(_Leases())
     actions.completed = False
 

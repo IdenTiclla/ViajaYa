@@ -405,7 +405,7 @@ async def _cleanup(connection: AsyncConnection, topics: list[str]) -> None:
     )
 
 
-async def test_backfill_determinista_downgrade_y_reupgrade_0019(pg_test_db) -> None:
+async def test_deterministic_backfill_downgrade_and_reupgrade_0019(pg_test_db) -> None:
     rows, expected = _seed_rows()
     topics = list(expected)
 

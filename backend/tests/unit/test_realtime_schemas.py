@@ -522,7 +522,7 @@ def test_stream_watermark_accepts_only_canonical_streams(stream: str) -> None:
     assert StreamWatermark(stream=stream, stream_version=0).stream == stream
 
 
-def test_versiones_realtime_caben_en_un_entero_seguro_de_json() -> None:
+def test_realtime_versions_fit_in_a_json_safe_integer() -> None:
     with pytest.raises(ValidationError):
         StreamWatermark(
             stream="pool:taxi",

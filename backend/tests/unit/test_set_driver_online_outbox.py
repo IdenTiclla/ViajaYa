@@ -276,11 +276,11 @@ async def test_active_ride_rolls_back_without_recording() -> None:
 async def test_recorder_failure_restores_driver_and_offers() -> None:
     users, _, offers, driver, created = await _memory_scenario(offers_count=1)
     recorder = InMemoryDriverAvailabilityEventRecorder(
-        error=RuntimeError("falló el recorder")
+        error=RuntimeError("the recorder failed")
     )
     unit_of_work = InMemoryUnitOfWork(offers, users=users)
 
-    with pytest.raises(RuntimeError, match="falló el recorder"):
+    with pytest.raises(RuntimeError, match="the recorder failed"):
         await set_driver_online_use_case(
             users,
             offers,
@@ -381,7 +381,7 @@ async def test_failure_after_outbox_flush_rolls_back_driver_offers_and_counters(
         class RecordThenFail:
             async def record(self, result: DriverAvailabilityResult) -> None:
                 await recorder.record(result)
-                raise RuntimeError("fallo después de insertar la outbox")
+                raise RuntimeError("failure after inserting the outbox")
 
         use_case = SetDriverOnline(
             SqlAlchemyUserRepository(session, commit_set_online=False),
@@ -392,7 +392,7 @@ async def test_failure_after_outbox_flush_rolls_back_driver_offers_and_counters(
             SqlAlchemyUnitOfWork(session),
             RecordThenFail(),
         )
-        with pytest.raises(RuntimeError, match="después de insertar"):
+        with pytest.raises(RuntimeError, match="after inserting"):
             await use_case.execute(driver, False)
 
         driver_row = await session.get(UserModel, driver.id, populate_existing=True)

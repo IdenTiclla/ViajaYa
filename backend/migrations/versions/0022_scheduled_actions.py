@@ -146,7 +146,7 @@ def downgrade() -> None:
     ).scalar_one()
     if pending_count:
         raise RuntimeError(
-            "No se puede eliminar scheduled_actions con trabajo pendiente o reclamado."
+            "Cannot drop scheduled_actions with pending or claimed work."
         )
     op.drop_index(
         "ix_scheduled_actions_terminal_retention",

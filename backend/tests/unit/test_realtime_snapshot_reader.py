@@ -96,7 +96,7 @@ def _ride(
     )
 
 
-async def test_passenger_captura_estado_watermark_y_no_expira_ofertas(
+async def test_passenger_captures_state_and_watermark_without_expiring_offers(
     snapshot_db: tuple[async_sessionmaker[AsyncSession], AsyncEngine],
 ) -> None:
     sessions, engine = snapshot_db
@@ -176,7 +176,7 @@ async def test_passenger_captura_estado_watermark_y_no_expira_ofertas(
     assert persisted is OfferStatus.PENDING
 
 
-async def test_driver_unifica_estado_y_rellena_watermarks_ausentes_con_cero(
+async def test_driver_unifies_state_and_fills_missing_watermarks_with_zero(
     snapshot_db: tuple[async_sessionmaker[AsyncSession], AsyncEngine],
 ) -> None:
     sessions, _engine = snapshot_db

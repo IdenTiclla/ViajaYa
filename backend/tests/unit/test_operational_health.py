@@ -270,7 +270,7 @@ async def test_readiness_requires_a_running_dispatcher_in_shadow_mode(
         }
 
 
-async def test_readiness_live_redis_exige_dispatcher_y_suscripcion(
+async def test_live_redis_readiness_requires_dispatcher_and_subscription(
     outbox_sessions: async_sessionmaker[AsyncSession],
 ) -> None:
     settings = Settings(

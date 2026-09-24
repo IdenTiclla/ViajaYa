@@ -174,10 +174,10 @@ async def test_republish_records_before_commit_and_rolls_back_on_failure() -> No
     unit_of_work = InMemoryUnitOfWork(rides=rides, operations=operations)
     recorder = InMemoryRepublishRideEventRecorder(
         operations=operations,
-        error=RuntimeError("falló la outbox"),
+        error=RuntimeError("the outbox failed"),
     )
 
-    with pytest.raises(RuntimeError, match="falló la outbox"):
+    with pytest.raises(RuntimeError, match="the outbox failed"):
         await update_ride_fare_use_case(
             rides,
             unit_of_work=unit_of_work,
@@ -195,10 +195,10 @@ async def test_create_ride_rolls_back_if_commit_fails() -> None:
     rides = InMemoryRideRequestRepository()
     unit_of_work = InMemoryUnitOfWork(
         rides=rides,
-        commit_error=RuntimeError("falló el commit"),
+        commit_error=RuntimeError("the commit failed"),
     )
 
-    with pytest.raises(RuntimeError, match="falló el commit"):
+    with pytest.raises(RuntimeError, match="the commit failed"):
         await create_ride_request_use_case(
             rides,
             unit_of_work=unit_of_work,
@@ -299,7 +299,7 @@ async def test_failure_after_republish_outbox_flush_rolls_back_everything(
         class RecordThenFail:
             async def record(self, result: RideRepublishedResult) -> None:
                 await recorder.record(result)
-                raise RuntimeError("fallo después de insertar la outbox")
+                raise RuntimeError("failure after inserting the outbox")
 
         use_case = UpdateRideFare(
             SqlAlchemyRideRequestRepository(
@@ -309,7 +309,7 @@ async def test_failure_after_republish_outbox_flush_rolls_back_everything(
             SqlAlchemyUnitOfWork(session),
             RecordThenFail(),
         )
-        with pytest.raises(RuntimeError, match="después de insertar"):
+        with pytest.raises(RuntimeError, match="after inserting"):
             await use_case.execute(rider, ride.id, Decimal("30.00"))
 
         ride_row = await session.get(RideRequestModel, ride.id)

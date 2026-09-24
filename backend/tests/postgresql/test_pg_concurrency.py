@@ -125,7 +125,7 @@ async def _insert_offer(
     )
 
 
-async def test_dos_aceptaciones_del_mismo_ride_solo_tienen_un_ganador(pg_test_db) -> None:
+async def test_two_acceptances_of_the_same_ride_have_one_winner(pg_test_db) -> None:
     rider_id = uuid.uuid4()
     ride_id = uuid.uuid4()
     driver_a = uuid.uuid4()
@@ -237,7 +237,7 @@ async def test_crossed_negotiations_can_assign_two_independent_trips(pg_test_db,
 
 
 @pytest.mark.parametrize("cancellation", ["manual", "absence"])
-async def test_aceptacion_compite_con_cancelacion(pg_test_db, cancellation: str) -> None:
+async def test_acceptance_races_with_cancellation(pg_test_db, cancellation: str) -> None:
     rider_id = uuid.uuid4()
     driver_id = uuid.uuid4()
     ride_id = uuid.uuid4()
@@ -296,7 +296,7 @@ async def test_aceptacion_compite_con_cancelacion(pg_test_db, cancellation: str)
         assert offer_status == "rejected"
 
 
-async def test_dos_ofertas_simultaneas_dejan_una_sola_viva(pg_test_db) -> None:
+async def test_two_simultaneous_offers_leave_a_single_live_one(pg_test_db) -> None:
     rider_id = uuid.uuid4()
     driver_id = uuid.uuid4()
     ride_id = uuid.uuid4()
@@ -360,7 +360,7 @@ async def test_dos_ofertas_simultaneas_dejan_una_sola_viva(pg_test_db) -> None:
     assert dict(statuses) == {"pending": 1, "rejected": 1}
 
 
-async def test_ratings_concurrentes_del_mismo_autor_persisten_una_fila(pg_test_db) -> None:
+async def test_concurrent_ratings_from_the_same_author_persist_one_row(pg_test_db) -> None:
     rater_id = uuid.uuid4()
     ratee_id = uuid.uuid4()
     ride_id = uuid.uuid4()

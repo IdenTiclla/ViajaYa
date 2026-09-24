@@ -58,9 +58,9 @@ async def _serve(app) -> AsyncIterator[str]:
         while not server.started:
             if task.done():
                 await task
-                pytest.fail("Uvicorn terminó antes de aceptar conexiones.")
+                pytest.fail("Uvicorn exited before accepting connections.")
             if time.monotonic() >= deadline:
-                pytest.fail("Uvicorn no quedó listo dentro del tiempo esperado.")
+                pytest.fail("Uvicorn did not become ready within the expected time.")
             await asyncio.sleep(0.01)
         yield f"http://127.0.0.1:{port}"
     finally:
@@ -70,7 +70,7 @@ async def _serve(app) -> AsyncIterator[str]:
         except TimeoutError:
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
-            pytest.fail("Uvicorn no terminó de forma coordinada.")
+            pytest.fail("Uvicorn did not shut down in a coordinated way.")
         finally:
             listener.close()
 
@@ -105,11 +105,11 @@ async def _wait_until_drained(client: httpx.AsyncClient) -> None:
         ):
             return
         if time.monotonic() >= deadline:
-            pytest.fail(f"La outbox no drenó: {snapshot}")
+            pytest.fail(f"The outbox did not drain: {snapshot}")
         await asyncio.sleep(0.02)
 
 
-async def test_live_local_converge_tras_nueva_conexion_tcp_real(pg_test_db) -> None:
+async def test_live_local_converges_after_a_real_new_tcp_connection(pg_test_db) -> None:
     """Certifica snapshot, delta durable y otro handshake fuera de TestClient."""
     sessions = async_sessionmaker[AsyncSession](
         pg_test_db.engine,
@@ -229,7 +229,7 @@ async def test_live_local_converge_tras_nueva_conexion_tcp_real(pg_test_db) -> N
                     )
                     if cancelled.status_code != 200:
                         cleanup_errors.append(
-                            f"cancel devolvió {cancelled.status_code}"
+                            f"cancel returned {cancelled.status_code}"
                         )
                 if driver_token is not None:
                     offline = await client.post(
@@ -239,7 +239,7 @@ async def test_live_local_converge_tras_nueva_conexion_tcp_real(pg_test_db) -> N
                     )
                     if offline.status_code != 200:
                         cleanup_errors.append(
-                            f"offline devolvió {offline.status_code}"
+                            f"offline returned {offline.status_code}"
                         )
                 await _wait_until_drained(client)
                 if cleanup_errors and primary_error is None:

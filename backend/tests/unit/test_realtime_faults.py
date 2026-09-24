@@ -89,7 +89,7 @@ class RecordingPublisher(RealtimeOutboxBatchPublisher):
         self.resynced.append(tuple(streams))
 
 
-def test_controller_exige_match_exacto_y_consume_una_sola_vez() -> None:
+def test_controller_requires_an_exact_match_and_consumes_once() -> None:
     controller = RealtimeFaultController()
     event = _event()
     controller.arm(
@@ -116,7 +116,7 @@ def test_controller_exige_match_exacto_y_consume_una_sola_vez() -> None:
     assert controller.consume([event], allowed_actions={"duplicate"}) is None
 
 
-def test_controller_no_permite_sobrescribir_un_plan_pendiente() -> None:
+def test_controller_does_not_allow_overwriting_a_pending_plan() -> None:
     controller = RealtimeFaultController()
     plan = RealtimeFaultPlan(
         action="gap",
@@ -125,14 +125,14 @@ def test_controller_no_permite_sobrescribir_un_plan_pendiente() -> None:
     )
     controller.arm(plan)
 
-    with pytest.raises(RuntimeError, match="pendiente"):
+    with pytest.raises(RuntimeError, match="already pending"):
         controller.arm(plan)
 
-    with pytest.raises(ValueError, match="declara hit"):
+    with pytest.raises(ValueError, match="declares a hit"):
         RealtimeFaultController().arm(replace(plan, hit=True))
 
 
-def test_controller_es_thread_safe_y_solo_un_hilo_hace_hit() -> None:
+def test_controller_is_thread_safe_and_only_one_thread_hits() -> None:
     controller = RealtimeFaultController()
     event = _event()
     controller.arm(
@@ -157,7 +157,7 @@ def test_controller_es_thread_safe_y_solo_un_hilo_hace_hit() -> None:
     assert sum(hits) == 1
 
 
-def test_validator_delega_antes_de_inyectar_cuarentena_sanitizada() -> None:
+def test_validator_delegates_before_injecting_a_sanitized_quarantine() -> None:
     controller = RealtimeFaultController()
     delegate = RecordingValidator()
     event = _event()
@@ -181,7 +181,7 @@ def test_validator_delega_antes_de_inyectar_cuarentena_sanitizada() -> None:
     assert controller.plan is not None and controller.plan.hit is True
 
 
-def test_validator_no_consume_plan_si_delegado_rechaza_el_lote() -> None:
+def test_validator_does_not_consume_the_plan_if_the_delegate_rejects_the_batch() -> None:
     event = _event()
     controller = RealtimeFaultController()
     controller.arm(
@@ -191,16 +191,16 @@ def test_validator_no_consume_plan_si_delegado_rechaza_el_lote() -> None:
             topic=event.topic,
         )
     )
-    delegate = RecordingValidator(ValueError("contrato canónico inválido"))
+    delegate = RecordingValidator(ValueError("invalid canonical contract"))
     validator = FaultInjectingRealtimeOutboxBatchValidator(delegate, controller)
 
-    with pytest.raises(ValueError, match="canónico inválido"):
+    with pytest.raises(ValueError, match="invalid canonical"):
         validator.validate([event])
 
     assert controller.plan is not None and controller.plan.hit is False
 
 
-async def test_publisher_duplica_el_batch_exacto_una_sola_vez() -> None:
+async def test_publisher_duplicates_the_exact_batch_once() -> None:
     event = _event()
     controller = RealtimeFaultController()
     controller.arm(
@@ -229,7 +229,7 @@ async def test_publisher_duplica_el_batch_exacto_una_sola_vez() -> None:
     assert broadcasts == []
 
 
-async def test_publisher_gap_serializa_todo_y_omite_solo_el_primer_objetivo() -> None:
+async def test_gap_publisher_serializes_everything_and_skips_only_the_first_target() -> None:
     batch_id = uuid.uuid4()
     aggregate_id = uuid.uuid4()
     first = _event(
@@ -277,7 +277,7 @@ async def test_publisher_gap_serializa_todo_y_omite_solo_el_primer_objetivo() ->
     assert broadcasts[0][1]["stream_version"] == 9
 
 
-async def test_publisher_envia_frame_invalido_y_luego_publica_el_batch() -> None:
+async def test_publisher_sends_an_invalid_frame_and_then_publishes_the_batch() -> None:
     event = _event()
     controller = RealtimeFaultController()
     controller.arm(
@@ -314,7 +314,7 @@ async def test_publisher_envia_frame_invalido_y_luego_publica_el_batch() -> None
     assert controller.plan is not None and controller.plan.hit is True
 
 
-async def test_publisher_delega_sin_match_y_delega_force_resync() -> None:
+async def test_publisher_delegates_without_a_match_and_delegates_force_resync() -> None:
     event = _event()
     controller = RealtimeFaultController()
     controller.arm(

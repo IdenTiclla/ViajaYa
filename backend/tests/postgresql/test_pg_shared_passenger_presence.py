@@ -39,7 +39,7 @@ from app.infrastructure.scheduled_actions.worker import ScheduledActionsWorker
 def _redis_url() -> str:
     url = os.getenv("VIAJAYA_TEST_REDIS_URL")
     if not url:
-        pytest.skip("Define VIAJAYA_TEST_REDIS_URL para probar presencia compartida.")
+        pytest.skip("Set VIAJAYA_TEST_REDIS_URL to test shared presence.")
     return url
 
 
@@ -60,7 +60,7 @@ def _store(
     )
 
 
-async def test_lua_conserva_otra_conexion_y_expira_la_gracia() -> None:
+async def test_lua_keeps_another_connection_and_expires_the_grace() -> None:
     client = Redis.from_url(_redis_url(), decode_responses=True)
     prefix = f"viajaya:test:presence:{uuid.uuid4()}"
     store = _store(client, prefix)
@@ -85,7 +85,7 @@ async def test_lua_conserva_otra_conexion_y_expira_la_gracia() -> None:
         await store.aclose()
 
 
-async def test_scheduler_cancela_solo_tras_ausencia_redis_confirmada(
+async def test_scheduler_cancels_only_after_confirmed_redis_absence(
     pg_test_db,
 ) -> None:
     redis_client = Redis.from_url(_redis_url(), decode_responses=True)

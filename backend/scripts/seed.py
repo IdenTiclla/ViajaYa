@@ -139,8 +139,8 @@ async def seed() -> None:
             print(f"+ creado: {seed_user.phone} ({seed_user.role.value})")
         await session.commit()
 
-    print(f"\nSeed listo: {created} creados, {skipped} ya existían.")
-    print("Entra con cualquiera de esos números y el OTP simulado del entorno.")
+    print(f"\nSeed listo: {created} creados, {skipped} already existed.")
+    print("Sign in with any of those numbers and the environment's simulated OTP.")
 
 
 if __name__ == "__main__":

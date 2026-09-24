@@ -21,7 +21,7 @@ from app.main import create_app
 OPENAPI_SNAPSHOT = Path(__file__).resolve().parents[1] / "openapi.json"
 
 
-def serializar_openapi() -> str:
+def serialize_openapi() -> str:
     """Return the current OpenAPI as stable JSON ending with a newline."""
     schema = create_app().openapi()
     return json.dumps(
@@ -33,40 +33,40 @@ def serializar_openapi() -> str:
     ) + "\n"
 
 
-def snapshot_esta_actualizado(
-    destino: Path = OPENAPI_SNAPSHOT,
+def snapshot_is_current(
+    destination: Path = OPENAPI_SNAPSHOT,
     *,
-    esperado: str | None = None,
+    expected: str | None = None,
 ) -> bool:
     """Compare the snapshot without writing to disk."""
-    if esperado is None:
-        esperado = serializar_openapi()
+    if expected is None:
+        expected = serialize_openapi()
     try:
-        actual = destino.read_text(encoding="utf-8")
+        current = destination.read_text(encoding="utf-8")
     except FileNotFoundError:
         return False
-    return actual == esperado
+    return current == expected
 
 
-def escribir_snapshot(
-    destino: Path = OPENAPI_SNAPSHOT,
+def write_snapshot(
+    destination: Path = OPENAPI_SNAPSHOT,
     *,
-    contenido: str | None = None,
+    content: str | None = None,
 ) -> None:
     """Escribe el contrato OpenAPI serializado de forma determinista."""
-    if contenido is None:
-        contenido = serializar_openapi()
-    destino.write_text(contenido, encoding="utf-8")
+    if content is None:
+        content = serialize_openapi()
+    destination.write_text(content, encoding="utf-8")
 
 
-def _crear_parser() -> argparse.ArgumentParser:
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Genera o verifica el snapshot OpenAPI versionado del backend."
+        description="Generate or verify the backend's versioned OpenAPI snapshot."
     )
     parser.add_argument(
         "--check",
         action="store_true",
-        help="falla si el snapshot difiere, sin modificarlo",
+        help="fail if the snapshot differs, without modifying it",
     )
     return parser
 
@@ -74,25 +74,25 @@ def _crear_parser() -> argparse.ArgumentParser:
 def main(
     argv: Sequence[str] | None = None,
     *,
-    destino: Path = OPENAPI_SNAPSHOT,
+    destination: Path = OPENAPI_SNAPSHOT,
 ) -> int:
     """Run the requested export or check."""
-    args = _crear_parser().parse_args(argv)
-    esperado = serializar_openapi()
+    args = _build_parser().parse_args(argv)
+    expected = serialize_openapi()
 
     if args.check:
-        if snapshot_esta_actualizado(destino, esperado=esperado):
-            print(f"OpenAPI actualizado: {destino}")
+        if snapshot_is_current(destination, expected=expected):
+            print(f"OpenAPI actualizado: {destination}")
             return 0
         print(
-            "El snapshot OpenAPI está desactualizado. "
-            "Ejecuta `python -m scripts.export_openapi` y versiona el resultado.",
+            "The OpenAPI snapshot is out of date. "
+            "Run `python -m scripts.export_openapi` and commit the result.",
             file=sys.stderr,
         )
         return 1
 
-    escribir_snapshot(destino, contenido=esperado)
-    print(f"OpenAPI exportado: {destino}")
+    write_snapshot(destination, content=expected)
+    print(f"OpenAPI exportado: {destination}")
     return 0
 
 

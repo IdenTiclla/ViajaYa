@@ -176,7 +176,7 @@ async def _stop(
     )
 
 
-async def test_un_batch_llega_a_los_sockets_locales_de_dos_procesos() -> None:
+async def test_a_batch_reaches_the_local_sockets_of_two_processes() -> None:
     broker = _FakeRedisBroker()
     first_hub = RealtimeHub()
     second_hub = RealtimeHub()
@@ -210,7 +210,7 @@ async def test_un_batch_llega_a_los_sockets_locales_de_dos_procesos() -> None:
         await _stop(running)
 
 
-async def test_publicacion_dual_es_compatible_y_no_duplica_en_consumidor_nuevo() -> None:
+async def test_dual_publication_is_compatible_and_does_not_duplicate_in_new_consumer() -> None:
     broker = _FakeRedisBroker()
     local_hub = RealtimeHub()
     socket = _RecordingSocket()
@@ -244,7 +244,7 @@ async def test_publicacion_dual_es_compatible_y_no_duplica_en_consumidor_nuevo()
         await _stop([(bridge, task)])
 
 
-async def test_consumidor_nuevo_acepta_batch_del_productor_anterior() -> None:
+async def test_new_consumer_accepts_a_batch_from_the_previous_producer() -> None:
     broker = _FakeRedisBroker()
     local_hub = RealtimeHub()
     socket = _RecordingSocket()
@@ -308,7 +308,7 @@ async def test_consumidor_nuevo_acepta_batch_del_productor_anterior() -> None:
         await _stop([(bridge, task)])
 
 
-async def test_publicar_sin_suscriptores_no_confirma_el_fanout() -> None:
+async def test_publishing_without_subscribers_does_not_confirm_the_fanout() -> None:
     broker = _FakeRedisBroker()
     bridge = _bridge(broker, RealtimeHub())
     task = asyncio.create_task(bridge.run())
@@ -321,7 +321,7 @@ async def test_publicar_sin_suscriptores_no_confirma_el_fanout() -> None:
         await _stop([(bridge, task)])
 
 
-async def test_mensaje_invalido_cierra_sockets_sin_exponer_payload() -> None:
+async def test_invalid_message_closes_sockets_without_exposing_the_payload() -> None:
     broker = _FakeRedisBroker()
     local_hub = RealtimeHub()
     socket = _RecordingSocket()
@@ -330,7 +330,7 @@ async def test_mensaje_invalido_cierra_sockets_sin_exponer_payload() -> None:
     task = asyncio.create_task(bridge.run())
     try:
         await bridge.wait_until_ready(1)
-        await broker.publish('{"kind":"batch","secreto":"no-log"}')
+        await broker.publish('{"kind":"batch","secret":"no-log"}')
         for _ in range(20):
             if socket.closed_with:
                 break
@@ -345,7 +345,7 @@ async def test_mensaje_invalido_cierra_sockets_sin_exponer_payload() -> None:
         await _stop([(bridge, task)])
 
 
-async def test_perder_pubsub_cierra_sockets_y_reconecta() -> None:
+async def test_losing_pubsub_closes_sockets_and_reconnects() -> None:
     broker = _FakeRedisBroker()
     local_hub = RealtimeHub()
     socket = _RecordingSocket()
@@ -368,7 +368,7 @@ async def test_perder_pubsub_cierra_sockets_y_reconecta() -> None:
         await _stop([(bridge, task)])
 
 
-async def test_publica_batch_valido_con_mas_de_mil_eventos() -> None:
+async def test_publishes_a_valid_batch_with_more_than_a_thousand_events() -> None:
     broker = _FakeRedisBroker()
     bridge = _bridge(broker, RealtimeHub())
     task = asyncio.create_task(bridge.run())
@@ -390,7 +390,7 @@ async def test_publica_batch_valido_con_mas_de_mil_eventos() -> None:
         await _stop([(bridge, task)])
 
 
-async def test_batch_que_excede_bytes_es_error_determinista(
+async def test_batch_exceeding_bytes_is_a_deterministic_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     broker = _FakeRedisBroker()
@@ -406,7 +406,7 @@ async def test_batch_que_excede_bytes_es_error_determinista(
         await _stop([(bridge, task)])
 
 
-async def test_resync_grande_se_fragmenta_en_mensajes_de_control() -> None:
+async def test_large_resync_is_split_into_control_messages() -> None:
     broker = _FakeRedisBroker()
     bridge = _bridge(broker, RealtimeHub())
     task = asyncio.create_task(bridge.run())

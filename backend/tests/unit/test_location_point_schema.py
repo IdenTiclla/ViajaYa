@@ -6,7 +6,7 @@ from pydantic import ValidationError
 from app.api.v1.schemas.rides import PointInputSchema, PointSchema
 
 
-def test_promueve_direccion_real_si_el_nombre_es_provisional() -> None:
+def test_promotes_the_real_address_if_the_name_is_provisional() -> None:
     point = PointInputSchema(
         latitude=-16.5101,
         longitude=-68.1262,
@@ -18,7 +18,7 @@ def test_promueve_direccion_real_si_el_nombre_es_provisional() -> None:
     assert point.name == "Av. Arce 123"
 
 
-def test_rechaza_placeholder_si_solo_hay_coordenadas() -> None:
+def test_rejects_a_placeholder_if_there_are_only_coordinates() -> None:
     with pytest.raises(ValidationError, match="Falta obtener un nombre legible"):
         PointInputSchema(
             latitude=-16.5101,
@@ -29,7 +29,7 @@ def test_rechaza_placeholder_si_solo_hay_coordenadas() -> None:
         )
 
 
-def test_rechaza_coordenadas_enteras_como_direccion() -> None:
+def test_rejects_whole_coordinates_as_an_address() -> None:
     with pytest.raises(ValidationError, match="Falta obtener un nombre legible"):
         PointInputSchema(
             latitude=-16,
@@ -40,7 +40,7 @@ def test_rechaza_coordenadas_enteras_como_direccion() -> None:
         )
 
 
-def test_schema_de_respuesta_tolera_filas_historicas() -> None:
+def test_response_schema_tolerates_historical_rows() -> None:
     point = PointSchema(
         latitude=-16.5101,
         longitude=-68.1262,
@@ -52,7 +52,7 @@ def test_schema_de_respuesta_tolera_filas_historicas() -> None:
     assert point.name == "Ubicación seleccionada"
 
 
-def test_reemplaza_direccion_provisional_con_nombre_real() -> None:
+def test_replaces_a_provisional_address_with_the_real_name() -> None:
     point = PointInputSchema(
         latitude=-16.5101,
         longitude=-68.1262,

@@ -42,7 +42,7 @@ class PostgreSQLTestDatabase:
             elif action == "downgrade":
                 command.downgrade(config, revision)
             else:  # pragma: no cover - only this suite uses it
-                raise ValueError(f"Acción Alembic desconocida: {action}")
+                raise ValueError(f"Unknown Alembic action: {action}")
         finally:
             if previous_url is None:
                 os.environ.pop("DATABASE_URL", None)
@@ -70,18 +70,18 @@ def _test_database_url() -> str:
     raw_url = os.getenv(_TEST_DATABASE_ENV)
     if not raw_url:
         pytest.skip(
-            f"Define {_TEST_DATABASE_ENV} para ejecutar la certificación PostgreSQL aislada."
+            f"Define {_TEST_DATABASE_ENV} to run the isolated PostgreSQL certification."
         )
 
     url = make_url(raw_url)
     if url.drivername != "postgresql+asyncpg":
-        pytest.fail(f"{_TEST_DATABASE_ENV} debe usar el driver postgresql+asyncpg.")
+        pytest.fail(f"{_TEST_DATABASE_ENV} must use the postgresql+asyncpg driver.")
 
     database = url.database or ""
     if not (database.startswith("test_") or database.endswith("_test")):
         pytest.fail(
-            f"Base rechazada por seguridad: {database!r}. "
-            "El nombre debe empezar por 'test_' o terminar en '_test'."
+            f"Database rejected for safety: {database!r}. "
+            "The name must start with 'test_' or end with '_test'."
         )
     return raw_url
 

@@ -91,7 +91,7 @@ def downgrade() -> None:
     )
     if quarantined_count:
         raise RuntimeError(
-            "No se puede revertir 0020: existen eventos de outbox en cuarentena."
+            "Cannot revert 0020: there are quarantined outbox events."
         )
 
     op.drop_index("ix_realtime_outbox_quarantined", table_name="realtime_outbox")

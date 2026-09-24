@@ -550,7 +550,7 @@ class InMemoryOfferRepository(OfferRepository):
         self, driver_id: uuid.UUID
     ) -> DriverOfflineTransition | None:
         assert self._users is not None and self._rides is not None, (
-            "wire rides/users en el fake para cambiar disponibilidad"
+            "wire rides/users in the fake to change availability"
         )
         driver = await self._users.get_by_id(driver_id)
         if driver is None or not driver.is_driver or driver.vehicle_type is None:
@@ -583,7 +583,7 @@ class InMemoryOfferRepository(OfferRepository):
         expected_status: RideStatus,
         expected_paused: bool,
     ) -> RideOffersTransition | None:
-        assert self._rides is not None, "wire rides en el fake para cancelar"
+        assert self._rides is not None, "wire rides in the fake to cancel"
         ride_index = next(
             (i for i, ride in enumerate(self._rides.rides) if ride.id == ride_id),
             None,
@@ -618,7 +618,7 @@ class InMemoryOfferRepository(OfferRepository):
         *,
         expected_fare: Decimal,
     ) -> RideOffersTransition | None:
-        assert self._rides is not None, "wire rides en el fake para pausar"
+        assert self._rides is not None, "wire rides in the fake to pause"
         ride_index = next(
             (i for i, ride in enumerate(self._rides.rides) if ride.id == ride_id),
             None,
@@ -651,7 +651,7 @@ class InMemoryOfferRepository(OfferRepository):
         self, ride_id: uuid.UUID
     ) -> RideAutoCancellation | None:
         assert self._rides is not None, (
-            "wire rides en el fake para ejercitar la cancelación por desconexión"
+            "wire rides in the fake to exercise the disconnect cancellation"
         )
         ride_index = next(
             (i for i, ride in enumerate(self._rides.rides) if ride.id == ride_id),
@@ -687,7 +687,7 @@ class InMemoryOfferRepository(OfferRepository):
 
     async def accept_atomically(self, offer_id: uuid.UUID) -> OfferAcceptance | None:
         assert self._rides is not None and self._users is not None, (
-            "wire rides/users en el fake para ejercitar accept_atomically"
+            "wire rides/users in the fake to exercise accept_atomically"
         )
         offer = await self.get_by_id(offer_id)
         if offer is None or offer.status is not OfferStatus.PENDING:
@@ -1473,7 +1473,7 @@ class FakeVerifier(SocialIdentityVerifier):
 
     async def verify(self, token: str) -> SocialProfile:
         if not token:
-            raise InvalidTokenError("token vacío")
+            raise InvalidTokenError("empty token")
         return SocialProfile(
             provider=self.provider,
             provider_id=token,

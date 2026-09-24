@@ -383,7 +383,7 @@ async def test_invalid_batch_is_quarantined_without_retry_and_committed() -> Non
     outbox = RecordingOutbox([event])
     unit_of_work = RecordingUnitOfWork()
     validator = ConfigurableValidator(
-        InvalidRealtimeOutboxBatchError("invalid_payload", "contrato inválido")
+        InvalidRealtimeOutboxBatchError("invalid_payload", "invalid contract")
     )
 
     result = await _use_case(outbox, unit_of_work, validator).execute(now)
@@ -407,7 +407,7 @@ async def test_partial_quarantine_rolls_back_and_propagates() -> None:
     outbox.quarantine_count = 0
     unit_of_work = RecordingUnitOfWork()
     validator = ConfigurableValidator(
-        InvalidRealtimeOutboxBatchError("invalid_payload", "contrato inválido")
+        InvalidRealtimeOutboxBatchError("invalid_payload", "invalid contract")
     )
 
     with pytest.raises(RuntimeError, match="no alcanzó"):

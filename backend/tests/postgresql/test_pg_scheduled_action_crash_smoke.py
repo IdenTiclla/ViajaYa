@@ -26,7 +26,7 @@ _TIMEOUT_SECONDS = 20
 
 async def _wait_event(event, label: str) -> None:
     reached = await asyncio.to_thread(event.wait, _TIMEOUT_SECONDS)
-    assert reached, f"No se alcanzó la compuerta {label}."
+    assert reached, f"Gate not reached: {label}."
 
 
 async def _stop_process(process, release) -> None:
@@ -41,9 +41,9 @@ async def _stop_process(process, release) -> None:
     process.close()
 
 
-async def test_sigkill_despues_del_claim_recupera_la_expiracion(pg_test_db) -> None:
+async def test_sigkill_after_the_claim_recovers_the_expiry(pg_test_db) -> None:
     if os.name != "posix":
-        pytest.skip("El smoke de SIGKILL requiere POSIX.")
+        pytest.skip("The SIGKILL smoke requires POSIX.")
     sessions = async_sessionmaker(pg_test_db.engine, expire_on_commit=False)
     settings = scheduler_support._settings()
     _, _, ride, offer = await scheduler_support._create_scheduled_offer(

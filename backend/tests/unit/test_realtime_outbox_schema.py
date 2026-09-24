@@ -12,7 +12,7 @@ from app.infrastructure.db.models import (
 )
 
 
-def test_contador_de_version_tiene_clave_compuesta_y_restriccion() -> None:
+def test_version_counter_has_a_composite_key_and_constraint() -> None:
     table = RealtimeAggregateVersionModel.__table__
 
     assert table.name == "realtime_aggregate_versions"
@@ -32,7 +32,7 @@ def test_contador_de_version_tiene_clave_compuesta_y_restriccion() -> None:
     assert table.c.updated_at.server_default is not None
 
 
-def test_contador_de_stream_tiene_topic_como_clave_y_restriccion() -> None:
+def test_stream_counter_has_topic_as_key_and_constraint() -> None:
     table = RealtimeStreamVersionModel.__table__
 
     assert table.name == "realtime_stream_versions"
@@ -49,7 +49,7 @@ def test_contador_de_stream_tiene_topic_como_clave_y_restriccion() -> None:
     assert table.c.updated_at.server_default is not None
 
 
-def test_outbox_declara_columnas_jsonb_constraints_e_indice_pending() -> None:
+def test_outbox_declares_jsonb_columns_constraints_and_pending_index() -> None:
     table = RealtimeOutboxModel.__table__
 
     assert tuple(table.columns.keys()) == (

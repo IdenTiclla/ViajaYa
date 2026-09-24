@@ -386,7 +386,7 @@ def _wait_for_ride_status(
             return ride
         if time.monotonic() >= deadline:
             pytest.fail(
-                f"El viaje {ride_id} no llegó a {expected}; estado actual: {ride['status']}"
+                f"El viaje {ride_id} did not reach {expected}; estado actual: {ride['status']}"
             )
         time.sleep(0.01)
 

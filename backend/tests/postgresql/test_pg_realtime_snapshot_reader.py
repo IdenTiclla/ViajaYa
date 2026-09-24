@@ -45,7 +45,7 @@ async def _cleanup(pg_test_db, rider_id: uuid.UUID, ride_id: uuid.UUID, topic: s
         await connection.execute(sa.delete(UserModel).where(UserModel.id == rider_id))
 
 
-async def test_snapshot_usa_repeatable_read_read_only_antes_de_cualquier_lectura(
+async def test_snapshot_uses_repeatable_read_read_only_before_any_read(
     pg_test_db,
 ) -> None:
     sessions = async_sessionmaker(pg_test_db.engine, expire_on_commit=False)

@@ -26,7 +26,7 @@ async def _wait_release(release: Any) -> None:
     deadline = asyncio.get_running_loop().time() + _COORDINATION_TIMEOUT_SECONDS
     while not release.is_set():
         if asyncio.get_running_loop().time() >= deadline:
-            raise TimeoutError("La coordinación del restart Redis venció.")
+            raise TimeoutError("The Redis restart coordination timed out.")
         await asyncio.sleep(0.01)
 
 
@@ -74,7 +74,7 @@ class RestartGateRedisRealtimeBridge(RedisRealtimeBridge):
             except BaseException:
                 self._first_failed.set()
                 raise
-            raise RuntimeError("Redis publicó durante la ventana de caída del test.")
+            raise RuntimeError("Redis published during the test's outage window.")
 
         if self._target_attempts == 2:
             self._replay_reached.set()
@@ -98,7 +98,7 @@ def run_redis_realtime_server_process(
     """Picklable entry point of an API replica with its own local hub."""
     _validate_test_database_url(database_url)
     if not redis_url.startswith(("redis://", "rediss://")):
-        raise RuntimeError("El smoke multiworker requiere una URL Redis aislada.")
+        raise RuntimeError("The multi-worker smoke requires an isolated Redis URL.")
 
     engine = create_async_engine(database_url, poolclass=NullPool)
     sessions = async_sessionmaker[AsyncSession](engine, expire_on_commit=False)
@@ -176,7 +176,7 @@ def run_redis_restart_server_process(
     """Instancia live_redis con compuertas alrededor de un publish durable."""
     _validate_test_database_url(database_url)
     if not redis_url.startswith(("redis://", "rediss://")):
-        raise RuntimeError("El smoke de restart requiere una URL Redis aislada.")
+        raise RuntimeError("The restart smoke requires an isolated Redis URL.")
 
     engine = create_async_engine(database_url, poolclass=NullPool)
     sessions = async_sessionmaker[AsyncSession](engine, expire_on_commit=False)

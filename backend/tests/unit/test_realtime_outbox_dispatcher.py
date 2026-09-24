@@ -448,7 +448,7 @@ class _InjectedBridge(RealtimeDeliveryBridge):
         self.closed = True
 
 
-async def test_app_lifecycle_usa_los_adaptadores_realtime_inyectados(
+async def test_app_lifecycle_uses_the_injected_realtime_adapters(
     outbox_sessions: async_sessionmaker[AsyncSession],
 ) -> None:
     settings = Settings(
@@ -473,7 +473,7 @@ async def test_app_lifecycle_usa_los_adaptadores_realtime_inyectados(
         assert dispatcher._publisher is publisher
 
 
-async def test_app_lifecycle_live_redis_inicia_bridge_antes_del_dispatcher(
+async def test_app_lifecycle_live_redis_starts_the_bridge_before_the_dispatcher(
     outbox_sessions: async_sessionmaker[AsyncSession],
 ) -> None:
     settings = Settings(
@@ -507,7 +507,7 @@ async def test_app_lifecycle_live_redis_inicia_bridge_antes_del_dispatcher(
     assert realtime_hub_module.hub.legacy_delivery_enabled is previous_policy
 
 
-def test_app_rechaza_publisher_inyectado_fuera_de_live_local(
+def test_app_rejects_an_injected_publisher_outside_live_local(
     outbox_sessions: async_sessionmaker[AsyncSession],
 ) -> None:
     with pytest.raises(ValueError, match="requiere el modo live_local"):
@@ -518,7 +518,7 @@ def test_app_rechaza_publisher_inyectado_fuera_de_live_local(
         )
 
 
-def test_app_rechaza_bridge_redis_inyectado_fuera_de_live_redis(
+def test_app_rejects_an_injected_redis_bridge_outside_live_redis(
     outbox_sessions: async_sessionmaker[AsyncSession],
 ) -> None:
     with pytest.raises(ValueError, match="requiere el modo live_redis"):

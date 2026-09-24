@@ -59,7 +59,7 @@ def _pending(
     )
 
 
-async def test_add_batch_asigna_lote_secuencia_y_versiones_consecutivas(
+async def test_add_batch_assigns_batch_sequence_and_consecutive_versions(
     outbox_sessions: async_sessionmaker[AsyncSession],
 ) -> None:
     ride_id = uuid.uuid4()
@@ -116,7 +116,7 @@ async def test_add_batch_rejects_mixed_explicit_correlations(
             )
 
 
-async def test_add_batch_agrupa_y_reserva_las_claves_en_orden_determinista(
+async def test_add_batch_groups_and_reserves_keys_in_deterministic_order(
     outbox_sessions: async_sessionmaker[AsyncSession],
 ) -> None:
     first_ride_id = uuid.UUID(int=1)
@@ -165,7 +165,7 @@ async def test_add_batch_agrupa_y_reserva_las_claves_en_orden_determinista(
     assert [event.stream_version for event in saved] == [1, 2, 1, 2]
 
 
-async def test_rollback_descarta_eventos_y_contadores(
+async def test_rollback_discards_events_and_counters(
     outbox_sessions: async_sessionmaker[AsyncSession],
 ) -> None:
     ride_id = uuid.uuid4()
@@ -195,7 +195,7 @@ async def test_rollback_descarta_eventos_y_contadores(
     assert saved[0].stream_version == 1
 
 
-async def test_claim_reintenta_el_lote_completo_y_luego_lo_marca_publicado(
+async def test_claim_retries_the_whole_batch_and_then_marks_it_published(
     outbox_sessions: async_sessionmaker[AsyncSession],
 ) -> None:
     ride_id = uuid.uuid4()
@@ -216,7 +216,7 @@ async def test_claim_reintenta_el_lote_completo_y_luego_lo_marca_publicado(
         assert [event.sequence for event in claimed] == [0, 1]
         assert [event.batch_size for event in claimed] == [2, 2]
         assert [event.attempts for event in claimed] == [1, 1]
-        await outbox.mark_batch_failed(created[0].batch_id, "redis no disponible", retry_at)
+        await outbox.mark_batch_failed(created[0].batch_id, "redis unavailable", retry_at)
         await SqlAlchemyUnitOfWork(session).commit()
 
     async with outbox_sessions() as session:
@@ -230,8 +230,8 @@ async def test_claim_reintenta_el_lote_completo_y_luego_lo_marca_publicado(
         retried = await outbox.claim_next_batch(retry_at)
         assert [event.attempts for event in retried] == [2, 2]
         assert [event.last_error for event in retried] == [
-            "redis no disponible",
-            "redis no disponible",
+            "redis unavailable",
+            "redis unavailable",
         ]
         await outbox.mark_batch_published(created[0].batch_id, published_at)
         await SqlAlchemyUnitOfWork(session).commit()
@@ -251,7 +251,7 @@ async def test_claim_reintenta_el_lote_completo_y_luego_lo_marca_publicado(
     assert all(row.published_at is not None for row in rows)
 
 
-async def test_claim_no_adelanta_un_stream_bloqueado_y_deja_progresar_otro(
+async def test_claim_does_not_skip_a_blocked_stream_and_lets_another_progress(
     outbox_sessions: async_sessionmaker[AsyncSession],
 ) -> None:
     blocked_ride_id = uuid.uuid4()
@@ -272,7 +272,7 @@ async def test_claim_no_adelanta_un_stream_bloqueado_y_deja_progresar_otro(
         outbox = SqlAlchemyRealtimeOutbox(session)
         claimed_head = await outbox.claim_next_batch(now)
         assert claimed_head[0].batch_id == head[0].batch_id
-        await outbox.mark_batch_failed(head[0].batch_id, "contrato inválido", retry_at)
+        await outbox.mark_batch_failed(head[0].batch_id, "invalid contract", retry_at)
         await SqlAlchemyUnitOfWork(session).commit()
 
     async with outbox_sessions() as session:
@@ -516,7 +516,7 @@ async def test_batch_size_constraints_reject_invalid_cardinality(
         await session.rollback()
 
 
-async def test_add_batch_rechaza_un_lote_vacio(
+async def test_add_batch_rejects_an_empty_batch(
     outbox_sessions: async_sessionmaker[AsyncSession],
 ) -> None:
     async with outbox_sessions() as session:

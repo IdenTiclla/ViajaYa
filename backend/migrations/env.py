@@ -46,6 +46,6 @@ def run_migrations_online() -> None:
 
 
 if context.is_offline_mode():
-    raise RuntimeError("Offline mode no soportado para este proyecto.")
+    raise RuntimeError("Offline mode is not supported for this project.")
 else:
     run_migrations_online()

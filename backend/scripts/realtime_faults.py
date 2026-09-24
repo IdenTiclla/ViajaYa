@@ -31,7 +31,7 @@ RealtimeBroadcast: TypeAlias = Callable[[str, dict[str, object]], Awaitable[None
 
 _PUBLISH_ACTIONS = frozenset({"duplicate", "gap", "invalid_frame"})
 _QUARANTINE_ACTIONS = frozenset({"quarantine"})
-_QUARANTINE_REASON = "Fallo de cuarentena inyectado por el smoke realtime."
+_QUARANTINE_REASON = "Quarantine fault injected by the realtime smoke."
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,9 +45,9 @@ class RealtimeFaultPlan:
 
     def __post_init__(self) -> None:
         if not self.event_type.strip():
-            raise ValueError("El event_type del fallo no puede estar vacío.")
+            raise ValueError("The fault's event_type cannot be empty.")
         if not self.topic.strip():
-            raise ValueError("El topic del fallo no puede estar vacío.")
+            raise ValueError("The fault's topic cannot be empty.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,10 +74,10 @@ class RealtimeFaultController:
     def arm(self, plan: RealtimeFaultPlan) -> None:
         """Arm a new plan without overwriting another that has not hit yet."""
         if plan.hit:
-            raise ValueError("No se puede armar un plan que ya declara hit.")
+            raise ValueError("Cannot arm a plan that already declares a hit.")
         with self._lock:
             if self._plan is not None and not self._plan.hit:
-                raise RuntimeError("Ya existe un fallo realtime pendiente.")
+                raise RuntimeError("A realtime fault is already pending.")
             self._plan = plan
 
     def consume(

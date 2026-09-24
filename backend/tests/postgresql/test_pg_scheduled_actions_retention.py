@@ -39,7 +39,7 @@ def _terminal(status: str, terminal_at: datetime) -> ScheduledActionModel:
     )
 
 
-async def test_dos_purgas_concurrentes_eliminan_chunks_disjuntos_y_conservan_dead(
+async def test_two_concurrent_purges_delete_disjoint_chunks_and_keep_dead(
     pg_test_db,
 ) -> None:
     sessions = async_sessionmaker(pg_test_db.engine, expire_on_commit=False)

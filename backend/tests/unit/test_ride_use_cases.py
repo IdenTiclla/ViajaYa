@@ -65,7 +65,7 @@ class _CapturingScheduledActions:
         self._error = error
 
     async def schedule(self, _action) -> None:
-        raise AssertionError("La creación debe asignar la generación atómicamente.")
+        raise AssertionError("Creation must assign the generation atomically.")
 
     async def schedule_next(self, action: RenewableScheduledAction) -> None:
         if self._error is not None:
@@ -109,9 +109,9 @@ async def test_create_ride_request_schedules_initial_absence_in_same_flow() -> N
 async def test_create_ride_request_rolls_back_if_absence_schedule_fails() -> None:
     repo = InMemoryRideRequestRepository()
     unit_of_work = InMemoryUnitOfWork(rides=repo)
-    actions = _CapturingScheduledActions(error=RuntimeError("scheduler caído"))
+    actions = _CapturingScheduledActions(error=RuntimeError("scheduler down"))
 
-    with pytest.raises(RuntimeError, match="scheduler caído"):
+    with pytest.raises(RuntimeError, match="scheduler down"):
         await create_ride_request_use_case(
             repo,
             unit_of_work=unit_of_work,

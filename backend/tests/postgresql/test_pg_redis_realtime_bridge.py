@@ -58,11 +58,11 @@ def _event() -> RealtimeOutboxEvent:
     )
 
 
-async def test_redis_real_entrega_el_mismo_evento_a_dos_procesos(pg_test_db) -> None:
+async def test_real_redis_delivers_the_same_event_to_two_processes(pg_test_db) -> None:
     del pg_test_db
     redis_url = os.getenv("VIAJAYA_TEST_REDIS_URL")
     if not redis_url:
-        pytest.skip("Define VIAJAYA_TEST_REDIS_URL para certificar el fanout Redis.")
+        pytest.skip("Set VIAJAYA_TEST_REDIS_URL to certify the Redis fan-out.")
 
     channel = f"viajaya:test:realtime:{uuid.uuid4()}"
     first_hub = RealtimeHub()

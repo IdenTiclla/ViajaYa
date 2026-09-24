@@ -69,7 +69,7 @@ async def main() -> None:
             ) as rider_ws:
                 snapshot = json.loads(await asyncio.wait_for(rider_ws.recv(), 5))
                 assert snapshot["type"] == "offers_snapshot", snapshot
-                print(f"[ok] WS pasajero conectado, snapshot de ofertas: {len(snapshot['data'])}")
+                print(f"[ok] passenger WS connected, offers snapshot: {len(snapshot['data'])}")
 
                 # 2) The driver connects their WS and must see the ride in the snapshot.
                 async with websockets.connect(
@@ -80,15 +80,15 @@ async def main() -> None:
                     assert pool["type"] == "open_rides_snapshot", pool
                     ids = [r["id"] for r in pool["data"]]
                     print(f"[ok] WS conductor conectado, solicitudes visibles: {len(ids)}")
-                    assert ride_id in ids, f"el viaje {ride_id} NO llegó al conductor"
-                    print("[ok] la solicitud le llega al conductor")
+                    assert ride_id in ids, f"el viaje {ride_id} did NOT reach the driver"
+                    print("[ok] the request reaches the driver")
 
                     # 3) The fallback REST endpoint also returns it.
                     resp = await client.get(f"{BASE}/rides/open", headers=driver_h)
                     resp.raise_for_status()
                     open_ids = [r["id"] for r in resp.json()]
-                    assert ride_id in open_ids, "no aparece en GET /rides/open"
-                    print("[ok] GET /rides/open también la devuelve")
+                    assert ride_id in open_ids, "does not appear in GET /rides/open"
+                    print("[ok] GET /rides/open also returns it")
 
                     # 4) Reproduction of the reported flow: a custom counter-offer
                     # arrives live without closing or assigning the ride.
@@ -115,7 +115,7 @@ async def main() -> None:
                     active.raise_for_status()
                     assert active.json()["id"] == ride_id, active.text
                     assert active.json()["status"] == "searching", active.text
-                    print("[ok] contraoferta personalizada recibida; negociación sigue activa")
+                    print("[ok] custom counter-offer received; negotiation still active")
         finally:
             await client.post(f"{BASE}/rides/{ride_id}/cancel", headers=rider_h)
             print("[ok] viaje cancelado (limpieza)")

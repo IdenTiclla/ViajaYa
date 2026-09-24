@@ -270,7 +270,7 @@ async def test_announcement_failure_does_not_turn_live_socket_into_absence(
 
     class FailingAnnounceOpenRide:
         async def execute(self, _ride_id: uuid.UUID) -> None:
-            raise RuntimeError("outbox no disponible")
+            raise RuntimeError("outbox unavailable")
 
     @asynccontextmanager
     async def session_factory():
@@ -314,7 +314,7 @@ async def test_http_heartbeat_renews_grace_without_recording_announcement(
         yield object()
 
     def unexpected_builder(_session: object, _settings: object):
-        pytest.fail("El heartbeat HTTP no debe registrar ride_created")
+        pytest.fail("The HTTP heartbeat must not record ride_created")
 
     monkeypatch.setattr(presence.hub, "has_subscribers", lambda _topic: False)
     monkeypatch.setattr(presence, "SqlAlchemyRideRequestRepository", FakeRides)

@@ -65,7 +65,7 @@ async def _cleanup(
         )
 
 
-async def test_head_bloqueado_no_se_salta_y_otro_stream_si_progresa(
+async def test_blocked_head_is_not_skipped_and_another_stream_progresses(
     pg_test_db,
 ) -> None:
     blocked_ride_id = uuid.uuid4()
@@ -120,7 +120,7 @@ async def test_head_bloqueado_no_se_salta_y_otro_stream_si_progresa(
         await _cleanup(pg_test_db, aggregate_ids, topics)
 
 
-async def test_commit_del_head_habilita_la_siguiente_version_del_stream(
+async def test_head_commit_enables_the_next_stream_version(
     pg_test_db,
 ) -> None:
     ride_id = uuid.uuid4()
@@ -150,7 +150,7 @@ async def test_commit_del_head_habilita_la_siguiente_version_del_stream(
         await _cleanup(pg_test_db, {ride_id}, {topic})
 
 
-async def test_cuarentena_habilita_el_sucesor_solo_despues_del_commit(
+async def test_quarantine_enables_the_successor_only_after_the_commit(
     pg_test_db,
 ) -> None:
     ride_id = uuid.uuid4()
@@ -185,7 +185,7 @@ async def test_cuarentena_habilita_el_sucesor_solo_despues_del_commit(
         await _cleanup(pg_test_db, {ride_id}, {topic})
 
 
-async def test_productores_con_topics_invertidos_no_forman_deadlock(
+async def test_producers_with_reversed_topics_do_not_deadlock(
     pg_test_db,
 ) -> None:
     ride_a = uuid.uuid4()

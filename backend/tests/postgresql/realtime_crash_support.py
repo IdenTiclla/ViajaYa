@@ -51,7 +51,7 @@ async def _wait_release(release: Any) -> None:
     deadline = asyncio.get_running_loop().time() + _COORDINATION_TIMEOUT_SECONDS
     while not release.is_set():
         if asyncio.get_running_loop().time() >= deadline:
-            raise TimeoutError("La coordinación del smoke de crash venció.")
+            raise TimeoutError("The crash smoke coordination timed out.")
         await asyncio.sleep(0.01)
 
 
@@ -219,9 +219,9 @@ def _validate_test_database_url(database_url: str) -> None:
     url = make_url(database_url)
     database = url.database or ""
     if url.drivername != "postgresql+asyncpg":
-        raise RuntimeError("El smoke de crash requiere postgresql+asyncpg.")
+        raise RuntimeError("The crash smoke requires postgresql+asyncpg.")
     if not (database.startswith("test_") or database.endswith("_test")):
-        raise RuntimeError("El smoke de crash requiere una base desechable de test.")
+        raise RuntimeError("The crash smoke requires a disposable test database.")
 
 
 def run_realtime_server_process(
@@ -269,7 +269,7 @@ def run_realtime_server_process(
         delegate = LocalHubRealtimeOutboxBatchPublisher()
         if mode == "crash":
             if crash_window is None:
-                raise RuntimeError("La instancia crash requiere una ventana exacta.")
+                raise RuntimeError("The crash instance requires an exact window.")
             publisher: RealtimeOutboxBatchPublisher = CrashGateRealtimeOutboxBatchPublisher(
                 delegate,
                 ride_id=resolved_ride_id,
@@ -279,7 +279,7 @@ def run_realtime_server_process(
             )
         else:
             if event_id is None or batch_id is None or published is None:
-                raise RuntimeError("La recuperación requiere la identidad durable.")
+                raise RuntimeError("Recovery requires the durable identity.")
             publisher = RecoveryGateRealtimeOutboxBatchPublisher(
                 delegate,
                 ride_id=resolved_ride_id,
@@ -292,7 +292,7 @@ def run_realtime_server_process(
         app_options["realtime_outbox_batch_publisher"] = publisher
     else:
         if not redis_url or not redis_channel:
-            raise RuntimeError("El crash live_redis requiere URL y canal aislados.")
+            raise RuntimeError("The live_redis crash requires an isolated URL and channel.")
         client = Redis.from_url(
             redis_url,
             decode_responses=True,
@@ -308,7 +308,7 @@ def run_realtime_server_process(
         }
         if mode == "crash":
             if crash_window is None:
-                raise RuntimeError("La instancia crash requiere una ventana exacta.")
+                raise RuntimeError("The crash instance requires an exact window.")
             bridge = CrashGateRedisRealtimeBridge(
                 client,
                 ride_id=resolved_ride_id,
@@ -319,7 +319,7 @@ def run_realtime_server_process(
             )
         else:
             if event_id is None or batch_id is None or published is None:
-                raise RuntimeError("La recuperación requiere la identidad durable.")
+                raise RuntimeError("Recovery requires the durable identity.")
             bridge = RecoveryGateRedisRealtimeBridge(
                 client,
                 ride_id=resolved_ride_id,

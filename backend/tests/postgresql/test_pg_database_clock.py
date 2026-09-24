@@ -37,7 +37,7 @@ def _pending(execute_at: datetime) -> PendingScheduledAction:
     )
 
 
-async def test_clock_timestamp_no_queda_fijado_al_inicio_de_transaccion(
+async def test_clock_timestamp_is_not_fixed_at_transaction_start(
     pg_test_db,
 ) -> None:
     sessions = async_sessionmaker(pg_test_db.engine, expire_on_commit=False)
@@ -51,7 +51,7 @@ async def test_clock_timestamp_no_queda_fijado_al_inicio_de_transaccion(
         assert actual > transaction_started_at
 
 
-async def test_terminal_at_del_scheduler_ignora_reloj_del_proceso_en_postgresql(
+async def test_scheduler_terminal_at_ignores_the_process_clock_on_postgresql(
     pg_test_db,
 ) -> None:
     sessions = async_sessionmaker(pg_test_db.engine, expire_on_commit=False)
@@ -83,7 +83,7 @@ async def test_terminal_at_del_scheduler_ignora_reloj_del_proceso_en_postgresql(
     assert terminal_at > supplied_at
 
 
-async def test_reloj_de_expiracion_se_lee_despues_del_row_lock(
+async def test_expiry_clock_is_read_after_the_row_lock(
     pg_test_db,
 ) -> None:
     sessions = async_sessionmaker(pg_test_db.engine, expire_on_commit=False)
@@ -123,7 +123,7 @@ async def test_reloj_de_expiracion_se_lee_despues_del_row_lock(
     assert expired is not None
 
 
-async def test_aceptacion_revalida_ttl_con_reloj_autoritativo(
+async def test_acceptance_revalidates_ttl_with_the_authoritative_clock(
     pg_test_db,
 ) -> None:
     sessions = async_sessionmaker(pg_test_db.engine, expire_on_commit=False)

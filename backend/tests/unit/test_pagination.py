@@ -28,7 +28,7 @@ def test_cursor_roundtrip_normalizes_timestamp_to_utc():
     )
 
 
-@pytest.mark.parametrize("value", ["", "no-es-base64", "e30", "e1widlwiOjJ9"])
+@pytest.mark.parametrize("value", ["", "not-base64", "e30", "e1widlwiOjJ9"])
 def test_invalid_cursor_maps_to_422(value: str):
     with pytest.raises(RequestValidationError) as error:
         decode_cursor(value)

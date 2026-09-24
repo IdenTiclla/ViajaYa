@@ -114,7 +114,7 @@ export function OfferSentScreen() {
   const destName = openRide?.destination.name ?? null;
   const offerPrice = sentOffer?.price ?? openRide?.fare ?? null;
 
-  const backToList = () => router.replace('/(driver)/(tabs)/solicitudes');
+  const backToList = () => router.replace('/(driver)/(tabs)/requests');
 
   // If the passenger renewed the request while the app was in the background,
   // the snapshot clears the previous offer's outcome. This screen is then
@@ -131,7 +131,7 @@ export function OfferSentScreen() {
       !wasTaken &&
       !isPaused
     ) {
-      router.replace('/(driver)/(tabs)/solicitudes');
+      router.replace('/(driver)/(tabs)/requests');
     }
   }, [
     rideId,

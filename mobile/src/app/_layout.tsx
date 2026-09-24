@@ -84,7 +84,7 @@ function RootNavigator() {
           falls back to the first allowed screen, and this one must not catch
           plain passengers. */}
       <Stack.Protected guard={isAuthenticated && modeChoicePending}>
-        <Stack.Screen name="elegir-modo" options={{ gestureEnabled: false }} />
+        <Stack.Screen name="choose-mode" options={{ gestureEnabled: false }} />
       </Stack.Protected>
       <Stack.Protected guard={isAuthenticated && !isDriver}>
         <Stack.Screen name="(app)" />

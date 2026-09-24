@@ -145,7 +145,7 @@ export type EarningsItem = {
   completedAt: string | null;
 };
 
-/** Resumen de ganancias del conductor. */
+/** The driver's earnings summary. */
 export type DriverEarnings = {
   totalToday: number;
   tripsToday: number;

@@ -11,11 +11,11 @@ export default function Index() {
   if (status === 'loading') return null;
   if (status !== 'authenticated') return <Redirect href="/(auth)" />;
   // An approved driver who just signed in picks passenger or driver (and vehicle) first.
-  if (modeChoicePending) return <Redirect href="/elegir-modo" />;
+  if (modeChoicePending) return <Redirect href="/choose-mode" />;
   // The driver lands on the incoming requests/offers; the passenger, on their ride.
   return (
     <Redirect
-      href={user?.role === 'driver' ? '/(driver)/(tabs)/solicitudes' : '/(app)/(tabs)'}
+      href={user?.role === 'driver' ? '/(driver)/(tabs)/requests' : '/(app)/(tabs)'}
     />
   );
 }

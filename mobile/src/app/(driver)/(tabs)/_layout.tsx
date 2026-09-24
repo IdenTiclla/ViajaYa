@@ -15,21 +15,21 @@ export default function DriverTabsLayout() {
     <Tabs tabBar={(props) => <PillTabBar {...props} />} screenOptions={{ headerShown: false }}>
       <Tabs.Screen name="index" options={{ tabBarButton: () => null }} />
       <Tabs.Screen
-        name="solicitudes"
+        name="requests"
         options={{
           title: 'Solicitudes',
           tabBarIcon: ({ color, size }) => <Ionicons name="list" size={size} color={color} />,
         }}
       />
       <Tabs.Screen
-        name="historial"
+        name="history"
         options={{
           title: 'Historial',
           tabBarIcon: ({ color, size }) => <Ionicons name="time" size={size} color={color} />,
         }}
       />
       <Tabs.Screen
-        name="ganancias"
+        name="earnings"
         options={{
           title: 'Ganancias',
           tabBarIcon: ({ color, size }) => <Ionicons name="cash" size={size} color={color} />,

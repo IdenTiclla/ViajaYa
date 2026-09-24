@@ -291,7 +291,7 @@ export function IncomingRequestsScreen() {
   // the status screen (waiting for confirmation).
   const openStatus = (ride: OpenRide) => {
     if (isOffered(ride.id) || rejected.has(ride.id) || expired.has(ride.id)) {
-      router.push({ pathname: '/(driver)/oferta-enviada', params: { rideId: ride.id } });
+      router.push({ pathname: '/(driver)/offer-sent', params: { rideId: ride.id } });
     }
   };
 

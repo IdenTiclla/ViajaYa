@@ -46,7 +46,7 @@ export function DriverAccountCard() {
   const canAdd = list.length < MAX_DRIVER_VEHICLES;
   const goToForm = (vehicleType?: VehicleType) =>
     router.navigate({
-      pathname: '/(app)/conductor/registro',
+      pathname: '/(app)/driver/register',
       params: vehicleType ? { vehicle: vehicleType } : {},
     });
   const enterAsDriver = (vehicleType: VehicleType) => {

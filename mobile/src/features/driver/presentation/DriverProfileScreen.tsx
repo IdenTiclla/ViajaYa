@@ -116,7 +116,7 @@ export function DriverProfileScreen() {
           <Button
             title="Historial de viajes"
             variant="secondary"
-            onPress={() => router.navigate('/(driver)/(tabs)/historial')}
+            onPress={() => router.navigate('/(driver)/(tabs)/history')}
           />
           <Button title="Cerrar sesión" variant="secondary" onPress={() => void signOut()} />
         </View>

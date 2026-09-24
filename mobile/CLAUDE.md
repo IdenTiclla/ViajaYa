@@ -22,7 +22,7 @@ El enrutado (`src/app/`) solo monta pantallas; la lógica vive en `src/features/
 src/
 ├── app/                 # Rutas (expo-router, file-based). Solo composición de pantallas.
 │   ├── _layout.tsx        # Raíz: providers (tema, QueryClient, SafeArea, GestureHandler) + gate por sesión/rol
-│   ├── index.tsx          # Redirect por rol → (auth) | (app)/(tabs) | (driver)/(tabs)/solicitudes
+│   ├── index.tsx          # Redirect por rol → (auth) | (app)/(tabs) | (driver)/(tabs)/requests
 │   ├── (auth)/            # index → PhoneEntryScreen: única vista de acceso (teléfono + OTP, Google).
 │   │                      # Un número nuevo completa nombre + términos ahí mismo. Sin correo/contraseña
 │   ├── (app)/             # Grupo pasajero (guard: authenticated && !driver)
@@ -30,11 +30,11 @@ src/
 │   │   ├── (tabs)/          # Viaje · Historial · Billetera · Perfil  (PillTabBar)
 │   │   ├── booking/         # destination, configure, offers, trip, rating,
 │   │   │                    #   pick-on-map, saved-places, edit-place
-│   │   └── conductor/registro.tsx  # alta/edición de un vehículo (?vehicle=taxi|moto|truck) desde Perfil
-│   ├── elegir-modo.tsx    # tras iniciar sesión un conductor aprobado elige modo y vehículo
+│   │   └── driver/register.tsx  # alta/edición de un vehículo (?vehicle=taxi|moto|truck) desde Perfil
+│   ├── choose-mode.tsx    # tras iniciar sesión un conductor aprobado elige modo y vehículo
 │   └── (driver)/          # Grupo conductor (guard: role === 'driver')
 │       ├── _layout.tsx      # Monta useDriverPoolSocket() + <DriverToaster/>
-│       ├── oferta-enviada.tsx
+│       ├── offer-sent.tsx
 │       └── (tabs)/          # Solicitudes · Historial · Ganancias · Perfil  (PillTabBar)
 │                            #   (index oculto vía tabBarButton: () => null → redirect a Solicitudes)
 ├── features/            # Una carpeta por feature, en capas (Clean Architecture).
@@ -95,7 +95,7 @@ src/
   aparte). Un número nuevo pasa por `ProfileCompletionForm` (nombre + términos) tras el OTP.
   El controlador (`useAuthController()`) conserva el flujo de recuperación aunque hoy no tiene UI.
 - pasajero → `/(app)/(tabs)` (tab inicial: Viaje)
-- conductor → `/(driver)/(tabs)/solicitudes` (cae directo en Solicitudes, no en Inicio)
+- conductor → `/(driver)/(tabs)/requests` (cae directo en Solicitudes, no en Inicio)
 
 **Una cuenta, dos modos, hasta tres vehículos.** `user.role` es el modo activo que devuelve el
 backend. En Perfil (pasajero) `DriverAccountCard` lista los vehículos (`useDriverVehicles`,
@@ -108,7 +108,7 @@ reemplaza `user` (`setUser`) y hace `router.replace('/')` para que los guards re
 conductor, Perfil permite cambiar de vehículo (otros aprobados) y volver a pasajero.
 
 **Al iniciar sesión** con una cuenta con algún vehículo aprobado, `authStore.modeChoicePending`
-queda en `true` y `index.tsx` redirige a `/elegir-modo` (`ChooseModeScreen`: "Pedir viajes" o
+queda en `true` y `index.tsx` redirige a `/choose-mode` (`ChooseModeScreen`: "Pedir viajes" o
 "Conducir con …" por vehículo). El arranque con sesión guardada (`bootstrap`) no vuelve a
 preguntar. No dupliques ese flujo: la navegación por rol ya existente hace el resto.
 

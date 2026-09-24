@@ -6,5 +6,5 @@ import { Redirect } from 'expo-router';
  * manual navigation to "/(driver)/(tabs)" without a sub-segment.
  */
 export default function DriverTabIndex() {
-  return <Redirect href="/(driver)/(tabs)/solicitudes" />;
+  return <Redirect href="/(driver)/(tabs)/requests" />;
 }

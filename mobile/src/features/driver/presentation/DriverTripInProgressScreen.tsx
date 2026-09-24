@@ -65,7 +65,7 @@ export function DriverTripInProgressScreen({ ride }: { ride: Ride }) {
       queryClient.setQueryData<Ride | null>(DRIVER_ACTIVE_RIDE_KEY,
         (current) => current?.id === ride.id ? null : current);
     }
-    router.replace('/(driver)/(tabs)/solicitudes');
+    router.replace('/(driver)/(tabs)/requests');
   };
   const requestConfirmation = (action: Confirmation['action']) => {
     if (!actions.busy) setConfirmation({ rideId: ride.id, status: ride.status, action });

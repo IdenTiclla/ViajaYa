@@ -6,7 +6,7 @@
  */
 import { create } from 'zustand';
 
-import { withTimeout } from '@/core/async/conTiempoLimite';
+import { withTimeout } from '@/core/async/withTimeout';
 import { getApiErrorMessage } from '@/core/errors/apiError';
 import { api, invalidateSessionRequests, setOnSessionExpired } from '@/core/http/client';
 import { tokenStorage } from '@/core/http/tokenStorage';

@@ -2,7 +2,7 @@
 import * as Crypto from 'expo-crypto';
 import * as SecureStore from 'expo-secure-store';
 
-import { withTimeout } from '@/core/async/conTiempoLimite';
+import { withTimeout } from '@/core/async/withTimeout';
 
 let pending: Promise<string> | null = null;
 export function getInstallationId(): Promise<string> {

@@ -12,13 +12,13 @@ const mocks = {
   'react-native-maps': 'export const Marker="Marker";',
   'react-native-reanimated': 'export const useReducedMotion=()=>true;',
   '@/core/theme': 'export const useThemedStyles=f=>({styles:f({colors:{}}),mode:"light"});',
-  '@/shared/components/mapa/VehiculoMapa': 'export const MapVehicle="VehicleDrawing";',
+  '@/shared/components/map/MapVehicle': 'export const MapVehicle="VehicleDrawing";',
   '@/features/rides/presentation/routeTooltipLayout': 'export const scheduleMarkerRedraw=()=>{};',
 };
 const hooks=registerHooks({
   resolve(specifier,context,next){
     if(specifier in mocks)return{url:'marker-test:'+specifier,shortCircuit:true};
-    if(specifier==='./rumboVehiculo')return next(new URL('../src/features/driver/presentation/rumboVehiculo.ts',import.meta.url).href,context);
+    if(specifier==='./vehicleHeading')return next(new URL('../src/features/driver/presentation/vehicleHeading.ts',import.meta.url).href,context);
     return next(specifier,context);
   },
   load(url,context,next){
@@ -29,7 +29,7 @@ const hooks=registerHooks({
     return next(url,context);
   },
 });
-const {VehicleMarker}=await import('../src/features/driver/presentation/MarcadorVehiculo.tsx');
+const {VehicleMarker}=await import('../src/features/driver/presentation/VehicleMarker.tsx');
 hooks.deregister();
 const coordinates={latitude:-17.79,longitude:-63.19};
 for(const vehicle of ['taxi','moto'])for(const heading of [null,-1]){

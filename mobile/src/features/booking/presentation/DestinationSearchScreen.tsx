@@ -30,7 +30,7 @@ import { useBookingStore } from '@/features/booking/application/useBookingStore'
 import { usePlaceSearch } from '@/features/booking/application/usePlaceSearch';
 import { useRecentDestinations } from '@/features/booking/application/useRecentDestinations';
 import { findByCategory, useSavedPlaces } from '@/features/booking/application/useSavedPlaces';
-import { useDestinationSelection } from '@/features/booking/application/useSeleccionDestino';
+import { useDestinationSelection } from '@/features/booking/application/useDestinationSelection';
 import type {
   Place,
   PlaceSuggestion,

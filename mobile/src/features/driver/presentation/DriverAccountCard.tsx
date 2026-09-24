@@ -20,7 +20,7 @@ import {
   useSwitchAccountMode,
 } from '@/features/driver/application/useDriverAccount';
 import { MAX_DRIVER_VEHICLES, type DriverVehicle } from '@/features/driver/domain/types';
-import { VehicleSelector } from '@/features/driver/presentation/SelectorVehiculo';
+import { VehicleSelector } from '@/features/driver/presentation/VehicleSelector';
 import { Button, ConfirmDialog } from '@/shared/components';
 import { useAuthStore } from '@/store/authStore';
 

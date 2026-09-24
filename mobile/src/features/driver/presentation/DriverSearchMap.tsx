@@ -12,7 +12,7 @@ import { useMapStyle } from '@/features/booking/presentation/mapStyle';
 import type { VehicleType } from '@/features/auth/domain/types';
 import type { Coordinates } from '@/core/domain/geo';
 import type { WatchStatus } from '@/features/home/application/useWatchPosition';
-import { VehicleMarker } from './MarcadorVehiculo';
+import { VehicleMarker } from './VehicleMarker';
 import { RadarPulse } from './RadarPulse';
 import { useDriverMapCamera } from './useDriverMapCamera';
 

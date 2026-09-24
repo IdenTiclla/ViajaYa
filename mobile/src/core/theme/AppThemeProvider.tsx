@@ -5,8 +5,8 @@ import { useEffect, useLayoutEffect, useMemo, type PropsWithChildren } from 'rea
 import { Appearance, Platform } from 'react-native';
 
 import { getTheme, DEFAULT_THEME_MODE } from './tokens';
-import { useThemePreference } from './usePreferenciaTema';
-import { ThemeContext } from './useTema';
+import { useThemePreference } from './useThemePreference';
+import { ThemeContext } from './useTheme';
 
 // Also controls native dialogs and fields from JS startup.
 if (Platform.OS !== 'web') Appearance.setColorScheme(DEFAULT_THEME_MODE);

@@ -266,7 +266,7 @@ arranque en frío; login, logout y Reintentar muestran el spinner ligero.
   `expo.autolinking.exclude` en `package.json` excluye ambas familias para evitar
   copiarlas también al binario nativo. No añadas imports `/static`, plugins de estas
   familias ni fuentes manuales sin revisar conjuntamente esa configuración.
-- Los símbolos propios del mapa viven en `shared/components/mapa/`: A circular
+- Los símbolos propios del mapa viven en `shared/components/map/`: A circular
   para origen, B circular para destino y vehículos cenitales taxi/moto. Se dibujan
   con vistas nativas y tokens, sin fuentes de iconos. La letra A/B tiene escala
   fija porque forma parte del símbolo; la etiqueta y el nombre accesible conservan
@@ -337,7 +337,7 @@ arranque en frío; login, logout y Reintentar muestran el spinner ligero.
 - El refresh también pasa por `api` con `skipAuth: true` y el timeout de 15 s;
   nunca debe quedar una renovación de sesión sin límite de espera.
 - Home verifica activo y después calificación con un límite total de 30 s en
-  `features/home/application/confirmarRecuperacion.ts`. Un fallo o timeout muestra
+  `features/home/application/confirmRecovery.ts`. Un fallo o timeout muestra
   Reintentar antes que el indicador de carga; reintentar repite la verificación
   completa. Una respuesta tardía no autoriza navegación después del timeout.
 - Leer SecureStore tiene un límite de 5 s. El arranque completo tiene 30 s y

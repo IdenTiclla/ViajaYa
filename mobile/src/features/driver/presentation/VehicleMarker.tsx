@@ -6,9 +6,9 @@ import { useReducedMotion } from 'react-native-reanimated';
 import type { Coordinates } from '@/core/domain/geo';
 import { useThemedStyles, type Theme } from '@/core/theme';
 import type { VehicleType } from '@/features/auth/domain/types';
-import { MapVehicle } from '@/shared/components/mapa/VehiculoMapa';
+import { MapVehicle } from '@/shared/components/map/MapVehicle';
 import { scheduleMarkerRedraw } from '@/features/rides/presentation/routeTooltipLayout';
-import { computeVehicleRotation, isValidHeading } from './rumboVehiculo';
+import { computeVehicleRotation, isValidHeading } from './vehicleHeading';
 
 type Props = {
   label?: string;

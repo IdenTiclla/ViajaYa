@@ -11,7 +11,7 @@ import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } fr
 import { Button } from '@/shared/components';
 import { getApiErrorMessage } from '@/core/errors/apiError';
 import { useAuthStore } from '@/store/authStore';
-import { ThemeSelector } from '@/features/profile/presentation/SelectorTema';
+import { ThemeSelector } from '@/features/profile/presentation/ThemeSelector';
 import { AccountSecurityPanel } from '@/features/auth/presentation/AccountSecurityPanel';
 import type { VehicleType } from '@/features/auth/domain/types';
 import { VEHICLE_META } from '@/features/auth/domain/vehicleCatalog';
@@ -21,7 +21,7 @@ import {
   useDriverVehicles,
   useSwitchAccountMode,
 } from '@/features/driver/application/useDriverAccount';
-import { VehicleSelector } from '@/features/driver/presentation/SelectorVehiculo';
+import { VehicleSelector } from '@/features/driver/presentation/VehicleSelector';
 
 export function DriverProfileScreen() {
   const { colors, styles } = useThemedStyles(createStyles);

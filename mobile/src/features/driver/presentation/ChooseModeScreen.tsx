@@ -15,7 +15,7 @@ import {
   useDriverVehicles,
   useSwitchAccountMode,
 } from '@/features/driver/application/useDriverAccount';
-import { VehicleSelector } from '@/features/driver/presentation/SelectorVehiculo';
+import { VehicleSelector } from '@/features/driver/presentation/VehicleSelector';
 import { Button } from '@/shared/components';
 import { useAuthStore } from '@/store/authStore';
 

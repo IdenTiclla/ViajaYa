@@ -11,7 +11,7 @@ import {
 } from '@tanstack/react-query';
 
 import { recoverCommittedMutation } from './recoverCommittedMutation';
-import { refreshAfterRating } from '@/features/rides/application/actualizarTrasCalificacion';
+import { refreshAfterRating } from '@/features/rides/application/refreshAfterRating';
 import { ridesRepository } from '@/features/rides/data/ridesRepository';
 import type { RatingInput, RideStatus } from '@/features/rides/domain/types';
 

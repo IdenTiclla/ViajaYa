@@ -6,13 +6,13 @@ import { lightColors, darkColors, resolveThemeMode } from '../src/core/theme/tok
 
 const hooks = registerHooks({
   resolve(specifier, context, nextResolve) {
-    if (context.parentURL?.endsWith('/crearStoreTema.ts') && specifier.startsWith('.')) {
+    if (context.parentURL?.endsWith('/createThemeStore.ts') && specifier.startsWith('.')) {
       return { url: new URL(`${specifier}.ts`, context.parentURL).href, shortCircuit: true };
     }
     return nextResolve(specifier, context);
   },
 });
-const { createThemeStore } = await import('../src/core/theme/crearStoreTema.ts');
+const { createThemeStore } = await import('../src/core/theme/createThemeStore.ts');
 hooks.deregister();
 
 const pendiente = () => {

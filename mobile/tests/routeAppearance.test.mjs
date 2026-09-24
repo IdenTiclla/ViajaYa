@@ -37,7 +37,7 @@ const hooks = registerHooks({
     if (specifier === '@/core/theme') return {
       url: new URL('../src/core/theme/index.ts', import.meta.url).href, shortCircuit: true,
     };
-    if (specifier.startsWith('@/shared/components/mapa/')) return {
+    if (specifier.startsWith('@/shared/components/map/')) return {
       url: new URL(`../src/${specifier.slice(2)}.tsx`, import.meta.url).href,
       shortCircuit: true,
     };
@@ -66,7 +66,7 @@ const hooks = registerHooks({
 });
 const { RoutePolyline } = await import('../src/features/rides/presentation/RoutePolyline.tsx');
 const { RoutePinMarker } = await import('../src/features/rides/presentation/RoutePinMarker.tsx');
-const { ThemeContext } = await import('../src/core/theme/useTema.ts');
+const { ThemeContext } = await import('../src/core/theme/useTheme.ts');
 const { getTheme } = await import('../src/core/theme/tokens.ts');
 const { useMapStyle } = await import('../src/features/booking/presentation/mapStyle.ts');
 const { lineas, marcadores } = await import('react-native-maps');

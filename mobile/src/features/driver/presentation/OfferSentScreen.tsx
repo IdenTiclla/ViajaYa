@@ -43,7 +43,7 @@ import { useRoute } from '@/features/booking/application/useRoute';
 import { useDriverRequests } from '@/features/driver/application/useDriverRequests';
 import { useNegotiationRide } from '@/features/driver/application/useNegotiationRide';
 import { RideUnavailableScreen } from '@/features/driver/presentation/RideUnavailableScreen';
-import { DriverTripInProgressScreen } from '@/features/driver/presentation/ViajeEnCursoConductorScreen';
+import { DriverTripInProgressScreen } from '@/features/driver/presentation/DriverTripInProgressScreen';
 import {
   useWithdrawOffer,
 } from '@/features/rides/application/useRideMutations';

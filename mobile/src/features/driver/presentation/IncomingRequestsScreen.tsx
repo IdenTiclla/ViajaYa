@@ -29,8 +29,8 @@ import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } fr
 import { DriverSearchMap } from '@/features/driver/presentation/DriverSearchMap';
 import { OfferSentOverlay } from '@/features/driver/presentation/OfferSentOverlay';
 import { RequestCard } from '@/features/driver/presentation/RequestCard';
-import { RequestsMap } from '@/features/driver/presentation/SolicitudesMapa';
-import { DriverTripInProgressScreen } from '@/features/driver/presentation/ViajeEnCursoConductorScreen';
+import { RequestsMap } from '@/features/driver/presentation/RequestsMap';
+import { DriverTripInProgressScreen } from '@/features/driver/presentation/DriverTripInProgressScreen';
 import { useWatchPosition, type WatchedPosition } from '@/features/home/application/useWatchPosition';
 import {
   useDismissOpenRide,

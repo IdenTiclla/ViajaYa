@@ -9,7 +9,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import { PinLoadingIndicator } from '@/shared/components/PinLoadingIndicator';
-import { MapPointBadge, type MapPointKind } from '@/shared/components/mapa/InsigniaPuntoMapa';
+import { MapPointBadge, type MapPointKind } from '@/shared/components/map/MapPointBadge';
 
 export function CenterPin({
   label,

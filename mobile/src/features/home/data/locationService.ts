@@ -5,7 +5,7 @@
 import * as Location from 'expo-location';
 
 import type { Coordinates, PlaceLabel } from '@/core/domain/geo';
-import { checkLocationAvailability, watchLocation } from './observarUbicacion';
+import { checkLocationAvailability, watchLocation } from './watchLocation';
 import { isPlaceLabelResolved } from '@/features/booking/domain/placeLabels';
 import {
   reverseGeocodeWithGoogle,

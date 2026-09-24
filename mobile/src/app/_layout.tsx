@@ -9,7 +9,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { EnvironmentBadge } from '@/core/components/EnvironmentBadge';
 import { LaunchScreen } from '@/core/components/LaunchScreen';
 import { useThemedStyles, type Theme } from '@/core/theme';
-import { AppThemeProvider as ThemeProvider } from '@/core/theme/ProveedorTema';
+import { AppThemeProvider as ThemeProvider } from '@/core/theme/AppThemeProvider';
 import { SessionRecoveryScreen } from '@/features/auth/presentation/SessionRecoveryScreen';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
 import { usePassengerToasts } from '@/features/booking/application/usePassengerToasts';

@@ -6,7 +6,7 @@ import { Button } from '@/shared/components';
 import { useAuthStore } from '@/store/authStore';
 import { AccountSecurityPanel } from '@/features/auth/presentation/AccountSecurityPanel';
 import { DriverAccountCard } from '@/features/driver/presentation/DriverAccountCard';
-import { ThemeSelector } from './SelectorTema';
+import { ThemeSelector } from './ThemeSelector';
 
 export function PassengerProfileScreen() {
   const { styles } = useThemedStyles(createStyles);

@@ -35,7 +35,7 @@ import { controls, fontSize, fontWeight, radius, spacing, useThemedStyles, type 
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
 import { ConfirmationOverlay } from '@/features/booking/presentation/ConfirmationOverlay';
 import { SearchingDriversScreen } from '@/features/booking/presentation/SearchingDriversScreen';
-import { OfferCard } from '@/features/booking/presentation/TarjetaOferta';
+import { OfferCard } from '@/features/booking/presentation/OfferCard';
 import {
   useAcceptOffer,
   useCancelRide,

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { compassHeading, movementHeading } from '../src/features/home/domain/orientacionUbicacion.ts';
+import { compassHeading, movementHeading } from '../src/features/home/domain/locationHeading.ts';
 
 const muestra = (cambios = {}) => ({
   coordinates: { latitude: -16.5, longitude: -68.15 },

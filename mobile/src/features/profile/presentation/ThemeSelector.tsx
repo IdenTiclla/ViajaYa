@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { fontSize, fontWeight, radius, spacing, useThemedStyles, type ThemeMode, type Theme } from '@/core/theme';
-import { useThemePreference } from '@/core/theme/usePreferenciaTema';
+import { useThemePreference } from '@/core/theme/useThemePreference';
 import { Button } from '@/shared/components';
 
 const OPTIONS = [

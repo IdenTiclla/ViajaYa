@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { withTimeout } from '@/core/async/conTiempoLimite';
+import { withTimeout } from '@/core/async/withTimeout';
 import { getBoliviaPlaceError } from '@/features/booking/domain/bolivia';
 import type { Place, PlaceSuggestion } from '@/features/booking/domain/types';
 

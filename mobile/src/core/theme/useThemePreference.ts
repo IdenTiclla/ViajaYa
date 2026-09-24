@@ -1,7 +1,7 @@
 import { useStore } from 'zustand';
 
-import { themeStorage } from './almacenTema';
-import { createThemeStore } from './crearStoreTema';
+import { themeStorage } from './themeStorage';
+import { createThemeStore } from './createThemeStore';
 
 const themeStore = createThemeStore(themeStorage);
 

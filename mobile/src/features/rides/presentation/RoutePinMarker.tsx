@@ -14,7 +14,7 @@ import { Marker, type MapMarker } from 'react-native-maps';
 
 import { fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import type { Coordinates } from '@/features/booking/domain/types';
-import { MapPointBadge } from '@/shared/components/mapa/InsigniaPuntoMapa';
+import { MapPointBadge } from '@/shared/components/map/MapPointBadge';
 import {
   ROUTE_PIN_BORDER,
   computePinAnchor,

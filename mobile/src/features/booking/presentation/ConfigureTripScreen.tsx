@@ -56,7 +56,7 @@ import {
   type LabelSize,
 } from '@/features/rides/presentation/routeTooltipLayout';
 import { RoutePolyline } from '@/features/rides/presentation/RoutePolyline';
-import { useMapBearing } from '@/features/rides/application/useRumboMapa';
+import { useMapBearing } from '@/features/rides/application/useMapBearing';
 import { MotorcycleRouteNotice } from '@/features/rides/presentation/MotorcycleRouteNotice';
 import { Button, ConfirmDialog, FeedbackState } from '@/shared/components';
 

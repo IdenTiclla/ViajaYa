@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { computeVehicleRotation, isValidHeading } from '../src/features/driver/presentation/rumboVehiculo.ts';
+import { computeVehicleRotation, isValidHeading } from '../src/features/driver/presentation/vehicleHeading.ts';
 
 test('el vehículo cruza el norte en ambos sentidos sin una vuelta completa', () => {
   assert.equal(computeVehicleRotation(350, 10), 370);

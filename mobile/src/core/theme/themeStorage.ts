@@ -1,7 +1,7 @@
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
-import type { ThemeStorage } from './crearStoreTema';
+import type { ThemeStorage } from './createThemeStore';
 
 const KEY = 'viajaya.tema';
 

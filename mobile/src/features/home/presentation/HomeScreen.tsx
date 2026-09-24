@@ -38,7 +38,7 @@ import {
 import type { Coordinates, Place } from '@/features/booking/domain/types';
 import { CenterPin } from '@/features/booking/presentation/CenterPin';
 import { ServiceTypeSelector } from '@/features/booking/presentation/ServiceTypeSelector';
-import { confirmRecovery } from '@/features/home/application/confirmarRecuperacion';
+import { confirmRecovery } from '@/features/home/application/confirmRecovery';
 import { useCurrentLocation } from '@/features/home/application/useCurrentLocation';
 import {
   PASSENGER_ACTIVE_RIDE_KEY,

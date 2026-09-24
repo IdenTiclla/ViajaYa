@@ -1,4 +1,4 @@
-import { VehicleMarker } from '@/features/driver/presentation/MarcadorVehiculo';
+import { VehicleMarker } from '@/features/driver/presentation/VehicleMarker';
 import type { VehicleType } from '@/features/auth/domain/types';
 /**
  * Background map of the ride in progress: draws the origin→destination street route
@@ -15,7 +15,7 @@ import { useRoute } from '@/features/booking/application/useRoute';
 import { useMapStyle } from '@/features/booking/presentation/mapStyle';
 import { RoutePinMarker } from '@/features/rides/presentation/RoutePinMarker';
 import { RoutePolyline } from '@/features/rides/presentation/RoutePolyline';
-import { useMapBearing } from '@/features/rides/application/useRumboMapa';
+import { useMapBearing } from '@/features/rides/application/useMapBearing';
 import { MotorcycleRouteNotice } from './MotorcycleRouteNotice';
 import { getTripMapPadding } from './tripMapLayout';
 

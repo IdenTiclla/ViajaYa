@@ -5,8 +5,8 @@ import test from 'node:test';
 const hooks = registerHooks({
   resolve(specifier, context, nextResolve) {
     if (specifier === 'expo-location') return { url: 'prueba:ubicacion', shortCircuit: true };
-    if (specifier === '../domain/orientacionUbicacion') return {
-      url: new URL('../src/features/home/domain/orientacionUbicacion.ts', import.meta.url).href,
+    if (specifier === '../domain/locationHeading') return {
+      url: new URL('../src/features/home/domain/locationHeading.ts', import.meta.url).href,
       shortCircuit: true,
     };
     return nextResolve(specifier, context);
@@ -44,7 +44,7 @@ const hooks = registerHooks({
     ` };
   },
 });
-const { watchLocation, checkLocationAvailability } = await import('../src/features/home/data/observarUbicacion.ts');
+const { watchLocation, checkLocationAvailability } = await import('../src/features/home/data/watchLocation.ts');
 const { status, reiniciar } = await import('expo-location');
 hooks.deregister();
 

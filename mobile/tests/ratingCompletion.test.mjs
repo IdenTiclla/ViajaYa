@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { MutationObserver, QueryClient } from '@tanstack/react-query';
 
-import { refreshAfterRating } from '../src/features/rides/application/actualizarTrasCalificacion.ts';
+import { refreshAfterRating } from '../src/features/rides/application/refreshAfterRating.ts';
 
 const key = ['pending-rating-ride'];
 

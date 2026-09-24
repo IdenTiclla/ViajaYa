@@ -1,7 +1,7 @@
 import * as Location from 'expo-location';
 
 import type { Coordinates } from '@/core/domain/geo';
-import { compassHeading, movementHeading, type MovementSample } from '../domain/orientacionUbicacion';
+import { compassHeading, movementHeading, type MovementSample } from '../domain/locationHeading';
 
 export type LocationAvailability = 'granted' | 'denied' | 'disabled';
 

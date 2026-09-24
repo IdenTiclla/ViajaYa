@@ -6,7 +6,7 @@ import ts from 'typescript';
 const state={};globalThis.__routingLocation=state;
 const mocks={
   'expo-location':`export const Accuracy={Balanced:3};export const requestForegroundPermissionsAsync=async()=>({status:globalThis.__routingLocation.permission});export const hasServicesEnabledAsync=async()=>globalThis.__routingLocation.enabled;export const getCurrentPositionAsync=async()=>{globalThis.__routingLocation.calls++;return globalThis.__routingLocation.fix;};`,
-  './observarUbicacion':'export const checkLocationAvailability=()=>{};export const watchLocation=()=>{};',
+  './watchLocation':'export const checkLocationAvailability=()=>{};export const watchLocation=()=>{};',
   '@/features/booking/domain/placeLabels':'export const isPlaceLabelResolved=()=>true;',
   '@/features/home/data/googleGeocodingService':'export const reverseGeocodeWithGoogle=()=>{};',
 };

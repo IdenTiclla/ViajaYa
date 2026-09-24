@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { confirmRecovery } from '../src/features/home/application/confirmarRecuperacion.ts';
+import { confirmRecovery } from '../src/features/home/application/confirmRecovery.ts';
 
 const exito = (data = null) => ({ isSuccess: true, data, error: null });
 

@@ -35,7 +35,7 @@ import { formatKm, haversineKm, pricePerKm } from '@/features/rides/domain/geo';
 import { formatBolivianos } from '@/features/rides/domain/money';
 import { OfferLifeTimer } from '@/features/rides/presentation/OfferLifeTimer';
 import { RoutePinMarker } from '@/features/rides/presentation/RoutePinMarker';
-import { useMapBearing } from '@/features/rides/application/useRumboMapa';
+import { useMapBearing } from '@/features/rides/application/useMapBearing';
 import { RoutePolyline } from '@/features/rides/presentation/RoutePolyline';
 import type { OpenRide } from '@/features/rides/domain/types';
 import Animated, { SlideInDown } from 'react-native-reanimated';

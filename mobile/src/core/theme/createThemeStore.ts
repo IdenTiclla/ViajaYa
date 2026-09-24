@@ -1,6 +1,6 @@
 import { createStore } from 'zustand/vanilla';
 
-import { withTimeout } from '../async/conTiempoLimite';
+import { withTimeout } from '../async/withTimeout';
 import { resolveThemeMode, DEFAULT_THEME_MODE, type ThemeMode } from './tokens';
 
 export type ThemeStorage = {

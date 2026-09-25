@@ -2,486 +2,486 @@
 
 # ViajaYa — Mobile (Expo + React Native + TypeScript)
 
-App de taxis y encomiendas. Expo Router (file-based, rutas tipadas), React Query (server state),
-Zustand (auth/cliente), axios, react-native-maps, acceso por teléfono + OTP con Google/Facebook
-vinculados a un teléfono verificado (sin correo/contraseña), tiempo real por WebSocket.
+Taxi and parcel app. Expo Router (file-based, typed routes), React Query (server state),
+Zustand (auth/client), axios, react-native-maps, phone + OTP access with Google/Facebook
+linked to a verified phone (no email/password), real time over WebSocket.
 
 Stack: **Expo ~56.0.7** · React Native 0.85.3 · React 19 · TypeScript ~6.0.3 ·
 `expo-router ~56.2.8` · `zustand ^5` · `@tanstack/react-query ^5` · `axios ^1.16` ·
-`react-native-maps 1.27` · `zod ^4` (esquemas de WS).
+`react-native-maps 1.27` · `zod ^4` (WS schemas).
 
-> ⚠️ **Expo 56 cambió mucho.** Lee SIEMPRE los docs versionados antes de escribir código:
-> https://docs.expo.dev/versions/v56.0.0/ (ver `AGENTS.md`).
+> ⚠️ **Expo 56 changed a lot.** ALWAYS read the versioned docs before writing code:
+> https://docs.expo.dev/versions/v56.0.0/ (see `AGENTS.md`).
 
-## Arquitectura
+## Architecture
 
-Código organizado por **features**, cada uno en capas (Clean Architecture adaptada al cliente).
-El enrutado (`src/app/`) solo monta pantallas; la lógica vive en `src/features/`.
+Code organized by **features**, each one in layers (Clean Architecture adapted to the client).
+Routing (`src/app/`) only mounts screens; logic lives in `src/features/`.
 
 ```
 src/
-├── app/                 # Rutas (expo-router, file-based). Solo composición de pantallas.
-│   ├── _layout.tsx        # Raíz: providers (tema, QueryClient, SafeArea, GestureHandler) + gate por sesión/rol
-│   ├── index.tsx          # Redirect por rol → (auth) | (app)/(tabs) | (driver)/(tabs)/requests
-│   ├── (auth)/            # index → PhoneEntryScreen: única vista de acceso (teléfono + OTP, Google).
-│   │                      # Un número nuevo completa nombre + términos ahí mismo. Sin correo/contraseña
-│   ├── (app)/             # Grupo pasajero (guard: authenticated && !driver)
-│   │   ├── _layout.tsx      # Monta <PassengerToaster/> sobre el stack
-│   │   ├── (tabs)/          # Viaje · Historial · Billetera · Perfil  (PillTabBar)
+├── app/                 # Routes (expo-router, file-based). Screen composition only.
+│   ├── _layout.tsx        # Root: providers (theme, QueryClient, SafeArea, GestureHandler) + session/role gate
+│   ├── index.tsx          # Redirect by role → (auth) | (app)/(tabs) | (driver)/(tabs)/requests
+│   ├── (auth)/            # index → PhoneEntryScreen: the only access view (phone + OTP, Google).
+│   │                      # A new number completes name + terms right there. No email/password
+│   ├── (app)/             # Passenger group (guard: authenticated && !driver)
+│   │   ├── _layout.tsx      # Mounts <PassengerToaster/> over the stack
+│   │   ├── (tabs)/          # Trip · History · Wallet · Profile  (PillTabBar)
 │   │   ├── booking/         # destination, configure, offers, trip, rating,
 │   │   │                    #   pick-on-map, saved-places, edit-place
-│   │   └── driver/register.tsx  # alta/edición de un vehículo (?vehicle=taxi|moto|truck) desde Perfil
-│   ├── choose-mode.tsx    # tras iniciar sesión un conductor aprobado elige modo y vehículo
-│   └── (driver)/          # Grupo conductor (guard: role === 'driver')
-│       ├── _layout.tsx      # Monta useDriverPoolSocket() + <DriverToaster/>
+│   │   └── driver/register.tsx  # create/edit a vehicle (?vehicle=taxi|moto|truck) from Profile
+│   ├── choose-mode.tsx    # after sign-in an approved driver picks mode and vehicle
+│   └── (driver)/          # Driver group (guard: role === 'driver')
+│       ├── _layout.tsx      # Mounts useDriverPoolSocket() + <DriverToaster/>
 │       ├── offer-sent.tsx
-│       └── (tabs)/          # Solicitudes · Historial · Ganancias · Perfil  (PillTabBar)
-│                            #   (index oculto vía tabBarButton: () => null → redirect a Solicitudes)
-├── features/            # Una carpeta por feature, en capas (Clean Architecture).
+│       └── (tabs)/          # Requests · History · Earnings · Profile  (PillTabBar)
+│                            #   (index hidden via tabBarButton: () => null → redirect to Requests)
+├── features/            # One folder per feature, in layers (Clean Architecture).
 │   ├── auth/              # domain/ (types + vehicleCatalog: VEHICLE_META, SERVICES_FOR_VEHICLE) · data/
 │   │                      #   · application/ (phoneAccessController + useAuthController)
 │   │                      # presentation/: PhoneEntryScreen · PhoneCodeForm · AccountSecurityPanel
-│   │                      #   entry/ = bloques de la vista de acceso (AuthScaffold, PhoneInput, SocialButtons, TermsCheckbox…)
-│   ├── booking/           # 4 capas completas (flujo de reserva)
-│   ├── home/              # domain/ (orientación) · data/ · application/ · presentation/
-│   ├── rides/             # ofertas + ciclo de vida del viaje + hooks de WS del pasajero y conductor
+│   │                      #   entry/ = blocks of the access view (AuthScaffold, PhoneInput, SocialButtons, TermsCheckbox…)
+│   ├── booking/           # 4 full layers (booking flow)
+│   ├── home/              # domain/ (orientation) · data/ · application/ · presentation/
+│   ├── rides/             # offers + ride lifecycle + passenger and driver WS hooks
 │   │   ├── domain/          # types.ts · fareInput.ts · geo.ts · offerTags.ts
-│   │   ├── data/            # ridesRepository.ts (DTO ↔ dominio)
+│   │   ├── data/            # ridesRepository.ts (DTO ↔ domain)
 │   │   ├── application/     # useRides · useRideMutations · useCloseFlow · useNegotiationSocket
 │   │   └── presentation/    # FareKeypad · OfferLifeTimer · RideHistoryScreen · RideRatingCard · …
-│   ├── profile/           # presentación del perfil de pasajero y selector de tema compartido
-│   └── driver/            # reusa data/domain de rides para el pool; data/ propio solo para la cuenta
-│       ├── domain/          # DriverVehicle (hasta uno por tipo; MAX_DRIVER_VEHICLES)
+│   ├── profile/           # passenger profile presentation and shared theme selector
+│   └── driver/            # reuses rides data/domain for the pool; own data/ only for the account
+│       ├── domain/          # DriverVehicle (up to one per type; MAX_DRIVER_VEHICLES)
 │       ├── data/            # driverAccountRepository (/drivers/me/vehicles · /me/mode)
 │       ├── application/     # useDriverRequests (zustand) · useDriverToasts · useDriverAccount
 │       └── presentation/    # IncomingRequestsScreen · DriverTopBar · RequestCard · DriverSearchMap
 │                            #   · DriverRegistrationScreen · DriverAccountCard · VehicleSelector
 │                            #   · ChooseModeScreen · DriverProfileScreen · …
-├── core/               # Infra transversal
-│   ├── components/       # PillTabBar (bottom bar Stitch: tab activo con pill amarillo)
-│   ├── config/env.ts     # Config tipada desde Constants.expoConfig.extra
-│   ├── http/             # client.ts (axios + interceptores token/refresh), tokenStorage (SecureStore)
-│   ├── realtime/socket.ts # WS genérico con reconnect (token por subprotocol, backoff exponencial)
+├── core/               # Cross-cutting infrastructure
+│   ├── components/       # PillTabBar (Stitch bottom bar: active tab with a yellow pill)
+│   ├── config/env.ts     # Typed config from Constants.expoConfig.extra
+│   ├── http/             # client.ts (axios + token/refresh interceptors), tokenStorage (SecureStore)
+│   ├── realtime/socket.ts # Generic WS with reconnect (token via subprotocol, exponential backoff)
 │   ├── errors/apiError.ts
 │   ├── hooks/            # useCountdown (AppState-aware), …
-│   └── theme/            # paletas, estilos reactivos y preferencia local persistida
-├── shared/components/  # UI reutilizable: Button, TextField, ConfirmDialog, FeedbackState, mapa/, …
-└── store/authStore.ts  # Sesión global (zustand): bootstrap/`acceptPhoneSession`/signOut; auto-logout si el refresh falla
+│   └── theme/            # palettes, reactive styles and persisted local preference
+├── shared/components/  # Reusable UI: Button, TextField, ConfirmDialog, FeedbackState, map/, …
+└── store/authStore.ts  # Global session (zustand): bootstrap/`acceptPhoneSession`/signOut; auto-logout if refresh fails
 ```
 
-### Reglas al añadir código
+### Rules when adding code
 
-- **Respeta las capas del feature.** Las pantallas (`presentation/`) consumen hooks (`application/`),
-  que llaman a repos/services (`data/`), que mapean a tipos de `domain/`. No hagas `fetch`/axios desde un componente.
-- **Todo el IO HTTP pasa por `src/core/http/client.ts`** (instancia `api`). Ya adjunta el Bearer token
-  y refresca ante 401 (dedupe de refresh concurrente). No crees instancias axios sueltas ni uses `fetch`.
-- **Tiempo real: el WS es la vía principal; el polling de React Query es solo respaldo lento.**
-  El WS muta la caché de React Query en vivo (vía `queryClient.setQueryData`). El token viaja
-  como subprotocolo `viajaya.auth`, fuera de la URL y de los access logs.
-- **Config solo desde `@/core/config/env`.** Nunca leas `process.env` en runtime; las claves se exponen
-  vía `app.config.ts` → `extra` → `env`. Edita `.env` (ver `.env.example`) para valores locales.
-- **Reusa `shared/components/`** antes de crear UI nueva; respeta los `theme/tokens`.
-- **Alias de imports:** `@/*` → `src/*`, `@/assets/*` → `assets/*`. `experiments.typedRoutes: true`
-  en `app.config.ts` → los `href` de `<Redirect>`/`navigate` están tipados.
-- **Pantallas nuevas:** crea el archivo de ruta en `src/app/...` (1–5 líneas) y delega en un
-  componente de `presentation/`.
+- **Respect the feature layers.** Screens (`presentation/`) consume hooks (`application/`),
+  which call repos/services (`data/`), which map to `domain/` types. Do not `fetch`/axios from a component.
+- **All HTTP IO goes through `src/core/http/client.ts`** (the `api` instance). It already attaches the Bearer token
+  and refreshes on 401 (deduplicating concurrent refreshes). Do not create loose axios instances or use `fetch`.
+- **Real time: WS is the primary path; React Query polling is only a slow fallback.**
+  The WS mutates the React Query cache live (via `queryClient.setQueryData`). The token travels
+  as the `viajaya.auth` subprotocol, outside the URL and access logs.
+- **Config only from `@/core/config/env`.** Never read `process.env` at runtime; keys are exposed
+  via `app.config.ts` → `extra` → `env`. Edit `.env` (see `.env.example`) for local values.
+- **Reuse `shared/components/`** before creating new UI; respect the `theme/tokens`.
+- **Import aliases:** `@/*` → `src/*`, `@/assets/*` → `assets/*`. `experiments.typedRoutes: true`
+  in `app.config.ts` → `href`s of `<Redirect>`/`navigate` are typed.
+- **New screens:** create the route file in `src/app/...` (1–5 lines) and delegate to a
+  `presentation/` component.
 
-## Routing por rol
+## Routing by role
 
-`src/app/_layout.tsx` usa `<Stack.Protected guard=...>` con 3 guards mutuamente excluyentes:
-`(app)` (auth && !driver), `(driver)` (driver), `(auth)` (!auth). `src/app/index.tsx` redirige:
+`src/app/_layout.tsx` uses `<Stack.Protected guard=...>` with 3 mutually exclusive guards:
+`(app)` (auth && !driver), `(driver)` (driver), `(auth)` (!auth). `src/app/index.tsx` redirects:
 
-- no autenticado → `/(auth)` (`PhoneEntryScreen`: única pantalla de acceso, sin registro ni recuperación
-  aparte). Un número nuevo pasa por `ProfileCompletionForm` (nombre + términos) tras el OTP.
-  El controlador (`useAuthController()`) conserva el flujo de recuperación aunque hoy no tiene UI.
-- pasajero → `/(app)/(tabs)` (tab inicial: Viaje)
-- conductor → `/(driver)/(tabs)/requests` (cae directo en Solicitudes, no en Inicio)
+- not authenticated → `/(auth)` (`PhoneEntryScreen`: the only access screen, with no separate sign-up or
+  recovery). A new number goes through `ProfileCompletionForm` (name + terms) after the OTP.
+  The controller (`useAuthController()`) keeps the recovery flow even though it has no UI today.
+- passenger → `/(app)/(tabs)` (initial tab: Trip)
+- driver → `/(driver)/(tabs)/requests` (lands directly on Requests, not on Home)
 
-**Una cuenta, dos modos, hasta tres vehículos.** `user.role` es el modo activo que devuelve el
-backend. En Perfil (pasajero) `DriverAccountCard` lista los vehículos (`useDriverVehicles`,
-key `['driver-vehicles']`) con su estado y permite agregar/editar/quitar
-(`DriverRegistrationScreen`, `?vehicle=` edita ese tipo; al agregar solo se ofrecen los tipos
-libres). Con vehículos aprobados, `VehicleSelector` muestra "Conducir con Taxi · placa" por cada
-uno; elegir llama a `useSwitchAccountMode({mode:'driver', vehicleType})` (`POST /drivers/me/mode`),
-que si el usuario está en línea primero lo desconecta, vacía React Query (`removeQueries`),
-reemplaza `user` (`setUser`) y hace `router.replace('/')` para que los guards reenruten. En modo
-conductor, Perfil permite cambiar de vehículo (otros aprobados) y volver a pasajero.
+**One account, two modes, up to three vehicles.** `user.role` is the active mode returned by the
+backend. In Profile (passenger) `DriverAccountCard` lists the vehicles (`useDriverVehicles`,
+key `['driver-vehicles']`) with their status and allows adding/editing/removing
+(`DriverRegistrationScreen`, `?vehicle=` edits that type; when adding only the free types
+are offered). With approved vehicles, `VehicleSelector` shows "Conducir con Taxi · placa" for each
+one; choosing calls `useSwitchAccountMode({mode:'driver', vehicleType})` (`POST /drivers/me/mode`),
+which, if the user is online, first takes them offline, clears React Query (`removeQueries`),
+replaces `user` (`setUser`) and does `router.replace('/')` so the guards reroute. In driver
+mode, Profile allows switching vehicle (other approved ones) and going back to passenger.
 
-**Al iniciar sesión** con una cuenta con algún vehículo aprobado, `authStore.modeChoicePending`
-queda en `true` y `index.tsx` redirige a `/choose-mode` (`ChooseModeScreen`: "Pedir viajes" o
-"Conducir con …" por vehículo). El arranque con sesión guardada (`bootstrap`) no vuelve a
-preguntar. No dupliques ese flujo: la navegación por rol ya existente hace el resto.
+**On sign-in** with an account that has an approved vehicle, `authStore.modeChoicePending`
+becomes `true` and `index.tsx` redirects to `/choose-mode` (`ChooseModeScreen`: "Pedir viajes" or
+"Conducir con …" per vehicle). Startup with a stored session (`bootstrap`) does not ask
+again. Do not duplicate that flow: the existing role-based navigation does the rest.
 
-**Bottom bar Stitch** (`core/components/PillTabBar.tsx`, compartida por pasajero y conductor):
-el icono activo lleva un pill de fondo amarillo (`colors.accent` = `#F5C518`).
-Todas las etiquetas permanecen debajo de su icono; con letra grande se distribuyen
-en dos filas para conservar el texto completo.
-Las rutas ocultas declaran `tabBarButton: () => null` (ej. el `index` redirect del conductor).
+**Stitch bottom bar** (`core/components/PillTabBar.tsx`, shared by passenger and driver):
+the active icon has a yellow background pill (`colors.accent` = `#F5C518`).
+All labels stay below their icon; with large text they spread
+over two rows to keep the full text.
+Hidden routes declare `tabBarButton: () => null` (e.g. the driver's `index` redirect).
 
 ## State management
 
-- **Server state → React Query** (`QueryClient` singleton: `retry:1`, `staleTime:30s`). Polling lento
-  (15–20 s) como respaldo del WS en `useOpenRides`, `useRideOffers`, `useRide`, `useDriverActiveRide`.
-- Las `queryFn` de viajes propagan `signal` hasta Axios. Conserva esa cadena al
-  añadir consultas para que `cancelQueries` cancele también el transporte HTTP.
-- El pool abierto y el historial usan `useInfiniteQuery` sobre el contrato
-  `{items, next_cursor}`. La caché `['open-rides']` es `InfiniteData`: los eventos
-  WS deben usar `features/rides/application/openRidesCache.ts`, no escribir arrays
-  directamente.
-- **Estado de sesión/cliente → Zustand**: `authStore` (sesión), `useBookingStore` (reserva),
-  `useDriverRequests` (conjuntos `dismissed`/`offered`/`rejected`/`taken`/`expired`/`paused` del
-  conductor), `usePassengerToasts` / `useDriverToasts` (toasts efímeros, máx 3).
-- **Query keys** (convención de arrays): `['open-rides']`, `['ride-offers', rideId]`,
+- **Server state → React Query** (`QueryClient` singleton: `retry:1`, `staleTime:30s`). Slow polling
+  (15–20 s) as a WS fallback in `useOpenRides`, `useRideOffers`, `useRide`, `useDriverActiveRide`.
+- Ride `queryFn`s propagate `signal` down to Axios. Keep that chain when
+  adding queries so that `cancelQueries` also cancels the HTTP transport.
+- The open pool and history use `useInfiniteQuery` over the
+  `{items, next_cursor}` contract. The `['open-rides']` cache is `InfiniteData`: WS
+  events must use `features/rides/application/openRidesCache.ts`, not write arrays
+  directly.
+- **Session/client state → Zustand**: `authStore` (session), `useBookingStore` (booking),
+  `useDriverRequests` (driver sets `dismissed`/`offered`/`rejected`/`taken`/`expired`/`paused`),
+  `usePassengerToasts` / `useDriverToasts` (ephemeral toasts, max 3).
+- **Query keys** (array convention): `['open-rides']`, `['ride-offers', rideId]`,
   `['ride', rideId]`, `['driver-active-ride']`, `['ride-history', status|'all']`, `['driver-earnings']`.
-- **No dupliques estado de servidor en stores.**
+- **Do not duplicate server state in stores.**
 
-### Hooks principales
+### Main hooks
 
 - `features/rides/application/useRides.ts` — `useOpenRides`, `useRideOffers`, `useRide`, `useDriverActiveRide`.
 - `features/rides/application/useRideMutations.ts` — `useCreateOffer`, `useAcceptOffer`, `useRejectOffer`,
   `useWithdrawOffer`, `useUpdateRideStatus`, `useCancelRide`, `useUpdateRideFare`, `useSetOnline`,
   `usePauseForEdit`, `useEditRide`.
 - `features/rides/application/useCloseFlow.ts` — `useRideHistory`, `useDriverEarnings`, `useRateRide`.
-- `features/rides/application/useNegotiationSocket.ts` — `useNegotiationSocket(rideId)` (pasajero) y
-  **`useDriverPoolSocket()`** (conductor). Ambos en el MISMO archivo; el del conductor se monta una
-  sola vez en `(driver)/_layout.tsx` (canal único).
-- `features/driver/application/useDriverRequests.ts` — store del conductor + `useAutoExpireOffers()`
-  (autocura ofertas vencidas sin evento WS: tick cada 1 s).
+- `features/rides/application/useNegotiationSocket.ts` — `useNegotiationSocket(rideId)` (passenger) and
+  **`useDriverPoolSocket()`** (driver). Both in the SAME file; the driver's is mounted only
+  once in `(driver)/_layout.tsx` (single channel).
+- `features/driver/application/useDriverRequests.ts` — driver store + `useAutoExpireOffers()`
+  (self-heals expired offers without a WS event: 1 s tick).
 
-## WebSockets en el cliente
+## WebSockets on the client
 
-Infra: `core/realtime/socket.ts` — `openSocket(path, onMessage)`. Backoff exponencial (1 s→5 s),
-reemplaza sockets suspendidos al volver a foreground (`AppState`) y procesa los mensajes en orden.
-**Solo bajada**: parsea `{type,data}` y lo pasa al callback.
+Infra: `core/realtime/socket.ts` — `openSocket(path, onMessage)`. Exponential backoff (1 s→5 s),
+replaces suspended sockets when returning to foreground (`AppState`) and processes messages in order.
+**Downstream only**: parses `{type,data}` and passes it to the callback.
 
-Los hooks usan parsers duales legacy/v2. Cada conexión debe completar primero
-su snapshot y no puede mezclar protocolos: un hueco, conflicto, frame inválido o
-fallo del handler descarta la generación del socket y fuerza otro handshake sin
-perder los cursores ya confirmados. El gate v2 confirma cada ticket solo después
-de actualizar React Query/Zustand; duplicados y posiciones antiguas no mutan ni
-repiten avisos.
-En un dev build, `core/realtime/diagnostics.ts` conserva un buffer acotado y
-emite logs `[realtime]` con conexión, snapshot, código de cierre, causa de
-descarte y resync. No añadas rutas, IDs, tokens, frames ni payloads a ese
-contrato; permanece deshabilitado fuera de `__DEV__`.
-Durante el rollout de correlación, `correlation_id` puede faltar en un evento v2
-del backend anterior; mobile usa entonces `batch_id`. La correlación es metadata
-diagnóstica y no cambia la identidad idempotente de un `event_id`.
+The hooks use dual legacy/v2 parsers. Each connection must first complete
+its snapshot and cannot mix protocols: a gap, conflict, invalid frame or
+handler failure discards the socket generation and forces another handshake without
+losing the already confirmed cursors. The v2 gate confirms each ticket only after
+updating React Query/Zustand; duplicates and old positions neither mutate nor
+repeat notices.
+In a dev build, `core/realtime/diagnostics.ts` keeps a bounded buffer and
+emits `[realtime]` logs with connection, snapshot, close code, discard
+cause and resync. Do not add routes, IDs, tokens, frames or payloads to that
+contract; it stays disabled outside `__DEV__`.
+During the correlation rollout, `correlation_id` may be missing in a v2 event
+from the previous backend; mobile then uses `batch_id`. Correlation is diagnostic
+metadata and does not change the idempotent identity of an `event_id`.
 
-Eventos que escuchan los hooks (WS → mutación de caché React Query + estado Zustand + toast):
+Events the hooks listen to (WS → React Query cache mutation + Zustand state + toast):
 
-- **Pasajero** (`/ws/rides/{rideId}`): `offers_snapshot`, `offer_created`, `offer_withdrawn`
-  (salvo `reason==='superseded'`), `offer_expired`, `ride_status`.
-- **Conductor** (`/ws/driver`): los streams requeridos del snapshot v2 son `driver:{id}` más
-  un `pool:{service}` por cada `user.driverServices` (no "vehículo + delivery" fijo).
-  `open_rides_snapshot`, `driver_offers_snapshot` (rehidrata
-  ofertas pendientes tras reiniciar), `ride_created`, `ride_closed`, `ride_paused`,
+- **Passenger** (`/ws/rides/{rideId}`): `offers_snapshot`, `offer_created`, `offer_withdrawn`
+  (except `reason==='superseded'`), `offer_expired`, `ride_status`.
+- **Driver** (`/ws/driver`): the required streams of the v2 snapshot are `driver:{id}` plus
+  one `pool:{service}` per `user.driverServices` (not a fixed "vehicle + delivery").
+  `open_rides_snapshot`, `driver_offers_snapshot` (rehydrates
+  pending offers after a restart), `ride_created`, `ride_closed`, `ride_paused`,
   `offer_accepted`, `offer_expired`, `offer_rejected` (`ride_taken`/`ride_cancelled`/`declined`),
-  `offers_withdrawn`, `ride_status`, `driver_active_ride` (snapshot al reconectar).
+  `offers_withdrawn`, `ride_status`, `driver_active_ride` (snapshot on reconnect).
 
-Los reducers de `ride_status` son monótonos y contrastan detalle + viaje activo;
-el mismo estado sí refresca el payload. `offer_expired` aplica por `offer_id`
-exacto y solo notifica si retiró la oferta vigente. `offers_withdrawn` elimina
-por los pares exactos `{ride_id, offer_id}` cuando están presentes, para que un
-resumen atrasado no borre una reoferta; `ride_ids` se conserva como fallback
-legacy. El éxito HTTP al pasar offline vacía además las ofertas vivas para
-tolerar una caída del WebSocket.
+`ride_status` reducers are monotonic and cross-check detail + active ride;
+the same status does refresh the payload. `offer_expired` applies by exact
+`offer_id` and only notifies if it withdrew the current offer. `offers_withdrawn`
+removes by the exact `{ride_id, offer_id}` pairs when present, so that a
+late summary does not delete a re-offer; `ride_ids` is kept as a legacy
+fallback. A successful HTTP switch to offline also clears the live offers to
+tolerate a WebSocket drop.
 
-El store del conductor conserva tombstones acotados por `offer_id`, rides
-terminales, generaciones del pool y un token por intento HTTP. `markOffered` es
-un CAS: el `201` tardío
-de una oferta rechazada, expirada, pausada, aceptada, tomada, cancelada o retirada
-no puede revivirla, ni una respuesta anterior ganar a otra petición. Los eventos
-`ride_created` duplicados o atrasados no limpian desenlaces de otra generación.
-`ride_closed` lleva `pool_version` y `reason=paused|terminal`: solo un cierre
-aplicable retira la tarjeta y la oferta visible, y un terminal domina una pausa
-de la misma generación. Un snapshot PostgreSQL `PENDING` sí corrige guards locales
-contradictorios, incluida una expiración por reloj adelantado.
+The driver store keeps bounded tombstones by `offer_id`, terminal
+rides, pool generations and a token per HTTP attempt. `markOffered` is
+a CAS: the late `201`
+of a rejected, expired, paused, accepted, taken, cancelled or withdrawn offer
+cannot revive it, nor can an earlier response beat another request. Duplicate or late
+`ride_created` events do not clear outcomes of another generation.
+`ride_closed` carries `pool_version` and `reason=paused|terminal`: only an
+applicable close removes the card and the visible offer, and a terminal one dominates a pause
+of the same generation. A PostgreSQL `PENDING` snapshot does correct contradictory local
+guards, including an expiry from a clock running ahead.
 
-El snapshot v2 del pasajero reemplaza detalle, activo y ofertas bajo un único
-watermark `ride:*`. El del conductor reemplaza pool abierto, pausados, ofertas y
-`active_ride` (también cuando es `null`) con los watermarks de su vehículo,
-delivery y `driver:*`. Para arbitrar un `201` concurrente no se comparan fechas:
-PostgreSQL no ordena commits con `now()`. El store registra qué intentos locales
-ya estaban en vuelo al aplicar el snapshot; si uno ausente resuelve después,
-fuerza otro handshake que decide autoritativamente si sigue `PENDING`.
+The passenger v2 snapshot replaces detail, active ride and offers under a single
+`ride:*` watermark. The driver's replaces open pool, paused, offers and
+`active_ride` (also when it is `null`) with the watermarks of their vehicle,
+delivery and `driver:*`. To arbitrate a concurrent `201`, dates are not compared:
+PostgreSQL does not order commits with `now()`. The store records which local attempts
+were already in flight when the snapshot was applied; if a missing one resolves later,
+it forces another handshake that authoritatively decides whether it is still `PENDING`.
 
-## Tema (design system)
+## Theme (design system)
 
-`core/theme/tokens.ts` contiene las paletas clara y oscura y los tokens de diseño.
-La app inicia en **claro**, independientemente del sistema. **Perfil → Apariencia**
-permite elegir Claro u Oscuro para pasajero y conductor. La preferencia vive en
-`viajaya.tema` (SecureStore nativo; localStorage web), se conserva al cerrar sesión
-y no modifica la cuenta del backend.
+`core/theme/tokens.ts` contains the light and dark palettes and the design tokens.
+The app starts in **light**, regardless of the system. **Perfil → Apariencia**
+lets the user choose Light or Dark for passenger and driver. The preference lives in
+`viajaya.tema` (native SecureStore; web localStorage), is kept on sign-out
+and does not modify the backend account.
 
-`AppThemeProvider` sincroniza colores, Expo Router, StatusBar, Appearance y el fondo
-nativo. Cambiar el tema actualiza el contexto sin remontar las pantallas ni perder
-formularios o conexiones. `createThemeStore` acota la lectura a 5 s, descarta resultados
-anteriores a una elección y permite reintentar si el almacenamiento falla.
+`AppThemeProvider` syncs colors, Expo Router, StatusBar, Appearance and the native
+background. Changing the theme updates the context without remounting screens or losing
+forms or connections. `createThemeStore` bounds the read to 5 s, discards results
+older than a choice and allows retrying if storage fails.
 
-Paleta clara:
+Light palette:
 
-- `colors.primary #16308C` (azul TaxiGo) · `colors.primaryDark #0F2266` · `colors.accent #F5C518`
-  (amarillo Stitch: tab activo, estrellas, acentos) · `brand #16308C` + `textOnBrand #FFFFFF`
-  (fijos en ambos temas: el nombre «Viaja» blanco + «Ya» `accent` sobre azul, como logo y splash;
-  lo usan el encabezado de Home y `LaunchScreen`) · `success #167347` · `danger #C52C22` ·
+- `colors.primary #16308C` (TaxiGo blue) · `colors.primaryDark #0F2266` · `colors.accent #F5C518`
+  (Stitch yellow: active tab, stars, accents) · `brand #16308C` + `textOnBrand #FFFFFF`
+  (fixed in both themes: the name «Viaja» in white + «Ya» in `accent` over blue, like the logo and splash;
+  used by the Home header and `LaunchScreen`) · `success #167347` · `danger #C52C22` ·
   `text #182230` · `textSecondary #536174` · `surfaceMuted #F3F5F8` · `border #DCE2EB`.
-- `controlBorder #7D8796` identifica campos y opciones; `border` se reserva para
-  separadores decorativos. `primarySoft` y `dangerSoft` acompañan las acciones
-  secundarias con texto oscuro; los estados deshabilitados usan colores explícitos.
+- `controlBorder #7D8796` identifies fields and options; `border` is reserved for
+  decorative separators. `primarySoft` and `dangerSoft` go with secondary
+  actions with dark text; disabled states use explicit colors.
 - `spacing` xs/sm/md/lg/xl/xxl = 4/8/16/24/32/48 · `radius` sm/md/lg/pill = 8/12/16/999 ·
   `fontSize` xs…xxl = 12/14/16/20/24/32 · `fontWeight` regular/medium/semibold/bold.
 
-Paleta oscura: fondo `#10151F`, tarjetas `#192230`, texto `#F3F6FC`, primario
-`#A8BDFF` y texto sobre primario `#10204E`. Ambos temas conservan contraste para
-texto, controles y estados. `app.config.ts` mantiene `userInterfaceStyle: 'light'`
-como base nativa; Appearance aplica después la elección explícita de la app.
+Dark palette: background `#10151F`, cards `#192230`, text `#F3F6FC`, primary
+`#A8BDFF` and text on primary `#10204E`. Both themes keep contrast for
+text, controls and states. `app.config.ts` keeps `userInterfaceStyle: 'light'`
+as the native base; Appearance then applies the app's explicit choice.
 
-Importa tokens de tamaño y los hooks desde `@/core/theme`. Dentro del componente,
-usa `useTheme()` para colores sueltos o `useThemedStyles(createStyles)` para obtener
-`{ colors, styles, focusStyle }`. Declara la fábrica fuera del componente:
+Import size tokens and hooks from `@/core/theme`. Inside the component,
+use `useTheme()` for loose colors or `useThemedStyles(createStyles)` to get
+`{ colors, styles, focusStyle }`. Declare the factory outside the component:
 
 ```tsx
 const createStyles = ({ colors }: Theme) => StyleSheet.create({
-  tarjeta: { backgroundColor: colors.surface, padding: spacing.md },
+  card: { backgroundColor: colors.surface, padding: spacing.md },
 });
 ```
 
-No captures colores en `StyleSheet.create` ni tablas de iconos a nivel de módulo.
-Los mapas usan `useMapStyle` y `userInterfaceStyle` explícito; cambiar tema debe
-redibujar también los marcadores nativos. Usa `textOnAccent` sobre el amarillo.
-Splash/adaptiveIcon conservan el azul de marca `#16308C`. Logo ("F2", 23/09/2026): «Viaja» blanco +
-«Ya» amarillo sobre un taxi y una mototaxi de perfil. `icon.png` (iOS), `android-icon-foreground/
-monochrome` (dentro del círculo seguro de 66 dp) y `splash-icon.png` (`imageWidth: 200`) lo usan;
-cambiarlos exige prebuild + recompilar el APK. Tras el splash nativo, `core/components/LaunchScreen`
-muestra `launch-screen.png` (ruta amarilla con taxi y mototaxi, nombre y lema «Taxi o moto, tú pones
-el precio.») mientras `bootstrap` restaura la sesión, con un mínimo de 1,2 s (`LAUNCH_MIN_MS`), solo en el
-arranque en frío; login, logout y Reintentar muestran el spinner ligero.
+Do not capture colors in `StyleSheet.create` or module-level icon tables.
+Maps use `useMapStyle` and an explicit `userInterfaceStyle`; changing the theme must
+also redraw the native markers. Use `textOnAccent` on yellow.
+Splash/adaptiveIcon keep the brand blue `#16308C`. Logo ("F2", 2026-09-23): «Viaja» white +
+«Ya» yellow over a taxi and a mototaxi in profile. `icon.png` (iOS), `android-icon-foreground/
+monochrome` (inside the 66 dp safe circle) and `splash-icon.png` (`imageWidth: 200`) use it;
+changing them requires prebuild + rebuilding the APK. After the native splash, `core/components/LaunchScreen`
+shows `launch-screen.png` (yellow route with taxi and mototaxi, name and slogan «Taxi o moto, tú pones
+el precio.») while `bootstrap` restores the session, with a minimum of 1.2 s (`LAUNCH_MIN_MS`), only on
+cold start; login, logout and Reintentar show the lightweight spinner.
 
-### Controles y accesibilidad
+### Controls and accessibility
 
-- Los iconos usan `@react-native-vector-icons/ionicons` y
-  `@react-native-vector-icons/fontawesome`, con imports por familia. Se conserva
-  la carga dinámica mediante `expo-font`: las fuentes viajan como assets de Metro.
-  `expo.autolinking.exclude` en `package.json` excluye ambas familias para evitar
-  copiarlas también al binario nativo. No añadas imports `/static`, plugins de estas
-  familias ni fuentes manuales sin revisar conjuntamente esa configuración.
-- Los símbolos propios del mapa viven en `shared/components/map/`: A circular
-  para origen, B circular para destino y vehículos cenitales taxi/moto. Se dibujan
-  con vistas nativas y tokens, sin fuentes de iconos. La letra A/B tiene escala
-  fija porque forma parte del símbolo; la etiqueta y el nombre accesible conservan
-  el significado. El pin de selección ancla el extremo del tallo al 50% del mapa,
-  sin estimar la altura del texto. `VehicleMarker` (32 dp, sin disco de fondo; el vehículo mide ~14×24 dp para caber en la calle) pertenece al mapa nativo:
-  coordenadas GPS, `flat` y anclaje central; la rotación sigue el norte geográfico
-  incluso al girar la cámara. El barrido del radar es solo decorativo. El GPS
-  solicita actualizaciones cada segundo; el rumbo de movimiento fiable tiene
-  prioridad y, al detenerse, se usa la brújula calibrada. Se conserva una sola
-  suscripción mientras la pestaña de búsqueda está enfocada; Expo gestiona la
-  pausa nativa en segundo plano. Volver a la app consulta permisos y servicios
-  sin abrir diálogos ni recrear un watcher sano. Al perder foco se cancela incluso
-  un alta pendiente. Una adquisición puntual con precisión equilibrada permite
-  el primer centrado mientras llega el GPS preciso; se comparte si hay reintentos.
-  El mapa se monta solo al recibir coordenadas recientes, sin una ciudad fija de
-  respaldo; la carga tiene 15 s antes de ofrecer Reintentar y una señal tardía
-  recupera el mapa. La cámara mide el contenedor y espera `onMapReady`; el primer
-  centrado y seguimiento usan `setCamera`, con gestos bloqueados. El radar vive
-  dentro de `DriverSearchMap` y toma la proyección GPS de `pointForCoordinate`;
-  descarta respuestas atrasadas y se oculta si la proyección falla. Ver plan 0020.
-- Reutiliza `Button` para acciones de formulario y pie de pantalla: altura mínima
-  de 48, texto de 14 y crecimiento natural al ampliar la letra. Evita alturas
-  fijas y `adjustsFontSizeToFit` para hacer caber etiquetas de acciones.
-- Reserva `primary` para la acción principal, `secondary` para alternativas,
-  `dangerSoft` para iniciar una acción destructiva y `danger` para confirmarla.
-  Los botones y campos usan radio 16; `secondary` tiene fondo `surface` y borde
-  `controlBorder`. Los estados pulsado, deshabilitado y cargando conservan su tamaño.
-  En el seguimiento/negociación, `TripSecondaryAction` usa la variante `text` de
-  `Button` para mantener cancelar u omitir en segundo plano; cancelar sigue
-  requiriendo un diálogo destructivo. Conserva el objetivo táctil mínimo de 48.
-  `loading` bloquea la acción e informa su estado; `accessibilityState.busy` puede
-  comunicar una consulta en segundo plano que permite seguir interactuando.
-- Conserva el foco de teclado visible (`focusStyle`) y los estados de selección,
-  carga y deshabilitado también mediante `aria-*`, compatibles con React Native
-  y React Native Web. La selección se distingue además por una marca visible.
-- Los campos mantienen etiquetas al escribir y asocian los errores mediante su
-  pista de accesibilidad. `TextField` admite `helperText` (el error tiene prioridad)
-  y `showCharacterCount` para valores controlados con `maxLength`.
-  Los diálogos anclan la tarjeta abajo en móvil, desplazan solo el contenido y
-  mantienen sus acciones visibles; al abrirse enfocan el título para el lector
-  nativo. En pantallas amplias se centran y usan acciones horizontales.
-  `PersonAvatar` unifica las iniciales decorativas; debe acompañarse del nombre
-  completo accesible. `FeedbackState` bloquea el reintento mientras está cargando.
-- Verifica los controles con texto al 200% y pantallas estrechas. Una
-  previsualización web ayuda a comprobar geometría y teclado; TalkBack y
-  VoiceOver requieren validación en dispositivo.
-- La búsqueda conserva el acceso al mapa en carga, error y sin resultados.
-  `useDestinationSelection` invalida resoluciones anteriores al cambiar de búsqueda,
-  elegir otro destino o salir de la pantalla; un fallo de recientes no es una lista vacía.
-- Las ofertas separan precio, llegada estimada y vencimiento, conservando nombres
-  y vehículos completos. Calificar permite omitir incluso tras elegir estrellas;
-  mientras se envía o se omite, sus controles quedan bloqueados.
+- Icons use `@react-native-vector-icons/ionicons` and
+  `@react-native-vector-icons/fontawesome`, with per-family imports. Dynamic
+  loading through `expo-font` is kept: fonts travel as Metro assets.
+  `expo.autolinking.exclude` in `package.json` excludes both families to avoid
+  also copying them into the native binary. Do not add `/static` imports, plugins for these
+  families or manual fonts without reviewing that configuration together.
+- Custom map symbols live in `shared/components/map/`: circular A
+  for origin, circular B for destination and top-down taxi/moto vehicles. They are drawn
+  with native views and tokens, without icon fonts. The A/B letter has a
+  fixed scale because it is part of the symbol; the label and accessible name keep
+  the meaning. The selection pin anchors the stem tip at 50% of the map,
+  without estimating the text height. `VehicleMarker` (32 dp, no background disc; the vehicle measures ~14×24 dp to fit in the street) belongs to the native map:
+  GPS coordinates, `flat` and center anchor; rotation follows geographic north
+  even when the camera turns. The radar sweep is decorative only. GPS
+  requests updates every second; a reliable movement heading has
+  priority and, when stopped, the calibrated compass is used. A single
+  subscription is kept while the search tab is focused; Expo handles the
+  native pause in the background. Returning to the app checks permissions and services
+  without opening dialogs or recreating a healthy watcher. Losing focus cancels even
+  a pending sign-up. A one-off acquisition with balanced accuracy allows
+  the first centering while precise GPS arrives; it is shared if there are retries.
+  The map is mounted only when recent coordinates are received, without a fixed fallback
+  city; loading has 15 s before offering Reintentar and a late signal
+  recovers the map. The camera measures the container and waits for `onMapReady`; the first
+  centering and tracking use `setCamera`, with gestures locked. The radar lives
+  inside `DriverSearchMap` and takes the GPS projection from `pointForCoordinate`;
+  it discards late responses and hides if the projection fails. See plan 0020.
+- Reuse `Button` for form and screen-footer actions: minimum height
+  of 48, 14 text and natural growth when enlarging the font. Avoid fixed
+  heights and `adjustsFontSizeToFit` to make action labels fit.
+- Reserve `primary` for the main action, `secondary` for alternatives,
+  `dangerSoft` for starting a destructive action and `danger` for confirming it.
+  Buttons and fields use radius 16; `secondary` has a `surface` background and a
+  `controlBorder` border. Pressed, disabled and loading states keep their size.
+  In tracking/negotiation, `TripSecondaryAction` uses the `text` variant of
+  `Button` to keep cancel or skip in the background; cancelling still
+  requires a destructive dialog. Keep the minimum 48 touch target.
+  `loading` blocks the action and reports its state; `accessibilityState.busy` can
+  communicate a background query that still allows interaction.
+- Keep visible keyboard focus (`focusStyle`) and selection,
+  loading and disabled states also via `aria-*`, compatible with React Native
+  and React Native Web. Selection is also distinguished by a visible mark.
+- Fields keep labels while typing and associate errors through their
+  accessibility hint. `TextField` supports `helperText` (the error has priority)
+  and `showCharacterCount` for controlled values with `maxLength`.
+  Dialogs anchor the card at the bottom on mobile, scroll only the content and
+  keep their actions visible; on open they focus the title for the native
+  screen reader. On wide screens they are centered and use horizontal actions.
+  `PersonAvatar` unifies decorative initials; it must be accompanied by the full
+  accessible name. `FeedbackState` blocks retrying while loading.
+- Verify controls with 200% text and narrow screens. A
+  web preview helps check geometry and keyboard; TalkBack and
+  VoiceOver require on-device validation.
+- Search keeps access to the map while loading, on error and with no results.
+  `useDestinationSelection` invalidates earlier resolutions when the search changes,
+  another destination is chosen or the screen is left; a failure loading recents is not an empty list.
+- Offers separate price, estimated arrival and expiry, keeping full names
+  and vehicles. Rating allows skipping even after choosing stars;
+  while sending or skipping, its controls stay locked.
 
 ## HTTP client
 
-`core/http/client.ts`: instancia `api = axios.create({ baseURL: env.apiUrl, timeout: 15000 })`.
+`core/http/client.ts`: instance `api = axios.create({ baseURL: env.apiUrl, timeout: 15000 })`.
 
-- **Request interceptor**: adjunta `Authorization: Bearer <accessToken>` desde `tokenStorage`.
-- **Response interceptor**: ante 401 (si la URL no está en `NO_REFRESH_PATHS` y no es `_retry`),
-  dispara `refreshAccessToken()` **compartido** (dedupe de concurrencia) → `POST /auth/refresh` →
-  guarda el nuevo par → reintenta el original. Un refresh rechazado con 401
-  (o sin credenciales), o un segundo 401 con el token renovado, ejecuta
+- **Request interceptor**: attaches `Authorization: Bearer <accessToken>` from `tokenStorage`.
+- **Response interceptor**: on 401 (if the URL is not in `NO_REFRESH_PATHS` and is not `_retry`),
+  triggers a **shared** `refreshAccessToken()` (concurrency dedupe) → `POST /auth/refresh` →
+  stores the new pair → retries the original. A refresh rejected with 401
+  (or without credentials), or a second 401 with the renewed token, runs
   `tokenStorage.clear()` + `onSessionExpired()`;
-  red, timeout y 5xx conservan la sesión para reintentar. El refresh compartido
-  siempre se libera en `finally`, incluso si falla SecureStore.
-- `env.apiUrl` viene de `app.config.ts` → `extra.apiUrl`; `env.wsUrl` se deriva con `toWsUrl()`.
-- Tokens en `expo-secure-store`, valor atómico `viajaya.session.v2` con `refreshRequestId`; las claves antiguas `viajaya.accessToken`/`viajaya.refreshToken` se leen para migración. Las escrituras se serializan, tienen espera acotada y el cierre deja una marca para impedir que claves antiguas restauren la sesión. Nunca usar AsyncStorage plano para credenciales.
-- El refresh también pasa por `api` con `skipAuth: true` y el timeout de 15 s;
-  nunca debe quedar una renovación de sesión sin límite de espera.
-- Home verifica activo y después calificación con un límite total de 30 s en
-  `features/home/application/confirmRecovery.ts`. Un fallo o timeout muestra
-  Reintentar antes que el indicador de carga; reintentar repite la verificación
-  completa. Una respuesta tardía no autoriza navegación después del timeout.
-- Leer SecureStore tiene un límite de 5 s. El arranque completo tiene 30 s y
-  muestra `SessionRecoveryScreen` con Reintentar si falla; conserva credenciales
-  ante errores transitorios. También ofrece Volver a iniciar sesión: el borrado
-  nativo tiene un límite de 5 s y su fallo no bloquea el login. Los endpoints de
-  acceso usan `skipAuth` para no depender de credenciales anteriores. Una
-  generación descarta respuestas de arranque y renovaciones anteriores después
-  de salir, iniciar otra sesión o expirar la actual.
-- Confirmar/omitir calificación espera el asentamiento de las cancelaciones
-  locales antes de retirar ese cierre de las cachés de activo/pendiente. No vuelve
-  a cancelarlas al navegar: `CancelledError` no debe restaurar la pantalla de
-  recuperación. Las invalidaciones posteriores corren en segundo plano; no se
-  espera otra respuesta de red. Se conservan otros pendientes.
-- Las pantallas de recuperación priorizan errores sobre cargas de otras consultas.
-  Una actualización en segundo plano no reemplaza por un spinner una pantalla ya
-  verificada. Sin detalle de viaje, Viaje, Calificación y Edición permiten volver
-  al inicio; una solicitud inaccesible también permite salir de Ofertas. Esa
-  salida no cancela viajes: Home vuelve a consultar el estado autoritativo.
+  network, timeout and 5xx keep the session so it can retry. The shared refresh
+  is always released in `finally`, even if SecureStore fails.
+- `env.apiUrl` comes from `app.config.ts` → `extra.apiUrl`; `env.wsUrl` is derived with `toWsUrl()`.
+- Tokens in `expo-secure-store`, atomic value `viajaya.session.v2` with `refreshRequestId`; the old keys `viajaya.accessToken`/`viajaya.refreshToken` are read for migration. Writes are serialized, have a bounded wait, and sign-out leaves a marker to prevent old keys from restoring the session. Never use plain AsyncStorage for credentials.
+- The refresh also goes through `api` with `skipAuth: true` and the 15 s timeout;
+  a session renewal must never be left without a wait limit.
+- Home checks the active ride and then the rating with a total limit of 30 s in
+  `features/home/application/confirmRecovery.ts`. A failure or timeout shows
+  Reintentar before the loading indicator; retrying repeats the whole
+  check. A late response does not authorize navigation after the timeout.
+- Reading SecureStore has a 5 s limit. The full startup has 30 s and
+  shows `SessionRecoveryScreen` with Reintentar if it fails; it keeps credentials
+  on transient errors. It also offers Volver a iniciar sesión: the native
+  deletion has a 5 s limit and its failure does not block login. Access
+  endpoints use `skipAuth` so they do not depend on earlier credentials. A generation
+  discards startup responses and renewals older than
+  leaving, starting another session or the current one expiring.
+- Confirming/skipping a rating waits for local cancellations to settle
+  before removing that closure from the active/pending caches. It does not
+  cancel them again when navigating: `CancelledError` must not restore the
+  recovery screen. Later invalidations run in the background; no other
+  network response is awaited. Other pending ones are kept.
+- Recovery screens prioritize errors over other queries' loading.
+  A background update does not replace an already verified screen with a spinner.
+  Without ride detail, Trip, Rating and Edit allow going back
+  home; an inaccessible request also allows leaving Offers. That exit
+  does not cancel rides: Home queries the authoritative state again.
 
-## Contrato con backend
+## Backend contract
 
-API bajo `/api/v1`. Patrón del data layer (canónico: `features/rides/data/ridesRepository.ts`):
+API under `/api/v1`. Data layer pattern (canonical: `features/rides/data/ridesRepository.ts`):
 
-1. Importa `api` de `@/core/http/client` y tipos de `domain/types.ts`.
-2. Define tipos DTO coincidiendo con el contrato backend (**snake_case**: `service_type`, `fare`
-   como string decimal, `eta_min`, `full_name`, `accepted_price`, …).
-3. Funciones `toX(dto): Dominio` (parsea `Number.parseFloat`, renombra a camelCase).
-4. Exporta un objeto `ridesRepository = { … }` con los métodos `api.get/post/patch`.
+1. Import `api` from `@/core/http/client` and types from `domain/types.ts`.
+2. Define DTO types matching the backend contract (**snake_case**: `service_type`, `fare`
+   as a decimal string, `eta_min`, `full_name`, `accepted_price`, …).
+3. `toX(dto): Domain` functions (parse with `Number.parseFloat`, rename to camelCase).
+4. Export a `ridesRepository = { … }` object with the `api.get/post/patch` methods.
 
-**Doble `ridesRepository`**: `features/booking/data/ridesRepository.ts` (crea la solicitud `POST /rides`)
-y `features/rides/data/ridesRepository.ts` (ofertas + ciclo de vida). Split intencional por feature.
+**Two `ridesRepository`s**: `features/booking/data/ridesRepository.ts` (creates the request `POST /rides`)
+and `features/rides/data/ridesRepository.ts` (offers + lifecycle). Intentional split by feature.
 
-**Al cambiar un endpoint o schema en el backend, actualiza el DTO/repositorio/tipo del mobile
-aquí.** Mantén ambos lados en sintonía.
+**When an endpoint or schema changes in the backend, update the mobile DTO/repository/type
+here.** Keep both sides in sync.
 
-### Enums de dominio (mobile)
+### Domain enums (mobile)
 
 `ServiceType = 'taxi' | 'moto' | 'delivery' | 'moving'` · `VehicleType = 'taxi' | 'moto' | 'truck'`
-(camioneta; solo atiende `moving`) · `DriverStatus = 'pending' | 'approved' | 'rejected'` ·
+(truck; only serves `moving`) · `DriverStatus = 'pending' | 'approved' | 'rejected'` ·
 `PaymentMethod = 'qr' | 'cash'` ·
 `RideStatus = 'searching' | 'accepted' | 'arriving' | 'in_progress' | 'completed' | 'cancelled'` ·
-`OfferStatus = 'pending' | 'accepted' | 'rejected' | 'expired'`. Oferta TTL = 30 s. Moneda = Bs (bolivianos).
+`OfferStatus = 'pending' | 'accepted' | 'rejected' | 'expired'`. Offer TTL = 30 s. Currency = Bs (bolivianos).
 
-## Comandos
+## Commands
 
 ```bash
 cd mobile
 npm install
-cp .env.example .env       # API_URL (IP LAN del backend), claves Maps/OAuth
+cp .env.example .env       # API_URL (backend LAN IP), Maps/OAuth keys
 
-# Dev: flujo DEV BUILD (NO Expo Go). Hay android/ pregenerado, eas.json y expo-dev-client.
-npx expo start             # dev server Metro
-npm run android            # expo run:android  (dev client en emulador/dispositivo)
+# Dev: DEV BUILD flow (NOT Expo Go). There is a pregenerated android/, eas.json and expo-dev-client.
+npx expo start             # Metro dev server
+npm run android            # expo run:android  (dev client on emulator/device)
 npm run ios                # expo run:ios
 
-# Calidad (correr antes de commitear)
-npx tsc --noEmit           # type-check estricto
+# Quality (run before committing)
+npx tsc --noEmit           # strict type-check
 npm run lint               # expo lint (eslint-config-expo)
 ```
 
-> **Emulador Android:** se corre con el **dev-client** (no Expo Go). Requiere toolchain Android
-> y un AVD; ver `~/.local` y `~/Android` en la máquina de desarrollo.
+> **Android emulator:** run it with the **dev-client** (not Expo Go). It requires the Android toolchain
+> and an AVD; see `~/.local` and `~/Android` on the development machine.
 
-## Convenciones
+## Conventions
 
-- **TypeScript estricto** (`strict: true`); evita `any`, tipa los datos de la API en `domain/types.ts`.
-- **Formularios:** estado local + `TextField`/`Button` de `shared/components` (react-hook-form fue
-  retirado con el registro por correo); `zod` se reserva para validar frames del WS.
-- **Mapas:** `react-native-maps`; ubicación con `expo-location` (permisos en `app.config.ts`).
-  Estilo de mapa compartido: `features/booking/presentation/mapStyle.ts` (`declutteredMapStyle`).
-- **Apariencia de trayectos:** todas las vistas reutilizan `RoutePolyline` y
-  `RoutePinMarker`; seguimiento y negociación usan además `TripRouteMap`.
-  `routeTooltipLayout.ts` concentra las medidas lógicas comunes: trazo 3,
-  contorno 5 y pin A/B de 16, sin variantes de tamaño por rol. Configuración
-  conserva la edición al tocar los marcadores y muestra siempre los tooltips
-  Origen/Destino; se retiraron los dos bloques A/B superiores y el toggle de
-  nombres de lugares para ampliar el mapa. Su encuadre reserva la cabecera completa y
-  márgenes mínimos; `getLabelAwareFitCoordinates` (`routeTooltipLayout.ts`) añade las
-  esquinas de cada tooltip con su tamaño medido (`onLabelSize` de `RoutePinMarker`) y
-  el lado/separación reales de `placeTooltipClearOfRoute`, así no salen del área
-  visible sin perder zoom en el resto. La proyección Mercator (`mercatorY`,
-  `longitudeDelta`) vive solo en ese archivo. No dupliques la polilínea ni
-  los estilos del pin en una pantalla. Conserva el contenedor nativo no aplanable,
-  el redibujado cancelable tras cambios de layout y el segundo redibujado tardío
-  (400 ms, evita bitmaps en blanco). El pin A/B de ruta tiene la misma forma que el
-  pin de selección (círculo, tallo y punto): la punta del tallo es la coordenada exacta
-  en todas las vistas (pasajero y conductor). `computePinAnchor` recibe la altura
-  derivada de la etiqueta medida (no la del `onLayout` del contenedor, que puede
-  llegar tarde y subir el pin con etiqueta abajo). El `Marker` usa `key={placement}`:
-  Android conserva un bitmap viejo cuando la etiqueta cambia de lado.
-  La colocación de tooltips comprueba todos los segmentos en la proyección de
-  pantalla y mide el bloque completo (texto y Editar). Los mapas con ruta son
-  cenitales y bloqueados (sin arrastre, zoom ni giro), por solicitud del usuario
-  del 19/09/2026. Configuración mantiene un panel de alto estable entre servicios
-  y mapa desde el borde superior, con Volver flotante y cabecera medida;
-  seguimiento usa márgenes compactos de 40/44 y reserva más espacio solo para
-  direcciones largas. Búsqueda mide cabecera/panel, limita la hoja al 64 % y
-  muestra el aviso de moto dentro del panel para no cubrir la ruta con letra grande.
-  Todos los mapas desactivan `showsBuildings`, `showsIndoors`,
-  `showsIndoorLevelPicker` y `pitchEnabled`. El estilo compartido oculta geometría
-  de construcciones, terreno y POI, conservando parques/calles/nombres; activar
-  nombres de lugares no debe restaurar sombras ni interiores. Ver plan 0021. Se busca
-  espacio arriba/abajo con separación acotada. Si no cabe, conserva A/B y su
-  título al tocarlo, sin dibujar la etiqueta sobre la ruta ni agrandar el bitmap
-  sin límite. El onPress de edición/selección permanece disponible.
-  Después de modificar los mapas, verifica también el paquete Android con Metro:
-  TypeScript y las pruebas unitarias no detectan todos los fallos de resolución
-  del servidor de desarrollo que recibe el teléfono.
-- **Hooks AppState-aware** (no se congelan en background): `useCountdown`, `socket.ts` recalculan
-  al volver a foreground. Sigue ese patrón al hacer hooks con tiempo/conexión.
-- Código, identificadores, comentarios y JSDoc nuevos en **inglés**, según la preferencia persistente de `../AGENTS.md`. Conserva la interfaz en español y verifica cada implementación.
-- Antes de tocar APIs de Expo, confirma firmas en los docs de la **v56** (no asumas versiones previas).
-
-
-### ETA y elección de rutas
-
-La ETA de oferta se calcula automáticamente desde una posición GPS reciente del
-conductor a la recogida, usando el vehículo activo también para encomiendas. No
-reintroducir minutos manuales ni usar duración origen→destino como ETA de llegada.
-Google Routes usa tráfico óptimo y alternativas; elegir la más rápida válida, con
-menor distancia como desempate. Una respuesta válida de 0 s y un punto se acepta
-como llegada inmediata: Google puede omitir la distancia cero. La oferta conserva
-el mínimo contractual de 1 min, sin estimaciones manuales ni rectas inventadas.
-Distingue ruta inexistente, respuesta incompleta, proveedor no disponible, timeout
-y desconexión; preserva cancelaciones. Configuración conserva el encuadre y los controles
-al cambiar servicio; los errores no se disfrazan de una ruta recta. Ver plan 0014.
+- **Strict TypeScript** (`strict: true`); avoid `any`, type API data in `domain/types.ts`.
+- **Forms:** local state + `TextField`/`Button` from `shared/components` (react-hook-form was
+  removed along with email sign-up); `zod` is reserved for validating WS frames.
+- **Maps:** `react-native-maps`; location with `expo-location` (permissions in `app.config.ts`).
+  Shared map style: `features/booking/presentation/mapStyle.ts` (`declutteredMapStyle`).
+- **Route appearance:** every view reuses `RoutePolyline` and
+  `RoutePinMarker`; tracking and negotiation also use `TripRouteMap`.
+  `routeTooltipLayout.ts` holds the common logical measures: stroke 3,
+  outline 5 and an A/B pin of 16, with no size variants per role. Configure
+  keeps editing when tapping the markers and always shows the Origen/Destino
+  tooltips; the two top A/B blocks and the place-names toggle were removed
+  to enlarge the map. Its framing reserves the full header and
+  minimal margins; `getLabelAwareFitCoordinates` (`routeTooltipLayout.ts`) adds the
+  corners of each tooltip with its measured size (`onLabelSize` from `RoutePinMarker`) and
+  the real side/separation from `placeTooltipClearOfRoute`, so they do not leave the visible
+  area without losing zoom on the rest. The Mercator projection (`mercatorY`,
+  `longitudeDelta`) lives only in that file. Do not duplicate the polyline or
+  the pin styles in a screen. Keep the non-collapsable native container,
+  the cancellable redraw after layout changes and the late second redraw
+  (400 ms, avoids blank bitmaps). The route A/B pin has the same shape as the
+  selection pin (circle, stem and dot): the stem tip is the exact coordinate
+  in every view (passenger and driver). `computePinAnchor` receives the height
+  derived from the measured label (not the container's `onLayout`, which can
+  arrive late and lift a label-below pin). The `Marker` uses `key={placement}`:
+  Android keeps a stale bitmap when the label switches sides.
+  Tooltip placement checks every segment in the screen
+  projection and measures the whole block (text and Editar). Route maps are
+  top-down and locked (no dragging, zoom or rotation), per the user's request
+  of 2026-09-19. Configure keeps a stable-height panel between services
+  and the map from the top edge, with a floating Back and a measured header;
+  tracking uses compact 40/44 margins and reserves more space only for
+  long addresses. Search measures header/panel, limits the sheet to 64 % and
+  shows the moto notice inside the panel so large text does not cover the route.
+  Every map disables `showsBuildings`, `showsIndoors`,
+  `showsIndoorLevelPicker` and `pitchEnabled`. The shared style hides the geometry
+  of buildings, terrain and POIs, keeping parks/streets/names; enabling
+  place names must not restore shadows or interiors. See plan 0021. Room is
+  searched above/below with a bounded separation. If it does not fit, keep A/B and its
+  title on tap, without drawing the label over the route or enlarging the bitmap
+  without limit. The edit/selection onPress stays available.
+  After modifying the maps, also verify the Android bundle with Metro:
+  TypeScript and unit tests do not catch every resolution failure
+  of the dev server the phone receives.
+- **AppState-aware hooks** (they do not freeze in the background): `useCountdown`, `socket.ts` recompute
+  when returning to foreground. Follow that pattern for hooks with time/connection.
+- Code, identifiers, comments, JSDoc and documentation in **English**, per the persistent preference in `../AGENTS.md`. Keep the UI in Spanish and verify every implementation.
+- Before touching Expo APIs, confirm signatures in the **v56** docs (do not assume earlier versions).
 
 
-### Negociaciones simultáneas
+### ETA and route choice
 
-Un conductor puede ofertar a varios pasajeros y cada pasajero comparar varios
-conductores en su única solicitud. `useConcurrentOffers` usa promesas por envío
-para conservar todos los callbacks aunque se solapen, y consulta las mutaciones
-`automatic-driver-offer` para mantener el bloqueo por solicitud al navegar.
-No usar un modal de carga ni un bloqueo global para calcular ETA/enviar una oferta.
-La primera aceptación válida asigna un solo viaje y retira las demás ofertas del
-ganador. `OfferSentScreen` muestra cualquier viaje asignado, incluso cuando se
-estaba viendo otra negociación. Ver plan 0015.
+The offer ETA is computed automatically from a recent GPS position of the
+driver to the pickup, using the active vehicle also for parcels. Do not
+reintroduce manual minutes or use the origin→destination duration as the arrival ETA.
+Google Routes uses optimal traffic and alternatives; choose the fastest valid one, with
+shorter distance as the tie-breaker. A valid response of 0 s and one point is accepted
+as an immediate arrival: Google may omit zero distance. The offer keeps
+the contractual minimum of 1 min, without manual estimates or invented straight lines.
+Distinguish a nonexistent route, an incomplete response, an unavailable provider, timeout
+and disconnection; preserve cancellations. Configure keeps the framing and controls
+when switching service; errors are not disguised as a straight route. See plan 0014.
 
 
-Las ofertas automáticas envían `expected_pool_version` desde la solicitud mostrada.
-Un 409 requiere refrescar/revisar la solicitud y recalcular ETA; no reenviar el
-mismo borrador antiguo. El detalle de oferta usa `useNegotiationRide` para recuperar
-solicitudes fuera de la primera página. Rechazo/expiración exactos conservan el
-intento de una mejora distinta en vuelo; solo invalidan el ID indicado. Las
-respuestas HTTP de un viaje anterior no sustituyen otro activo. Ver plan 0016.
+### Simultaneous negotiations
+
+A driver can make offers to several passengers and each passenger can compare several
+drivers in their single request. `useConcurrentOffers` uses per-send promises
+to keep all callbacks even when they overlap, and queries the
+`automatic-driver-offer` mutations to keep the per-request lock while navigating.
+Do not use a loading modal or a global lock to compute ETA/send an offer.
+The first valid acceptance assigns a single ride and withdraws the winner's other
+offers. `OfferSentScreen` shows any assigned ride, even when another
+negotiation was being viewed. See plan 0015.
+
+
+Automatic offers send `expected_pool_version` from the displayed request.
+A 409 requires refreshing/reviewing the request and recomputing the ETA; do not resend the
+same old draft. The offer detail uses `useNegotiationRide` to recover
+requests outside the first page. Exact rejection/expiry keep the
+attempt of a different improvement in flight; they only invalidate the given ID. HTTP
+responses of a previous ride do not replace another active one. See plan 0016.

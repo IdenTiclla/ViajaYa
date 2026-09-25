@@ -1,66 +1,66 @@
-# Negociaciones simultáneas
+# Simultaneous negotiations
 
-19/09/2026 · Implementado y verificado localmente · `codex/ui-improvements-and-bugfixes`.
+2026-09-19 · Implemented and verified locally · `codex/ui-improvements-and-bugfixes`.
 
-El conductor debe poder ofertar a varias solicitudes y el pasajero comparar varios
-conductores en su solicitud. Cada oferta vence a los 30 segundos. La primera
-aceptación válida asigna un solo viaje al conductor, retira sus demás ofertas y
-conserva las negociaciones de los otros conductores con los otros pasajeros.
-No se amplía la regla de un viaje activo por participante.
+The driver must be able to make offers on several requests and the passenger to compare several
+drivers on their request. Each offer expires after 30 seconds. The first
+valid acceptance assigns a single ride to the driver, withdraws their other offers and
+keeps the negotiations of the other drivers with the other passengers.
+The one-active-ride-per-participant rule is not extended.
 
-## Cambios y criterios de cierre
+## Changes and exit criteria
 
-- Envío/ETA independiente por solicitud, sin modal que bloquee el resto del pool.
-  Doble toque sobre el mismo pasajero no duplica el envío; respuestas fuera de
-  orden conservan sus callbacks y errores. Reintentar una no reenvía las demás.
-- Contador de ofertas en espera, acceso directo a cada oferta y acción explícita
-  para seguir viendo solicitudes sin retirar la propuesta.
-- Una aceptación en cualquier negociación abre el viaje asignado, aunque se esté
-  consultando otra oferta. El backend mantiene la asignación atómica existente.
-- Verificar API/WS con varios pasajeros y conductores, reconexión y retirada de
-  las ofertas del ganador. Verificar concurrencia real en PostgreSQL desechable.
-- Probar tarjetas/pantallas reales con envíos solapados, errores independientes,
-  retorno al pool y aceptación de otra negociación; TypeScript, lint y bundle.
-- Actualizar el plan y la presentación con evidencia, separando pruebas locales
-  de la validación pendiente en teléfonos físicos.
+- Independent sending/ETA per request, without a modal that blocks the rest of the pool.
+  A double tap on the same passenger does not duplicate the submission; out-of-order
+  responses keep their callbacks and errors. Retrying one does not resend the others.
+- Counter of waiting offers, direct access to each offer and an explicit action
+  to keep browsing requests without withdrawing the proposal.
+- An acceptance in any negotiation opens the assigned ride, even while
+  another offer is being viewed. The backend keeps the existing atomic assignment.
+- Verify API/WS with several passengers and drivers, reconnection and withdrawal of
+  the winner's offers. Verify real concurrency on disposable PostgreSQL.
+- Test real cards/screens with overlapping submissions, independent errors,
+  going back to the pool and acceptance of another negotiation; TypeScript, lint and bundle.
+- Update the plan and the presentation with evidence, separating local tests
+  from the pending validation on physical phones.
 
 
-## Resultado y evidencia
+## Result and evidence
 
-- El backend ya admitía múltiples ofertas; se conserva el contrato y su asignación
-  atómica. No hubo cambios de esquema ni de lógica backend para esta entrega.
-- Se elimina el modal de ETA/envío. Cada tarjeta tiene su estado pendiente y los
-  errores se identifican por pasajero, con reintento independiente. El estado de
-  las mutaciones sobrevive al cambio entre lista y detalle. La confirmación de
-  envío es ahora un aviso compacto que no oscurece ni captura toques.
-- La lista muestra cuántas ofertas siguen esperando y permite abrir «Ver oferta»
-  directamente. «Seguir viendo solicitudes» conserva la propuesta. La aceptación
-  de otra negociación abre inmediatamente el viaje que se asignó.
-- **334 pruebas móviles aprobadas**, incluidos cinco casos nuevos: respuestas en
-  orden inverso, doble toque por solicitud, error/reintento independiente, errores
-  separados y envío pendiente de una pantalla anterior. TypeScript y lint limpios.
-- **62 pruebas API/WS aprobadas**. Los dos casos nuevos (taxi/moto) conectan tres
-  pasajeros y dos conductores, crean seis ofertas, recuperan las tres ofertas de
-  un conductor al reconectar y verifican retirada selectiva, rechazo de aceptación
-  atrasada y bloqueo de ofertas del conductor ocupado. Otro pasajero todavía puede
-  aceptar al segundo conductor. Tres advertencias ya existentes en esta suite.
-- **4 pruebas PostgreSQL aprobadas** en una base nueva desechable: dos pasajeros
-  aceptando al mismo conductor, dos conductores para el mismo pasajero, dos ofertas
-  simultáneas para el mismo par e índice que impide duplicar viajes activos.
-  La base de desarrollo no se modifica; la base temporal se elimina al terminar.
-- **17 casos de UI aprobados**: tres envíos solapados y respuestas invertidas;
-  volver sin retirar; aceptación de otra negociación; reintento/retirada aislados;
-  navegación durante un envío; comparación de conductores por el pasajero y
-  carrusel del mapa. Se repiten en taxi/moto y se añade pantalla 320×640, tema
-  oscuro y texto 200 %. Sin errores JavaScript ni desbordamiento horizontal.
-- **Android:** bundle HTTP 200, **11.896.851 bytes**, con el nuevo código de
-  concurrencia. API y Metro sanos; sin reiniciar procesos ni levantar emulador.
-- **Plan/presentación:** revisión 15, 32 diapositivas. Navegación, lectura, descarga
-  idéntica al plan, impresión y tamaños escritorio/móvil aprobados; sin errores
-  JavaScript ni desbordamientos.
+- The backend already supported multiple offers; the contract and its atomic
+  assignment are kept. There were no schema or backend logic changes for this delivery.
+- The ETA/sending modal is removed. Each card has its pending state and
+  errors are identified per passenger, with independent retry. The state of
+  the mutations survives switching between list and detail. The sending
+  confirmation is now a compact notice that neither darkens nor captures taps.
+- The list shows how many offers are still waiting and allows opening «Ver oferta»
+  directly. «Seguir viendo solicitudes» keeps the proposal. The acceptance
+  of another negotiation immediately opens the ride that was assigned.
+- **334 mobile tests passing**, including five new cases: responses in
+  reverse order, double tap per request, independent error/retry, separate
+  errors and a pending submission from an earlier screen. TypeScript and lint clean.
+- **62 API/WS tests passing**. The two new cases (taxi/moto) connect three
+  passengers and two drivers, create six offers, recover a driver's three offers
+  on reconnect and verify selective withdrawal, rejection of a late
+  acceptance and blocking of the busy driver's offers. Another passenger can still
+  accept the second driver. Three pre-existing warnings in this suite.
+- **4 PostgreSQL tests passing** on a new disposable database: two passengers
+  accepting the same driver, two drivers for the same passenger, two simultaneous
+  offers for the same pair and an index that prevents duplicating active rides.
+  The development database is not modified; the temporary database is dropped at the end.
+- **17 UI cases passing**: three overlapping submissions and inverted responses;
+  going back without withdrawing; acceptance of another negotiation; isolated retry/withdrawal;
+  navigation during a submission; driver comparison by the passenger and the
+  map carousel. Repeated for taxi/moto, adding a 320×640 screen, dark
+  theme and 200 % text. No JavaScript errors or horizontal overflow.
+- **Android:** bundle HTTP 200, **11,896,851 bytes**, with the new
+  concurrency code. API and Metro healthy; no processes restarted and no emulator started.
+- **Plan/presentation:** revision 15, 32 slides. Navigation, reading, a download
+  identical to the plan, printing and desktop/mobile sizes passed; no JavaScript
+  errors or overflow.
 
-Evidencia local: `local-files/concurrent-negotiations-2026-09-19/`.
-El visor usa pantallas, tarjetas, hooks, React Query y estado reales; sustituye
-GPS, HTTP, navegación, mapa nativo y gesto de deslizar. API/WS y PostgreSQL tienen
-pruebas independientes. Falta validar esta versión en dos teléfonos reales,
-incluidas red móvil, GPS y render nativo del mapa. No se declara salida a producción.
+Local evidence: `local-files/concurrent-negotiations-2026-09-19/`.
+The viewer uses real screens, cards, hooks, React Query and state; it replaces
+GPS, HTTP, navigation, the native map and the swipe gesture. API/WS and PostgreSQL have
+independent tests. Validating this version on two real phones is still missing,
+including mobile network, GPS and native map rendering. No production launch is declared.

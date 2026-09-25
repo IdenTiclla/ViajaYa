@@ -1,53 +1,53 @@
-# F01 — Base técnica y tres entornos
+# F01 — Technical foundation and three environments
 
-Fecha inicial: 2026-09-09. Actualización de estado: 2026-09-19. Rama original: `codex/phase-01-environments`; integrada en `main` mediante el PR #15 (`986dd79`, 14/09).
+Initial date: 2026-09-09. Status update: 2026-09-19. Original branch: `codex/phase-01-environments`; merged into `main` through PR #15 (`986dd79`, 2026-09-14).
 
-Estado: **F01 completada y verificada localmente**, con evidencia histórica de APK de Desarrollo y Pruebas compilados y firmados en EAS. Pruebas se configuró temporalmente en esta PC con HTTPS; su disponibilidad actual y el alojamiento permanente no se certificaron en la revisión del 19/09. F02 ya tiene implementación y conserva cierres pendientes. Estado vigente: [plan de producción](../plans/plan-salida-produccion.md).
+Status: **F01 completed and verified locally**, with historical evidence of Development and Testing APKs built and signed on EAS. Testing was temporarily configured on this PC with HTTPS; its current availability and permanent hosting were not certified in the 2026-09-19 review. F02 already has an implementation and keeps pending closures. Current status: [production plan](../plans/production-launch-plan.md).
 
-## Entregas
+## Deliveries
 
-- [x] F01-A: contrato `APP_ENV=development|testing|production`, configuración validada, ejemplos y protección contra modos de proveedor incorrectos.
-- [x] F01-B: identidades Android/iOS y enlaces separados, variables públicas por entorno, configuración de runtime validada y distintivo en entornos bajos.
-- [x] F01-C: `uv.lock`, zonas horarias portables, Dockerfile fijado, proceso de migración separado, definición de despliegue y CI ampliada.
-- [x] Preferencia persistente: código/identificadores/comentarios nuevos en inglés, interfaz y documentación para el usuario en español; verificar cada implementación.
+- [x] F01-A: `APP_ENV=development|testing|production` contract, validated configuration, examples and protection against wrong provider modes.
+- [x] F01-B: separate Android/iOS identities and links, public variables per environment, validated runtime configuration and a badge in lower environments.
+- [x] F01-C: `uv.lock`, portable time zones, pinned Dockerfile, separate migration process, deployment definition and extended CI.
+- [x] Persistent preference: new code/identifiers/comments in English, UI and user-facing documentation in Spanish; verify every implementation. (Superseded on 2026-09-24: repository documentation is also in English.)
 
-## Decisiones
+## Decisions
 
-- Pruebas se identifica técnicamente como `testing`; EAS conserva su perfil/entorno `preview`. Su aplicación usa `com.viajaya.app.testing`.
-- Los tokens nuevos exigen emisor y audiencia específicos. Tokens anteriores sin esos campos requieren iniciar sesión nuevamente; se conserva la cuenta y el historial.
-- Las claves de emisor/audiencia, Redis y almacenamiento se validan por entorno; los recursos físicos separados se aprovisionan/certifican en F09.
-- El servidor y la compilación móvil rechazan OTP de prueba en producción. Los desafíos y la pantalla de autofill pertenecen a F02; no se presentan como implementados aquí.
-- El bundle móvil contiene solo configuración pública. OTA queda deshabilitado hasta certificar su mecanismo de entrega en F09.
-- La verificación local usa `.venv-f01` y contenedores desechables, sin sustituir el entorno virtual del backend existente ni reiniciar sus contenedores.
+- Testing is technically identified as `testing`; EAS keeps its `preview` profile/environment. Its app uses `com.viajaya.app.testing`.
+- New tokens require a specific issuer and audience. Earlier tokens without those fields require signing in again; the account and history are kept.
+- Issuer/audience keys, Redis and storage are validated per environment; the separate physical resources are provisioned/certified in F09.
+- The server and the mobile build reject test OTP in production. Challenges and the autofill screen belong to F02; they are not presented as implemented here.
+- The mobile bundle contains only public configuration. OTA stays disabled until its delivery mechanism is certified in F09.
+- Local verification uses `.venv-f01` and disposable containers, without replacing the existing backend virtual environment or restarting its containers.
 
-## Evidencia
+## Evidence
 
-- Backend: **649 pruebas aprobadas**, incluidas configuración, JWT y límite HTTP entre entornos. Las **69 pruebas opt-in de la suite completa PostgreSQL/Redis se omitieron** en esta ejecución; no se apuntó esa suite destructiva a la base de desarrollo. El smoke de imagen sí verificó migraciones y autenticación contra un PostgreSQL nuevo y desechable.
-- Mobile: **235 pruebas aprobadas**, incluidas 19 de configuración y la cabecera de entorno del cliente HTTP; TypeScript y lint aprobados.
-- Expo generó las tres configuraciones y proyectos Android aislados; se comprobaron `applicationId`, esquema y nombre nativos.
-- Imagen runtime y de pruebas construidas con dependencias fijadas.
-- Smoke del runtime: migraciones PostgreSQL, readiness, registro, refresh y autenticación aprobados; token de otro entorno rechazado; configuración productiva insegura rechazada; ejecución con UID 10001 y sin `.env` en la imagen.
-- Las dos definiciones Compose alojadas pasan validación sin desplegar servicios.
-- Ruff, snapshots OpenAPI/realtime y DTO TypeScript generado: aprobados. Se fijó LF en el archivo generado para evitar falsos negativos entre Windows y Linux.
-- Bundle Android productivo compilado con Hermes: 2.059 módulos, salida bajo `local-files/phase01/android-production-bundle/`. Se usaron valores sintéticos y carga de `.env` deshabilitada.
-- Workflow revisado con actionlint: sin errores. La rama ya se integró; falta enlazar y comprobar el resultado de CI remota del candidato que se vaya a certificar.
-- Herramientas OpenAPI: tres dependencias transitivas actualizadas dentro de rangos compatibles; `npm audit` de las herramientas de la raíz terminó con cero vulnerabilidades. Esta cifra no representa una auditoría de todas las dependencias de mobile/backend.
+- Backend: **649 tests passing**, including configuration, JWT and the HTTP boundary between environments. The **69 opt-in tests of the full PostgreSQL/Redis suite were skipped** in this run; that destructive suite was not pointed at the development database. The image smoke did verify migrations and authentication against a new, disposable PostgreSQL.
+- Mobile: **235 tests passing**, including 19 for configuration and the HTTP client's environment header; TypeScript and lint passing.
+- Expo generated the three configurations and isolated Android projects; the native `applicationId`, scheme and name were checked.
+- Runtime and test images built with pinned dependencies.
+- Runtime smoke: PostgreSQL migrations, readiness, registration, refresh and authentication passed; a token from another environment rejected; insecure production configuration rejected; running with UID 10001 and without `.env` in the image.
+- The two hosted Compose definitions pass validation without deploying services.
+- Ruff, OpenAPI/realtime snapshots and the generated TypeScript DTO: passing. LF was pinned in the generated file to avoid false negatives between Windows and Linux.
+- Production Android bundle compiled with Hermes: 2,059 modules, output under `local-files/phase01/android-production-bundle/`. Synthetic values were used and `.env` loading was disabled.
+- Workflow reviewed with actionlint: no errors. The branch is already merged; linking and checking the remote CI result of the candidate to be certified is still missing.
+- OpenAPI tools: three transitive dependencies updated within compatible ranges; `npm audit` of the root tools finished with zero vulnerabilities. This figure does not represent an audit of all mobile/backend dependencies.
 
-### Instalación Android y Pruebas temporal — 2026-09-09
+### Android installation and temporary Testing — 2026-09-09
 
-- EAS finalizó las builds de Desarrollo `93c514f6-e85b-44ff-a189-6bf27406fea2` y Pruebas `bf2dd2df-c20a-4859-a61e-a449090778ae`. El archivo enviado se revisó: 220 archivos de mobile, sin backend, `.env`, credenciales de firma ni artefactos locales; `.easignore` limita el contenido enviado.
-- Los dos APK descargados pasan integridad ZIP, verificación criptográfica con `apksigner` y comprobación de identidad nativa, esquema, entorno y API. Pruebas incluye su bundle JavaScript y no depende de Metro. Evidencia local: `local-files/phase01/development-apk-verification.json` y `testing-apk-verification.json`.
-- El usuario instaló **ViajaYa Desarrollo** y confirmó que llega al login. Metro está accesible en la LAN. Esto no certifica todavía un viaje completo ni el funcionamiento de Maps/OAuth en el teléfono.
-- Pruebas usa el proyecto Docker `viajaya-testing-local`, con PostgreSQL, Redis, usuarios ficticios y secreto JWT separados. La API escucha en `127.0.0.1:8001` y se expone mediante un túnel HTTPS temporal autorizado por el usuario.
-- Verificación real de Pruebas por HTTPS: readiness, login, perfil, refresh y WebSocket aprobados; cabecera de entorno incorrecta rechazada y token de Pruebas rechazado en Desarrollo. Desarrollo sigue sano. Evidencia: `local-files/phase01/testing/verification-report.json`.
-- APK, enlaces, QR y guía de instalación guardados en `local-files/phase01/`. El usuario también instaló **ViajaYa Pruebas** y confirmó que aparece el login con el distintivo **Pruebas**. La comprobación de acceso con cuentas y de un viaje completo desde los teléfonos sigue pendiente.
+- EAS finished the Development build `93c514f6-e85b-44ff-a189-6bf27406fea2` and the Testing build `bf2dd2df-c20a-4859-a61e-a449090778ae`. The uploaded archive was reviewed: 220 mobile files, without backend, `.env`, signing credentials or local artifacts; `.easignore` limits the uploaded content.
+- The two downloaded APKs pass ZIP integrity, cryptographic verification with `apksigner` and a check of native identity, scheme, environment and API. Testing includes its JavaScript bundle and does not depend on Metro. Local evidence: `local-files/phase01/development-apk-verification.json` and `testing-apk-verification.json`.
+- The user installed **ViajaYa Desarrollo** and confirmed it reaches the login. Metro is reachable on the LAN. This does not yet certify a full ride or Maps/OAuth working on the phone.
+- Testing uses the Docker project `viajaya-testing-local`, with separate PostgreSQL, Redis, fictitious users and JWT secret. The API listens on `127.0.0.1:8001` and is exposed through a temporary HTTPS tunnel authorized by the user.
+- Real verification of Testing over HTTPS: readiness, login, profile, refresh and WebSocket passed; a wrong environment header rejected and a Testing token rejected in Development. Development is still healthy. Evidence: `local-files/phase01/testing/verification-report.json`.
+- APKs, links, QR codes and the installation guide saved in `local-files/phase01/`. The user also installed **ViajaYa Pruebas** and confirmed the login appears with the **Pruebas** badge. Checking access with accounts and a full ride from the phones is still pending.
 
-## Condiciones externas y siguiente fase
+## External conditions and next phase
 
-No consta alojamiento permanente certificado de pruebas/producción ni entrega SMS real. El servidor temporal de Pruebas requiere mantener esta PC, Docker y el túnel encendidos. En F02 se recuperó HTTPS con ngrok; si cambia la URL incorporada al binario, hace falta recompilarlo. No sustituye el despliegue y la operación previstos en F09.
+There is no certified permanent hosting for testing/production nor real SMS delivery. The temporary Testing server requires keeping this PC, Docker and the tunnel running. In F02, HTTPS was recovered with ngrok; if the URL embedded in the binary changes, it has to be rebuilt. It does not replace the deployment and operations planned in F09.
 
-Se configuró explícitamente la clave pública móvil de Maps existente como variable de Pruebas en EAS. Separar credenciales de Google por entorno y certificar restricciones por paquete/firma sigue pendiente. También quedan pendientes la certificación funcional completa en teléfonos, el binario productivo, iOS y la publicación en tiendas.
+The existing public mobile Maps key was explicitly configured as a Testing variable in EAS. Separating Google credentials per environment and certifying package/signature restrictions is still pending. Full functional certification on phones, the production binary, iOS and store publication are also pending.
 
-El historial local confirma la integración del PR #15 en `main` el 14/09. No se consultó GitHub Actions en la revisión del 19/09; no se infiere una CI remota aprobada a partir del merge.
+The local history confirms the merge of PR #15 into `main` on 2026-09-14. GitHub Actions was not queried in the 2026-09-19 review; an approved remote CI is not inferred from the merge.
 
-Siguiente cierre: completar la certificación de F02 y su adaptador SMS; F03-A puede avanzar como trabajo independiente. Guía operativa: `docs/environments.md`.
+Next closure: complete F02 certification and its SMS adapter; F03-A can move forward as independent work. Operational guide: `docs/environments.md`.

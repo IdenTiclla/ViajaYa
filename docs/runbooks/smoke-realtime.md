@@ -1,14 +1,14 @@
-# Smoke realtime
+# Realtime smoke
 
-El smoke headless certifica la vertical canary de un solo proceso con componentes
-reales: PostgreSQL en `head`, Uvicorn sobre TCP, HTTP, autenticación por Bearer y
-WebSocket con los subprotocolos `viajaya.auth` + token. Ejecuta el modo
-`live_local` con grabación durable, recibe un snapshot v2, provoca un delta y
-comprueba que una conexión nueva converge mediante otro snapshot autoritativo.
+The headless smoke certifies the single-process canary vertical with real
+components: PostgreSQL at `head`, Uvicorn over TCP, HTTP, Bearer authentication and
+WebSocket with the `viajaya.auth` + token subprotocols. It runs the
+`live_local` mode with durable recording, receives a v2 snapshot, triggers a delta and
+checks that a new connection converges through another authoritative snapshot.
 
-## Ejecución headless
+## Headless run
 
-Define `VIAJAYA_TEST_DATABASE_URL` con una base PostgreSQL desechable y ejecuta:
+Set `VIAJAYA_TEST_DATABASE_URL` to a disposable PostgreSQL database and run:
 
 ```bash
 cd backend
@@ -19,61 +19,61 @@ VIAJAYA_TEST_REDIS_URL=redis://localhost:6379/15 \
   tests/postgresql/test_pg_realtime_crash_smoke.py -q
 ```
 
-La guarda compartida de la suite rechaza drivers distintos de
-`postgresql+asyncpg` y bases cuyo nombre no empiece por `test_` ni termine en
-`_test`. La fixture ejecuta `downgrade base → upgrade head → downgrade base`, por
-lo que elimina todos los objetos administrados por Alembic en la base indicada.
-Nunca apuntes esta variable a desarrollo, staging o producción.
+The suite's shared guard rejects drivers other than
+`postgresql+asyncpg` and databases whose name neither starts with `test_` nor ends in
+`_test`. The fixture runs `downgrade base → upgrade head → downgrade base`, so
+it deletes every Alembic-managed object in the given database.
+Never point this variable at development, staging or production.
 
-Los smokes base y one-shot usan usuarios con sufijo aleatorio, un puerto loopback
-efímero y deadlines acotados. En su `finally` verifican que el ride se cancele,
-dejan al conductor offline, esperan que la outbox drene y apagan Uvicorn junto
-con sus timers de presencia/expiración. La limpieza física ocurre al desmontar
-la fixture PostgreSQL de la suite. No registran JWT, payloads ni la URL de base
-de datos.
+The base and one-shot smokes use users with a random suffix, an ephemeral loopback
+port and bounded deadlines. In their `finally` they verify that the ride is cancelled,
+set the driver offline, wait for the outbox to drain and shut down Uvicorn together
+with its presence/expiry timers. The physical cleanup happens when the suite's
+PostgreSQL fixture is torn down. They do not log JWTs, payloads or the database
+URL.
 
-Los casos `live_local` no requieren Redis. Las variantes de crash
-`live_redis` se omiten si `VIAJAYA_TEST_REDIS_URL` no está definida; al
-habilitarlas usan un canal aleatorio y no escriben estado durable en Redis.
-Este smoke forma parte del job `Backend · PostgreSQL real` de CI porque vive en
-`tests/postgresql/`; no requiere cuentas seed ni un backend levantado de
-antemano.
+The `live_local` cases do not require Redis. The `live_redis` crash
+variants are skipped if `VIAJAYA_TEST_REDIS_URL` is not defined; when
+enabled they use a random channel and do not write durable state to Redis.
+This smoke is part of the CI job `Backend · PostgreSQL real` because it lives in
+`tests/postgresql/`; it requires neither seed accounts nor a backend started
+beforehand.
 
-## Bridge Redis
+## Redis bridge
 
-El mismo job levanta Redis y define `VIAJAYA_TEST_REDIS_URL`. La prueba
-`test_pg_redis_realtime_bridge.py` abre dos clientes y dos hubs locales sobre un
-canal aleatorio, publica un envelope durable y exige la misma identidad en ambos
-procesos simulados. Después mata las conexiones Pub/Sub, exige cierre 1012 de los
-sockets y espera la reconexión de ambos bridges.
+The same job starts Redis and defines `VIAJAYA_TEST_REDIS_URL`. The test
+`test_pg_redis_realtime_bridge.py` opens two clients and two local hubs on a
+random channel, publishes a durable envelope and requires the same identity in both
+simulated processes. It then kills the Pub/Sub connections, requires a 1012 close of the
+sockets and waits for both bridges to reconnect.
 
-`test_pg_redis_multiworker_smoke.py` conserva dos gates. Sin el flag compartido,
-un segundo Uvicorn debe fallar. Con `REALTIME_SHARED_PRESENCE_ENABLED=true` y el
-scheduler live, levanta dos procesos contra la misma PostgreSQL/Redis: el
-pasajero conecta al primero, el conductor al segundo, ambos reciben snapshots y
-la negociación `ride_created → offer_created → offer_accepted` cruza procesos.
-`test_pg_shared_passenger_presence.py` certifica además los scripts Lua, leases
-por conexión, gracia y `cancel_absent_ride` con fencing durable.
-Los tests rápidos verifican que la creación del ride persiste la primera acción
-de ausencia en la misma UoW y que el reconciliador repara búsquedas legacy de
-forma idempotente antes de habilitar múltiples workers.
+`test_pg_redis_multiworker_smoke.py` keeps two gates. Without the shared flag,
+a second Uvicorn must fail. With `REALTIME_SHARED_PRESENCE_ENABLED=true` and the
+live scheduler, it starts two processes against the same PostgreSQL/Redis: the
+passenger connects to the first, the driver to the second, both receive snapshots and
+the `ride_created → offer_created → offer_accepted` negotiation crosses processes.
+`test_pg_shared_passenger_presence.py` also certifies the Lua scripts, per-connection
+leases, grace and `cancel_absent_ride` with durable fencing.
+The fast tests verify that ride creation persists the first absence
+action in the same UoW and that the reconciler repairs legacy searches
+idempotently before enabling multiple workers.
 
-Cada respuesta HTTP incluye `X-Request-ID`. Para seguir una mutación hasta el
-cliente, busca ese UUID en el log sanitizado del request, en
-`realtime_outbox.correlation_id` y en `correlation_id` del envelope v2. Las
-acciones del scheduler usan su propio `scheduled_actions.id` como correlación.
-No uses JWT, query strings ni payloads como identificadores de diagnóstico.
-Durante un rolling deploy, los eventos creados o entregados por una réplica
-anterior usan `batch_id` como fallback estable. El bridge nuevo publica además
-una copia legacy en `REALTIME_REDIS_CHANNEL`; confirma que no haya resyncs por
-schema antes de retirar la compatibilidad en una fase futura.
+Every HTTP response includes `X-Request-ID`. To follow a mutation down to the
+client, search for that UUID in the request's sanitized log, in
+`realtime_outbox.correlation_id` and in the v2 envelope's `correlation_id`. The
+scheduler actions use their own `scheduled_actions.id` as correlation.
+Do not use JWTs, query strings or payloads as diagnostic identifiers.
+During a rolling deploy, events created or delivered by an earlier
+replica use `batch_id` as a stable fallback. The new bridge also publishes
+a legacy copy on `REALTIME_REDIS_CHANNEL`; confirm there are no schema
+resyncs before removing the compatibility in a future phase.
 
-`test_pg_redis_restart_smoke.py` usa exclusivamente el servicio con perfil
-`redis_restart_test`: detiene Redis después del commit y antes del publish,
-comprueba el cierre 1012 y el retry pendiente, levanta el mismo contenedor y
-exige replay con idénticos `event_id`, `batch_id`, secuencia y versión. Rechaza
-URLs no loopback, bases distintas de 15 y contenedores sin marca `test|ci`.
-Localmente:
+`test_pg_redis_restart_smoke.py` exclusively uses the service with the
+`redis_restart_test` profile: it stops Redis after the commit and before the publish,
+checks the 1012 close and the pending retry, starts the same container again and
+requires a replay with identical `event_id`, `batch_id`, sequence and version. It rejects
+non-loopback URLs, databases other than 15 and containers without a `test|ci` mark.
+Locally:
 
 ```bash
 docker compose up -d redis
@@ -89,58 +89,58 @@ VIAJAYA_TEST_REDIS_RESTART_CONTAINER=viajaya_redis_restart_test \
   tests/postgresql/test_pg_redis_restart_smoke.py -q
 ```
 
-Estas pruebas certifican transporte, restart/replay y la promoción condicionada
-a multiworker; complementan los casos unitarios de leases, mensaje inválido y
-ausencia de suscriptores.
-El Redis normal de desarrollo/CI no se interrumpe durante el restart smoke.
+These tests certify transport, restart/replay and the conditional promotion
+to multi-worker; they complement the unit cases for leases, invalid messages and
+absence of subscribers.
+The normal development/CI Redis is not interrupted during the restart smoke.
 
-## Crash/restart multiproceso
+## Multi-process crash/restart
 
-El smoke de crash usa dos procesos Uvicorn consecutivos, el mismo socket
-loopback, la misma PostgreSQL y el mismo secreto JWT fijo de prueba. Las
-compuertas son objetos IPC anónimos del runner; no existen endpoints, variables
-de corrupción ni controles remotos en `app`. Requiere POSIX por el uso explícito
-de `SIGKILL`; en otros sistemas la prueba se omite. Cada caso se ejecuta primero
-en `live_local` y después en `live_redis`. La segunda variante usa el bridge,
-Pub/Sub y suscripción reales sobre un canal aislado.
+The crash smoke uses two consecutive Uvicorn processes, the same loopback
+socket, the same PostgreSQL and the same fixed test JWT secret. The
+gates are anonymous IPC objects of the runner; there are no endpoints, corruption
+variables or remote controls in `app`. It requires POSIX for the explicit use
+of `SIGKILL`; on other systems the test is skipped. Each case runs first
+in `live_local` and then in `live_redis`. The second variant uses the real bridge,
+Pub/Sub and subscription on an isolated channel.
 
-Certifica separadamente estas dos ventanas:
+It certifies these two windows separately:
 
-- `commit → publish`: el primer proceso queda suspendido antes de emitir y
-  recibe `SIGKILL`; el claim revierte, la fila sigue pendiente y la segunda
-  instancia publica con el hub vacío. Una conexión posterior converge por su
-  snapshot y watermark sin depender de haber recibido ese delta.
-- `publish → published_at`: el primer socket recibe el frame y el proceso muere
-  antes de confirmar; la segunda instancia reentrega exactamente el mismo
-  `event_id`, `batch_id`, secuencia, versión y payload.
+- `commit → publish`: the first process is suspended before emitting and
+  receives `SIGKILL`; the claim rolls back, the row stays pending and the second
+  instance publishes with an empty hub. A later connection converges through its
+  snapshot and watermark without depending on having received that delta.
+- `publish → published_at`: the first socket receives the frame and the process dies
+  before confirming; the second instance redelivers exactly the same
+  `event_id`, `batch_id`, sequence, version and payload.
 
-En ambos casos se comprueba salida por `SIGKILL`, cierre WebSocket anormal,
-liberación y readquisición del advisory lock, `attempts == 0` después del crash,
-`attempts == 1` y `published_at` confirmado después del replay, además de un
-snapshot nuevo con una sola oferta y watermark exacto. En la ventana posterior a
-publicación, el proceso de recuperación se detiene antes del replay únicamente
-dentro del arnés para permitir que el socket TCP real observe la reentrega.
-En el camino exitoso también verifica cancelación, conductor offline, drenado y
-shutdown coordinado de la instancia recuperada. Si una aserción ya falló, un app
-`off` aislado intenta limpiar ese estado sin ocultar el error primario. El
-2026-07-23 pasaron las cuatro combinaciones de ventana y transporte.
+In both cases it checks exit by `SIGKILL`, an abnormal WebSocket close,
+release and reacquisition of the advisory lock, `attempts == 0` after the crash,
+`attempts == 1` and a confirmed `published_at` after the replay, plus a
+new snapshot with a single offer and an exact watermark. In the post-publication
+window, the recovery process stops before the replay only
+inside the harness to let the real TCP socket observe the redelivery.
+On the successful path it also verifies cancellation, driver offline, draining and
+coordinated shutdown of the recovered instance. If an assertion already failed, an isolated
+`off` app tries to clean up that state without hiding the primary error. On
+2026-07-23 all four window and transport combinations passed.
 
-## Pase del dev build React Native
+## React Native dev build pass
 
-El pase headless no sustituye el runtime React Native. El observador técnico de
-desarrollo conserva en un buffer acotado y escribe con el prefijo `[realtime]`
-el código de cierre, la causa de descarte y el motivo de resync. Solo registra
-scope `passenger|driver`, categorías cerradas, secuencia y hora; nunca rutas,
-IDs de viaje, tokens, frames ni payloads. El buffer está deshabilitado fuera de
+The headless pass does not replace the React Native runtime. The technical
+development observer keeps in a bounded buffer and writes with the `[realtime]` prefix
+the close code, the discard cause and the resync reason. It only logs
+the `passenger|driver` scope, closed categories, sequence and time; never routes,
+ride IDs, tokens, frames or payloads. The buffer is disabled outside
 `__DEV__`.
 
-El runner `scripts/mobile_realtime_smoke.py` permite repetir el pase con un dev
-build —nunca Expo Go— sin agregar controles al artefacto productivo. Arranca una
-API `live_local` sobre una base PostgreSQL desechable, crea una cuenta efímera de
-conductor y arma los fallos únicamente por referencia directa dentro del
-proceso.
+The runner `scripts/mobile_realtime_smoke.py` allows repeating the pass with a dev
+build —never Expo Go— without adding controls to the production artifact. It starts a
+`live_local` API on a disposable PostgreSQL database, creates an ephemeral
+driver account and arms the failures only by direct reference inside the
+process.
 
-Primero lleva la base desechable a `head` y arranca el runner:
+First bring the disposable database to `head` and start the runner:
 
 ```bash
 cd backend
@@ -148,7 +148,7 @@ DATABASE_URL="$VIAJAYA_TEST_DATABASE_URL" .venv/bin/alembic upgrade head
 .venv/bin/python -m scripts.mobile_realtime_smoke
 ```
 
-En otra terminal levanta un Metro separado del entorno habitual:
+In another terminal start a Metro separate from the usual environment:
 
 ```bash
 cd mobile
@@ -156,8 +156,8 @@ API_URL=http://10.0.2.2:8002/api/v1 \
   npx expo start --dev-client --port 8082
 ```
 
-En Android Emulator, `10.0.2.2` resuelve al host para la API. Para Metro es más
-estable crear el reverse ADB y abrir el dev client por loopback:
+On the Android Emulator, `10.0.2.2` resolves to the host for the API. For Metro it is more
+stable to create the ADB reverse and open the dev client over loopback:
 
 ```bash
 adb -s emulator-5554 reverse tcp:8082 tcp:8082
@@ -166,9 +166,9 @@ adb -s emulator-5554 shell am start -a android.intent.action.VIEW \
 adb -s emulator-5554 logcat -v time | rg '\[realtime\]'
 ```
 
-Inicia sesión con las credenciales efímeras que imprime el runner, concede la
-ubicación mientras se usa la app y espera `connected` +
-`snapshot_applied`. Luego ejecuta, uno por uno, los comandos interactivos:
+Sign in with the ephemeral credentials the runner prints, grant
+location while using the app and wait for `connected` +
+`snapshot_applied`. Then run, one by one, the interactive commands:
 
 ```text
 duplicate
@@ -178,55 +178,55 @@ quarantine
 quit
 ```
 
-El hook productivo debe:
+The production hook must:
 
-- descartar un duplicado sin repetir estado ni avisos;
-- detectar un hueco y aplicar un snapshot de reconexión;
-- recuperarse de un frame inválido;
-- recibir el cierre `1012` posterior a una cuarentena confirmada y converger.
+- discard a duplicate without repeating state or notices;
+- detect a gap and apply a reconnection snapshot;
+- recover from an invalid frame;
+- receive the `1012` close after a confirmed quarantine and converge.
 
-Los escenarios deben mostrar respectivamente `dropped/duplicate`,
-`resync/stream_gap`, `invalid_frame` seguido de `resync/invalid_frame`, y
-`closed` con código `1012` seguido de `connected` y `snapshot_applied`.
+The scenarios must show respectively `dropped/duplicate`,
+`resync/stream_gap`, `invalid_frame` followed by `resync/invalid_frame`, and
+`closed` with code `1012` followed by `connected` and `snapshot_applied`.
 
-`quit` cancela los rides propios, deja al conductor offline, retira únicamente
-la cuarentena artificial conocida y apaga la API. Después detén el Metro
-temporal y el AVD, y devuelve la base desechable a `base`. No interrumpas el
-backend, Metro o Redis habituales.
+`quit` cancels its own rides, sets the driver offline, removes only
+the known artificial quarantine and shuts down the API. Then stop the temporary
+Metro and the AVD, and return the disposable database to `base`. Do not interrupt the
+usual backend, Metro or Redis.
 
-La evidencia manual debe registrar commit, dispositivo o AVD, estado de
-`/health/ready` y `/health/realtime`, resultado por escenario y un extracto
-sanitizado de logcat. Nunca debe conservar JWT, payloads, DSN ni datos personales.
+The manual evidence must record commit, device or AVD, the state of
+`/health/ready` and `/health/realtime`, the result per scenario and a sanitized
+logcat excerpt. It must never keep JWTs, payloads, DSNs or personal data.
 
-### Evidencia 2026-07-23
+### Evidence 2026-07-23
 
-- Fuente: `19a18da` más el runner y pruebas documentados en esta entrega.
-- Runtime: dev build Expo SDK 56 sobre `viajaya_pasajero`, Android 14.
-- API aislada: `live_local`, Alembic `0023`; `/health/ready=status=ok`,
-  dispatcher y advisory lock sanos. `/health/realtime=status=ok`, sin pendientes
-  ni retries al comenzar.
-- Duplicado: `dropped/duplicate`.
-- Hueco: `resync/stream_gap`; al volver la app a primer plano se observó
-  `connected` + `snapshot_applied`.
-- Frame inválido: `invalid_frame` sobre metadatos sanitizados,
-  `resync/invalid_frame`, cierre local, reconexión y snapshot.
-- Cuarentena: el dispatcher confirmó `invalid_payload`; el dev build recibió
-  cierre `1012`, reconectó y aplicó snapshot.
-- Limpieza: el cierre normal del runner se verificó con código `0`; el AVD y los
-  servicios `:8002`/`:8082` se apagaron y `test_viajaya` volvió a `base`.
+- Source: `19a18da` plus the runner and tests documented in this delivery.
+- Runtime: Expo SDK 56 dev build on `viajaya_pasajero`, Android 14.
+- Isolated API: `live_local`, Alembic `0023`; `/health/ready=status=ok`,
+  dispatcher and advisory lock healthy. `/health/realtime=status=ok`, without pending items
+  or retries at the start.
+- Duplicate: `dropped/duplicate`.
+- Gap: `resync/stream_gap`; when the app came back to the foreground,
+  `connected` + `snapshot_applied` was observed.
+- Invalid frame: `invalid_frame` on sanitized metadata,
+  `resync/invalid_frame`, local close, reconnection and snapshot.
+- Quarantine: the dispatcher confirmed `invalid_payload`; the dev build received a
+  `1012` close, reconnected and applied a snapshot.
+- Cleanup: the runner's normal exit was verified with code `0`; the AVD and the
+  `:8002`/`:8082` services were shut down and `test_viajaya` returned to `base`.
 
-## Límites del smoke headless
+## Limits of the headless smoke
 
-- Usa loopback sin TLS, proxy inverso ni balanceador.
-- El smoke base certifica un proceso `live_local`; el smoke Redis certifica dos
-  procesos únicamente con presencia compartida y scheduler durable activos.
-- Usa el cliente Python `websockets`, no el WebSocket nativo de React Native.
-- El pase de dev build cubre el WebSocket nativo y reconexión en AVD, pero no una
-  red móvil real, TLS, suspensión prolongada ni cambio de red.
-- Inyecta duplicado, hueco y cuarentena solo mediante el arnés one-shot de
-  tests/runner. Fuerza `SIGKILL` y restart en `live_local|live_redis`, pero no
-  cubre caída del host o PostgreSQL.
-- Certifica la recuperación durable de expiración de ofertas en la suite
-  PostgreSQL específica de `scheduled_actions`; este smoke de realtime no
-  vuelve a ejecutar ese escenario. La cancelación por ausencia conserva su
-  mecanismo independiente de presencia y gracia documentado en el plan 0007.
+- It uses loopback without TLS, a reverse proxy or a load balancer.
+- The base smoke certifies one `live_local` process; the Redis smoke certifies two
+  processes only with shared presence and the durable scheduler active.
+- It uses the Python `websockets` client, not React Native's native WebSocket.
+- The dev build pass covers the native WebSocket and reconnection on an AVD, but not a
+  real mobile network, TLS, prolonged suspension or network change.
+- It injects duplicate, gap and quarantine only through the tests/runner one-shot
+  harness. It forces `SIGKILL` and restart in `live_local|live_redis`, but does not
+  cover a host or PostgreSQL crash.
+- It certifies the durable recovery of offer expiry in the specific
+  `scheduled_actions` PostgreSQL suite; this realtime smoke does not
+  run that scenario again. Absence cancellation keeps its independent
+  presence and grace mechanism documented in plan 0007.

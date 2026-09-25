@@ -1,28 +1,28 @@
-# Rollout del tiempo real durable
+# Durable real-time rollout
 
-Esta secuencia promueve la outbox, el scheduler, Redis y la presencia compartida
-sin mezclar consumidores incompatibles. Cada cambio de modo requiere un
-despliegue o reinicio controlado del entorno; no se cambia dinámicamente sobre
-procesos existentes.
+This sequence promotes the outbox, the scheduler, Redis and shared presence
+without mixing incompatible consumers. Each mode change requires a controlled
+deploy or restart of the environment; it is not changed dynamically on
+existing processes.
 
-## Precondiciones
+## Preconditions
 
-- PostgreSQL está en Alembic `0023_outbox_correlation_id`.
-- Todas las réplicas ejecutan el mismo binario compatible con envelope v2,
-  publicación Redis dual y presencia compartida apagada.
-- Mobile soporta lectura dual legacy/v2 y replay por watermarks.
-- `/health/ready`, `/health/realtime` y `/health/scheduled-actions` están
-  disponibles solo para diagnóstico sanitario.
-- Prometheus carga `ops/monitoring/prometheus/prometheus.yml`, las reglas están
-  activas y Alertmanager recibe sus evaluaciones.
+- PostgreSQL is at Alembic `0023_outbox_correlation_id`.
+- All replicas run the same binary compatible with the v2 envelope,
+  dual Redis publication and shared presence turned off.
+- Mobile supports dual legacy/v2 reading and replay by watermarks.
+- `/health/ready`, `/health/realtime` and `/health/scheduled-actions` are
+  available only for sanitized diagnostics.
+- Prometheus loads `ops/monitoring/prometheus/prometheus.yml`, the rules are
+  active and Alertmanager receives their evaluations.
 
-Nunca uses `REALTIME_OUTBOX_DISPATCH_MODE=off` junto con
-`REALTIME_OUTBOX_RECORDING_ENABLED=true`: acumularía eventos que no pueden
-reproducirse después con seguridad.
+Never use `REALTIME_OUTBOX_DISPATCH_MODE=off` together with
+`REALTIME_OUTBOX_RECORDING_ENABLED=true`: it would accumulate events that cannot
+be safely replayed later.
 
-## Etapas
+## Stages
 
-### 1. Base apagada
+### 1. Baseline off
 
 ```text
 REALTIME_OUTBOX_DISPATCH_MODE=off
@@ -31,10 +31,10 @@ SCHEDULED_ACTIONS_MODE=off
 REALTIME_SHARED_PRESENCE_ENABLED=false
 ```
 
-Confirma migraciones, readiness y ausencia de filas pendientes creadas por una
-activación anterior. Una cuarentena histórica no se borra para superar el gate.
+Confirm migrations, readiness and the absence of pending rows created by a
+previous activation. A historical quarantine is not deleted to pass the gate.
 
-### 2. Dispatcher sombra sin productores
+### 2. Shadow dispatcher without producers
 
 ```text
 REALTIME_OUTBOX_DISPATCH_MODE=shadow
@@ -43,11 +43,11 @@ SCHEDULED_ACTIONS_MODE=off
 REALTIME_SHARED_PRESENCE_ENABLED=false
 ```
 
-Certifica adquisición del advisory lock, lifecycle, apagado coordinado y drenado
-de cualquier backlog previo. El cliente continúa recibiendo únicamente eventos
-legacy directos.
+Certify advisory lock acquisition, lifecycle, coordinated shutdown and draining
+of any previous backlog. The client keeps receiving only direct legacy
+events.
 
-### 3. Grabación y scheduler sombra
+### 3. Recording and shadow scheduler
 
 ```text
 REALTIME_OUTBOX_DISPATCH_MODE=shadow
@@ -56,12 +56,12 @@ SCHEDULED_ACTIONS_MODE=shadow
 REALTIME_SHARED_PRESENCE_ENABLED=false
 ```
 
-Ejecuta una negociación completa y compara tipos, cardinalidad, orden y
-correlación de los batches contra el contrato versionado. La outbox debe
-converger a cero pendientes sin retries persistentes ni nuevas cuarentenas. El
-scheduler durable compite idempotentemente con los timers legacy.
+Run a full negotiation and compare the types, cardinality, order and
+correlation of the batches against the versioned contract. The outbox must
+converge to zero pending without persistent retries or new quarantines. The
+durable scheduler competes idempotently with the legacy timers.
 
-### 4. Canary local
+### 4. Local canary
 
 ```text
 REALTIME_OUTBOX_DISPATCH_MODE=live_local
@@ -70,10 +70,10 @@ SCHEDULED_ACTIONS_MODE=live
 REALTIME_SHARED_PRESENCE_ENABLED=false
 ```
 
-Usa exactamente un worker API. Certifica snapshots v2, watermarks, expiración
-durable, cierre `1012`, reentrega y convergencia por polling antes de continuar.
+Use exactly one API worker. Certify v2 snapshots, watermarks, durable
+expiry, `1012` close, redelivery and convergence through polling before continuing.
 
-### 5. Redis con un worker
+### 5. Redis with one worker
 
 ```text
 REALTIME_OUTBOX_DISPATCH_MODE=live_redis
@@ -82,14 +82,14 @@ SCHEDULED_ACTIONS_MODE=live
 REALTIME_SHARED_PRESENCE_ENABLED=false
 ```
 
-Comprueba suscriptor confirmado, publish/retry, readiness durante una caída de
-Redis y replay después de recuperarlo. El advisory lock debe rechazar una
-segunda réplica mientras la presencia siga local.
+Check a confirmed subscriber, publish/retry, readiness during a Redis
+outage and replay after recovering it. The advisory lock must reject a
+second replica while presence remains local.
 
-### 6. Presencia compartida y varias réplicas
+### 6. Shared presence and several replicas
 
-Después de desplegar el binario compatible con el flag apagado en todas las
-réplicas:
+After deploying the compatible binary with the flag off on all
+replicas:
 
 ```text
 REALTIME_OUTBOX_DISPATCH_MODE=live_redis
@@ -98,33 +98,33 @@ SCHEDULED_ACTIONS_MODE=live
 REALTIME_SHARED_PRESENCE_ENABLED=true
 ```
 
-Promueve primero dos workers en staging. Pasajero y conductor deben conectarse a
-procesos distintos y completar creación, oferta, aceptación, avance y cierre.
-Redis caído o recién recuperado debe aplazar `cancel_absent_ride`, nunca
-confirmarlo por duda.
+First promote two workers in staging. Passenger and driver must connect to
+different processes and complete creation, offer, acceptance, progress and closure.
+Redis down or just recovered must postpone `cancel_absent_ride`, never
+confirm it on doubt.
 
-## Gates sanitarios
+## Sanitized gates
 
-Antes de cada etapa:
+Before each stage:
 
-- `/health/ready` responde `status=ok`;
-- `/health/realtime` no muestra pendientes envejecidos, retries persistentes ni
-  nuevas cuarentenas;
-- `/health/scheduled-actions` no muestra acciones vencidas, leases estancados ni
-  nuevas acciones `dead`;
-- Prometheus mantiene `up=1` y Alertmanager no conserva alertas críticas activas;
-- no aparecen resyncs repetidos ni frames inválidos en el observador mobile.
+- `/health/ready` returns `status=ok`;
+- `/health/realtime` shows no aged pending items, persistent retries or
+  new quarantines;
+- `/health/scheduled-actions` shows no overdue actions, stuck leases or
+  new `dead` actions;
+- Prometheus keeps `up=1` and Alertmanager holds no active critical alerts;
+- no repeated resyncs or invalid frames appear in the mobile observer.
 
-Registra commit, hora, modo anterior/nuevo, número de réplicas, resultado de los
-gates y decisión de continuar o revertir. No guardes DSN, JWT, payloads, IDs de
-ride ni miembros de presencia.
+Record commit, time, previous/new mode, number of replicas, gate results
+and the decision to continue or roll back. Do not store DSNs, JWTs, payloads, ride
+IDs or presence members.
 
 ## Rollback
 
-- Antes de `live`: vuelve a la etapa previa con los mismos datos; no reviertas
-  migraciones ni elimines filas de outbox o scheduler.
-- Desde `live_redis` multiworker: reduce primero a un worker y apaga presencia
-  compartida; después vuelve a `live_local` o `shadow`.
-- Una cuarentena o batch pendiente se conserva para diagnóstico y replay. Nunca
-  marques `published_at` manualmente.
-- Mantén el polling mobile durante todo el rollout como vía de convergencia.
+- Before `live`: go back to the previous stage with the same data; do not revert
+  migrations or delete outbox or scheduler rows.
+- From multi-worker `live_redis`: first reduce to one worker and turn off shared
+  presence; then go back to `live_local` or `shadow`.
+- A quarantine or pending batch is kept for diagnosis and replay. Never
+  set `published_at` manually.
+- Keep mobile polling throughout the rollout as a convergence path.

@@ -47,7 +47,7 @@ document.querySelector('#print').addEventListener('click',()=>window.print());
 document.querySelector('#download').addEventListener('click',()=>{
   const text=JSON.parse(document.querySelector('#plan-source').textContent);
   const url=URL.createObjectURL(new Blob([text],{type:'text/markdown;charset=utf-8'}));
-  const a=document.createElement('a');a.href=url;a.download='plan-salida-produccion.md';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  const a=document.createElement('a');a.href=url;a.download='production-launch-plan.md';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
 });
 const fsButton=document.querySelector('#fullscreen');
 if(!document.documentElement.requestFullscreen){fsButton.hidden=true;}

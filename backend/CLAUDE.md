@@ -1,134 +1,134 @@
 # ViajaYa — Backend (FastAPI + Clean Architecture)
 
-API de taxis y encomiendas. Python 3.11+, FastAPI async, SQLAlchemy 2.0 async sobre
-PostgreSQL, acceso por teléfono + OTP (con Google/Facebook opcionales vinculados a un
-teléfono verificado), sesiones administradas JWT y tiempo real por WebSocket.
+Taxi and parcel API. Python 3.11+, async FastAPI, async SQLAlchemy 2.0 on
+PostgreSQL, phone + OTP access (with optional Google/Facebook linked to a
+verified phone), JWT managed sessions and real time over WebSocket.
 
-## Arquitectura (Clean Architecture)
+## Architecture (Clean Architecture)
 
-Las dependencias apuntan siempre **hacia adentro**: `api → application → domain`.
-La infraestructura implementa interfaces del dominio/aplicación y se cablea en `api/deps.py`.
+Dependencies always point **inward**: `api → application → domain`.
+Infrastructure implements domain/application interfaces and is wired in `api/deps.py`.
 
 ```
 app/
-├── domain/                  # Núcleo. SIN dependencias de framework.
+├── domain/                  # Core. NO framework dependencies.
 │   ├── entities.py            # User, RideRequest, Offer, RideRating, SavedPlace + enums
 │   │                          #   (AuthProvider, UserRole, VehicleType, ServiceType, DriverStatus,
 │   │                          #    PaymentMethod, RideStatus, OfferStatus, SavedPlaceCategory)
 │   ├── value_objects.py       # Email, GeoPoint, FareOffer (frozen, slots)
-│   ├── repositories.py        # Interfaces (puertos): User, RideRequest, Offer, Rating, SavedPlace
+│   ├── repositories.py        # Interfaces (ports): User, RideRequest, Offer, Rating, SavedPlace
 │   ├── ride_policy.py         # OFFER_TTL=30s + offer_expires_at / is_offer_expired / is_offer_active
-│   └── exceptions.py          # DomainError + 18 excepciones específicas
-├── application/             # Casos de uso. Orquestan el dominio.
-│   ├── use_cases/             # UN caso de uso por archivo (lista abajo)
-│   ├── interfaces.py          # Puertos técnicos y proyecciones de lectura de aplicación
-│   ├── dto.py                 # @dataclass(frozen=True) de entrada/salida entre capas
-├── infrastructure/          # Adaptadores concretos.
-│   ├── config.py              # Settings (pydantic-settings). ÚNICA fuente de verdad de config.
-│   ├── db/                    # SQLAlchemy: models, repos, UnitOfWork y outbox durable
-│   ├── security/              # jwt_service, phone_verification (HMAC de comprobantes)
+│   └── exceptions.py          # DomainError + 18 specific exceptions
+├── application/             # Use cases. They orchestrate the domain.
+│   ├── use_cases/             # ONE use case per file (list below)
+│   ├── interfaces.py          # Technical ports and application read projections
+│   ├── dto.py                 # @dataclass(frozen=True) input/output between layers
+├── infrastructure/          # Concrete adapters.
+│   ├── config.py              # Settings (pydantic-settings). SINGLE source of truth for config.
+│   ├── db/                    # SQLAlchemy: models, repos, UnitOfWork and durable outbox
+│   ├── security/              # jwt_service, phone_verification (HMAC of receipts)
 │   ├── oauth/                 # google_verifier, facebook_verifier
-│   └── realtime/              # hub local, dispatcher y coordinación de transporte
-└── api/                     # Capa HTTP (FastAPI).
-    ├── deps.py                # Inyección: ÚNICO cableo infra→app (factories get_*, *Dep)
-    ├── errors.py              # DomainError → HTTP (map _STATUS_MAP, sin HTTPException disperso)
-    ├── health.py              # Liveness, readiness y snapshot sanitario de outbox
+│   └── realtime/              # local hub, dispatcher and transport coordination
+└── api/                     # HTTP layer (FastAPI).
+    ├── deps.py                # Injection: the ONLY infra→app wiring (get_* factories, *Dep)
+    ├── errors.py              # DomainError → HTTP (_STATUS_MAP, no scattered HTTPException)
+    ├── health.py              # Liveness, readiness and sanitized outbox snapshot
     └── v1/
         ├── routers/            # auth, rides, drivers, saved_places
-        ├── schemas/            # Pydantic v2 request/response (NO reusar entities)
-        ├── events.py           # Publicadores WS (RIDE_CREATED, OFFER_EXPIRED, …) vía hub
-        ├── presence.py         # Presencia del pasajero con ventana de gracia (120 s)
-        └── ws/negotiation.py   # Endpoints WebSocket (/ws/driver, /ws/rides/{ride_id})
+        ├── schemas/            # Pydantic v2 request/response (do NOT reuse entities)
+        ├── events.py           # WS publishers (RIDE_CREATED, OFFER_EXPIRED, …) via hub
+        ├── presence.py         # Passenger presence with grace window (120 s)
+        └── ws/negotiation.py   # WebSocket endpoints (/ws/driver, /ws/rides/{ride_id})
 ```
 
-### Reglas al añadir código
+### Rules when adding code
 
-- **El dominio no importa nada de `application`, `infrastructure` ni `api`.** Si una entidad
-  necesita un servicio externo, defínelo como interfaz (puerto) y recibe la implementación por inyección.
-- **Un caso de uso por archivo** en `application/use_cases/`, con método **`async def execute(...)`**
-  (no `__call__`). Factory `get_*` en `api/deps.py` que devuelve la instancia cableada.
-- **Toda construcción de objetos vive en `api/deps.py`.** Se exponen como `Annotated[T, Depends(...)]`
-  (`CurrentUserDep`, `SessionDep`, `*RepositoryDep`). No instancies repos/servicios en los routers.
-- **Los routers solo traducen HTTP↔caso de uso.** Reciben schemas Pydantic, llaman al UC inyectado,
-  devuelven `response_model` y publican eventos vía `app.api.v1.events`. Sin lógica de negocio.
-- **Schemas (`api/v1/schemas/`) ≠ entities.** Nunca expongas entidades del dominio directamente;
-  usa helpers `XResponse.from_detail(...)`.
-- **Errores:** lanza `DomainError` desde los UC; se mapea a HTTP en `api/errors.py`. Única excepción:
-  `unauthorized()` para auth. Nunca `HTTPException` disperso.
-- **Policy de oferta** (TTL, expiración) vive en `domain/ride_policy.py`, no en UC ni entidades.
-- **Lecturas enriquecidas:** `RideReadRepository` evita exponer ORM y cargas N+1.
-  Ganancias usa un agregado SQL para totales/conteos y otra consulta limitada a
-  los últimos 10 viajes; aplicación delimita el día en `America/La_Paz`.
-- **Transacciones migradas a outbox:** el repositorio hace `flush`, el caso de
-  uso registra el batch y `UnitOfWork` decide el único `commit`. No conviertas
-  otros repositorios mecánicamente: migra todos los call sites de una operación
-  en el mismo cambio. `CreateOffer`, `AcceptOffer`, `PauseRideForEdit`,
+- **The domain imports nothing from `application`, `infrastructure` or `api`.** If an entity
+  needs an external service, define it as an interface (port) and receive the implementation by injection.
+- **One use case per file** in `application/use_cases/`, with an **`async def execute(...)`** method
+  (not `__call__`). A `get_*` factory in `api/deps.py` returns the wired instance.
+- **All object construction lives in `api/deps.py`.** Exposed as `Annotated[T, Depends(...)]`
+  (`CurrentUserDep`, `SessionDep`, `*RepositoryDep`). Do not instantiate repos/services in routers.
+- **Routers only translate HTTP↔use case.** They receive Pydantic schemas, call the injected UC,
+  return a `response_model` and publish events via `app.api.v1.events`. No business logic.
+- **Schemas (`api/v1/schemas/`) ≠ entities.** Never expose domain entities directly;
+  use `XResponse.from_detail(...)` helpers.
+- **Errors:** raise `DomainError` from UCs; it is mapped to HTTP in `api/errors.py`. The only exception:
+  `unauthorized()` for auth. Never a scattered `HTTPException`.
+- **Offer policy** (TTL, expiry) lives in `domain/ride_policy.py`, not in UCs or entities.
+- **Enriched reads:** `RideReadRepository` avoids exposing the ORM and N+1 loads.
+  Earnings uses a SQL aggregate for totals/counts and another query limited to
+  the last 10 rides; application bounds the day in `America/La_Paz`.
+- **Transactions migrated to the outbox:** the repository does `flush`, the use
+  case records the batch and `UnitOfWork` decides the single `commit`. Do not convert
+  other repositories mechanically: migrate all call sites of an operation
+  in the same change. `CreateOffer`, `AcceptOffer`, `PauseRideForEdit`,
   `CancelRide`, `CancelRideOnDisconnect`, `UpdateRideFare`, `EditRide`,
-  `AnnounceOpenRide`, `WithdrawOffer`, `RejectOffer`, `ExpireOffer` y
-  `UpdateRideStatus`, además de `SetDriverOnline` para ambos sentidos, ya usan
-  este flujo;
-  `CreateRideRequest` delega el commit al UoW, pero no anuncia hasta que se
-  confirma presencia.
+  `AnnounceOpenRide`, `WithdrawOffer`, `RejectOffer`, `ExpireOffer` and
+  `UpdateRideStatus`, plus `SetDriverOnline` in both directions, already use
+  this flow;
+  `CreateRideRequest` delegates the commit to the UoW, but does not announce until
+  presence is confirmed.
 
-### Patrón para añadir un endpoint
+### Pattern for adding an endpoint
 
-1. Entidad/value object en `domain/` (si aplica).
-2. Método en el repositorio abstracto + implementación `SqlAlchemy*` en `infrastructure/db/`.
-3. UC `async def execute` en `application/use_cases/`.
-4. DTO en `application/dto.py` (si hay datos compuestos de entrada/salida).
-5. Schema Pydantic en `api/v1/schemas/`.
-6. Factory `get_*` en `api/deps.py`.
-7. Endpoint en `api/v1/routers/` que traduce HTTP↔UC y publica eventos vía `app.api.v1.events`.
-8. Migración Alembic si toca el esquema.
-9. Test unitario (UC con dobles) y/o e2e (API).
+1. Entity/value object in `domain/` (if applicable).
+2. Method in the abstract repository + `SqlAlchemy*` implementation in `infrastructure/db/`.
+3. UC `async def execute` in `application/use_cases/`.
+4. DTO in `application/dto.py` (if there is composite input/output data).
+5. Pydantic schema in `api/v1/schemas/`.
+6. `get_*` factory in `api/deps.py`.
+7. Endpoint in `api/v1/routers/` that translates HTTP↔UC and publishes events via `app.api.v1.events`.
+8. Alembic migration if it touches the schema.
+9. Unit test (UC with doubles) and/or e2e (API).
 
-## Comandos
+## Commands
 
 ```bash
 cd backend
-source .venv/bin/activate         # entorno virtual (o usa uv; ver nota en el README del monorepo)
+source .venv/bin/activate         # virtual environment (or use uv; see the note in the monorepo README)
 
-# Levantar PostgreSQL + Redis (desde la raíz del repo)
+# Start PostgreSQL + Redis (from the repo root)
 docker compose up -d db redis
 
-# Migraciones (Alembic)
-alembic upgrade head              # aplicar
-alembic revision -m "mensaje"     # nueva migración (REVISAR EL AUTOGENERADO A MANO)
+# Migrations (Alembic)
+alembic upgrade head              # apply
+alembic revision -m "message"     # new migration (REVIEW THE AUTOGENERATED ONE BY HAND)
 
-# Servidor de desarrollo
+# Development server
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 # Swagger: http://localhost:8000/docs   ·   Health: GET /health
 
-# Tests (no hay configuración de coverage todavía)
-pytest                            # todo
-pytest tests/unit                 # solo unitarios (UC con fakes)
-pytest tests/e2e                  # API end-to-end (httpx + aiosqlite)
-pytest tests/e2e/test_negotiation_ws.py   # flujo WS de negociación
+# Tests (no coverage configuration yet)
+pytest                            # everything
+pytest tests/unit                 # unit only (UC with fakes)
+pytest tests/e2e                  # end-to-end API (httpx + aiosqlite)
+pytest tests/e2e/test_negotiation_ws.py   # WS negotiation flow
 
-# Calidad
+# Quality
 ruff check .                      # lint (E,F,I,UP,B,C4 · line-length=100)
 ruff check --fix . && ruff format .
 ```
 
-## Configuración
+## Configuration
 
-`infrastructure/config.py` (`Settings`) lee de `.env` (ver `.env.example`). Variables clave:
+`infrastructure/config.py` (`Settings`) reads from `.env` (see `.env.example`). Key variables:
 
 ```
 DATABASE_URL=postgresql+asyncpg://viajaya:viajaya@localhost:5432/viajaya
 JWT_SECRET, JWT_ALGORITHM (HS256),
 ACCESS_TOKEN_EXPIRE_MINUTES (30), REFRESH_TOKEN_EXPIRE_DAYS (14),
-CORS_ORIGINS (lista separada por comas; helper .cors_origins_list),
+CORS_ORIGINS (comma-separated list; helper .cors_origins_list),
 GOOGLE_CLIENT_ID, FACEBOOK_APP_ID, FACEBOOK_APP_SECRET,
-DRIVER_AUTO_APPROVE (false; aprueba altas de conductor al instante, solo fuera de producción),
-OPENMETRICS_ENABLED (false por defecto; publica `/metrics` solo con opt-in),
-REALTIME_OUTBOX_DISPATCH_MODE (off|shadow|live_local|live_redis; off por defecto),
-REALTIME_OUTBOX_RECORDING_ENABLED (false por defecto),
+DRIVER_AUTO_APPROVE (false; approves driver sign-ups instantly, only outside production),
+OPENMETRICS_ENABLED (false by default; publishes `/metrics` only on opt-in),
+REALTIME_OUTBOX_DISPATCH_MODE (off|shadow|live_local|live_redis; off by default),
+REALTIME_OUTBOX_RECORDING_ENABLED (false by default),
 REALTIME_OUTBOX_POLL_INTERVAL_SECONDS (1),
 REALTIME_OUTBOX_RETRY_BASE_SECONDS (1),
 REALTIME_OUTBOX_RETRY_MAX_SECONDS (60),
 REALTIME_OUTBOX_SHUTDOWN_TIMEOUT_SECONDS (5),
-REALTIME_OUTBOX_PUBLISHED_RETENTION_DAYS (0, desactivada),
+REALTIME_OUTBOX_PUBLISHED_RETENTION_DAYS (0, disabled),
 REALTIME_OUTBOX_RETENTION_INTERVAL_SECONDS (3600),
 REALTIME_OUTBOX_RETENTION_BATCH_LIMIT (100),
 REALTIME_REDIS_URL (redis://localhost:6379/0),
@@ -142,7 +142,7 @@ REALTIME_PRESENCE_LEASE_SECONDS (30),
 REALTIME_PRESENCE_RENEW_INTERVAL_SECONDS (10),
 REALTIME_PRESENCE_GRACE_SECONDS (120),
 REALTIME_PRESENCE_RECHECK_SECONDS (5),
-SCHEDULED_ACTIONS_MODE (off|shadow|live; off por defecto),
+SCHEDULED_ACTIONS_MODE (off|shadow|live; off by default),
 SCHEDULED_ACTIONS_POLL_INTERVAL_SECONDS (1),
 SCHEDULED_ACTIONS_LEASE_SECONDS (30),
 SCHEDULED_ACTIONS_HANDLER_TIMEOUT_SECONDS (10),
@@ -155,143 +155,143 @@ SCHEDULED_ACTIONS_RETENTION_INTERVAL_SECONDS (60),
 SCHEDULED_ACTIONS_RETENTION_BATCH_LIMIT (1000)
 ```
 
-Accede a la config con `get_settings()` (cacheado con `@lru_cache`); **no leas `os.environ` directo**.
-CORS se aplica en `main.py` con `cors_origins_list`.
+Access config with `get_settings()` (cached with `@lru_cache`); **do not read `os.environ` directly**.
+CORS is applied in `main.py` with `cors_origins_list`.
 
-El rollout de la outbox sigue obligatoriamente esta secuencia: `off+false` ->
-`shadow+false` -> `shadow+true` -> `live_local+true` -> `live_redis+true`. No
-uses `off+true` ni actives un modo live sin drenar y revisar antes el backlog
-sombra. Antes de salir
-de `off` deben estar aplicadas `0018_realtime_outbox`,
-`0019_realtime_stream_versions`, `0020_realtime_outbox_quarantine` y
-`0021_realtime_outbox_batch_size`. `shadow`
-reclama, valida y marca batches, pero no los entrega. `live_local` pre-serializa
-el batch completo como envelopes v2, lo envía en orden al hub del proceso y solo
-después marca `published_at`; simultáneamente desactiva la entrega directa legacy
-y usa los snapshots unificados v2. Una cuarentena live cierra con 1012 los
-sockets de sus streams después del commit para forzar otro snapshot.
+The outbox rollout must follow this sequence: `off+false` ->
+`shadow+false` -> `shadow+true` -> `live_local+true` -> `live_redis+true`. Do not
+use `off+true` or enable a live mode without draining and reviewing the shadow
+backlog first. Before leaving
+`off`, `0018_realtime_outbox`,
+`0019_realtime_stream_versions`, `0020_realtime_outbox_quarantine` and
+`0021_realtime_outbox_batch_size` must be applied. `shadow`
+claims, validates and marks batches, but does not deliver them. `live_local` pre-serializes
+the whole batch as v2 envelopes, sends it in order to the process hub and only
+then marks `published_at`; at the same time it disables the legacy direct delivery
+and uses the unified v2 snapshots. A live quarantine closes the sockets of its
+streams with 1012 after the commit to force another snapshot.
 
-`live_local` es exclusivamente una vertical canary de **un solo worker API**.
-`live_redis` publica el batch v2 completo en Redis y cada proceso mantiene un
-suscriptor que lo entrega solo a sus sockets locales. Pub/Sub es efímero: perder
-la suscripción cierra todos los sockets locales con 1012 para que el nuevo
-handshake recupere snapshot y watermarks desde PostgreSQL. Mientras Redis no
-está sano, los timers locales aplazan la cancelación por ausencia. Un publish sin
-ningún suscriptor falla y conserva el batch para retry; un batch que supera el
-límite de bytes se aparta con `transport_limit` y fuerza snapshot en vez de
-reintentarse para siempre. Los advisory locks conservan la clave legada durante
-rolling deploy: varios `shadow` pueden convivir, `live_local` siempre es
-exclusivo y `live_redis` solo comparte el lock cuando
-`REALTIME_SHARED_PRESENCE_ENABLED=true`. El flag exige scheduler `live`; apagado,
-el segundo proceso sigue fallando. La promoción se hace después de desplegar el
-binario con el flag apagado en todas las réplicas. Perder la sesión propietaria
-detiene el dispatcher. SQLite omite esta exclusión solo en pruebas. Otro smoke detiene un Redis dedicado
-entre commit y publish, exige cierre 1012 y certifica el replay de la misma
-identidad durable después del restart.
+`live_local` is exclusively a **single API worker** canary vertical.
+`live_redis` publishes the whole v2 batch to Redis and each process keeps a
+subscriber that delivers it only to its local sockets. Pub/Sub is ephemeral: losing
+the subscription closes all local sockets with 1012 so the new
+handshake recovers snapshot and watermarks from PostgreSQL. While Redis is not
+healthy, local timers postpone the absence cancellation. A publish without
+any subscriber fails and keeps the batch for retry; a batch that exceeds the
+byte limit is set aside with `transport_limit` and forces a snapshot instead of
+being retried forever. The advisory locks keep the legacy key during a
+rolling deploy: several `shadow` can coexist, `live_local` is always
+exclusive and `live_redis` only shares the lock when
+`REALTIME_SHARED_PRESENCE_ENABLED=true`. The flag requires a `live` scheduler; when off,
+the second process keeps failing. Promotion happens after deploying the
+binary with the flag off on all replicas. Losing the owning session
+stops the dispatcher. SQLite skips this exclusion only in tests. Another smoke stops a dedicated Redis
+between commit and publish, requires a 1012 close and certifies the replay of the same
+durable identity after the restart.
 
-Durante el rollout de `0023`, el bridge nuevo se suscribe tanto a
-`REALTIME_REDIS_CHANNEL` como a su canal derivado `:correlation-v1`. Publica
-primero la copia correlacionada con `wire_version=2` y después una copia
-`wire_version=1` sin el campo nuevo en el canal original. Las réplicas antiguas
-solo reciben la segunda; las nuevas omiten la copia legacy si ya observaron el
-batch correlacionado. Si Redis invierte el orden, el gate mobile acepta la
-duplicación porque la correlación diagnóstica no altera la identidad del evento.
-También aceptan productores anteriores usando `batch_id` como correlación
-estable. No retires esta publicación dual mientras pueda quedar una réplica
-anterior activa.
+During the `0023` rollout, the new bridge subscribes both to
+`REALTIME_REDIS_CHANNEL` and to its derived `:correlation-v1` channel. It publishes
+first the correlated copy with `wire_version=2` and then a
+`wire_version=1` copy without the new field on the original channel. Old replicas
+only receive the second one; new ones skip the legacy copy if they already observed the
+correlated batch. If Redis inverts the order, the mobile gate accepts the
+duplicate because diagnostic correlation does not alter the event identity.
+They also accept earlier producers using `batch_id` as a stable
+correlation. Do not remove this dual publication while an older
+replica may still be active.
 
-La migración `0022_scheduled_actions` debe aplicarse antes de desplegar el código
-que crea ofertas. La acción `expire_offer` se persiste en los tres modos. `off`
-mantiene el timer local sin consumir la cola; `shadow` ejecuta simultáneamente el
-worker durable y el timer, conservando la entrega legacy para quien gane la
-carrera; `live` retira el timer y depende de la outbox
-`live_local|live_redis`. Así, los
-reinicios y los cambios de modo no dejan ofertas sin recuperación ni acumulan un
-backlog antes del cutover. El arranque y cada ciclo consumidor reconcilian por
-lotes cualquier oferta que la versión anterior haya creado después del backfill
-de la migración. Deadlines, leases, backoff y la revalidación atómica al aceptar
-usan el reloj de PostgreSQL.
-Las acciones `succeeded/cancelled` se purgan por lotes después de 30 días; las
-acciones `dead` se conservan para intervención manual.
+Migration `0022_scheduled_actions` must be applied before deploying the code
+that creates offers. The `expire_offer` action is persisted in all three modes. `off`
+keeps the local timer without consuming the queue; `shadow` runs both the
+durable worker and the timer, keeping legacy delivery for whoever wins the
+race; `live` removes the timer and depends on the
+`live_local|live_redis` outbox. This way,
+restarts and mode changes neither leave offers without recovery nor build up a
+backlog before the cutover. Startup and each consumer cycle reconcile in
+batches any offer the previous version created after the migration's
+backfill. Deadlines, leases, backoff and the atomic revalidation on accept
+use the PostgreSQL clock.
+`succeeded/cancelled` actions are purged in batches after 30 days;
+`dead` actions are kept for manual intervention.
 
-La presencia compartida usa un sorted set Redis por ride y miembros separados
-`ws:{connection_id}`/`http`; Lua poda y evalúa leases con `Redis TIME` sin que
-una desconexión borre otra conexión. Cada renovación hace upsert generacional de
-`cancel_absent_ride`; la creación del ride ya persiste su primera generación en
-la misma UoW. El arranque y cada ciclo reconcilian búsquedas legacy dándoles una
-gracia completa desde la reconciliación. El worker toma fencing PostgreSQL, consulta Redis y solo
-cancela `SEARCHING && !paused` cuando no quedan lease ni gracia. Redis caído o
-recién recuperado aplaza la acción sin agotar sus reintentos.
+Shared presence uses a Redis sorted set per ride with separate members
+`ws:{connection_id}`/`http`; Lua prunes and evaluates leases with `Redis TIME` without
+one disconnection deleting another connection. Each renewal does a generational upsert of
+`cancel_absent_ride`; ride creation already persists its first generation in
+the same UoW. Startup and each cycle reconcile legacy searches by giving them a
+full grace from the reconciliation. The worker takes PostgreSQL fencing, queries Redis and only
+cancels `SEARCHING && !paused` when neither lease nor grace remains. Redis down or
+just recovered postpones the action without exhausting its retries.
 
-Toda solicitud HTTP acepta `X-Request-ID` solo si es un UUID válido; en caso
-contrario genera uno y siempre lo devuelve en la respuesta. El middleware
-registra ruta canónica, resultado, duración y `correlation_id`, nunca query,
-headers ni payload. La migración `0023_outbox_correlation_id` persiste ese UUID
-en cada evento durable y lo entrega en el envelope v2; los efectos del scheduler
-usan el ID de su acción como correlación estable después de un reinicio. El
-trigger PostgreSQL asigna `batch_id` a las filas de productores anteriores, de
-modo que todos los eventos de su fanout comparten una correlación durante el
+Every HTTP request accepts `X-Request-ID` only if it is a valid UUID; otherwise
+it generates one and always returns it in the response. The middleware
+logs the canonical route, result, duration and `correlation_id`, never query,
+headers or payload. Migration `0023_outbox_correlation_id` persists that UUID
+in each durable event and delivers it in the v2 envelope; scheduler effects
+use their action ID as a stable correlation after a restart. The
+PostgreSQL trigger assigns `batch_id` to rows from earlier producers, so
+all events of their fanout share one correlation during the
 rolling deploy.
 
-`GET /health` y `GET /health/live` son liveness sin dependencias. `GET
-/health/ready` comprueba PostgreSQL, Redis cuando corresponde y que los workers
-habilitados continúen activos. `GET /health/realtime` expone únicamente agregados sanitizados de
-pendientes, reintentos, cuarentenas, edad y demora conservadora
-`created_at → published_at`; nunca incluye topics ni payloads.
-`GET /metrics` expone el mismo corte en OpenMetrics 1.0 únicamente cuando
-`OPENMETRICS_ENABLED=true`; el despliegue debe restringirlo a la red de
-monitoreo. Las reglas versionadas y el runbook viven en
-`ops/monitoring/prometheus/`. El perfil Compose `monitoring` conecta el scrape y
-Alertmanager local sin destinos externos; staging/producción deben montar la
-configuración administrada por secretos y aplicar su control perimetral.
+`GET /health` and `GET /health/live` are dependency-free liveness. `GET
+/health/ready` checks PostgreSQL, Redis when applicable and that enabled
+workers are still active. `GET /health/realtime` exposes only sanitized aggregates of
+pending items, retries, quarantines, age and the conservative
+`created_at → published_at` delay; it never includes topics or payloads.
+`GET /metrics` exposes the same slice in OpenMetrics 1.0 only when
+`OPENMETRICS_ENABLED=true`; the deployment must restrict it to the
+monitoring network. Versioned rules and the runbook live in
+`ops/monitoring/prometheus/`. The Compose `monitoring` profile wires the scrape and a
+local Alertmanager without external destinations; staging/production must mount the
+secret-managed configuration and apply their perimeter control.
 
-La retención de publicados es opt-in (`...RETENTION_DAYS=0` por defecto) y
-trabaja por batches completos, con una transacción y un chunk acotado por
-intervalo. No elimina
-cuarentenas ni contadores de agregado/stream. Antes de activarla se debe observar
-el backlog del entorno y elegir el TTL; `30` días es solo un ejemplo operativo,
-no un valor predeterminado.
+Published-row retention is opt-in (`...RETENTION_DAYS=0` by default) and
+works on whole batches, with one transaction and a bounded chunk per
+interval. It does not delete
+quarantines or aggregate/stream counters. Before enabling it, observe
+the environment backlog and choose the TTL; `30` days is only an operational example,
+not a default value.
 
-## API (v1, prefijo `/api/v1`)
+## API (v1, prefix `/api/v1`)
 
-- **auth** (`/auth`): **no existe acceso por correo/contraseña** (retirado el 2026-09-13;
-  `/register`, `/login`, `/oauth/{provider}` y `/phone/link-legacy` responden 404 y la
-  migración `0026` eliminó `hashed_password`/`legacy_auth_disabled`). Todo token debe
-  pertenecer a una sesión administrada; un JWT sin `session_id` recibe 401 en HTTP, WS y refresh.
-  - Sesión: `POST /refresh` (rotación + detección de reuso), `GET /me`, `GET /sessions`,
+- **auth** (`/auth`): **there is no email/password access** (removed on 2026-09-13;
+  `/register`, `/login`, `/oauth/{provider}` and `/phone/link-legacy` return 404 and
+  migration `0026` removed `hashed_password`/`legacy_auth_disabled`). Every token must
+  belong to a managed session; a JWT without `session_id` gets 401 on HTTP, WS and refresh.
+  - Session: `POST /refresh` (rotation + reuse detection), `GET /me`, `GET /sessions`,
     `POST /logout`, `POST /phone/change`.
-  - Teléfono (`PHONE_OTP_ENABLED`; simulado con `test_code` fuera de producción):
-    `GET /phone/capabilities` (países, condiciones y `social_providers` configurados),
+  - Phone (`PHONE_OTP_ENABLED`; simulated with `test_code` outside production):
+    `GET /phone/capabilities` (countries, terms and configured `social_providers`),
     `POST /phone/challenges`, `POST /phone/verify`, `POST /phone/complete`
-    (`profile_required` → repetir con `full_name` + `terms_version`).
-  - Social: `POST /social/{provider}/sign-in` (`phone_required` si la identidad no está
-    vinculada) y `POST /phone/link-social` (OTP + token del proveedor en una transacción).
-  - Recuperación: `POST /recovery`, `POST /recovery/complete` (revisión de operador en F03-B).
-  Ver `docs/implementation-plans/0010-phone-identity-and-otp.md`.
+    (`profile_required` → repeat with `full_name` + `terms_version`).
+  - Social: `POST /social/{provider}/sign-in` (`phone_required` if the identity is not
+    linked) and `POST /phone/link-social` (OTP + provider token in one transaction).
+  - Recovery: `POST /recovery`, `POST /recovery/complete` (operator review in F03-B).
+  See `docs/implementation-plans/0010-phone-identity-and-otp.md`.
 - **rides** (`/rides`):
-  - `POST ""` (crear solicitud), `GET /recent-destinations`, `GET /history`, `GET /{id}`.
-    `GET /history` pagina con cursor opaco y responde `{items, next_cursor}`.
-  - `GET /open` (conductor: solicitudes `SEARCHING` de sus servicios ofrecidos, **filtradas por presencia**),
-    paginado con la misma forma `{items, next_cursor}`.
-  - `GET /{id}/offers`, `POST /{id}/offers` (conductor crea oferta: `accept_at_fare=True` usa el fare, o contraoferta con `price`+`eta_min`).
-  - `POST /offers/{offer_id}/accept` (pasajero: asignación **directa atómica**), `/reject`, `/withdraw`.
-  - `PATCH /{id}/status` (conductor: `ACCEPTED→ARRIVING→IN_PROGRESS→COMPLETED`).
-  - `PATCH /{id}/fare` (pasajero: subir la oferta en búsqueda), `POST /{id}/pause-edit` + `PATCH /{id}` (modificar solicitud), `POST /{id}/cancel`, `POST /{id}/rating`.
-- **drivers** (`/drivers`): `GET /me/vehicles`, `POST /me/vehicles` (alta/edición del vehículo
-  de ese tipo: `vehicle_type`, `plate`, `vehicle_model`, `services`; responde `{user, vehicle}`),
+  - `POST ""` (create request), `GET /recent-destinations`, `GET /history`, `GET /{id}`.
+    `GET /history` paginates with an opaque cursor and returns `{items, next_cursor}`.
+  - `GET /open` (driver: `SEARCHING` requests for their offered services, **filtered by presence**),
+    paginated with the same `{items, next_cursor}` shape.
+  - `GET /{id}/offers`, `POST /{id}/offers` (driver creates an offer: `accept_at_fare=True` uses the fare, or a counter-offer with `price`+`eta_min`).
+  - `POST /offers/{offer_id}/accept` (passenger: **atomic direct** assignment), `/reject`, `/withdraw`.
+  - `PATCH /{id}/status` (driver: `ACCEPTED→ARRIVING→IN_PROGRESS→COMPLETED`).
+  - `PATCH /{id}/fare` (passenger: raise the offer while searching), `POST /{id}/pause-edit` + `PATCH /{id}` (edit request), `POST /{id}/cancel`, `POST /{id}/rating`.
+- **drivers** (`/drivers`): `GET /me/vehicles`, `POST /me/vehicles` (create/edit the vehicle
+  of that type: `vehicle_type`, `plate`, `vehicle_model`, `services`; returns `{user, vehicle}`),
   `DELETE /me/vehicles/{vehicle_type}`, `POST /me/mode` (`{mode: passenger|driver,
-  vehicle_type?}` conmuta el modo activo y elige el vehículo con el que se conduce),
+  vehicle_type?}` switches the active mode and picks the vehicle to drive with),
   `POST /me/online`, `GET /me/active-ride`, `GET /me/earnings`.
 - **saved-places** (`/saved-places`): `GET ""`, `POST ""`, `PUT /{place_id}`, `DELETE /{place_id}`.
 
-Rutas protegidas: usan `CurrentUserDep` (header `Authorization: Bearer <access_token>`).
+Protected routes use `CurrentUserDep` (header `Authorization: Bearer <access_token>`).
 
-### Casos de uso
+### Use cases
 
-Acceso: `request_phone_code`, `verify_phone_code`, `complete_phone_sign_in`,
+Access: `request_phone_code`, `verify_phone_code`, `complete_phone_sign_in`,
 `sign_in_with_social`, `refresh_managed_session`, `manage_account_sessions`,
 `change_account_phone`, `request_account_recovery`, `review_account_recovery`,
-`complete_account_recovery`. Viajes: `create_ride_request`, `announce_open_ride`, `list_recent_destinations`, `list_open_rides`, `dismiss_open_ride`,
+`complete_account_recovery`. Rides: `create_ride_request`, `announce_open_ride`, `list_recent_destinations`, `list_open_rides`, `dismiss_open_ride`,
 `get_ride`, `get_passenger_active_ride`, `get_pending_rating_ride`, `list_ride_history`,
 `create_offer`, `list_offers_for_ride`, `accept_offer`, `reject_offer`,
 `withdraw_offer`, `expire_offer`, `update_ride_status`, `update_ride_fare`, `cancel_ride`,
@@ -302,174 +302,174 @@ Acceso: `request_phone_code`, `verify_phone_code`, `complete_phone_sign_in`,
 `get_driver_earnings`, `list_saved_places`, `create_saved_place`, `update_saved_place`,
 `delete_saved_place`.
 
-Operación de outbox: `get_realtime_outbox_operational_snapshot` y
+Outbox operations: `get_realtime_outbox_operational_snapshot` and
 `purge_published_realtime_outbox`.
 
-## Modelo de negociación (el pasajero decide)
+## Negotiation model (the passenger decides)
 
-El pasajero crea un `RideRequest` (`SEARCHING`). `VehicleType` representa solo el vehículo
-físico (`taxi`/`moto`/`truck`) y `ServiceType` el servicio (`taxi`/`moto`/`delivery`/`moving`).
-`services_for_vehicle` dice qué **puede** ofrecer cada vehículo (taxi→taxi+delivery,
-moto→moto+delivery, truck→moving) y cada conductor **elige** un subconjunto en su alta
-(`User.driver_services`; vacío = todos los del vehículo, para conductores anteriores a 0027).
-`User.offered_services` / `driver_can_serve` son la única fuente de verdad para el pool
-(`/rides/open`, topics `pool:{service}`, snapshots) y para ofertar. Los conductores
-compatibles ofertan (`Offer` `PENDING`). **El pasajero decide**: `POST /offers/{id}/accept` =
-**asignación directa** — `OfferRepository.accept_atomically` usa `SELECT … FOR UPDATE` en
-Postgres: fija `driver_id`/`accepted_offer_id`, rechaza las demás offers del viaje y retira las
-offers vivas del conductor elegido en **otros rides** (`OfferAcceptance.withdrawn_offers` /
-`losing_driver_ids`). **Regla de oro**: si el conductor ya fue asignado a otro viaje →
+The passenger creates a `RideRequest` (`SEARCHING`). `VehicleType` represents only the physical
+vehicle (`taxi`/`moto`/`truck`) and `ServiceType` the service (`taxi`/`moto`/`delivery`/`moving`).
+`services_for_vehicle` says what each vehicle **can** offer (taxi→taxi+delivery,
+moto→moto+delivery, truck→moving) and each driver **chooses** a subset at sign-up
+(`User.driver_services`; empty = all of the vehicle's, for drivers created before 0027).
+`User.offered_services` / `driver_can_serve` are the single source of truth for the pool
+(`/rides/open`, `pool:{service}` topics, snapshots) and for making offers. Compatible
+drivers make offers (`Offer` `PENDING`). **The passenger decides**: `POST /offers/{id}/accept` =
+**direct assignment** — `OfferRepository.accept_atomically` uses `SELECT … FOR UPDATE` in
+Postgres: it sets `driver_id`/`accepted_offer_id`, rejects the ride's other offers and withdraws the
+chosen driver's live offers on **other rides** (`OfferAcceptance.withdrawn_offers` /
+`losing_driver_ids`). **Golden rule**: if the driver was already assigned to another ride →
 `DriverUnavailableError` (HTTP 409).
 
-- **Versión de solicitud:** `POST /rides/{id}/offers` acepta `expected_pool_version`
-  opcional (clientes nuevos lo envían). Si el pasajero cambió la solicitud, devuelve
-  409 antes de crear/reemplazar la oferta. El repositorio revalida bajo lock la
-  versión leída por el caso de uso, también para clientes anteriores. Sin migración.
-- **Mejorar oferta** (mismo conductor, mismo ride): **reemplaza** la anterior → se emite
-  `offer_withdrawn {reason:"superseded"}` + `offer_created` (NO hay un evento `offer_superseded` propio).
-- **Modificar solicitud NO cancela** (ortogonal al status): `POST /{id}/pause-edit` oculta la
-  solicitud del pool y emite **tres** cosas: `RIDE_CLOSED` al pool, `RIDE_PAUSED` (payload completo
-  del ride) a cada conductor con oferta viva, y `OFFER_WITHDRAWN` al pasajero. `PATCH /{id}` edita
-  origen/destino/servicio/fare/pago y la republica. Flag `RideRequest.paused`.
-- **Aumentar oferta**: `PATCH /{id}/fare` sube el fare (solo en `SEARCHING`) y reanuncia al pool
-  (`ride_created` con el monto nuevo).
-- **Expiración**: la oferta caduca a los 30 s (`OFFER_TTL` en `domain/ride_policy.py`); la solicitud
-  no caduca mientras el pasajero siga presente, pero se cancela si desaparecen WS y heartbeat HTTP
-  durante la gracia. La creación persiste `expire_offer` en su misma transacción.
-  En `off` el timer local sigue siendo la vía activa; en `shadow` compite de forma
-  idempotente con el worker durable y se conserva la publicación legacy; en
-  `live` solo ejecuta el worker. `mark_expired_if_pending` bloquea la fila y usa el
-  reloj PostgreSQL; `accept_atomically` revalida el mismo TTL con ese reloj después
-  de sus locks, por lo que aceptación/rechazo/retiro siguen siendo race-safe.
-  La mutación, sus dos destinos (`driver:*` y `ride:*`) y el ack se confirman juntos
-  en live. Al (re)conectar el conductor, `driver_ws` conserva el barrido defensivo.
-- **Calificación**: `POST /{id}/rating` crea `RideRating` (score 1–5, único por `(ride_id, rater_id)`)
-  y recalcula el `rating` promedio del `User` calificado.
+- **Request version:** `POST /rides/{id}/offers` accepts an optional `expected_pool_version`
+  (new clients send it). If the passenger changed the request, it returns
+  409 before creating/replacing the offer. The repository revalidates under lock the
+  version read by the use case, also for older clients. No migration.
+- **Improve offer** (same driver, same ride): **replaces** the previous one → emits
+  `offer_withdrawn {reason:"superseded"}` + `offer_created` (there is NO dedicated `offer_superseded` event).
+- **Editing the request does NOT cancel it** (orthogonal to status): `POST /{id}/pause-edit` hides the
+  request from the pool and emits **three** things: `RIDE_CLOSED` to the pool, `RIDE_PAUSED` (full ride
+  payload) to each driver with a live offer, and `OFFER_WITHDRAWN` to the passenger. `PATCH /{id}` edits
+  origin/destination/service/fare/payment and republishes it. Flag `RideRequest.paused`.
+- **Raise offer**: `PATCH /{id}/fare` raises the fare (only in `SEARCHING`) and re-announces to the pool
+  (`ride_created` with the new amount).
+- **Expiry**: the offer expires after 30 s (`OFFER_TTL` in `domain/ride_policy.py`); the request
+  does not expire while the passenger is still present, but it is cancelled if both WS and HTTP heartbeat
+  disappear during the grace period. Creation persists `expire_offer` in its same transaction.
+  In `off` the local timer remains the active path; in `shadow` it competes
+  idempotently with the durable worker and legacy publication is kept; in
+  `live` only the worker runs. `mark_expired_if_pending` locks the row and uses the
+  PostgreSQL clock; `accept_atomically` revalidates the same TTL with that clock after
+  its locks, so accept/reject/withdraw remain race-safe.
+  The mutation, its two destinations (`driver:*` and `ride:*`) and the ack are committed together
+  in live. When the driver (re)connects, `driver_ws` keeps the defensive sweep.
+- **Rating**: `POST /{id}/rating` creates a `RideRating` (score 1–5, unique per `(ride_id, rater_id)`)
+  and recalculates the average `rating` of the rated `User`.
 
-## Cuenta con dos modos (pasajero ↔ conductor)
+## Account with two modes (passenger ↔ driver)
 
-`User.role` es el **modo activo** de la cuenta, nunca "los dos a la vez": todo lo existente que
-decide por rol (historial, calificación pendiente, guards del WS, `create_ride_request`…) sigue
-válido sin cambios. Un conductor registra **hasta un vehículo por tipo** (`DriverVehicle`, tabla
-`driver_vehicles`: taxi, moto, camioneta), cada uno con sus servicios y su estado de revisión.
-`users.vehicle_type/plate/vehicle_model/driver_services` son el **vehículo activo** (el elegido al
-entrar en modo conductor; es lo que leen pool y ofertas) y `users.driver_status` el agregado
-(`approved` si algún vehículo lo está):
+`User.role` is the account's **active mode**, never "both at once": everything that already
+decides by role (history, pending rating, WS guards, `create_ride_request`…) stays
+valid without changes. A driver registers **up to one vehicle per type** (`DriverVehicle`, table
+`driver_vehicles`: taxi, moto, truck), each with its services and review status.
+`users.vehicle_type/plate/vehicle_model/driver_services` are the **active vehicle** (the one chosen when
+entering driver mode; it is what the pool and offers read) and `users.driver_status` the aggregate
+(`approved` if any vehicle is):
 
-- `POST /drivers/me/vehicles` (`RegisterDriverVehicle`) crea o actualiza el vehículo de ese tipo
-  → `status=pending`, o `approved` al instante si `DRIVER_AUTO_APPROVE=true` (desarrollo/pruebas;
-  **prohibido en producción**, `Settings` lo rechaza). El primer vehículo pasa a ser el activo.
-  En modo conductor no se puede editar ni quitar el vehículo activo (sí los demás).
-  La revisión por operador es F04-A (pendiente); mientras tanto, en hospedados sin
-  auto-aprobación hay que aprobar en la base (`driver_vehicles.status='approved'`).
-- `POST /drivers/me/mode` (`SwitchAccountMode`): a `driver` exige un vehículo aprobado
-  (`vehicle_type` explícito, el único aprobado, o el activo si sigue aprobado), sin viaje activo
-  como pasajero; cambiar de vehículo en modo conductor exige estar desconectado. A `passenger`
-  exige estar desconectado y sin viaje en curso. Los vehículos se conservan en ambos modos.
+- `POST /drivers/me/vehicles` (`RegisterDriverVehicle`) creates or updates the vehicle of that type
+  → `status=pending`, or `approved` instantly if `DRIVER_AUTO_APPROVE=true` (development/testing;
+  **forbidden in production**, `Settings` rejects it). The first vehicle becomes the active one.
+  In driver mode the active vehicle cannot be edited or removed (the others can).
+  Operator review is F04-A (pending); meanwhile, on hosted environments without
+  auto-approval you have to approve in the database (`driver_vehicles.status='approved'`).
+- `POST /drivers/me/mode` (`SwitchAccountMode`): switching to `driver` requires an approved vehicle
+  (explicit `vehicle_type`, the only approved one, or the active one if still approved), without an active ride
+  as a passenger; switching vehicle in driver mode requires being offline. Switching to `passenger`
+  requires being offline and without a ride in progress. Vehicles are kept in both modes.
 
-## Tiempo real (WebSocket)
+## Real time (WebSocket)
 
-Endpoints en `api/v1/ws/negotiation.py` (auth: subprotocolos `viajaya.auth` + access token,
-fuera de la URL y los access logs; cierre 1008 si es inválido):
+Endpoints in `api/v1/ws/negotiation.py` (auth: `viajaya.auth` subprotocols + access token,
+outside the URL and access logs; close 1008 if invalid):
 
-- **`WS /ws/rides/{ride_id}`** — pasajero dueño. Snapshot inicial `offers_snapshot` + eventos del `ride_topic`.
-- **`WS /ws/driver`** — conductor en línea. Handshake ordenado `open_rides_snapshot` →
-  `driver_offers_snapshot` → `driver_active_ride` (si existe); excluye ofertas vencidas y recupera
-  ofertas pendientes/viaje activo al reiniciar. Después recibe eventos de un
-  `pool:{service}` por cada servicio que ofrece (`offered_services`) y de `driver:{id}`. Una barrera de entrega evita la
-  ventana ciega entre snapshot y suscripción. `open_rides_snapshot.data` usa
-  `{items, next_cursor}`; `paused_rides_snapshot.data` conserva su lista.
+- **`WS /ws/rides/{ride_id}`** — owning passenger. Initial `offers_snapshot` + `ride_topic` events.
+- **`WS /ws/driver`** — online driver. Ordered handshake `open_rides_snapshot` →
+  `driver_offers_snapshot` → `driver_active_ride` (if any); excludes expired offers and recovers
+  pending offers/active ride on restart. Afterwards it receives events from one
+  `pool:{service}` per offered service (`offered_services`) and from `driver:{id}`. A delivery barrier avoids the
+  blind window between snapshot and subscription. `open_rides_snapshot.data` uses
+  `{items, next_cursor}`; `paused_rides_snapshot.data` keeps its list.
 
-Con `REALTIME_OUTBOX_DISPATCH_MODE=live_local|live_redis`, cada socket recibe en cambio un
-único snapshot v2 (`ride_snapshot` o `driver_snapshot`) con watermarks, seguido
-exclusivamente por envelopes v2 durables. La barrera local suscribe antes de la
-captura; los deltas ya incluidos quedan por debajo del watermark y el cliente
-los deduplica. En cualquier otro modo se conserva exactamente el handshake
-legacy anterior.
+With `REALTIME_OUTBOX_DISPATCH_MODE=live_local|live_redis`, each socket instead receives a
+single v2 snapshot (`ride_snapshot` or `driver_snapshot`) with watermarks, followed
+exclusively by durable v2 envelopes. The local barrier subscribes before the
+capture; deltas already included fall below the watermark and the client
+deduplicates them. In any other mode the previous legacy handshake is kept
+exactly.
 
-**Eventos** (`api/v1/events.py`, publicados vía `hub.broadcast` a `ride_topic`/`driver_topic`/`pool_topic`):
+**Events** (`api/v1/events.py`, published via `hub.broadcast` to `ride_topic`/`driver_topic`/`pool_topic`):
 
 ```
 ride_created, ride_closed, ride_paused, offer_created, offer_rejected,
 offer_withdrawn, offer_accepted, offers_withdrawn (plural), offer_expired, ride_status
 ```
 
-- `offers_withdrawn` (plural) → al conductor elegido o desconectado: conserva
-  `ride_ids` para clientes legacy y añade `offers: [{ride_id, offer_id}]` para que
-  una entrega atrasada no retire una reoferta posterior. Los productores nuevos
-  emiten ambos campos en el mismo orden; el envelope v2 exige `offers`.
-- Todo productor actual de `ride_closed` incluye `pool_version` y
-  `reason=paused|terminal`. Ambos solo son opcionales al leer legacy histórico;
-  el envelope v2 los exige.
-- El polling del cliente queda **solo como respaldo lento**; la vía principal es el WS.
-- Crear/reemplazar/retirar/rechazar/vencer oferta, aceptar oferta, avanzar,
-  cambiar disponibilidad, pausar, cancelar,
-  renovar el pool y anunciar presencia ya persisten antes del commit sus batches
-  ordenados en `realtime_outbox` cuando
-  `REALTIME_OUTBOX_RECORDING_ENABLED=true`; la entrega directa reutiliza esos
-  mismos payloads `{type,data}`. El dispatcher `shadow` solo valida y marca la
-  copia durable; la publicación directa continúa siendo la única entrega al
-  cliente. Ambos modos live cambian ambas piezas de forma atómica: el dispatcher
-  entrega metadata durable v2 y el hub bloquea la ruta directa legacy durante
-  todo el lifespan. `live_redis` habilita varios hubs solo detrás del flag de
-  presencia compartida y con `cancel_absent_ride` en el scheduler live.
+- `offers_withdrawn` (plural) → to the chosen or disconnected driver: keeps
+  `ride_ids` for legacy clients and adds `offers: [{ride_id, offer_id}]` so
+  a late delivery does not withdraw a later re-offer. New producers
+  emit both fields in the same order; the v2 envelope requires `offers`.
+- Every current producer of `ride_closed` includes `pool_version` and
+  `reason=paused|terminal`. Both are optional only when reading historical legacy;
+  the v2 envelope requires them.
+- Client polling remains **only as a slow fallback**; the primary path is the WS.
+- Creating/replacing/withdrawing/rejecting/expiring an offer, accepting an offer, advancing,
+  changing availability, pausing, cancelling,
+  renewing the pool and announcing presence already persist their ordered batches
+  in `realtime_outbox` before the commit when
+  `REALTIME_OUTBOX_RECORDING_ENABLED=true`; direct delivery reuses those
+  same `{type,data}` payloads. The `shadow` dispatcher only validates and marks the
+  durable copy; direct publication remains the only delivery to the
+  client. Both live modes switch both pieces atomically: the dispatcher
+  delivers durable v2 metadata and the hub blocks the legacy direct path during
+  the whole lifespan. `live_redis` enables several hubs only behind the
+  shared-presence flag and with `cancel_absent_ride` in the live scheduler.
 
-Presencia (`api/v1/presence.py`): la solicitud aparece en `/rides/open` mientras el pasajero esté
-conectado al WS o dentro de la ventana de gracia (`PRESENCE_GRACE_SECONDS = 120`). Minimizar/cambiar
-de pantalla no la saca; `GET /rides/me/active` renueva la presencia mientras HTTP siga vivo. Solo
-cerrar la app o perder ambos canales durante toda la gracia cancela la búsqueda.
+Presence (`api/v1/presence.py`): the request appears in `/rides/open` while the passenger is
+connected to the WS or within the grace window (`PRESENCE_GRACE_SECONDS = 120`). Minimizing/switching
+screens does not remove it; `GET /rides/me/active` renews presence while HTTP stays alive. Only
+closing the app or losing both channels for the whole grace period cancels the search.
 
-## Migraciones (Alembic)
+## Migrations (Alembic)
 
-- Config: `alembic.ini` + `migrations/env.py` (engine **async** con `async_engine_from_config`).
-- **28 migraciones** en `migrations/versions/` (`0001_create_users` …
-  `0028_driver_vehicles`). `0025` rechaza el downgrade si hay cuentas solo-teléfono.
-  `0027` añade `users.driver_services` (JSON/JSONB) y `driver_status`, y aprueba a los
-  conductores existentes con todos los servicios de su vehículo. `0028` crea
-  `driver_vehicles` y copia ahí el vehículo actual de cada conductor.
-- Importante: los enums se persisten por **valor** minúsculo vía `values_callable=_enum_values`
-  en `infrastructure/db/models.py` (migración `0006_normalize_enum_values`). No rompas esa convención
-  o se caerán columnas existentes.
-- Offline mode **no soportado** (`env.py` lo rechaza). Comandos: `alembic upgrade head`,
-  `alembic revision -m "..."` (revisar el autogenerado).
+- Config: `alembic.ini` + `migrations/env.py` (**async** engine with `async_engine_from_config`).
+- **28 migrations** in `migrations/versions/` (`0001_create_users` …
+  `0028_driver_vehicles`). `0025` rejects the downgrade if there are phone-only accounts.
+  `0027` adds `users.driver_services` (JSON/JSONB) and `driver_status`, and approves
+  existing drivers with all the services of their vehicle. `0028` creates
+  `driver_vehicles` and copies each driver's current vehicle there.
+- Important: enums are persisted by lowercase **value** via `values_callable=_enum_values`
+  in `infrastructure/db/models.py` (migration `0006_normalize_enum_values`). Do not break that convention
+  or existing columns will fail.
+- Offline mode is **not supported** (`env.py` rejects it). Commands: `alembic upgrade head`,
+  `alembic revision -m "..."` (review the autogenerated one).
 
-## Seed y utilidades
+## Seed and utilities
 
 ```bash
-python -m scripts.seed        # idempotente; requiere DB levantada + alembic upgrade head
-python -m scripts.smoke_ws    # prueba de humo del flujo WS contra servidor en vivo (passenger + driver simulados)
+python -m scripts.seed        # idempotent; requires the DB up + alembic upgrade head
+python -m scripts.smoke_ws    # smoke test of the WS flow against a live server (simulated passenger + driver)
 ```
 
-`scripts/` es un namespace package (`__init__.py`). El seed crea 2 usuarios por rol con teléfono
-verificado; se entra con el OTP simulado: pasajeros `+59170000001/2`, taxis `+59170000011/12`,
-motos `+59170000021/22`, camioneta de mudanzas `+59170000031`. `scripts/phone_access.py` expone `sign_in(client, phone)` para los smokes.
+`scripts/` is a namespace package (`__init__.py`). The seed creates 2 users per role with a
+verified phone; sign in with the simulated OTP: passengers `+59170000001/2`, taxis `+59170000011/12`,
+motos `+59170000021/22`, moving truck `+59170000031`. `scripts/phone_access.py` exposes `sign_in(client, phone)` for the smokes.
 
 ## Tests
 
-- `tests/unit/` — UC con dobles (`tests/fakes.py`), sin DB real.
-- `tests/e2e/` — API completa contra SQLite async (`aiosqlite`); fixtures en `conftest.py`
-  (override de `get_session` y `get_oauth_verifiers` con `FakeVerifier`; settings sintéticos con
-  OTP simulado, nunca el `.env`; `@pytest.mark.settings(**overrides)` ajusta esos settings
-  por test, p. ej. `driver_auto_approve=True`). `tests/e2e/helpers.py` autentica por teléfono:
-  `sign_in(client, label)` / `sign_in_sync` y `promote_to_driver(session_factory, label, vehicle)`.
-- `tests/e2e/test_negotiation_ws.py` — flujo WS de negociación passenger↔driver.
-- `tests/postgresql/` — certificación destructiva opt-in contra una base exclusivamente
-  desechable indicada por `VIAJAYA_TEST_DATABASE_URL`; hace skip si la variable no existe.
-  `test_pg_outbox_0018.py` verifica el ciclo de migración y que dos workers
-  reclamen batches completos y disjuntos con `SKIP LOCKED`;
-  `test_pg_outbox_0020.py` certifica la cuarentena y su downgrade protegido.
-- `.github/workflows/ci.yml` ejecuta en paralelo la suite rápida, la certificación
-  PostgreSQL 16 y las comprobaciones TypeScript/ESLint de mobile. El gate de OpenAPI
-  (`oasdiff breaking` contra la base del PR) rechaza rupturas de contrato; una ruptura
-  intencional se registra con fecha en `openapi-breaking-accepted.txt` (método, ruta y
-  texto del cambio), nunca se silencia una que no se pretendía.
-- `asyncio_mode = "auto"` (pytest-asyncio): no hace falta `@pytest.mark.asyncio`.
-- Al añadir un UC o endpoint, acompáñalo de su test unitario y/o e2e.
+- `tests/unit/` — UCs with doubles (`tests/fakes.py`), no real DB.
+- `tests/e2e/` — full API against async SQLite (`aiosqlite`); fixtures in `conftest.py`
+  (override of `get_session` and `get_oauth_verifiers` with `FakeVerifier`; synthetic settings with
+  simulated OTP, never the `.env`; `@pytest.mark.settings(**overrides)` adjusts those settings
+  per test, e.g. `driver_auto_approve=True`). `tests/e2e/helpers.py` authenticates by phone:
+  `sign_in(client, label)` / `sign_in_sync` and `promote_to_driver(session_factory, label, vehicle)`.
+- `tests/e2e/test_negotiation_ws.py` — passenger↔driver WS negotiation flow.
+- `tests/postgresql/` — opt-in destructive certification against an exclusively
+  disposable database given by `VIAJAYA_TEST_DATABASE_URL`; skips if the variable does not exist.
+  `test_pg_outbox_0018.py` verifies the migration cycle and that two workers
+  claim complete, disjoint batches with `SKIP LOCKED`;
+  `test_pg_outbox_0020.py` certifies the quarantine and its protected downgrade.
+- `.github/workflows/ci.yml` runs in parallel the fast suite, the PostgreSQL 16
+  certification and the mobile TypeScript/ESLint checks. The OpenAPI gate
+  (`oasdiff breaking` against the PR base) rejects contract breaks; an intentional
+  break is recorded with a date in `openapi-breaking-accepted.txt` (method, path and
+  change text), never silence one that was not intended.
+- `asyncio_mode = "auto"` (pytest-asyncio): `@pytest.mark.asyncio` is not needed.
+- When adding a UC or endpoint, add its unit and/or e2e test.
 
-## Convenciones
+## Conventions
 
-- Todo async de punta a punta (FastAPI, SQLAlchemy async, repos `async def`).
-- `from __future__ import annotations` al inicio de cada módulo; type hints en todo.
-- Código, identificadores, docstrings y comentarios nuevos en **inglés**, según la preferencia persistente de `../AGENTS.md`. Verifica cada implementación antes de entregarla.
-- Ruff con `line-length = 100`, `target-version = "py311"`, reglas `E,F,I,UP,B,C4`.
-- Imports ordenados por isort (regla `I`).
+- Async end to end (FastAPI, async SQLAlchemy, `async def` repos).
+- `from __future__ import annotations` at the top of every module; type hints everywhere.
+- Code, identifiers, docstrings, comments and documentation in **English**, per the persistent preference in `../AGENTS.md`. Verify every implementation before delivering it.
+- Ruff with `line-length = 100`, `target-version = "py311"`, rules `E,F,I,UP,B,C4`.
+- Imports sorted by isort (rule `I`).

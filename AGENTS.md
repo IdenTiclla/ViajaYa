@@ -1,65 +1,65 @@
-# ViajaYa — guía de trabajo para agentes
+# ViajaYa — working guide for agents
 
-ViajaYa es un monorepo de taxis y encomiendas con negociación de tarifas en tiempo real:
+ViajaYa is a taxi and parcel monorepo with real-time fare negotiation:
 
-- `backend/`: FastAPI async + SQLAlchemy 2.0 async + PostgreSQL, en Clean Architecture.
-- `mobile/`: Expo/React Native + TypeScript, Expo Router, React Query y Zustand.
-- `docs/implementation-plans/`: decisiones y planes de implementación. Los planes terminados viven en `archived/`.
+- `backend/`: async FastAPI + async SQLAlchemy 2.0 + PostgreSQL, in Clean Architecture.
+- `mobile/`: Expo/React Native + TypeScript, Expo Router, React Query and Zustand.
+- `docs/implementation-plans/`: decisions and implementation plans. Finished plans live in `archived/`.
 
-## Antes de cambiar código
+## Before changing code
 
-1. Revisa `git status --short`. Trata los cambios ajenos al alcance como trabajo del usuario: no los reviertas, borres ni reformatees masivamente.
-2. Lee `CLAUDE.md` en esta raíz y luego las instrucciones más cercanas al código que vayas a tocar:
+1. Check `git status --short`. Treat out-of-scope changes as the user's work: do not revert, delete or mass-reformat them.
+2. Read `CLAUDE.md` at this root and then the instructions closest to the code you will touch:
    - Backend: `backend/CLAUDE.md`.
-   - Mobile: `mobile/AGENTS.md` y `mobile/CLAUDE.md`.
-3. Consulta el plan activo que corresponda en `docs/implementation-plans/`. En particular, `0007-cancela-busqueda-pasajero-ausente.md` documenta las reglas vigentes de presencia y cancelación por desconexión.
-4. Si el cambio cruza backend y mobile, define y actualiza ambos lados del contrato en la misma tarea.
+   - Mobile: `mobile/AGENTS.md` and `mobile/CLAUDE.md`.
+3. Check the relevant active plan in `docs/implementation-plans/`. In particular, `0007-cancel-search-absent-passenger.md` documents the current presence and disconnect-cancellation rules.
+4. If the change crosses backend and mobile, define and update both sides of the contract in the same task.
 
-## Reglas globales
+## Global rules
 
-- Preferencia persistente del usuario (2026-09-19): operar solo **Desarrollo**. **Pruebas (`testing`/`preview`/staging) está temporalmente deprecado**; no iniciarlo, desplegarlo ni preparar nuevas entregas allí salvo reactivación explícita. Conservar configuraciones históricas y aislamiento; los tests automatizados y bases desechables de CI siguen vigentes. Producción es un objetivo futuro.
+- Persistent user preference (2026-09-19): operate only **Development**. **Testing (`testing`/`preview`/staging) is temporarily deprecated**; do not start it, deploy to it or prepare new deliveries there unless explicitly reactivated. Keep historical configuration and isolation; automated tests and disposable CI databases still apply. Production is a future goal.
 
-- Preferencia persistente del usuario (2026-09-09): escribe el código, identificadores, nombres de archivos nuevos, comentarios y docstrings en **inglés**. Conserva los textos de la interfaz y la comunicación/documentación para el usuario en español. Los contratos existentes se renombran solo con una migración compatible y verificada; evita traducciones masivas ajenas al alcance.
-- Verifica cada implementación antes de entregarla con pruebas y comprobaciones proporcionales. Registra evidencia y distingue claramente lo verificado de lo pendiente; no declares una fase completa sin comprobar sus criterios de cierre.
-- No incluyas secretos ni modifiques/commitees archivos `.env`; usa los `.env.example` como referencia.
-- No hagas commits, pushes, migraciones destructivas ni reinicios de procesos existentes salvo solicitud explícita.
-- Para levantar servicios, primero inspecciona qué ya está sano (DB, backend, Metro y puertos). No levantes un emulador Android a menos que se pida expresamente; consume mucha memoria.
+- Persistent user preference (2026-09-09, extended 2026-09-24): write code, identifiers, new file names, comments, docstrings, tests and repository documentation in **English**. Keep app UI text and conversation with the user in Spanish; commit messages stay in Spanish. Existing contracts are renamed only with a compatible, verified migration.
+- Verify every implementation before delivering it with proportional tests and checks. Record evidence and clearly separate what was verified from what is pending; do not declare a phase complete without checking its exit criteria.
+- Do not include secrets or modify/commit `.env` files; use the `.env.example` files as reference.
+- Do not make commits, pushes, destructive migrations or restarts of existing processes unless explicitly requested.
+- To start services, first inspect what is already healthy (DB, backend, Metro and ports). Do not start an Android emulator unless explicitly asked; it uses a lot of memory.
 
-## Límites de arquitectura
+## Architecture boundaries
 
 ### Backend
 
-- Las dependencias fluyen hacia adentro: `api → application → domain`. El dominio no importa framework, infraestructura, API ni application.
-- Un caso de uso por archivo, con `async def execute(...)`. El cableado de dependencias se concentra en `app/api/deps.py`; routers traducen HTTP a casos de uso, sin lógica de negocio.
-- Los schemas Pydantic no son entidades de dominio. Los errores de negocio son `DomainError` y se traducen centralmente en `api/errors.py`.
-- Mantén todo async. Al cambiar el esquema de PostgreSQL, crea y revisa manualmente la migración Alembic.
+- Dependencies flow inward: `api → application → domain`. The domain does not import framework, infrastructure, API or application.
+- One use case per file, with `async def execute(...)`. Dependency wiring is concentrated in `app/api/deps.py`; routers translate HTTP into use cases, without business logic.
+- Pydantic schemas are not domain entities. Business errors are `DomainError` and are translated centrally in `api/errors.py`.
+- Keep everything async. When changing the PostgreSQL schema, create and manually review the Alembic migration.
 
 ### Mobile
 
-- Las rutas de `src/app/` solo componen pantallas. La lógica vive por feature, en `domain/`, `data/`, `application/` y `presentation/`.
-- Todo HTTP usa `src/core/http/client.ts`; no uses `fetch` ni instancias Axios adicionales. Configuración de runtime solo desde `@/core/config/env`.
-- El WebSocket es la vía principal en tiempo real y actualiza la caché de React Query; el polling es respaldo lento. El token WS viaja por el subprotocolo `viajaya.auth`, nunca en la URL.
-- Reutiliza componentes compartidos y tokens de `@/core/theme`. Antes de usar APIs de Expo, verifica la documentación oficial versionada de Expo 56; la app usa dev build, no Expo Go.
+- Routes in `src/app/` only compose screens. Logic lives per feature, in `domain/`, `data/`, `application/` and `presentation/`.
+- All HTTP goes through `src/core/http/client.ts`; do not use `fetch` or additional Axios instances. Runtime configuration only from `@/core/config/env`.
+- WebSocket is the primary real-time channel and updates the React Query cache; polling is a slow fallback. The WS token travels in the `viajaya.auth` subprotocol, never in the URL.
+- Reuse shared components and tokens from `@/core/theme`. Before using Expo APIs, check the official versioned Expo 56 documentation; the app uses a dev build, not Expo Go.
 
-## Contrato y reglas de negocio compartidas
+## Shared contract and business rules
 
-- La API está bajo `/api/v1`; los DTO del backend usan `snake_case` y el mobile los mapea a tipos de dominio en `features/*/data`.
-- Cuando cambie un endpoint, schema o evento WebSocket, actualiza el schema/DTO/repositorio/tipo consumidor y sus pruebas en el otro proyecto.
-- La negociación es decidida por el pasajero. La aceptación de una oferta debe permanecer atómica; las ofertas vencen a los 30 s.
-- La presencia del pasajero tiene una gracia de 120 s, renovable por WebSocket o `GET /rides/me/active`. La cancelación automática solo puede afectar rides `SEARCHING` y debe conservar los eventos en tiempo real esperados.
+- The API is under `/api/v1`; backend DTOs use `snake_case` and mobile maps them to domain types in `features/*/data`.
+- When an endpoint, schema or WebSocket event changes, update the consuming schema/DTO/repository/type and its tests in the other project.
+- Negotiation is decided by the passenger. Accepting an offer must stay atomic; offers expire after 30 s.
+- Passenger presence has a 120 s grace period, renewable via WebSocket or `GET /rides/me/active`. Automatic cancellation may only affect `SEARCHING` rides and must keep the expected real-time events.
 
-## Verificación
+## Verification
 
-Ejecuta las comprobaciones proporcionales al área modificada antes de entregar:
+Run checks proportional to the modified area before delivering:
 
 ```bash
-# Desde backend/
-.venv/bin/pytest                 # o un archivo/directorio afectado
+# From backend/
+.venv/bin/pytest                 # or an affected file/directory
 .venv/bin/ruff check .
 
-# Desde mobile/
+# From mobile/
 npx tsc --noEmit
 npm run lint
 ```
 
-Los tests unitarios del backend usan dobles; los e2e usan SQLite async. Para comportamiento en vivo de WebSocket, usa además el smoke test o el entorno completo cuando el alcance lo justifique.
+Backend unit tests use test doubles; e2e tests use async SQLite. For live WebSocket behavior, also use the smoke test or the full environment when the scope justifies it.

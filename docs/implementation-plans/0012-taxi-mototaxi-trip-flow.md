@@ -1,119 +1,121 @@
-# Cierre funcional de taxi y mototaxi
+# Functional closing of taxi and mototaxi
 
-Fecha: 19/09/2026. Rama: `codex/ui-improvements-and-bugfixes`.
-Estado: cinco fallos de la revisión posterior corregidos y verificados localmente.
-ETA manual y rutas distintas para taxi/mototaxi implementadas. Falta la validación en dos teléfonos.
+Date: 2026-09-19. Branch: `codex/ui-improvements-and-bugfixes`.
+Status: five failures from the later review fixed and verified locally.
+Manual ETA and separate routes for taxi/mototaxi implemented. Validation on two phones is missing.
 
-Revisión posterior: [gaps y bugs de taxi/mototaxi](../plans/taxi-mototaxi-gap-review-2026-09-19.md).
-Prioridad: recuperación tras respuestas perdidas y conservación del vehículo histórico.
-Los cambios permanecen sin commit.
+Later review: [taxi/mototaxi gaps and bugs](../plans/taxi-mototaxi-gap-review-2026-09-19.md).
+Priority: recovery after lost responses and keeping the historical vehicle.
+The changes remain uncommitted.
 
-## Alcance de esta entrega
+## Scope of this delivery
 
-Completar el recorrido actual de pasajero y conductor: elegir servicio y ruta,
-proponer precio, negociar y aceptar, recoger, iniciar, finalizar, calificar u
-omitir, recuperar el estado y volver a solicitar/ofrecer viajes. El contrato
-conserva `taxi` y `moto`; la interfaz denomina al servicio `moto` «Mototaxi».
+Complete the current passenger and driver flow: choose service and route,
+propose a price, negotiate and accept, pick up, start, finish, rate or
+skip, recover the state and request/offer rides again. The contract
+keeps `taxi` and `moto`; the interface names the `moto` service «Mototaxi».
 
-## Criterios verificados
+## Verified criteria
 
-- [x] Ambos participantes pueden consultar servicio, ruta, precio acordado,
-  medio de pago e identificación de la otra parte durante el viaje.
-- [x] Llegada, confirmación de inicio y finalización tienen acciones claras;
-  tocar varias veces o confirmar un diálogo obsoleto no avanza otra etapa.
-- [x] Los fallos de comunicación permiten reintentar y recuperan el estado del
-  servidor; fallar al abrir llamada, SMS o compartir tiene respuesta visible.
-- [x] Cancelación previa al inicio, finalización, calificación/omisión e historial
-  funcionan para taxi y mototaxi. Los cambios de etapa llegan por WebSocket a
-  ambos participantes con el mismo contenido que la respuesta HTTP.
-- [x] Pantallas revisadas con tamaños pequeños, tema oscuro y texto ampliado;
-  TypeScript, lint, regresiones y bundle Android comprobados.
+- [x] Both participants can see service, route, agreed price,
+  payment method and identification of the other party during the ride.
+- [x] Arrival, start confirmation and finishing have clear actions;
+  tapping several times or confirming a stale dialog does not advance another stage.
+- [x] Communication failures allow retrying and recover the server
+  state; failing to open a call, SMS or share has a visible response.
+- [x] Cancellation before start, finishing, rating/skipping and history
+  work for taxi and mototaxi. Stage changes reach both participants over WebSocket
+  with the same content as the HTTP response.
+- [x] Screens reviewed with small sizes, dark theme and enlarged text;
+  TypeScript, lint, regressions and Android bundle checked.
 
-## Cambios
+## Changes
 
-- Resumen compartido de servicio, recogida, destino, tarifa negociada y forma de
-  pago. La propuesta conserva su etiqueta mientras la solicitud busca conductor.
-- Conductor: acción principal fija, llegada explícita y confirmación de identidad
-  del pasajero antes de iniciar. Finalizar requiere confirmar la llegada al destino.
-- Los diálogos están asociados al ID y a la etapa del viaje. Las acciones y la
-  calificación/omisión tienen un bloqueo inmediato contra envíos repetidos.
-- Un fallo HTTP vuelve a consultar el detalle y las vistas activas: si el servidor
-  guardó el cambio pero se perdió la respuesta, la app recupera el estado real.
-- El pasajero puede volver a las ofertas si recupera una solicitud en búsqueda.
-  Cerrar un viaje solo retira su ID de la caché; conserva cualquier otro activo.
-- Los errores de llamada, SMS y compartir son visibles. El aviso amarillo de
-  llegada mantiene contraste en tema oscuro; datos largos y contactos se ajustan.
-- Se distingue la duración estimada de recogida a destino del tiempo de llegada
-  ofrecido por el conductor. Ninguno se presenta como seguimiento GPS en vivo.
-- El mapa espera tamaño y preparación nativa antes de encuadrar, se actualiza al
-  cambiar coordenadas y adapta sus márgenes al panel sin perder toda el área útil.
+- Shared summary of service, pickup, destination, negotiated fare and payment
+  method. The proposal keeps its label while the request searches for a driver.
+- Driver: fixed main action, explicit arrival and confirmation of the passenger's
+  identity before starting. Finishing requires confirming arrival at the destination.
+- Dialogs are tied to the ride ID and stage. Actions and
+  rating/skipping have an immediate lock against repeated submissions.
+- An HTTP failure queries the detail and active views again: if the server
+  saved the change but the response was lost, the app recovers the real state.
+- The passenger can go back to the offers if they recover a request that is searching.
+  Closing a ride only removes its ID from the cache; any other active one is kept.
+- Call, SMS and share errors are visible. The yellow arrival notice
+  keeps contrast in dark theme; long data and contacts wrap.
+- The estimated pickup-to-destination duration is distinguished from the arrival time
+  offered by the driver. Neither is presented as live GPS tracking.
+- The map waits for size and native readiness before framing, updates when
+  coordinates change and adapts its margins to the panel without losing all the usable area.
 
-## Corrección de la revisión posterior
+## Fix from the later review
 
-H01–H05 resueltos: recuperar publicación al editar, conservar cierre del conductor,
-recuperar creación/calificación y fijar vehículo histórico al aceptar. Se añadió
-`GET /rides/{ride_id}/rating` con autorización por participante y la migración
-aditiva `0029_ride_vehicle_snapshot`. Los históricos sin evidencia no se rellenan
-con el vehículo actual. Se descartan consultas antiguas al guardar o reconocer el cierre.
+H01–H05 resolved: recover publication when editing, keep the driver's closing,
+recover creation/rating and pin the historical vehicle on acceptance. Added
+`GET /rides/{ride_id}/rating` with per-participant authorization and the additive
+migration `0029_ride_vehicle_snapshot`. Historical rows without evidence are not filled
+with the current vehicle. Old queries are discarded when saving or acknowledging the closing.
 
-Los cinco caminos de oferta solicitan ETA manual de recogida entre 1 y 240 minutos.
-Las rutas y su caché distinguen taxi (`DRIVE`) de moto (`TWO_WHEELER`); se muestra
-el aviso de rutas de moto en pruebas. No equivale a navegación integrada ni GPS compartido.
+The five offer paths request a manual pickup ETA between 1 and 240 minutes.
+Routes and their cache distinguish taxi (`DRIVE`) from moto (`TWO_WHEELER`); the
+moto-route notice is shown in testing. It is not equivalent to integrated navigation or shared GPS.
 
-Evidencia: **717 tests backend**, **2 de migración PostgreSQL**, **303 mobile**,
-16 casos de respuesta perdida/no guardada con pantallas y hooks reales, 10 recorridos
-de ETA y 8 revisiones visuales del diálogo. TypeScript, lint y OpenAPI aprobados.
-Bundle Android final: **11.874.244 bytes**; API y Metro siguen sanos.
-Plan y presentación actualizados a **revisión 12**. F04 continúa parcial.
+Evidence: **717 backend tests**, **2 PostgreSQL migration tests**, **303 mobile**,
+16 lost/unsaved response cases with real screens and hooks, 10 ETA
+flows and 8 visual reviews of the dialog. TypeScript, lint and OpenAPI passing.
+Final Android bundle: **11,874,244 bytes**; API and Metro still healthy.
+Plan and presentation updated to **revision 12**. F04 remains partial.
 
-[Detalle de las correcciones, pruebas y límites](../plans/taxi-mototaxi-gap-review-2026-09-19.md).
-Evidencia local: `local-files/taxi-mototaxi-fixes-2026-09-19/`.
+(Later superseded: plan 0014 replaced the manual ETA with an automatic GPS → pickup computation.)
 
-## Evidencia de la entrega inicial
+[Detail of the fixes, tests and limits](../plans/taxi-mototaxi-gap-review-2026-09-19.md).
+Local evidence: `local-files/taxi-mototaxi-fixes-2026-09-19/`.
 
-La revisión posterior encontró escenarios no cubiertos por estas pruebas; sus
-resultados no certifican el cierre de los hallazgos H01–H05.
+## Evidence of the initial delivery
 
-| Comprobación | Resultado |
+The later review found scenarios not covered by these tests; their
+results do not certify closing findings H01–H05.
+
+| Check | Result |
 |---|---|
-| `cd backend && .venv/bin/pytest tests/e2e/test_offers_flow_api.py tests/e2e/test_negotiation_ws.py -q` | **60 aprobadas**. Ambos servicios: negociación y asignación, etapas válidas, rechazo de saltos/repeticiones, recuperación por rol, calificación, omisión, historial y eventos de estado WS. Cancelación por pasajero/conductor en `accepted` y `arriving`; rechazo en `in_progress`. |
-| `cd backend && .venv/bin/ruff check .` | Aprobado. |
-| `cd mobile && npm test` | **289 aprobadas**. Incluye seis regresiones nuevas de encuadre del mapa; las ocho de teléfono pertenecen a la entrega anterior de esta rama. |
-| `cd mobile && ./node_modules/.bin/tsc --noEmit` y `npm run lint` | Aprobados. |
-| Componentes reales + React Query y mutaciones reales, con repositorio/navegación simulados | Recogida → inicio confirmado → cierre → calificación; cancelación; omisión; reintento de acciones/calificación; respuesta HTTP perdida; diálogo obsoleto; cambio de ID; errores de contacto. Taxi y mototaxi. Sin errores JavaScript. |
-| Revisión visual | 24 combinaciones de conductor/pasajero/calificación × 320/390 px × claro/oscuro × texto 100/200 %, y ocho diálogos. Sin desbordamiento horizontal; acciones alcanzables; acción principal fija. Capturas inspeccionadas. |
-| Bundle Android de Metro, completo y sin carga diferida | HTTP 200; **11.858.852 bytes**, incluye las acciones y el encuadre definitivos. No equivale a compilar un APK. |
-| Servicios locales | API `/health/ready` 200 con PostgreSQL sano; Metro `packager-status:running`. Procesos existentes conservados. |
-| Plan y presentación | Revisión 11 sincronizada; F04 continúa parcial y se distingue la base integrada del avance local sin commit. |
+| `cd backend && .venv/bin/pytest tests/e2e/test_offers_flow_api.py tests/e2e/test_negotiation_ws.py -q` | **60 passing**. Both services: negotiation and assignment, valid stages, rejection of jumps/repetitions, recovery per role, rating, skipping, history and WS status events. Cancellation by passenger/driver in `accepted` and `arriving`; rejection in `in_progress`. |
+| `cd backend && .venv/bin/ruff check .` | Passed. |
+| `cd mobile && npm test` | **289 passing**. Includes six new map-framing regressions; the eight phone ones belong to the previous delivery on this branch. |
+| `cd mobile && ./node_modules/.bin/tsc --noEmit` and `npm run lint` | Passed. |
+| Real components + real React Query and mutations, with simulated repository/navigation | Pickup → confirmed start → closing → rating; cancellation; skipping; action/rating retry; lost HTTP response; stale dialog; ID change; contact errors. Taxi and mototaxi. No JavaScript errors. |
+| Visual review | 24 combinations of driver/passenger/rating × 320/390 px × light/dark × text 100/200 %, and eight dialogs. No horizontal overflow; actions reachable; fixed main action. Screenshots inspected. |
+| Metro Android bundle, full and without lazy loading | HTTP 200; **11,858,852 bytes**, includes the final actions and framing. Not equivalent to building an APK. |
+| Local services | API `/health/ready` 200 with healthy PostgreSQL; Metro `packager-status:running`. Existing processes kept. |
+| Plan and presentation | Revision 11 in sync; F04 remains partial and the integrated base is distinguished from the uncommitted local progress. |
 
-La prueba visual usa React Native Web con escala de texto simulada. Sustituye
-mapa, APIs de contacto, repositorio y navegación; conserva pantallas, diálogos,
-hooks de acciones/mutaciones, React Query y reductores de caché reales. La API y
-los WebSockets se prueban por separado con FastAPI y SQLite de pruebas.
+The visual test uses React Native Web with simulated text scaling. It replaces
+the map, contact APIs, repository and navigation; it keeps real screens, dialogs,
+action/mutation hooks, React Query and cache reducers. The API and
+WebSockets are tested separately with FastAPI and test SQLite.
 
-Evidencia local excluida de Git: `local-files/taxi-mototaxi-review-2026-09-19/`
-(capturas, visor reproducible local, resultados y logs). El visor usa el runtime
-Chromium/Playwright disponible en esta máquina; no añade dependencias al producto.
+Local evidence excluded from Git: `local-files/taxi-mototaxi-review-2026-09-19/`
+(screenshots, local reproducible viewer, results and logs). The viewer uses the
+Chromium/Playwright runtime available on this machine; it adds no dependencies to the product.
 
-## Validación nativa pendiente
+## Pending native validation
 
-- [ ] En dos teléfonos con el dev build actual: elegir taxi, acordar tarifa,
-  confirmar llegada e identidad, iniciar y finalizar; calificar en ambos roles.
-- [ ] Repetir con mototaxi, incluyendo contraoferta, cancelación previa al inicio
-  y omisión de la calificación. Comprobar historial y nueva solicitud.
-- [ ] Cortar/restablecer la conexión, volver a abrir la app y comprobar recuperación;
-  revisar mapa nativo, llamadas/SMS, teclado, TalkBack y texto ampliado.
+- [ ] On two phones with the current dev build: choose taxi, agree a fare,
+  confirm arrival and identity, start and finish; rate in both roles.
+- [ ] Repeat with mototaxi, including counter-offer, cancellation before start
+  and skipping the rating. Check history and a new request.
+- [ ] Cut/restore the connection, reopen the app and check recovery;
+  review the native map, calls/SMS, keyboard, TalkBack and enlarged text.
 
-La confirmación de inicio es una comprobación explícita del conductor; no sustituye
-una futura verificación de recogida por código. Un viaje finalizado tampoco acredita
-un cobro. GPS compartido, segundo plano, Navigation SDK, QR conciliado y certificación
-productiva conservan los criterios independientes de F04–F09 del plan de salida.
-No se modifica la gracia de presencia de 120 s ni la expiración de ofertas de 30 s.
+The start confirmation is an explicit check by the driver; it does not replace
+a future pickup verification by code. A finished ride does not prove
+a payment either. Shared GPS, background, Navigation SDK, reconciled QR and production
+certification keep the independent F04–F09 criteria of the launch plan.
+The 120 s presence grace and the 30 s offer expiry are not modified.
 
 
-## Continuación: experiencia compartida de recogida
+## Continuation: shared pickup experience
 
-La revisión 13 añade aviso persistente «Ya salí», confirmación de oferta, progreso
-compartido y recuperación ante snapshots atrasados. La evidencia vigente del
-recorrido ampliado está en el [plan 0013](0013-passenger-driver-pickup-experience.md).
-La certificación nativa en dos teléfonos y el cierre productivo F04 siguen pendientes.
+Revision 13 adds a persistent «Ya salí» notice, offer confirmation, shared
+progress and recovery from late snapshots. The current evidence of the
+extended flow is in [plan 0013](0013-passenger-driver-pickup-experience.md).
+Native certification on two phones and the F04 production closing remain pending.

@@ -1,13 +1,13 @@
-# Evolución del contrato OpenAPI
+# OpenAPI contract evolution
 
-`backend/openapi.json` es el snapshot determinista del contrato HTTP y
-`mobile/src/core/http/generated/openapi.ts` contiene los tipos reproducibles que
-consume mobile. Ambos deben cambiar en la misma entrega que el endpoint, schema,
-DTO, mapper y pruebas correspondientes.
+`backend/openapi.json` is the deterministic snapshot of the HTTP contract and
+`mobile/src/core/http/generated/openapi.ts` contains the reproducible types that
+mobile consumes. Both must change in the same delivery as the corresponding endpoint, schema,
+DTO, mapper and tests.
 
-## Comprobaciones
+## Checks
 
-Desde la raíz:
+From the root:
 
 ```bash
 cd backend
@@ -17,12 +17,12 @@ cd ..
 npm run openapi:check
 ```
 
-En cada pull request, CI extrae `backend/openapi.json` del commit base y ejecuta
-`oasdiff 1.17.0`. El job falla ante niveles `WARN` o `ERR`; esto incluye tanto
-rupturas confirmadas como cambios que necesitan revisión explícita. El diff
-semántico complementa al snapshot determinista: no lo reemplaza.
+On every pull request, CI extracts `backend/openapi.json` from the base commit and runs
+`oasdiff 1.17.0`. The job fails on `WARN` or `ERR` levels; this includes both
+confirmed breaks and changes that need explicit review. The semantic
+diff complements the deterministic snapshot: it does not replace it.
 
-Para reproducir la comparación contra `origin/main`:
+To reproduce the comparison against `origin/main`:
 
 ```bash
 base_spec="$(mktemp)"
@@ -36,18 +36,18 @@ docker run --rm \
   /specs/base.json /specs/revision.json
 ```
 
-El archivo temporal no contiene secretos: es únicamente el contrato público.
+The temporary file contains no secrets: it is only the public contract.
 
-## Cambio intencionalmente incompatible
+## Intentionally incompatible change
 
-No se debe silenciar una ruptura solo para poner CI en verde. Antes de permitirla:
+Do not silence a break just to turn CI green. Before allowing it:
 
-1. introducir una transición compatible o una nueva versión;
-2. desplegar primero consumidores con lectura dual;
-3. documentar la versión mínima soportada de la app y el criterio de retiro;
-4. añadir pruebas para productor anterior, productor nuevo y rollback;
-5. aprobar la excepción en una entrega separada y trazable.
+1. introduce a compatible transition or a new version;
+2. deploy consumers with dual reading first;
+3. document the minimum supported app version and the removal criterion;
+4. add tests for the previous producer, the new producer and rollback;
+5. approve the exception in a separate, traceable delivery.
 
-Las listas de ignore de `oasdiff` solo son aceptables para falsos positivos
-documentados. Nunca deben ocultar endpoints retirados, campos requeridos nuevos,
-reducciones de enum o cambios de tipo que mobile todavía consuma.
+`oasdiff` ignore lists are only acceptable for documented false
+positives. They must never hide removed endpoints, new required fields,
+enum reductions or type changes that mobile still consumes.

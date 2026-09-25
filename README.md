@@ -1,94 +1,94 @@
 # ViajaYa
 
-**Política vigente (19/09/2026):** usamos únicamente **Desarrollo**. **Pruebas (`testing`/`preview`/staging) queda temporalmente deprecado**: no iniciar, desplegar ni generar entregas para ese entorno. Producción sigue siendo un objetivo futuro. Las configuraciones anteriores se conservan como referencia; las pruebas automatizadas y las bases desechables de CI continúan vigentes.
+**Current policy (2026-09-19):** we only use **Development**. **Testing (`testing`/`preview`/staging) is temporarily deprecated**: do not start, deploy or produce deliveries for that environment. Production remains a future goal. Previous configurations are kept for reference; automated tests and disposable CI databases still apply.
 
-Aplicación de taxis y envío de encomiendas. Monorepo con backend FastAPI y app
-móvil React Native (Expo + TypeScript), siguiendo arquitectura limpia.
+A taxi and parcel delivery app. Monorepo with a FastAPI backend and a React Native
+mobile app (Expo + TypeScript), following clean architecture.
 
-## Estructura
+## Structure
 
 ```
 ViajaYa/
-├── backend/                 # API FastAPI (Clean Architecture)
-├── mobile/                  # App Expo + React Native + TypeScript
+├── backend/                 # FastAPI API (Clean Architecture)
+├── mobile/                  # Expo + React Native + TypeScript app
 ├── docs/implementation-plans/
-└── docker-compose.yml       # PostgreSQL + Redis para desarrollo
+└── docker-compose.yml       # PostgreSQL + Redis for development
 ```
 
-## Requisitos
+## Requirements
 
-- Python 3.11+ y Docker (backend)
-- Node 22.13+ (mobile; Expo CLI se ejecuta desde las dependencias locales)
+- Python 3.11+ and Docker (backend)
+- Node 22.13+ (mobile; Expo CLI runs from the local dependencies)
 
-## Puesta en marcha del backend
+## Backend setup
 
 ```bash
-# 1. Levantar PostgreSQL y Redis
+# 1. Start PostgreSQL and Redis
 docker compose up -d db redis
 
-# 2. Crear entorno e instalar dependencias
+# 2. Create the environment and install dependencies
 cd backend
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-# 3. Configurar variables de entorno
-cp .env.example .env   # editar JWT_SECRET y credenciales OAuth
+# 3. Configure environment variables
+cp .env.example .env   # edit JWT_SECRET and OAuth credentials
 
-# 4. Aplicar migraciones
+# 4. Apply migrations
 alembic upgrade head
 
-# 5. Levantar la API
+# 5. Start the API
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 # Swagger: http://localhost:8000/docs
 ```
 
-## Tests del backend
+## Backend tests
 
 ```bash
 cd backend && pytest
 ```
 
-La integración continua ejecuta en paralelo la suite rápida del backend, las
-pruebas transaccionales contra PostgreSQL 16 y las comprobaciones TypeScript y
-ESLint de mobile. La certificación PostgreSQL local requiere una base desechable
-marcada explícitamente como test mediante `VIAJAYA_TEST_DATABASE_URL`.
+Continuous integration runs in parallel the fast backend suite, the
+transactional tests against PostgreSQL 16 and the mobile TypeScript and
+ESLint checks. Local PostgreSQL certification requires a disposable database
+explicitly marked as test through `VIAJAYA_TEST_DATABASE_URL`.
 
-## Estado
+## Status
 
-- [x] Acceso por teléfono/OTP simulado, sesiones revocables y vinculación social.
-  Google probado en Desarrollo; SMS real pendiente para la futura apertura.
-  Facebook permanece aplazado. No existe acceso por correo/contraseña.
-- [x] Solicitudes de taxi, moto y encomienda con rutas en mapa.
-- [x] Pool de conductores y negociación de ofertas con vencimiento a 30 s.
-- [x] Ciclo de vida del viaje, historial, ganancias y calificaciones.
-- [x] Actualización en vivo por WebSocket y cancelación por ausencia.
-- [x] CI con PostgreSQL real, contratos OpenAPI/WS y tipos mobile generados.
-- [x] Tiempo real durable y soporte multiworker mediante outbox, Redis y
-  presencia compartida (activación operativa todavía detrás de flags).
-- [x] Registro desde Perfil, varios vehículos por conductor y cambio de modo/vehículo.
-  Documentos, revisión administrativa, suspensión y operación aún pendientes.
+- [x] Phone/simulated OTP access, revocable sessions and social linking.
+  Google tested in Development; real SMS pending for the future launch.
+  Facebook remains postponed. There is no email/password access.
+- [x] Taxi, moto and parcel requests with routes on the map.
+- [x] Driver pool and offer negotiation with 30 s expiry.
+- [x] Ride lifecycle, history, earnings and ratings.
+- [x] Live updates over WebSocket and cancellation on absence.
+- [x] CI with real PostgreSQL, OpenAPI/WS contracts and generated mobile types.
+- [x] Durable real time and multi-worker support via outbox, Redis and
+  shared presence (operational activation still behind flags).
+- [x] Registration from Profile, several vehicles per driver and mode/vehicle switching.
+  Documents, administrative review, suspension and operations still pending.
 
-**Salida a producción — revisión 19/09/2026:** F01 completada localmente; F02 en
-curso y F04 parcialmente implementada. F03 está planificada; seguimiento GPS y navegación Android tienen entrega local (0022);
-la certificación de navegación en teléfonos, cobros/comisiones, encomiendas completas,
-certificación alojada y Google Play siguen pendientes. Seleccionar QR todavía no procesa un
-pago. Ver el [plan vigente](docs/plans/plan-salida-produccion.md) y la
-[evidencia de revisión](docs/plans/production-readiness-2026-09-19.md).
+**Production launch — review 2026-09-19:** F01 completed locally; F02 in
+progress and F04 partially implemented. F03 is planned; GPS tracking and Android navigation have a local delivery (0022);
+navigation certification on phones, payments/commissions, full parcels,
+hosted certification and Google Play remain pending. Selecting QR does not process a
+payment yet. See the [current plan](docs/plans/production-launch-plan.md) and the
+[review evidence](docs/plans/production-readiness-2026-09-19.md).
 
-Las reglas vigentes y el endurecimiento pendiente viven en
-`docs/implementation-plans/0007-cancela-busqueda-pasajero-ausente.md` y
-`docs/implementation-plans/0008-endurecimiento-arquitectura.md`. Los planes
-terminados se conservan en `docs/implementation-plans/archived/`.
+The current rules and pending hardening live in
+`docs/implementation-plans/0007-cancel-search-absent-passenger.md` and
+`docs/implementation-plans/0008-architecture-hardening.md`. Finished plans
+are kept in `docs/implementation-plans/archived/`.
 
-## Puesta en marcha del mobile
+## Mobile setup
 
 ```bash
 cd mobile
 npm install
-cp .env.example .env    # API_URL (IP LAN del backend), claves Maps/OAuth
-npx expo start          # luego abrir el dev build en emulador o dispositivo
-# Calidad:
+cp .env.example .env    # API_URL (backend LAN IP), Maps/OAuth keys
+npx expo start          # then open the dev build on an emulator or device
+# Quality:
 npx tsc --noEmit && npm run lint
 ```
 
-**Navegación y seguimiento (19/09/2026):** GPS privado para el pasajero, navegación Android hacia recogida/destino y Waze implementados en Desarrollo. APK debug compilado; 746 pruebas backend y 429 móviles aprobadas. Falta certificar el recorrido con dos teléfonos, GPS real y autorización del Navigation SDK. Ver [entrega 0022](docs/implementation-plans/0022-driver-navigation-and-live-tracking.md).
+**Navigation and tracking (2026-09-19):** private GPS for the passenger, Android navigation to pickup/destination and Waze implemented in Development. Debug APK built; 746 backend and 429 mobile tests passing. Certifying the trip with two phones, real GPS and Navigation SDK authorization is still pending. See [delivery 0022](docs/implementation-plans/0022-driver-navigation-and-live-tracking.md).

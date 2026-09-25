@@ -451,7 +451,7 @@ npm run lint               # expo lint (eslint-config-expo)
   **Pickup phase** (`accepted`/`arriving`): `TripRouteMap phase="pickup"` (passenger
   `TripScreen` and driver `DriverTripInProgressScreen`) draws only the driver → pickup
   route (A "Recogida", no B) and frames driver + route + pickup; with no position yet
-  or once the driver is there it centers the pickup at zoom 17. `usePickupRoute`
+  or once the driver is there it frames ~90 m around the pickup above the sheet. `usePickupRoute`
   keys Google Routes by a ~220 m grid cell of the driver (`domain/pickupRoute.ts`),
   never by the raw 1 s GPS fix, and trims the cached line to the vehicle.
   After modifying the maps, also verify the Android bundle with Metro:

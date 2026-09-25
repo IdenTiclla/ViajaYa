@@ -6,6 +6,7 @@ import {
   isPickupPhase,
   isTightCluster,
   pickupRouteCell,
+  streetLevelFrame,
   trimRouteToVehicle,
 } from '../src/features/rides/domain/pickupRoute.ts';
 
@@ -45,4 +46,13 @@ test('a vehicle past the last vertex still keeps a drawable segment to the picku
 test('tight clusters are detected so the camera does not over-zoom', () => {
   assert.equal(isTightCluster([point(0, 0), point(0, 0.0002)], 40), true);
   assert.equal(isTightCluster([point(0, 0), point(0, 0.002)], 40), false);
+});
+
+test('the street-level frame surrounds the pickup symmetrically with the requested radius', () => {
+  const center = point(-17.7866, -63.196);
+  const [southWest, northEast] = streetLevelFrame(center, 90);
+  assert.ok(southWest.latitude < center.latitude && northEast.latitude > center.latitude);
+  assert.ok(southWest.longitude < center.longitude && northEast.longitude > center.longitude);
+  assert.ok(Math.abs(approxDistanceMeters(center, point(northEast.latitude, center.longitude)) - 90) < 1);
+  assert.ok(Math.abs(approxDistanceMeters(center, point(center.latitude, northEast.longitude)) - 90) < 1);
 });

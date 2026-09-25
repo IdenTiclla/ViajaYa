@@ -56,3 +56,17 @@ export function trimRouteToVehicle(route: readonly Coordinates[], vehicle: Coord
 export function isTightCluster(points: readonly Coordinates[], meters: number): boolean {
   return points.every((point) => approxDistanceMeters(points[0], point) <= meters);
 }
+
+/**
+ * Two opposite corners of a square of `halfSideMeters` around `center`: fitting
+ * them frames a point at street level while still honoring the map's edge padding
+ * (a plain camera center would sit behind the bottom sheet).
+ */
+export function streetLevelFrame(center: Coordinates, halfSideMeters: number): [Coordinates, Coordinates] {
+  const dLat = halfSideMeters / 111_320;
+  const dLon = dLat / Math.max(0.01, Math.cos(center.latitude * (Math.PI / 180)));
+  return [
+    { latitude: center.latitude - dLat, longitude: center.longitude - dLon },
+    { latitude: center.latitude + dLat, longitude: center.longitude + dLon },
+  ];
+}

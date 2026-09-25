@@ -19,7 +19,7 @@ import { RoutePinMarker } from '@/features/rides/presentation/RoutePinMarker';
 import { RoutePolyline } from '@/features/rides/presentation/RoutePolyline';
 import { useMapBearing } from '@/features/rides/application/useMapBearing';
 import { usePickupRoute } from '@/features/rides/application/usePickupRoute';
-import { isTightCluster } from '@/features/rides/domain/pickupRoute';
+import { isTightCluster, streetLevelFrame } from '@/features/rides/domain/pickupRoute';
 import { VehicleMarker } from '@/features/driver/presentation/VehicleMarker';
 import type { VehicleType } from '@/features/auth/domain/types';
 import { MotorcycleRouteNotice } from './MotorcycleRouteNotice';
@@ -101,15 +101,12 @@ export function TripRouteMap({
       topPadding + (service === 'moto' && showMotorcycleNotice ? noticeHeight : 0), bottomPadding,
       showPlaceNamesInTooltip ? 72 : 40, showPlaceNamesInTooltip ? 88 : 44);
     // A lone pickup point (or a driver already there) would max out the zoom:
-    // center it at street level above the sheet instead.
-    if (points.length < 2 || isTightCluster(points, 40)) {
-      if (!pickupPhase) return;
-      map.animateCamera({ center: origin.coordinates, zoom: 17, heading: 0, pitch: 0 }, { duration: animated ? 400 : 0 });
-      return;
-    }
+    // frame ~90 m around it (plus the vehicle) in the area left above the sheet.
+    const tight = points.length < 2 || isTightCluster(points, 40);
+    if (tight && !pickupPhase) return;
     // Compact labels need less margin than full addresses. Fit the entire
     // geometry into the remaining viewport without zooming away from the route.
-    map.fitToCoordinates(points, { edgePadding, animated });
+    map.fitToCoordinates(tight ? [...streetLevelFrame(origin.coordinates, 90), ...points] : points, { edgePadding, animated });
   }, [ready, size, polyline, topPadding, bottomPadding, showPlaceNamesInTooltip, noticeHeight, service,
     showMotorcycleNotice, vehicleCoordinates, pickupPhase, origin.coordinates]);
 

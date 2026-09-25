@@ -7,7 +7,7 @@ import re
 
 BASE = Path(__file__).resolve().parents[1]
 ASSETS = Path(__file__).resolve().parent
-PLAN = (BASE / 'plan-salida-produccion.md').read_text(encoding='utf-8')
+PLAN = (BASE / 'production-launch-plan.md').read_text(encoding='utf-8')
 CONTENT = json.loads((ASSETS / 'production-slides.json').read_text(encoding='utf-8'))
 
 
@@ -91,8 +91,10 @@ def bullets(items):
 phase_rows = re.findall(r'^\| F(\d{2}) \| (.*?) \| (.*?) \| (.*?) \|$', PLAN, re.M)
 assert len(phase_rows) == 10, 'The plan must define ten phases.'
 PHASES = {int(number): {'title': title, 'status': status.split(':')[0]} for number, title, _, status in phase_rows}
-assert f'Revisión {CONTENT["revision"]}' in PLAN, 'Slide revision must match the plan.'
-assert CONTENT['date'] in PLAN, 'Slide date must match the plan.'
+assert any(f'{word} {CONTENT["revision"]}' in PLAN for word in ('Revision', 'Revisión')), \
+    'Slide revision must match the plan.'
+# The plan is written in English; the slides keep their Spanish date.
+assert CONTENT.get('plan_date', CONTENT['date']) in PLAN, 'Slide date must match the plan.'
 assert len(CONTENT['slides']) == 32, 'Preserve the 32-slide presentation.'
 assert {slide['phase'] for slide in CONTENT['slides'] if 'phase' in slide} == set(range(1, 11))
 

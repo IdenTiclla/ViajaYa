@@ -1,127 +1,127 @@
 ---
 name: arrancar-viajaya
-description: Levanta el entorno de desarrollo del monorepo ViajaYa (PostgreSQL en Docker + backend FastAPI + app Expo/React Native) y, opcionalmente, un emulador Android con la app instalada, verificando estado antes de actuar para no reiniciar nada que ya corre ni lanzar procesos que van a chocar. Úsala SIEMPRE que el usuario pida arrancar, iniciar, levantar, correr, start, run o poner en marcha el proyecto, la app, el backend, el servidor, la API o Expo — incluso si no nombra "ViajaYa" explícitamente. Úsala TAMBIÉN cuando pidan arrancar/abrir un emulador, el emulador del pasajero o del conductor, o "ver la app en el emulador", así como cuando pidan cambiar de rol, cambiar de emulador, "cámbiame a conductor/pasajero", o matar/cerrar/apagar el emulador. También cuando pregunten "¿cómo corro esto?" o quieran ver la app andando.
+description: Brings up the ViajaYa monorepo development environment (PostgreSQL in Docker + FastAPI backend + Expo/React Native app) and, optionally, an Android emulator with the app installed, checking state before acting so nothing already running is restarted and no clashing processes are launched. ALWAYS use it when the user asks to start, launch, bring up, run or boot the project, the app, the backend, the server, the API or Expo (e.g. "arranca", "inicia", "levanta", "corre", "pon en marcha") — even if they do not name "ViajaYa" explicitly. ALSO use it when they ask to start/open an emulator, the passenger or driver emulator, or "ver la app en el emulador", as well as when they ask to switch role, switch emulator, "cámbiame a conductor/pasajero", or kill/close/shut down the emulator. Also when they ask "¿cómo corro esto?" or want to see the app running.
 ---
 
-# Arrancar ViajaYa
+# Start ViajaYa
 
-Levanta el stack de desarrollo del monorepo ViajaYa. El monorepo tiene tres piezas
-que se levantan por separado:
+Brings up the ViajaYa monorepo development stack. The monorepo has three pieces
+that are started separately:
 
-1. **Base de datos** — PostgreSQL 16 en Docker (`docker compose`, servicio `db`).
-2. **Backend** — FastAPI en `backend/` (Python 3.11+, venv, uvicorn en :8000).
-3. **Mobile** — Expo + React Native en `mobile/` (npm, `npx expo start`).
+1. **Database** — PostgreSQL 16 in Docker (`docker compose`, service `db`).
+2. **Backend** — FastAPI in `backend/` (Python 3.11+, venv, uvicorn on :8000).
+3. **Mobile** — Expo + React Native in `mobile/` (npm, `npx expo start`).
 
-Y una cuarta pieza **opcional, solo bajo pedido explícito** (Paso 3d):
+And a fourth **optional piece, only on explicit request** (Step 3d):
 
-4. **Emulador Android** — un teléfono virtual con la app instalada. Pesa ~4.7 GB de RAM,
-   por eso NO forma parte del arranque por defecto; solo se levanta si el usuario lo pide.
+4. **Android emulator** — a virtual phone with the app installed. It uses ~4.7 GB of RAM,
+   which is why it is NOT part of the default startup; it is only started if the user asks.
 
-La raíz del repo es `/home/iden/Desktop/ViajaYa`. Todos los paths relativos salen de ahí.
+The repo root is `/home/iden/Desktop/ViajaYa`. All relative paths start from there.
 
-## Principio rector: verifica antes de actuar
+## Guiding principle: check before acting
 
-El usuario pide "arranca el proyecto" casi siempre **sin recordar** qué dejó corriendo la
-última vez. Por eso lo primero siempre es inspeccionar el estado real y, a partir de eso,
-hacer solo lo que falta. Reiniciar el backend o recargar la DB cuando ya están sanos
-genera demoras, pierde estado en memoria (sesiones, datos en caliente) y confunde al
-usuario que pensaba que "ya estaba andando".
+The user asks to "start the project" almost always **without remembering** what they left running
+last time. That is why the first thing is always to inspect the real state and, from that,
+do only what is missing. Restarting the backend or reloading the DB when they are already healthy
+causes delays, loses in-memory state (sessions, hot data) and confuses the
+user who thought it "was already running".
 
-Regla: **nunca lances un proceso que ya está vivo, y nunca asumas que falta algo sin
-comprobarlo.** Si todo está listo, dilo claramente y no ejecutes nada.
+Rule: **never launch a process that is already alive, and never assume something is missing without
+checking it.** If everything is ready, say so clearly and run nothing.
 
-## Paso 1 — Diagnosticar el estado actual
+## Step 1 — Diagnose the current state
 
-Antes de cualquier comando, revisa estas cuatro cosas en una sola pasada (lanza los
-chequeos en paralelo):
+Before any command, check these four things in a single pass (run the
+checks in parallel):
 
-1. **DB corriendo** → `docker ps --filter name=viajaya_db --format '{{.Names}} {{.Status}}'`.
-   Si muestra `viajaya_db ... healthy`, la DB está lista.
-2. **Backend en :8000** → `curl -fsS -o /dev/null http://localhost:8000/docs && echo UP || echo DOWN`.
-   El `DOWN` es lo normal si aún no levantaste.
-3. **Puertos ocupados** → `ss -ltnp 2>/dev/null | grep -E ':(5432|8000|8081|19000|19006) '`.
-   Útil para detectar procesos que NO son los nuestros pero ocupan el mismo puerto.
-4. **Prerrequisitos del repo** →
-   - `backend/.env` existe (si no, hay que copiarlo de `.env.example`).
-   - `backend/.venv/` existe **y su intérprete es válido** (ver Paso 1b). Si no existe
-     o está roto, hay que (re)crearlo con `uv`.
-   - `mobile/.env` existe.
-   - `mobile/node_modules/` existe (si no, falta `npm install`).
-5. **(Solo si van a usar emulador)** Emuladores ya corriendo →
-   `~/Android/Sdk/platform-tools/adb devices | grep emulator`. Si ya hay uno vivo, NO
-   lances otro (cada emulador pesa ~4.7 GB; ver Paso 3d).
+1. **DB running** → `docker ps --filter name=viajaya_db --format '{{.Names}} {{.Status}}'`.
+   If it shows `viajaya_db ... healthy`, the DB is ready.
+2. **Backend on :8000** → `curl -fsS -o /dev/null http://localhost:8000/docs && echo UP || echo DOWN`.
+   `DOWN` is normal if you have not started it yet.
+3. **Busy ports** → `ss -ltnp 2>/dev/null | grep -E ':(5432|8000|8081|19000|19006) '`.
+   Useful to detect processes that are NOT ours but take the same port.
+4. **Repo prerequisites** →
+   - `backend/.env` exists (if not, it must be copied from `.env.example`).
+   - `backend/.venv/` exists **and its interpreter is valid** (see Step 1b). If it does not exist
+     or is broken, it must be (re)created with `uv`.
+   - `mobile/.env` exists.
+   - `mobile/node_modules/` exists (if not, `npm install` is missing).
+5. **(Only if an emulator will be used)** Emulators already running →
+   `~/Android/Sdk/platform-tools/adb devices | grep emulator`. If one is already alive, do NOT
+   launch another (each emulator uses ~4.7 GB; see Step 3d).
 
-### Paso 1b — Verificar que el venv del backend no esté roto
+### Step 1b — Check that the backend venv is not broken
 
-El sistema no tiene `python3-venv` y el snap de VSCode fuerza
-`XDG_DATA_HOME=/home/iden/snap/code/<rev>/.local/share`, así que los venvs creados
-sin cuidar las rutas terminan apuntando a un Python que muere cuando VSCode actualiza
-el snap. **Siempre** verifica el intérprete antes de activar:
+The system does not have `python3-venv` and the VSCode snap forces
+`XDG_DATA_HOME=/home/iden/snap/code/<rev>/.local/share`, so venvs created
+without care for the paths end up pointing to a Python that dies when VSCode updates
+the snap. **Always** check the interpreter before activating:
 
 ```bash
 readlink -f /home/iden/Desktop/ViajaYa/backend/.venv/bin/python
 ```
 
-Si resuelve a algo bajo `/home/iden/snap/code/...` o a una ruta que no existe,
-el venv está **peligroso/roto** — bórralo y recréalo con `uv` como indica el Paso 3b.
-Si resuelve a `/home/iden/.local/share/uv/python/...` (fuera del snap), está sano.
+If it resolves to something under `/home/iden/snap/code/...` or to a path that does not exist,
+the venv is **dangerous/broken** — delete it and recreate it with `uv` as Step 3b says.
+If it resolves to `/home/iden/.local/share/uv/python/...` (outside the snap), it is healthy.
 
-Reporta al usuario un resumen breve del estado (qué está vivo, qué falta) **antes** de
-empezar a levantar. Ejemplo: "DB ya está healthy, backend caído, falta `mobile/.env`".
+Report a short summary of the state to the user (what is alive, what is missing) **before**
+starting to bring things up. Example: "DB is already healthy, backend down, `mobile/.env` missing".
 
-## Paso 2 — Decidir alcance
+## Step 2 — Decide the scope
 
-Si el usuario pidió todo ("arranca el proyecto"), levanta los tres primeros (db, backend,
-mobile). Si pidió uno ("levanta solo el backend"), respétalo. Si detectas que algo ya está
-corriendo y sano, **omítelo** y avisa que se deja como está.
+If the user asked for everything ("start the project"), bring up the first three (db, backend,
+mobile). If they asked for one ("start only the backend"), respect that. If you detect that something is already
+running and healthy, **skip it** and say it is left as is.
 
-El **emulador (3d) es aparte**: solo entra en el alcance si el usuario lo menciona
-explícitamente ("arranca el emulador", "abre la app en el emulador", "el emulador del
-conductor"). "Arranca el proyecto" a secas **no** levanta emulador.
+The **emulator (3d) is separate**: it is only in scope if the user mentions it
+explicitly ("start the emulator", "open the app on the emulator", "the driver's
+emulator"). A bare "start the project" does **not** bring up an emulator.
 
-## Paso 3 — Levantar por pieza
+## Step 3 — Bring up each piece
 
-Lanza cada pieza **en segundo plano** (`run_in_background: true` en Bash, o el patrón
-equivalente) para que las tres queden vivas a la vez, salvo que el usuario quiera ver
-el log en foreground.
+Launch each piece **in the background** (`run_in_background: true` in Bash, or the
+equivalent pattern) so all three stay alive at the same time, unless the user wants to see
+the log in the foreground.
 
-### 3a. Base de datos
+### 3a. Database
 
 ```bash
 cd /home/iden/Desktop/ViajaYa && docker compose up -d db
 ```
 
-Espera a que esté `healthy` antes de continuar con el backend (el contenedor tiene un
-healthcheck configurado; puedes sondearlo con `docker inspect --format '{{.State.Health.Status}}' viajaya_db`
-hasta que diga `healthy`).
+Wait for it to be `healthy` before continuing with the backend (the container has a
+configured healthcheck; you can poll it with `docker inspect --format '{{.State.Health.Status}}' viajaya_db`
+until it says `healthy`).
 
 ### 3b. Backend
 
-Solo si `:8000` estaba `DOWN`:
+Only if `:8000` was `DOWN`:
 
 ```bash
 cd /home/iden/Desktop/ViajaYa/backend
-source .venv/bin/activate          # si falta o está roto (Paso 1b): recrear con uv (ver abajo)
-alembic upgrade head               # aplicar migraciones pendientes
+source .venv/bin/activate          # if missing or broken (Step 1b): recreate with uv (see below)
+alembic upgrade head               # apply pending migrations
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-#### (Re)crear el venv con uv — cuando `.venv` no existe o está roto
+#### (Re)create the venv with uv — when `.venv` does not exist or is broken
 
-El sistema **no tiene** `python3-venv`, así que `python3 -m venv` falla. Usa `uv`
-instalado **fuera del snap** (en `~/.local`), con `XDG_DATA_HOME` y
-`UV_PYTHON_INSTALL_DIR` apuntando también fuera del snap, para que el intérprete
-sobreviva a las actualizaciones de VSCode:
+The system **does not have** `python3-venv`, so `python3 -m venv` fails. Use `uv`
+installed **outside the snap** (in `~/.local`), with `XDG_DATA_HOME` and
+`UV_PYTHON_INSTALL_DIR` also pointing outside the snap, so the interpreter
+survives VSCode updates:
 
 ```bash
-# 1) Asegurar uv en ~/.local (solo si no existe /home/iden/.local/uv)
+# 1) Ensure uv in ~/.local (only if /home/iden/.local/uv does not exist)
 export XDG_DATA_HOME=/home/iden/.local/share
 export UV_INSTALL_DIR=/home/iden/.local
 [ -x /home/iden/.local/uv ] || curl -LsSf https://astral.sh/uv/install.sh | sh
 ln -sf /home/iden/.local/uv  /home/iden/.local/bin/uv
 ln -sf /home/iden/.local/uvx /home/iden/.local/bin/uvx
 
-# 2) Recrear venv con Python 3.12 gestionado por uv (fuera del snap)
+# 2) Recreate the venv with Python 3.12 managed by uv (outside the snap)
 export UV_PYTHON_INSTALL_DIR=/home/iden/.local/share/uv/python
 cd /home/iden/Desktop/ViajaYa/backend
 rm -rf .venv
@@ -130,138 +130,138 @@ source .venv/bin/activate
 /home/iden/.local/uv pip install -e ".[dev]"
 ```
 
-Consideraciones:
-- Si no existe `backend/.env`, cópialo de `.env.example` y avisa al usuario que debe
-  editar `JWT_SECRET` y (si va a usar OAuth) las credenciales de Google/Facebook.
-- `alembic upgrade head` corre cada vez: es idempotente y asegura el esquema al día.
-  No hay necesidad de saltárselo "porque ya está aplicado".
-- El Swagger queda en `http://localhost:8000/docs`.
+Considerations:
+- If `backend/.env` does not exist, copy it from `.env.example` and tell the user they must
+  edit `JWT_SECRET` and (if they will use OAuth) the Google/Facebook credentials.
+- `alembic upgrade head` runs every time: it is idempotent and keeps the schema up to date.
+  There is no need to skip it "because it is already applied".
+- Swagger is at `http://localhost:8000/docs`.
 
 ### 3c. Mobile
 
-Solo si el usuario también quiere la app:
+Only if the user also wants the app:
 
 ```bash
 cd /home/iden/Desktop/ViajaYa/mobile
-npm install                        # solo si falta node_modules
+npm install                        # only if node_modules is missing
 npx expo start
 ```
 
-Consideraciones:
-- Si no existe `mobile/.env`, cópialo de `.env.example`. **Punto crítico**: `API_URL`
-  debe apuntar a la **IP de la LAN** del backend (no `localhost`), porque la app corre
-  en un dispositivo/emulador que no puede resolver `localhost` hacia la máquina host.
-  Obtén la IP con `hostname -I` y propón `http://<IP>:8000/api/v1`.
-- `expo start` abre un servidor de dev en :8081 (y usa :19000/:19006). Mantiene el
-  proceso en foreground por naturaleza; lánzalo en background y revisa el log para
-  confirmar que arrancó.
+Considerations:
+- If `mobile/.env` does not exist, copy it from `.env.example`. **Critical point**: `API_URL`
+  must point to the backend's **LAN IP** (not `localhost`), because the app runs
+  on a device/emulator that cannot resolve `localhost` to the host machine.
+  Get the IP with `hostname -I` and propose `http://<IP>:8000/api/v1`.
+- `expo start` opens a dev server on :8081 (and uses :19000/:19006). It keeps the
+  process in the foreground by nature; launch it in the background and check the log to
+  confirm it started.
 
-### 3d. Emulador Android (opcional — SOLO si lo piden)
+### 3d. Android emulator (optional — ONLY if asked)
 
-Solo si el usuario pidió explícitamente un emulador. La app **NO usa Expo Go**: tiene
-módulos nativos (Maps, OAuth), así que corre sobre un **dev-build** (APK propio). Requiere
-la DB + backend + Expo (3a-3c) arriba, porque la app pide su JavaScript a Metro en vivo.
+Only if the user explicitly asked for an emulator. The app does **NOT use Expo Go**: it has
+native modules (Maps, OAuth), so it runs on a **dev build** (its own APK). It requires
+DB + backend + Expo (3a-3c) up, because the app requests its JavaScript from Metro live.
 
-**Elegir el AVD por rol** (hay dos, ambos Pixel 6 / Android 14):
-- "conductor" → `viajaya_conductor` (puerto 5556 → device `emulator-5556`)
-- "pasajero" o sin rol → `viajaya_pasajero` (puerto 5554 → device `emulator-5554`)
+**Choose the AVD by role** (there are two, both Pixel 6 / Android 14):
+- "driver" ("conductor") → `viajaya_conductor` (port 5556 → device `emulator-5556`)
+- "passenger" ("pasajero") or no role → `viajaya_pasajero` (port 5554 → device `emulator-5554`)
 
-**Nunca levantes los dos a la vez salvo pedido explícito.** Esta máquina tiene 14 GB y un
-solo emulador ya llena el swap; dos provocan thrashing/OOM (VSCode se congela). Si piden el
-segundo, avisa del riesgo y ofrece la alternativa: 1 emulador + celular físico con el APK.
+**Never bring up both at the same time unless explicitly asked.** This machine has 14 GB and a
+single emulator already fills the swap; two cause thrashing/OOM (VSCode freezes). If they ask for the
+second one, warn about the risk and offer the alternative: 1 emulator + a physical phone with the APK.
 
-**Toolchain** (instalado fuera del snap, como el venv del backend — ver Paso 1b):
-JDK 17 en `~/.local/jdk-17`, Android SDK en `~/Android/Sdk`. Exporta siempre este entorno:
+**Toolchain** (installed outside the snap, like the backend venv — see Step 1b):
+JDK 17 in `~/.local/jdk-17`, Android SDK in `~/Android/Sdk`. Always export this environment:
 
 ```bash
 export JAVA_HOME=~/.local/jdk-17
 export ANDROID_HOME=~/Android/Sdk
 export ANDROID_SDK_ROOT=~/Android/Sdk
 export PATH="$ANDROID_HOME/emulator:$ANDROID_HOME/platform-tools:$JAVA_HOME/bin:$PATH"
-export DISPLAY=:0   # la ventana del emulador se abre en el escritorio del usuario
+export DISPLAY=:0   # the emulator window opens on the user's desktop
 ```
 
-**1) Verifica que no esté ya corriendo** (`adb devices`). Si el device del AVD elegido ya
-figura, salta al paso 3 (no relances).
+**1) Check it is not already running** (`adb devices`). If the chosen AVD's device is already
+listed, skip to step 3 (do not relaunch).
 
-**2) Enciende el emulador** (background) y espera el boot completo antes de instalar/abrir:
+**2) Start the emulator** (background) and wait for the full boot before installing/opening:
 
 ```bash
-# pasajero: -avd viajaya_pasajero -port 5554   ·   conductor: -avd viajaya_conductor -port 5556
+# passenger: -avd viajaya_pasajero -port 5554   ·   driver: -avd viajaya_conductor -port 5556
 emulator -avd viajaya_pasajero -port 5554 -gpu auto -no-snapshot -no-boot-anim &
 adb -s emulator-5554 wait-for-device
 until [ "$(adb -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; do sleep 3; done
 ```
 
-**3) Instala/abre la app.** El APK ya compilado (89 MB) vive en:
+**3) Install/open the app.** The already built APK (89 MB) lives in:
 `mobile/android/app/build/outputs/apk/debug/app-debug.apk`.
 
 ```bash
-# instala si el paquete com.viajaya.app no está (adb shell pm list packages | grep viaja)
+# install if the com.viajaya.app package is missing (adb shell pm list packages | grep viaja)
 adb -s emulator-5554 install -r /home/iden/Desktop/ViajaYa/mobile/android/app/build/outputs/apk/debug/app-debug.apk
-# abre apuntando a Metro (usa la IP LAN de mobile/.env, no localhost)
+# open it pointing to Metro (use the LAN IP from mobile/.env, not localhost)
 adb -s emulator-5554 shell am start -a android.intent.action.VIEW \
-  -d "exp+viajaya://expo-development-client/?url=http%3A%2F%2F<IP_LAN>%3A8081"
+  -d "exp+viajaya://expo-development-client/?url=http%3A%2F%2F<LAN_IP>%3A8081"
 ```
 
-Al abrir aparece el "developer menu" del dev-client: ciérralo tocando **Continue**
-(`adb -s emulator-5554 shell input tap <x> <y>`, o dilo al usuario). Verifica con una
-captura: `adb -s emulator-5554 exec-out screencap -p > /tmp/app.png`.
+When it opens, the dev-client "developer menu" appears: close it by tapping **Continue**
+(`adb -s emulator-5554 shell input tap <x> <y>`, or tell the user). Verify with a
+screenshot: `adb -s emulator-5554 exec-out screencap -p > /tmp/app.png`.
 
-**Si el APK NO existe** (repo recién clonado, sin `mobile/android/`): hay que compilar el
-dev-build una vez — `cd mobile && npx expo run:android --no-bundler` (prebuild + Gradle,
-varios minutos la 1ª vez; reusa el Metro ya corriendo). **No** pases `--device <serial>`
-(esta versión de Expo no lo matchea; con un solo emulador conectado lo toma solo). Solo se
-recompila al cambiar código nativo, dependencias nativas o claves/permisos de `app.json`;
-los cambios de JS/TS los sirve Metro sin recompilar.
+**If the APK does NOT exist** (freshly cloned repo, without `mobile/android/`): the
+dev build has to be compiled once — `cd mobile && npx expo run:android --no-bundler` (prebuild + Gradle,
+several minutes the first time; reuses the Metro already running). Do **not** pass `--device <serial>`
+(this Expo version does not match it; with a single emulator connected it picks it up by itself). It is only
+rebuilt when native code, native dependencies or `app.json` keys/permissions change;
+JS/TS changes are served by Metro without rebuilding.
 
-Cuentas de prueba del seed (contraseña común `ViajaYa1234#`): pasajero
-`passenger1@viajaya.com`, conductor taxi `driver.auto1@viajaya.com`. Sembrar con
-`python -m scripts.seed` (Paso 3b, venv activo) si faltan.
+Seed test accounts (sign in with phone + simulated OTP): passengers `+59170000001/2`,
+taxi drivers `+59170000011/12`, moto drivers `+59170000021/22`, moving truck `+59170000031`. Seed with
+`python -m scripts.seed` (Step 3b, venv active) if they are missing.
 
-### 3e. Cambiar de rol / apagar el emulador
+### 3e. Switch role / shut down the emulator
 
-Como esta máquina aguanta **un solo emulador a la vez**, "cambiar de rol" = apagar el
-que corre y abrir el del otro rol. No hace falta que el usuario diga los pasos: si pide
-"cámbiame a conductor" y hay un `viajaya_pasajero` vivo, mata ese y levanta el conductor.
+Since this machine handles **a single emulator at a time**, "switching role" = shutting down the
+one running and opening the other role's. The user does not need to spell out the steps: if they ask
+"cámbiame a conductor" and a `viajaya_pasajero` is alive, kill it and bring up the driver.
 
-**1) Identifica y mata la instancia actual** (limpio, no `kill -9`):
+**1) Identify and kill the current instance** (cleanly, not `kill -9`):
 
 ```bash
-adb devices                                   # ver qué emulator-XXXX está vivo
-adb -s emulator-5554 emu kill                 # apaga el pasajero (o 5556 para el conductor)
+adb devices                                   # see which emulator-XXXX is alive
+adb -s emulator-5554 emu kill                 # shuts down the passenger (or 5556 for the driver)
 ```
 
-Espera a que desaparezca de `adb devices` (1-2 s) antes de arrancar el otro, para liberar
-la RAM. Si el usuario solo pidió **apagar** (no cambiar), termina aquí y confirma.
+Wait for it to disappear from `adb devices` (1-2 s) before starting the other, to free
+RAM. If the user only asked to **shut down** (not switch), stop here and confirm.
 
-**2) Levanta el otro rol** siguiendo el Paso 3d con el AVD correspondiente. Cambiar de
-rol es **rápido**: el APK ya quedó instalado dentro de cada AVD la primera vez, así que
-es solo encender + abrir por deep link (sin `install` ni recompilar). db/backend/Expo
-siguen sirviendo a ambos por igual, no los toques.
+**2) Bring up the other role** following Step 3d with the corresponding AVD. Switching
+role is **fast**: the APK was already installed inside each AVD the first time, so
+it is only booting + opening by deep link (no `install` or rebuild). db/backend/Expo
+keep serving both equally, do not touch them.
 
-**Ojo — dos roles a la vez:** si el usuario NO quiere cambiar sino **tener los dos**
-(pasajero y conductor simultáneos, p. ej. para probar una oferta en vivo), es el caso de
-riesgo de RAM del Paso 3d: avísale y ofrece 1 emulador + celular físico con el mismo APK.
+**Watch out — two roles at once:** if the user does NOT want to switch but to **have both**
+(passenger and driver simultaneously, e.g. to test an offer live), it is the RAM
+risk case of Step 3d: warn them and offer 1 emulator + a physical phone with the same APK.
 
-## Paso 4 — Confirmar que quedó andando
+## Step 4 — Confirm it is running
 
-Después de levantar, verifica con una sola pasada:
+After bringing things up, verify in a single pass:
 
-- DB: `docker ps --filter name=viajaya_db` muestra `healthy`.
-- Backend: `curl -fsS http://localhost:8000/docs` responde (o `/health` si existe).
-- Mobile: el log de Expo muestra el QR / "Metro waiting on".
-- Emulador (si se levantó): `adb devices` lista el device y una captura muestra la app
-  cargada (no la pantalla de bundling). Vigila la RAM con `free -h`.
+- DB: `docker ps --filter name=viajaya_db` shows `healthy`.
+- Backend: `curl -fsS http://localhost:8000/docs` responds (or `/health` if it exists).
+- Mobile: the Expo log shows the QR / "Metro waiting on".
+- Emulator (if it was started): `adb devices` lists the device and a screenshot shows the app
+  loaded (not the bundling screen). Watch RAM with `free -h`.
 
-Entrega al usuario un resumen conciso con: qué quedó corriendo, en qué puertos, y las
-URLs útiles (`/docs`, el QR de Expo, y qué AVD/device quedó abierto). Si algo falló,
-muestra el error concreto y propón el fix en lugar de reintentar a ciegas.
+Give the user a concise summary with: what is running, on which ports, and the
+useful URLs (`/docs`, the Expo QR, and which AVD/device was opened). If something failed,
+show the concrete error and propose the fix instead of retrying blindly.
 
-## Cuándo NO usar esta skill
+## When NOT to use this skill
 
-- El usuario solo quiere **correr tests o lint** (`pytest`, `ruff`, `tsc`, `npm run lint`).
-  Eso no levanta el stack; hazlo directamente.
-- El usuario está **depurando un proceso que ya corre** (ver logs, reiniciar uno solo).
-  En ese caso opera sobre ese proceso, no releves todo el stack.
-- El usuario quiere **deployar a producción**. Esto es solo para desarrollo local.
+- The user only wants to **run tests or lint** (`pytest`, `ruff`, `tsc`, `npm run lint`).
+  That does not bring up the stack; do it directly.
+- The user is **debugging a process that is already running** (see logs, restart just one).
+  In that case operate on that process, do not bring up the whole stack again.
+- The user wants to **deploy to production**. This is only for local development.

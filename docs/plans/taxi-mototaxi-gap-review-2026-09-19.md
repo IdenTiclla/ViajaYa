@@ -1,198 +1,200 @@
-# Revisión y corrección de gaps: taxi y mototaxi
+# Gap review and fixes: taxi and mototaxi
 
-Fecha: 19/09/2026. Rama: `codex/ui-improvements-and-bugfixes`, sin commit.
-**Estado actual: H01–H05 corregidos y verificados localmente; ETA manual y rutas por servicio implementadas.**
-La certificación en dos teléfonos sigue pendiente.
+Date: 2026-09-19. Branch: `codex/ui-improvements-and-bugfixes`, uncommitted.
+**Current status: H01–H05 fixed and verified locally; manual ETA and per-service routes implemented.**
+Certification on two phones is still pending.
 
-## Ampliación posterior: recogida y experiencia compartida
+> File and component names below are historical (before the 2026-09 English renaming).
 
-La **revisión 13** completa la secuencia llegada → «ya salí» → inicio a bordo → cierre
-→ calificación. Corrige aceptación con respuesta perdida, oferta vencida en su
-confirmación, doble toque en el aviso y snapshots atrasados al reconectar. El aviso
-queda guardado y se entrega a ambos participantes; no se interpreta como embarque.
+## Later extension: pickup and shared experience
 
-Nueva evidencia: **721 backend**, **311 mobile**, **4 PostgreSQL**, **40 vistas + 16
-diálogos**, contrato API/WS y migración `0030`. [Detalle y límites de certificación](../implementation-plans/0013-passenger-driver-pickup-experience.md).
+**Revision 13** completes the sequence arrival → «ya salí» → start on board → closing
+→ rating. It fixes acceptance with a lost response, an offer that expires during its
+confirmation, a double tap on the notice and late snapshots on reconnect. The notice
+is stored and delivered to both participants; it is not interpreted as boarding.
 
-## Resultado de las correcciones
+New evidence: **721 backend**, **311 mobile**, **4 PostgreSQL**, **40 views + 16
+dialogs**, API/WS contract and migration `0030`. [Detail and certification limits](../implementation-plans/0013-passenger-driver-pickup-experience.md).
 
-| Hallazgo | Corrección y evidencia |
+## Result of the fixes
+
+| Finding | Fix and evidence |
 |---|---|
-| H01 · Edición | Consulta el viaje tras perder la respuesta. Si ya se publicó, libera el bloqueo de navegación y recupera ofertas, viaje o cierre según su estado. Si sigue pausado, conserva el formulario. |
-| H02 · Finalización | Recupera el detalle terminal. La consulta del conductor resuelve también el cierre pendiente antes de abrir el pool; un fallo de esa lectura conserva el error y no habilita solicitudes nuevas. |
-| H03 · Creación | Consulta la solicitud activa al fallar el POST y abre el viaje existente. Sin prueba de guardado mantiene el error y el borrador. |
-| H04 · Calificación | Nuevo `GET /api/v1/rides/{ride_id}/rating`: devuelve solo la calificación del participante autenticado para ese viaje. Permite reconocer un guardado aunque se pierda la respuesta; no interpreta cualquier 409 como éxito. |
-| H05 · Vehículo | Instantánea de ID, tipo, placa y modelo dentro de la asignación atómica. Detalle, eventos y historial usan esa instantánea. La migración 0029 recupera solo vehículos de viajes activos; los históricos sin evidencia quedan sin datos de vehículo. |
-| ETA | Los cinco caminos de oferta/reoferta piden entre 1 y 240 minutos hasta la recogida, sin valor inventado. La duración origen→destino sigue siendo distinta. |
-| Rutas | `moto` solicita `TWO_WHEELER`; taxi usa `DRIVE`. Caché separada por servicio y aviso de rutas de moto en pruebas. Un error del proveedor no se sustituye por una ruta de auto. |
+| H01 · Editing | Queries the ride after losing the response. If it was already published, it releases the navigation lock and recovers offers, ride or closing depending on its status. If it is still paused, it keeps the form. |
+| H02 · Finishing | Recovers the terminal detail. The driver's query also resolves the pending closing before opening the pool; a failure of that read keeps the error and does not enable new requests. |
+| H03 · Creation | Queries the active request when the POST fails and opens the existing ride. Without proof of saving it keeps the error and the draft. |
+| H04 · Rating | New `GET /api/v1/rides/{ride_id}/rating`: returns only the authenticated participant's rating for that ride. It allows recognizing a save even if the response is lost; it does not interpret any 409 as success. |
+| H05 · Vehicle | Snapshot of ID, type, plate and model inside the atomic assignment. Detail, events and history use that snapshot. Migration 0029 recovers only vehicles of active rides; historical rows without evidence stay without vehicle data. |
+| ETA | The five offer/re-offer paths ask for between 1 and 240 minutes to the pickup, without an invented value. The origin→destination duration is still separate. |
+| Routes | `moto` requests `TWO_WHEELER`; taxi uses `DRIVE`. Separate cache per service and a moto-route notice in testing. A provider error is not replaced by a car route. |
 
-### Validación de la corrección
+### Validation of the fix
 
-- Backend completo: **717 aprobadas, 80 omitidas** por requisitos optativos; cinco advertencias preexistentes. Tras el ajuste final de persistencia, la suite afectada de API/WS vuelve a pasar: **64 aprobadas**.
-- PostgreSQL aislado: **2 pruebas** de migración con taxi/moto y las cinco etapas de viaje; upgrade/downgrade/upgrade verificados. Migración aditiva aplicada a la base local, sin reiniciar servicios.
-- Mobile: **303 aprobadas**; TypeScript y lint sin errores. Contrato OpenAPI generado y comprobado en ambos proyectos.
-- Pantallas reales, hooks y React Query: **16 casos** (crear, editar, completar, calificar × taxi/moto × fallo antes/después del guardado). No hay cierre falso cuando el servidor no guardó.
-- ETA: **10 recorridos** de envío (cinco caminos × dos servicios) y **8 revisiones** de tamaño/tema/texto ampliado. Cancelar no envía una oferta; valores vacíos o fuera de rango no habilitan el envío.
-- Google Routes: pruebas del payload por servicio, geometría, fallo sin sustitución por auto y separación de caché. No se certificaron rutas reales del proveedor ni conducción en calle.
-- Bundle Android completo: HTTP 200, **11.874.244 bytes**. API y Metro sanos; no equivale a generar un APK actualizado.
+- Full backend: **717 passing, 80 skipped** due to optional requirements; five pre-existing warnings. After the final persistence adjustment, the affected API/WS suite passes again: **64 passing**.
+- Isolated PostgreSQL: **2 migration tests** with taxi/moto and the five ride stages; upgrade/downgrade/upgrade verified. Additive migration applied to the local database, without restarting services.
+- Mobile: **303 passing**; TypeScript and lint without errors. OpenAPI contract generated and checked in both projects.
+- Real screens, hooks and React Query: **16 cases** (create, edit, complete, rate × taxi/moto × failure before/after saving). There is no false closing when the server did not save.
+- ETA: **10 submission flows** (five paths × two services) and **8 reviews** of size/theme/enlarged text. Cancelling does not send an offer; empty or out-of-range values do not enable sending.
+- Google Routes: tests of the payload per service, geometry, failure without replacing with a car and cache separation. Real provider routes and street driving were not certified.
+- Full Android bundle: HTTP 200, **11,874,244 bytes**. API and Metro healthy; it is not equivalent to generating an updated APK.
 
-Evidencia reproducible local: `local-files/taxi-mototaxi-fixes-2026-09-19/`.
-Las pruebas de navegador sustituyen red, mapa y navegación nativa para controlar los fallos. Las pruebas de API, WebSocket y migración se ejecutan por separado. Continúa pendiente probar el dev build en dos teléfonos, incluyendo desconexión, teclado, TalkBack, mapas y contactos nativos.
+Local reproducible evidence: `local-files/taxi-mototaxi-fixes-2026-09-19/`.
+The browser tests replace network, map and native navigation to control the failures. The API, WebSocket and migration tests run separately. Testing the dev build on two phones is still pending, including disconnection, keyboard, TalkBack, maps and native contacts.
 
-## Hallazgos originales y reproducción anterior a las correcciones
+## Original findings and reproduction before the fixes
 
-Las secciones H01–H05 siguientes conservan la descripción y referencias de la auditoría inicial; no describen fallos todavía abiertos.
+The following H01–H05 sections keep the description and references of the initial audit; they do not describe failures that are still open.
 
-## Hallazgos priorizados
+## Prioritized findings
 
-### H01 · P1 · Guardar una edición puede dejar al pasajero atrapado en el formulario
+### H01 · P1 · Saving an edit can leave the passenger trapped in the form
 
-**Disparador:** el servidor guarda `PATCH /rides/{id}` y vuelve a publicar la
-solicitud (`paused=false`), pero la respuesta no llega al móvil.
+**Trigger:** the server saves `PATCH /rides/{id}` and republishes the
+request (`paused=false`), but the response does not reach the phone.
 
-**Reproducción:** crear → pausar para modificar → guardar → perder la respuesta
-HTTP después del commit → volver a consultar el detalle → pulsar Guardar otra vez.
-El backend responde 409, «Debes pausar la solicitud antes de editarla». La pantalla
-sigue en edición aunque ya conoce `paused=false`. Volver abre «¿Cancelar la
-solicitud?»; no existe una salida que continúe esa negociación sin cancelarla.
+**Reproduction:** create → pause to edit → save → lose the HTTP response
+after the commit → query the detail again → tap Save again.
+The backend responds 409, «Debes pausar la solicitud antes de editarla». The screen
+stays in editing even though it already knows `paused=false`. Going back opens «¿Cancelar la
+solicitud?»; there is no exit that continues that negotiation without cancelling it.
 
-**Causa:** `ConfigureTripScreen.tsx:371–383` solo navega desde `onSuccess`; el
-bloqueo de salida de `:181–183` depende del parámetro `rideId`, no de si el servidor
-sigue pausado. El GET posterior hidrata el formulario una sola vez, pero no
-reconcilia su etapa.
+**Cause:** `ConfigureTripScreen.tsx:371–383` only navigates from `onSuccess`; the
+exit lock of `:181–183` depends on the `rideId` parameter, not on whether the server
+is still paused. The later GET hydrates the form only once, but does not
+reconcile its stage.
 
-**Impacto:** se puede cancelar involuntariamente una solicitud ya publicada para
-salir de una edición que terminó. Afecta tanto a taxi como a mototaxi.
+**Impact:** an already published request can be cancelled by accident to
+leave an edit that finished. It affects both taxi and mototaxi.
 
-**Corrección propuesta:** resolver la pantalla desde el estado autoritativo al
-recuperar la conexión. Una solicitud publicada debe volver a ofertas; una asignada,
-al viaje. Mantener el borrador si el guardado realmente falló.
+**Proposed fix:** resolve the screen from the authoritative state when
+the connection recovers. A published request must go back to offers; an assigned one,
+to the ride. Keep the draft if the save really failed.
 
-### H02 · P1 · Una finalización con respuesta perdida omite el cierre del conductor
+### H02 · P1 · A finish with a lost response skips the driver's closing
 
-**Disparador:** WebSocket no disponible y respuesta HTTP perdida después de que
-el servidor pasa a `completed`.
+**Trigger:** WebSocket unavailable and HTTP response lost after
+the server moves to `completed`.
 
-**Reproducción:** en el componente real `SolicitudesEntrantesScreen`, finalizar
-un viaje `in_progress`, guardar el cambio en el repositorio simulado y rechazar
-la respuesta. Resultado: el GET activo devuelve `null`, se muestra «Esperando
-nuevas solicitudes» y la calificación no aparece. El servidor conserva un cierre
-pendiente y `['pending-rating-ride']` continúa en `null`.
+**Reproduction:** in the real `SolicitudesEntrantesScreen` component, finish
+an `in_progress` ride, save the change in the simulated repository and reject
+the response. Result: the active GET returns `null`, «Esperando
+nuevas solicitudes» is shown and the rating does not appear. The server keeps a pending
+closing and `['pending-rating-ride']` stays `null`.
 
-**Causa:** `useTripActions.ts:30–34` invalida detalle y viajes activos, pero no el
-pendiente de calificación. El conductor no tiene un observador activo de detalle;
-invalidarlo no provoca ese GET. `usePendingRatingRide` no tiene polling, y la
-pantalla habilita el pool cuando activo y pendiente son nulos
+**Cause:** `useTripActions.ts:30–34` invalidates detail and active rides, but not the
+pending rating. The driver has no active detail observer;
+invalidating it does not trigger that GET. `usePendingRatingRide` has no polling, and the
+screen enables the pool when active and pending are null
 (`SolicitudesEntrantesScreen.tsx:96–110`).
 
-**Evidencia:** consultas observadas: `active → pending → active → pool`; falta una
-segunda consulta de pendientes. El contrato FastAPI real devuelve activo `null`
-y el viaje completado en `/rides/me/pending-rating`.
+**Evidence:** observed queries: `active → pending → active → pool`; a
+second pending query is missing. The real FastAPI contract returns active `null`
+and the completed ride in `/rides/me/pending-rating`.
 
-**Corrección propuesta:** reconciliar también el cierre pendiente y mantener la
-pantalla de recuperación hasta resolverlo antes de volver al pool. Probar con el
-padre y los hooks de consulta reales, además de la tarjeta de viaje.
+**Proposed fix:** also reconcile the pending closing and keep the
+recovery screen until it is resolved before going back to the pool. Test with the
+parent and the real query hooks, in addition to the ride card.
 
-### H03 · P2 · Una creación con respuesta perdida no recupera la solicitud creada
+### H03 · P2 · A creation with a lost response does not recover the created request
 
-**Reproducción:** `POST /rides` confirma en servidor, el móvil recibe error de red;
-al reintentar, obtiene 409 «Ya tienes una solicitud o un viaje activo». El usuario
-permanece en Configurar viaje y no ve las ofertas de su solicitud existente.
+**Reproduction:** `POST /rides` commits on the server, the phone receives a network error;
+on retry, it gets 409 «Ya tienes una solicitud o un viaje activo». The user
+stays on Configure ride and does not see the offers of their existing request.
 
-**Causa:** `ConfigureTripScreen.tsx:136–148` solo invalida el activo y navega a
-ofertas en `onSuccess`. No reconcilia un resultado incierto. La recuperación de
-Home se ejecuta al recuperar el foco, no desde el formulario que está encima.
+**Cause:** `ConfigureTripScreen.tsx:136–148` only invalidates the active ride and navigates to
+offers in `onSuccess`. It does not reconcile an uncertain result. Home's recovery
+runs when focus returns, not from the form on top of it.
 
-**Impacto:** la solicitud sigue activa y puede recibir ofertas mientras su dueño
-cree que no pudo crearla. Volver a Home permite recuperarla, pero repetir Buscar
-ofertas no resuelve el error.
+**Impact:** the request stays active and can receive offers while its owner
+thinks it could not be created. Going back Home allows recovering it, but repeating Buscar
+ofertas does not resolve the error.
 
-**Corrección propuesta:** tras un resultado de creación incierto o conflicto por
-activo, consultar el viaje vigente y continuar su etapa; conservar el formulario
-solo si se confirma que no se creó una solicitud.
+**Proposed fix:** after an uncertain creation result or a conflict because of an
+active ride, query the current ride and continue its stage; keep the form
+only if it is confirmed that no request was created.
 
-### H04 · P2 · Una calificación guardada puede dejar la tarjeta en error permanente al reintentar
+### H04 · P2 · A saved rating can leave the card in a permanent error on retry
 
-**Reproducción:** enviar cinco estrellas → guardar en servidor → perder respuesta
-→ volver a enviar. Resultado real de la API: 409 «Ya calificaste este viaje».
-La pantalla sigue abierta; `onDone` nunca se ejecuta.
+**Reproduction:** send five stars → saved on the server → lose the response
+→ send again. Real API result: 409 «Ya calificaste este viaje».
+The screen stays open; `onDone` never runs.
 
-**Causa:** `useCloseFlow.ts:43–49` actualiza pendientes solo desde `onSuccess`.
-`RideRatingCard.tsx:53–66` captura el error sin comprobar si ya existe la
-calificación. El viaje detallado no informa la calificación del actor.
+**Cause:** `useCloseFlow.ts:43–49` updates pending ones only from `onSuccess`.
+`RideRatingCard.tsx:53–66` catches the error without checking whether the
+rating already exists. The detailed ride does not report the actor's rating.
 
-**Impacto:** el usuario debe recurrir a Omitir o a salir/reabrir para abandonar un
-cierre que ya completó. No duplica la calificación: el backend protege ese caso.
+**Impact:** the user has to resort to Skip or leave/reopen to abandon a
+closing they already completed. It does not duplicate the rating: the backend protects that case.
 
-**Corrección propuesta:** añadir reconciliación explícita del cierre o semántica
-idempotente compatible. Confirmar la calificación existente antes de cerrar;
-no tratar cualquier 409 como éxito.
+**Proposed fix:** add explicit closing reconciliation or compatible
+idempotent semantics. Confirm the existing rating before closing;
+do not treat any 409 as success.
 
-### H05 · P2 · El vehículo de un viaje anterior cambia al cambiar el vehículo activo
+### H05 · P2 · The vehicle of an earlier ride changes when the active vehicle changes
 
-**Reproducción con API real:** registrar taxi `TAXI-123` y moto `MOTO-123` →
-completar un viaje en taxi → desconectarse → activar moto → consultar el viaje
-y el historial del pasajero. El servicio conserva `taxi`, pero conductor y
-contraparte ahora muestran `moto`, `MOTO-123` y el modelo de la moto. Reproducido
-también en la dirección inversa.
+**Reproduction with the real API:** register taxi `TAXI-123` and moto `MOTO-123` →
+complete a ride by taxi → go offline → activate moto → query the ride
+and the passenger's history. The service keeps `taxi`, but driver and
+counterpart now show `moto`, `MOTO-123` and the moto's model. Also reproduced
+in the reverse direction.
 
-**Causa:** `GetRide.execute` (`get_ride.py:34–35`) reconstruye el conductor desde
-el usuario actual; `RideResponse.from_detail` (`schemas/rides.py:263–272`) usa su
-vehículo activo. El historial hace lo mismo en `repositories.py:732–787`.
-La asignación no conserva una instantánea de los datos del vehículo utilizado.
+**Cause:** `GetRide.execute` (`get_ride.py:34–35`) rebuilds the driver from
+the current user; `RideResponse.from_detail` (`schemas/rides.py:263–272`) uses their
+active vehicle. History does the same in `repositories.py:732–787`.
+The assignment does not keep a snapshot of the data of the vehicle used.
 
-**Impacto:** cierre, identificación histórica y soporte muestran un vehículo que
-no hizo el viaje. Puede ocurrir antes de que el pasajero abra su calificación.
+**Impact:** closing, historical identification and support show a vehicle that
+did not make the ride. It can happen before the passenger opens their rating.
 
-**Corrección propuesta:** guardar tipo, placa, modelo e identificación del vehículo
-al asignar el viaje y consumir esa instantánea en detalle, cierre e historial.
-Los viajes históricos sin instantánea requieren una política explícita; no se
-puede deducir su vehículo original usando el que está activo ahora.
+**Proposed fix:** store the vehicle's type, plate, model and identification
+when assigning the ride and consume that snapshot in detail, closing and history.
+Historical rides without a snapshot require an explicit policy; their original vehicle
+cannot be deduced from the one active now.
 
-## Gaps observados en la auditoría inicial
+## Gaps observed in the initial audit
 
-- **ETA de llegada sin fuente en la app.** Los cinco caminos de oferta/reoferta en
-  `SolicitudesEntrantesScreen.tsx:172–232` y `OfertaEnviadaScreen.tsx:145–171` envían
-  precio y `acceptAtFare`, sin `etaMin`. No hay entrada del conductor ni cálculo
-  de conductor a recogida. `TarjetaOferta.tsx:73–75` acaba mostrando «Sin estimación».
-  Las pruebas API que proporcionan `eta_min` manualmente no validan esta experiencia.
-- **Mototaxi usa la misma ruta que taxi.** `routesService.ts:45–49` fija `DRIVE`,
-  y `useRoute.ts:18` comparte caché por coordenadas, sin servicio. No hay
-  diferenciación ni certificación de rutas de mototaxi. Esto no demuestra que una
-  ruta concreta sea incorrecta; documenta la ausencia de esa capacidad.
-- **Seguimiento y operación productiva pendientes:** GPS compartido, segundo
-  plano, navegación a recogida/destino, recogida por código, cobro QR comprobable
-  y soporte de incidentes siguen fuera del cierre local. Son pendientes ya
-  identificados en F04–F09, no implementaciones terminadas por la revisión 11.
+- **Arrival ETA without a source in the app.** The five offer/re-offer paths in
+  `SolicitudesEntrantesScreen.tsx:172–232` and `OfertaEnviadaScreen.tsx:145–171` send
+  price and `acceptAtFare`, without `etaMin`. There is no driver input or computation
+  from driver to pickup. `TarjetaOferta.tsx:73–75` ends up showing «Sin estimación».
+  The API tests that provide `eta_min` manually do not validate this experience.
+- **Mototaxi uses the same route as taxi.** `routesService.ts:45–49` pins `DRIVE`,
+  and `useRoute.ts:18` shares the cache by coordinates, without service. There is no
+  differentiation or certification of mototaxi routes. This does not prove that a
+  specific route is wrong; it documents the absence of that capability.
+- **Tracking and production operations pending:** shared GPS, background,
+  navigation to pickup/destination, pickup by code, verifiable QR collection
+  and incident support remain outside the local closing. They are pending items already
+  identified in F04–F09, not implementations finished by revision 11.
 
-## Evidencia de reproducción anterior a la corrección
+## Reproduction evidence before the fix
 
-- **Ocho reproducciones de interfaz:** cuatro escenarios de respuesta perdida ×
-  taxi/mototaxi, sin errores JavaScript. Se usaron pantallas reales, React Query,
-  `useRides`, `useTripActions`, mutaciones y stores reales. Repositorio HTTP, mapas,
-  ubicación y navegación nativa se sustituyeron para controlar el punto de fallo.
-- **Cuatro comprobaciones aisladas de API:** creación/edición repetidas y
-  cierre/calificación/vehículo histórico, parametrizadas para ambos servicios.
-  FastAPI real + SQLite de pruebas. Se verifican respuestas y estados observados;
-  que estas reproducciones pasen confirma el fallo, no que el producto esté corregido.
-- No se modificaron cuentas, viajes, base local ni procesos de desarrollo en uso.
-- Los 289 tests móviles y 60 de API/WS de la entrega anterior no cubrían estas
-  combinaciones. El visor previo sustituía `useRides` y no montaba el padre real
-  del conductor: por eso no detectó H02. Los tests anteriores de reintento
-  modelaban errores antes de guardar, no respuestas perdidas después del commit.
-- No se certificaron aquí comportamiento nativo en dos teléfonos, entrega de
-  mapas ni carreras PostgreSQL. SQLite no valida bloqueos `FOR UPDATE`.
+- **Eight interface reproductions:** four lost-response scenarios ×
+  taxi/mototaxi, without JavaScript errors. Real screens, React Query,
+  `useRides`, `useTripActions`, mutations and stores were used. The HTTP repository, maps,
+  location and native navigation were replaced to control the failure point.
+- **Four isolated API checks:** repeated creation/editing and
+  closing/rating/historical vehicle, parameterized for both services.
+  Real FastAPI + test SQLite. Observed responses and states are verified;
+  these reproductions passing confirms the failure, not that the product is fixed.
+- No accounts, rides, local database or development processes in use were modified.
+- The 289 mobile tests and 60 API/WS tests of the previous delivery did not cover these
+  combinations. The previous viewer replaced `useRides` and did not mount the driver's real
+  parent: that is why it did not detect H02. The earlier retry tests
+  modeled errors before saving, not responses lost after the commit.
+- Native behavior on two phones, map delivery and
+  PostgreSQL races were not certified here. SQLite does not validate `FOR UPDATE` locks.
 
-Evidencia local: `local-files/taxi-mototaxi-gaps-2026-09-19/`.
-Incluye `findings.json`, capturas, `browser-tests.log`, `api-tests.log`,
-`test_api_contract.py` y el visor/script de reproducción. Los casos de HTTP perdido
-simulan la pérdida de respuesta en el límite del repositorio; el contrato que
-siguen se comprobó independientemente contra la API.
+Local evidence: `local-files/taxi-mototaxi-gaps-2026-09-19/`.
+It includes `findings.json`, screenshots, `browser-tests.log`, `api-tests.log`,
+`test_api_contract.py` and the reproduction viewer/script. The lost-HTTP cases
+simulate losing the response at the repository boundary; the contract they
+follow was checked independently against the API.
 
-El orden anterior de corrección ya se ejecutó. Queda la certificación nativa y los pendientes productivos F04–F09 descritos en el plan 0012.
+The previous fix order has already been carried out. Native certification and the F04–F09 production pending items described in plan 0012 remain.
 
 
-**Continuación, revisión 14:** las pruebas del usuario detectaron un error de
-cancelación interna al calificar como conductor y cambios de encuadre entre
-servicios. La ETA manual se reemplazó por cálculo automático GPS → recogida.
-Ver [corrección, rutas con tráfico y evidencia actual](../implementation-plans/0014-automatic-arrival-and-stable-route.md).
+**Continuation, revision 14:** the user's tests detected an internal
+cancellation error when rating as a driver and framing changes between
+services. The manual ETA was replaced by an automatic GPS → pickup computation.
+See [fix, traffic-aware routes and current evidence](../implementation-plans/0014-automatic-arrival-and-stable-route.md).

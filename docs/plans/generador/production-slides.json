@@ -1,6 +1,7 @@
 {
   "revision": 23,
   "date": "19 de septiembre de 2026",
+  "plan_date": "September 19, 2026",
   "slides": [
     {
       "title": "ViajaYa<br>Salida a producción",
@@ -251,7 +252,7 @@
         "Migraciones nuevas después de 0028 y backfill probado en PostgreSQL."
       ],
       "criterion": "Bolivia conserva su comportamiento y un país sintético demuestra el aislamiento de moneda y horario.",
-      "source": "BO-ALL preserva compatibilidad; no autoriza abrir comercialmente todo el territorio. [Plan 0011](../implementation-plans/0011-territorios-y-moneda.md)."
+      "source": "BO-ALL preserva compatibilidad; no autoriza abrir comercialmente todo el territorio. [Plan 0011](../implementation-plans/0011-territories-and-currency.md)."
     },
     {
       "phase": 3,
@@ -725,7 +726,7 @@
         }
       ],
       "criterion": "Después: F03-A y la operación administrativa. SMS y QR avanzan como gestiones paralelas.",
-      "source": "[Plan completo, revisión 16](plan-salida-produccion.md) · [Evidencia del 19/09](production-readiness-2026-09-19.md)."
+      "source": "[Plan completo, revisión 16](production-launch-plan.md) · [Evidencia del 19/09](production-readiness-2026-09-19.md)."
     }
   ]
 }

@@ -1,307 +1,310 @@
-# Plan de salida a producción de ViajaYa
+# ViajaYa production launch plan
 
-Fecha: 9 de septiembre de 2026. Estado: plan propuesto; el trabajo descrito está pendiente de implementación y certificación.
+> Historical snapshot (revision 4) kept as background for the old organization scripts; the current
+> plan is `../production-launch-plan.md`.
 
-Revisión 2: acceso principal por teléfono y OTP, Google/Facebook con teléfono verificado y navegación del conductor dentro de la app.
+Date: September 9, 2026. Status: proposed plan; the work described is pending implementation and certification.
 
-Revisión 3: tres entornos explícitos —desarrollo, pruebas y producción— con aislamiento y promoción controlada de versiones.
+Revision 2: main access by phone and OTP, Google/Facebook with a verified phone and driver navigation inside the app.
 
-Revisión 4: OTP simulado con autocompletado en desarrollo y pruebas, sin envíos SMS ni cargos de un proveedor de OTP.
+Revision 3: three explicit environments —development, testing and production— with isolation and controlled promotion of versions.
 
-## 1. Objetivo y decisiones de partida
+Revision 4: simulated OTP with autofill in development and testing, without SMS sending or OTP provider charges.
 
-Lanzar públicamente en **Android, en Bolivia, con taxi, moto y encomiendas**, preparado para incorporar otros países. Incluir pagos **QR al finalizar y efectivo**, comisión por servicio y un **panel administrativo con feature flags**.
+## 1. Goal and starting decisions
 
-La capacidad objetivo será **500 conductores conectados y 5.000 servicios diarios**. Es una meta que debemos comprobar con pruebas; no exige contratar toda esa capacidad desde el primer día.
+Launch publicly on **Android, in Bolivia, with taxi, moto and parcels**, prepared to add other countries. Include **QR payments at the end and cash**, a per-service commission and an **admin panel with feature flags**.
 
-El proyecto ya tiene negociación, asignación atómica, ciclo del viaje, historial, calificaciones, WebSockets, outbox, Redis y una base de pruebas automatizadas. Los principales pendientes están en seguridad de cuentas, operación comercial, seguimiento GPS, pagos, encomiendas y despliegue.
+The target capacity will be **500 connected drivers and 5,000 daily services**. It is a goal we must prove with tests; it does not require hiring all that capacity from day one.
 
-Decisiones iniciales:
+The project already has negotiation, atomic assignment, ride lifecycle, history, ratings, WebSockets, outbox, Redis and a base of automated tests. The main pending items are in account security, commercial operations, GPS tracking, payments, parcels and deployment.
 
-- Activar cobertura por ciudades y zonas desde el panel. Publicar en Bolivia no habilitará automáticamente todo el territorio.
-- Mantener el monolito FastAPI y la app actual.
-- Operar exactamente tres entornos: **desarrollo**, **pruebas** y **producción**. Pruebas es el entorno de validación previo al lanzamiento, también llamado staging; no es un cuarto entorno.
-- Unificar inicio de sesión y registro en **Continuar con teléfono**, sin contraseña para el flujo nuevo: **OTP por SMS real en producción** y **OTP simulado con autocompletado en desarrollo/pruebas**. Google y Facebook serán alternativas opcionales, también sujetas al flujo de verificación del teléfono correspondiente al entorno.
-- Ofrecer **navegación giro a giro dentro de ViajaYa con Google Navigation SDK**, hacia la recogida y luego al destino. Waze será una opción externa voluntaria; no sustituye el requisito de navegación integrada.
-- Incorporar país, moneda, zona horaria y proveedores configurables. Bolivia comienza con `BO`, `BOB` y `America/La_Paz`.
-- Dejar iOS, viajes internacionales y conversión de monedas para fases posteriores.
-- Usar las siguientes cifras como orientación presupuestaria; contratar servicios será un hito posterior.
+Initial decisions:
 
-## 2. Trabajo pendiente, en orden de ejecución
+- Enable coverage by cities and zones from the panel. Publishing in Bolivia will not automatically enable the whole territory.
+- Keep the FastAPI monolith and the current app.
+- Operate exactly three environments: **development**, **testing** and **production**. Testing is the pre-launch validation environment, also called staging; it is not a fourth environment.
+- Unify sign-in and sign-up into **Continuar con teléfono**, without a password for the new flow: **real SMS OTP in production** and **simulated OTP with autofill in development/testing**. Google and Facebook will be optional alternatives, also subject to the phone verification flow of the corresponding environment.
+- Offer **turn-by-turn navigation inside ViajaYa with the Google Navigation SDK**, to the pickup and then to the destination. Waze will be a voluntary external option; it does not replace the integrated navigation requirement.
+- Add configurable country, currency, time zone and providers. Bolivia starts with `BO`, `BOB` and `America/La_Paz`.
+- Leave iOS, international rides and currency conversion for later phases.
+- Use the following figures as budget guidance; hiring services will be a later milestone.
 
-**1. Preparar la operación y los proveedores**
+## 2. Pending work, in execution order
 
-- Registrar las zonas de apertura, servicios disponibles, horarios y responsables de soporte.
-- Revisar con asesoría local las condiciones aplicables a transporte, moto, encomiendas, seguros, contratos de conductores, impuestos y facturación.
-- Cotizar una pasarela boliviana que permita QR dinámico, consulta de pagos, notificaciones verificables, devoluciones y liquidaciones. Confirmar contractualmente que admite el modelo de cobro y comisión de ViajaYa.
-- Definir en configuración comercial el porcentaje de comisión, calendario de liquidación, tratamiento de cancelaciones y límites de deuda por efectivo.
-- Preparar cuentas empresariales de proveedores, dominio, correo y Google Play, con accesos recuperables y responsables identificados.
-- Certificar la entrega real de OTP con operadores bolivianos mediante una comprobación productiva acotada antes de la apertura, con costo presupuestado; la simulación no certifica entrega SMS. Desarrollo y pruebas nunca llaman al proveedor OTP real. Habilitar países de destino de SMS productivos por configuración, según cobertura comercial, sin asumir entrega mundial.
-- Cotizar Google Navigation SDK y validar sus condiciones para una app de movilidad, además de Maps/Places/Routes. Medir el consumo real antes de contratar un compromiso de volumen.
+**1. Prepare operations and providers**
 
-**Criterio de cierre:** cada zona tiene operación responsable y las integraciones de dinero tienen condiciones comerciales y entorno de pruebas confirmados.
+- Record the launch zones, available services, hours and support owners.
+- Review with local counsel the conditions applicable to transport, moto, parcels, insurance, driver contracts, taxes and invoicing.
+- Get quotes from a Bolivian gateway that supports dynamic QR, payment queries, verifiable notifications, refunds and settlements. Confirm contractually that it supports ViajaYa's collection and commission model.
+- Define in the commercial configuration the commission percentage, settlement calendar, treatment of cancellations and debt limits for cash.
+- Prepare business accounts with providers, domain, email and Google Play, with recoverable access and identified owners.
+- Certify the real OTP delivery with Bolivian carriers through a bounded production check before launch, with a budgeted cost; simulation does not certify SMS delivery. Development and testing never call the real OTP provider. Enable production SMS destination countries by configuration, according to commercial coverage, without assuming worldwide delivery.
+- Get a quote for the Google Navigation SDK and validate its terms for a mobility app, in addition to Maps/Places/Routes. Measure the real usage before committing to a volume contract.
 
-**2. Acceso sencillo por teléfono, OTP y cuentas sociales**
+**Exit criterion:** each zone has responsible operations and the money integrations have confirmed commercial terms and a test environment.
 
-- Reemplazar las pantallas separadas de login/registro por **Continuar con teléfono**, con selector de país y prefijo +591 inicial. Normalizar a E.164; admitir números extranjeros cuando el proveedor y la configuración lo permitan.
-- Flujo principal: **teléfono → código OTP → cuenta existente o completar nombre y términos → inicio**. El código llega por SMS en producción y se simula/autocompleta en desarrollo y pruebas. No pedir correo ni contraseña para usar este acceso. Resolver la existencia de la cuenta después de verificar el código, con respuestas que no permitan enumerar teléfonos registrados.
-- Mantener **Continuar con Google** y **Continuar con Facebook**. El backend verifica la identidad del proveedor y, en el primer acceso sin teléfono verificado, solicita **número → OTP → completar datos/términos**. La identidad social por sí sola no permite pedir viajes ni conducir.
-- Una sesión válida se conserva al reabrir la app. No enviar un SMS en cada apertura ni en cada viaje. Volver a verificar al cambiar el número, recuperar acceso o cuando una comprobación de seguridad lo exija.
-- Modelar una cuenta interna estable y varias identidades vinculadas. El teléfono verificado debe ser único entre cuentas activas. Vincular Google/Facebook solo con confirmación explícita y prueba de ambas identidades; no fusionar por coincidencia de correo ni por un teléfono histórico sin verificar.
-- Guardar desafíos OTP con caducidad, uso único, número, finalidad e identificador de proveedor. Limitar intentos, reenvíos y solicitudes por número, IP y dispositivo; contemplar códigos incorrectos, vencidos, SMS retrasados y errores del proveedor. No guardar códigos ni tokens en logs.
-- Emitir credenciales operativas solo tras la verificación requerida; el alta debe ser idempotente para evitar duplicados ante reintentos o solicitudes simultáneas. Incorporar sesiones por dispositivo, rotación de refresh, detección de reutilización y revocación HTTP/WS.
-- Permitir editar y verificar un nuevo número mediante reautenticación; revocar sesiones cuando corresponda. Si se pierde el número, ofrecer recuperación asistida y auditada, considerando números reciclados o cuentas en conflicto.
-- Migrar usuarios actuales conservando ID, historial, rol y ganancias. Exigir prueba de acceso a la cuenta anterior y OTP antes de vincular el teléfono. No elevar roles durante el alta; los conductores mantienen la aprobación del frente 5.
-- Retirar correo/contraseña del flujo móvil nuevo. Mientras exista un acceso antiguo para migración, corregir su truncamiento a 72 bytes y no aceptar credenciales ambiguas sin recuperación. Al cerrar la transición, deshabilitar esos endpoints; no construir un nuevo flujo de contraseñas para usuarios nuevos.
-- Mantener la autenticación reforzada del panel administrativo; el acceso sencillo de pasajeros y conductores no elimina ese requisito. Conservar límites contra abuso en ofertas, solicitudes y WS, y tiempos de espera en verificaciones externas.
+**2. Simple access by phone, OTP and social accounts**
 
-**Criterio de cierre:** un usuario puede registrarse o entrar con su teléfono sin contraseña, o con Google/Facebook más teléfono verificado, sin crear cuentas duplicadas. Los errores de OTP y sesión ofrecen reintento, cambio de número o recuperación; las cuentas suspendidas o revocadas no obtienen acceso operativo.
+- Replace the separate login/sign-up screens with **Continuar con teléfono**, with a country selector and an initial +591 prefix. Normalize to E.164; accept foreign numbers when the provider and configuration allow it.
+- Main flow: **phone → OTP code → existing account or complete name and terms → home**. The code arrives by SMS in production and is simulated/autofilled in development and testing. Do not ask for email or password to use this access. Resolve whether the account exists after verifying the code, with responses that do not allow enumerating registered phones.
+- Keep **Continuar con Google** and **Continuar con Facebook**. The backend verifies the provider identity and, on the first access without a verified phone, requests **number → OTP → complete data/terms**. The social identity alone does not allow requesting rides or driving.
+- A valid session is kept when reopening the app. Do not send an SMS on every opening or every ride. Verify again when changing the number, recovering access or when a security check requires it.
+- Model a stable internal account and several linked identities. The verified phone must be unique among active accounts. Link Google/Facebook only with explicit confirmation and proof of both identities; do not merge by email match or by an unverified historical phone.
+- Store OTP challenges with expiry, single use, number, purpose and provider identifier. Limit attempts, resends and requests per number, IP and device; handle wrong and expired codes, delayed SMS and provider errors. Do not store codes or tokens in logs.
+- Issue operational credentials only after the required verification; sign-up must be idempotent to avoid duplicates on retries or simultaneous requests. Add per-device sessions, refresh rotation, reuse detection and HTTP/WS revocation.
+- Allow editing and verifying a new number through re-authentication; revoke sessions when appropriate. If the number is lost, offer assisted and audited recovery, considering recycled numbers or conflicting accounts.
+- Migrate current users keeping ID, history, role and earnings. Require proof of access to the old account and OTP before linking the phone. Do not elevate roles during sign-up; drivers keep the approval of track 5.
+- Remove email/password from the new mobile flow. While an old access exists for migration, fix its 72-byte truncation and do not accept ambiguous credentials without recovery. When closing the transition, disable those endpoints; do not build a new password flow for new users.
+- Keep the reinforced authentication of the admin panel; the simple access for passengers and drivers does not remove that requirement. Keep abuse limits on offers, requests and WS, and timeouts on external verifications.
 
-**OTP sin costo de proveedor en ambientes bajos**
+**Exit criterion:** a user can sign up or sign in with their phone without a password, or with Google/Facebook plus a verified phone, without creating duplicate accounts. OTP and session errors offer retry, number change or recovery; suspended or revoked accounts get no operational access.
 
-- En **desarrollo y pruebas**, usar siempre un adaptador OTP simulado dentro del backend, sin llamadas de envío ni de verificación a Twilio u otro proveedor externo. Estos despliegues no reciben credenciales del proveedor SMS; no existe fallback a envíos reales si falla el simulador.
-- Generar un código de prueba por desafío y conservar las mismas comprobaciones de finalidad, teléfono, caducidad, intentos y uso único del flujo normal. Evitar un código universal que permita saltarse la verificación.
-- Solo el backend de un entorno bajo puede devolver el campo `codigo_prueba` en la respuesta del desafío. La variante móvil de ese entorno rellena automáticamente el formulario y muestra **OTP de prueba · sin SMS**. El usuario pulsa Continuar y el backend verifica el desafío; autocompletar no equivale a iniciar sesión automáticamente.
-- Permitir desactivar el autocompletado en desarrollo/pruebas para ingresar códigos erróneos y ensayar caducidad, reenvíos, límites y fallos simulados del proveedor. Los reintentos siguen siendo locales y gratuitos respecto al proveedor OTP.
-- Aplicar esta simulación al acceso por teléfono, al paso OTP posterior a Google/Facebook y a las verificaciones de cambio de número/recuperación. Toda cuenta y verificación obtenida así permanece en su entorno aislado.
-- Seleccionar el modo por configuración de despliegue validada al iniciar, no por parámetros enviados por la app ni por una flag comercial que pueda activarse en producción. El servidor productivo rechaza la configuración simulada, no devuelve `codigo_prueba` y no acepta desafíos ni tokens de entornos bajos. El build productivo excluye la ayuda de autocompletado de prueba.
-- El autocompletado que el sistema operativo pueda ofrecer a partir de un SMS real en producción es independiente: ese SMS sí puede generar cargos. Aquí el ahorro se obtiene porque en ambientes bajos no se envía ni verifica nada con un proveedor externo.
+**OTP without provider cost in lower environments**
 
-**Aceptación:** se completa el flujo OTP de desarrollo/pruebas con el campo autocompletado y **cero llamadas al proveedor externo**; producción conserva verificación real y no expone códigos de prueba. El costo de cómputo/hosting del simulador permanece dentro del presupuesto del entorno.
+- In **development and testing**, always use a simulated OTP adapter inside the backend, without send or verify calls to Twilio or another external provider. These deployments do not receive SMS provider credentials; there is no fallback to real sending if the simulator fails.
+- Generate a test code per challenge and keep the same purpose, phone, expiry, attempts and single-use checks as the normal flow. Avoid a universal code that allows skipping verification.
+- Only the backend of a lower environment can return the `codigo_prueba` field in the challenge response. The mobile variant of that environment autofills the form and shows **OTP de prueba · sin SMS**. The user taps Continue and the backend verifies the challenge; autofill is not equivalent to signing in automatically.
+- Allow disabling autofill in development/testing to enter wrong codes and rehearse expiry, resends, limits and simulated provider failures. Retries stay local and free with respect to the OTP provider.
+- Apply this simulation to phone access, to the OTP step after Google/Facebook and to number change/recovery verifications. Every account and verification obtained this way stays in its isolated environment.
+- Select the mode through deployment configuration validated on startup, not through parameters sent by the app or a commercial flag that could be enabled in production. The production server rejects the simulated configuration, does not return `codigo_prueba` and does not accept challenges or tokens from lower environments. The production build excludes the test autofill helper.
+- The autofill the operating system may offer from a real SMS in production is independent: that SMS can incur charges. The saving here comes from nothing being sent or verified with an external provider in lower environments.
 
-**3. Construir el panel administrativo y las feature flags**
+**Acceptance:** the development/testing OTP flow is completed with the autofilled field and **zero calls to the external provider**; production keeps real verification and does not expose test codes. The compute/hosting cost of the simulator stays within the environment budget.
 
-Crear un panel web interno para:
+**3. Build the admin panel and feature flags**
 
-- Revisar conductores, documentos y vehículos.
-- Consultar viajes, incidentes, cobros, liquidaciones y comisiones pendientes.
-- Resolver operaciones excepcionales mediante acciones auditadas.
-- Administrar países, zonas, servicios y disponibilidad.
-- Consultar indicadores de operación y gasto.
+Create an internal web panel to:
 
-Implementar permisos separados para administración, soporte y finanzas, autenticación reforzada y registro de quién cambió qué.
+- Review drivers, documents and vehicles.
+- Look up rides, incidents, collections, settlements and pending commissions.
+- Resolve exceptional operations through audited actions.
+- Manage countries, zones, services and availability.
+- Look up operations and spend indicators.
 
-Las flags se evaluarán en el backend y permitirán habilitar servicios, métodos de pago y funciones por país, ciudad y grupo de usuarios. La app recibirá la configuración para presentar las opciones disponibles.
+Implement separate permissions for administration, support and finance, reinforced authentication and a record of who changed what.
 
-Incluir flags para Google/Facebook, países autorizados para SMS, navegación Google integrada y alternativa Waze. Si falla el servicio OTP, pausar altas/accesos que requieran verificación y ofrecer reintento; nunca omitir la comprobación como fallback. Los cambios de navegación tampoco deben cortar una guía ni un viaje ya iniciados.
+Flags will be evaluated in the backend and will allow enabling services, payment methods and features per country, city and user group. The app will receive the configuration to present the available options.
 
-**Apagar una función bloqueará operaciones nuevas y permitirá terminar los viajes y pagos existentes.** Los parámetros internos de Redis, outbox y scheduler conservarán su procedimiento técnico de despliegue.
+Include flags for Google/Facebook, countries authorized for SMS, integrated Google navigation and the Waze alternative. If the OTP service fails, pause sign-ups/access that require verification and offer a retry; never skip the check as a fallback. Navigation changes must not cut a guidance session or a ride already started either.
 
-**4. Preparar la expansión territorial**
+**Turning off a feature will block new operations and allow existing rides and payments to finish.** The internal Redis, outbox and scheduler parameters will keep their technical deployment procedure.
 
-- Sustituir las reglas fijas de Bolivia por un catálogo de países y zonas.
-- Asociar viajes, ofertas, pagos y liquidaciones con su zona y moneda.
-- Mantener importes decimales; impedir sumar o liquidar monedas diferentes.
-- Guardar fechas en UTC y calcular jornadas operativas según la zona horaria correspondiente.
-- Normalizar teléfonos internacionales, permitiendo que un visitante extranjero use ViajaYa en Bolivia.
-- Separar proveedores de pagos, mensajería y requisitos documentales por mercado.
+**4. Prepare territorial expansion**
 
-**Criterio de cierre:** añadir un país tiene puntos de configuración y extensión claros. Su activación exige igualmente certificación comercial, legal y operativa.
+- Replace the fixed Bolivia rules with a catalog of countries and zones.
+- Associate rides, offers, payments and settlements with their zone and currency.
+- Keep decimal amounts; prevent adding or settling different currencies.
+- Store dates in UTC and compute operational workdays according to the corresponding time zone.
+- Normalize international phones, allowing a foreign visitor to use ViajaYa in Bolivia.
+- Separate payment, messaging and document-requirement providers per market.
 
-**5. Completar conductores, cobertura y seguridad del servicio**
+**Exit criterion:** adding a country has clear configuration and extension points. Enabling it still requires commercial, legal and operational certification.
 
-- Incorporar solicitud de alta, carga privada de documentos, revisión, aprobación, rechazo, suspensión y vencimientos.
-- Permitir recibir solicitudes únicamente a conductores aprobados, disponibles y habilitados para ese servicio y zona.
-- Filtrar solicitudes por cercanía y cobertura; limitar los datos personales y ubicaciones exactas expuestos antes de la asignación.
-- Implementar motivos de cancelación, pasajero ausente, incidentes y resolución de viajes atascados.
-- Ofrecer soporte desde el viaje y el historial, con un procedimiento humano de atención.
-- Incorporar identificación del vehículo y verificación de recogida para reducir errores de pasajero o encomienda.
+**5. Complete drivers, coverage and service safety**
 
-**6. Implementar navegación integrada, seguimiento GPS y notificaciones**
+- Add a sign-up request, private document upload, review, approval, rejection, suspension and expirations.
+- Allow only approved, available drivers enabled for that service and zone to receive requests.
+- Filter requests by proximity and coverage; limit the personal data and exact locations exposed before assignment.
+- Implement cancellation reasons, absent passenger, incidents and resolution of stuck rides.
+- Offer support from the ride and history, with a human attention procedure.
+- Add vehicle identification and pickup verification to reduce passenger or parcel errors.
 
-- Enviar ubicación del conductor con hora y precisión; mostrar su posición real al pasajero autorizado.
-- Detectar posiciones antiguas y comunicar pérdida de señal.
-- Mantener seguimiento durante el servicio con los permisos y mecanismos Android apropiados; detenerlo al finalizar o quedar fuera de servicio.
-- Añadir push para aceptación, llegada, cancelación y novedades relevantes. Al abrir una notificación, consultar el estado actual.
-- Conservar la caducidad de ofertas de **30 segundos** y la gracia de presencia del pasajero de **120 segundos**.
-- Llevar las consultas HTTP propias de Places, Routes y geocodificación al backend autenticado, con límites, cancelación y tiempos de espera. El Navigation SDK nativo se integra en Android y usa sus mecanismos de conexión y credenciales restringidas; no se convierte en una consulta HTTP del backend.
-- Separar credenciales nativas y de servidor, restringiéndolas por aplicación, firma y API según corresponda; controlar campos solicitados y recálculos.
-- Mostrar errores de rutas explícitamente.
+**6. Implement integrated navigation, GPS tracking and notifications**
 
-**Navegación del conductor dentro de ViajaYa**
+- Send the driver's location with time and accuracy; show their real position to the authorized passenger.
+- Detect stale positions and communicate signal loss.
+- Keep tracking during the service with the appropriate Android permissions and mechanisms; stop it when finishing or going out of service.
+- Add push for acceptance, arrival, cancellation and relevant news. When opening a notification, query the current state.
+- Keep the offer expiry of **30 seconds** and the passenger presence grace of **120 seconds**.
+- Move the app's own HTTP queries to Places, Routes and geocoding to the authenticated backend, with limits, cancellation and timeouts. The native Navigation SDK is integrated on Android and uses its own connection mechanisms and restricted credentials; it does not become a backend HTTP query.
+- Separate native and server credentials, restricting them by app, signature and API as appropriate; control requested fields and recalculations.
+- Show route errors explicitly.
 
-- Incorporar Google Navigation SDK con instrucciones giro a giro, voz, distancia, ETA y recálculo por desvíos. Cubrir **conductor → recogida** y **recogida → destino** para taxi, moto y encomiendas, usando el modo de vehículo disponible y validado en cada país.
-- La pantalla conserva las acciones necesarias del viaje con controles grandes y poca interacción. Cambiar de etapa solo tras la confirmación de recogida/inicio correspondiente; un evento de llegada del SDK no completa automáticamente el servicio ni confirma su pago.
-- Usar el viaje activo del backend como fuente de destinos y estado. Reanudar la etapa correcta al volver a la app y evitar volver a solicitar destinos por cada render, muestra GPS o reconexión; medir las llamadas que generan cargos.
-- Mantener el reporte GPS a ViajaYa y la autorización por participantes. La navegación de Google no sustituye el seguimiento que ve el pasajero ni la presencia del sistema realtime.
-- Certificar GPS denegado o desactivado, red perdida, falta de ruta, cuota o credencial inválida, voz, Bluetooth, bloqueo de pantalla y regreso desde segundo plano. Mostrar acciones de recuperación; no prometer navegación offline completa sin comprobar el soporte real.
-- Realizar primero una prueba de integración con **Expo 56 y React Native 0.85.3**, build Android firmado y los mapas existentes. El wrapper de Google es beta y sus requisitos cambian: seleccionar una versión compatible y verificar dependencias nativas antes de fijarla, sin actualizar Expo/RN a ciegas. Generar un nuevo binario con la integración y configuración reproducible. [Wrapper oficial de Google](https://github.com/googlemaps/react-native-navigation-sdk), [desarrollo nativo en Expo](https://docs.expo.dev/workflow/customizing/).
-- Validar rutas reales de las zonas bolivianas, funciones de moto disponibles, permisos, términos y atribuciones. No anunciar funciones sin cobertura comprobada. [Cobertura de Navigation SDK](https://developers.google.com/maps/documentation/navigation/android-sdk/coverage-nav-sdk).
+**Driver navigation inside ViajaYa**
 
-**Waze como alternativa externa**
+- Add the Google Navigation SDK with turn-by-turn instructions, voice, distance, ETA and recalculation on detours. Cover **driver → pickup** and **pickup → destination** for taxi, moto and parcels, using the vehicle mode available and validated in each country.
+- The screen keeps the ride's necessary actions with large controls and little interaction. Change stage only after the corresponding pickup/start confirmation; an SDK arrival event does not automatically complete the service or confirm its payment.
+- Use the backend's active ride as the source of destinations and status. Resume the correct stage when returning to the app and avoid requesting destinations again on every render, GPS sample or reconnection; measure the calls that generate charges.
+- Keep GPS reporting to ViajaYa and per-participant authorization. Google navigation does not replace the tracking the passenger sees or the presence of the realtime system.
+- Certify denied or disabled GPS, lost network, missing route, invalid quota or credential, voice, Bluetooth, screen lock and returning from background. Show recovery actions; do not promise full offline navigation without checking real support.
+- First run an integration test with **Expo 56 and React Native 0.85.3**, a signed Android build and the existing maps. Google's wrapper is beta and its requirements change: select a compatible version and verify native dependencies before pinning it, without blindly updating Expo/RN. Generate a new binary with the integration and reproducible configuration. [Official Google wrapper](https://github.com/googlemaps/react-native-navigation-sdk), [native development in Expo](https://docs.expo.dev/workflow/customizing/).
+- Validate real routes in the Bolivian zones, available moto features, permissions, terms and attributions. Do not announce features without verified coverage. [Navigation SDK coverage](https://developers.google.com/maps/documentation/navigation/android-sdk/coverage-nav-sdk).
 
-- Ofrecer **Abrir en Waze** mediante deep link, iniciado por el conductor y con el destino de la etapa actual. El SDK público de Waze no permite incrustar su mapa y navegación dentro de ViajaYa. [Limitaciones oficiales](https://developers.google.com/waze/intro-transport), [deep links](https://developers.google.com/waze/deeplinks).
-- Si Waze no está instalado, ofrecer continuar con Google integrado. Al volver, recuperar el viaje activo. No ejecutar dos guías por voz a la vez; mantener el seguimiento autorizado de ViajaYa mientras el conductor usa Waze.
-- No asumir que un deep link devuelve ubicación, ruta o ETA de Waze; una eventual integración de socio requeriría acceso y validación aparte. Waze es opcional y no cumple por sí solo el criterio de navegación dentro de la app.
+**Waze as an external alternative**
 
-**Criterio de cierre:** el conductor puede ir a recoger y completar el trayecto con guía dentro de ViajaYa; el pasajero conserva el seguimiento, y los fallos o cambios de app no pierden el viaje.
+- Offer **Abrir en Waze** through a deep link, started by the driver and with the destination of the current stage. Waze's public SDK does not allow embedding its map and navigation inside ViajaYa. [Official limitations](https://developers.google.com/waze/intro-transport), [deep links](https://developers.google.com/waze/deeplinks).
+- If Waze is not installed, offer continuing with integrated Google. On return, recover the active ride. Do not run two voice guidances at once; keep ViajaYa's authorized tracking while the driver uses Waze.
+- Do not assume that a deep link returns Waze's location, route or ETA; a possible partner integration would require separate access and validation. Waze is optional and does not by itself meet the in-app navigation criterion.
 
-La ubicación con la app minimizada debe justificarse y declararse conforme a los [requisitos de Google Play](https://support.google.com/googleplay/android-developer/answer/9799150?hl=en).
+**Exit criterion:** the driver can go pick up and complete the trip with guidance inside ViajaYa; the passenger keeps the tracking, and failures or app switches do not lose the ride.
 
-**7. Construir pagos, comisiones y liquidaciones**
+Location with the app minimized must be justified and declared according to the [Google Play requirements](https://support.google.com/googleplay/android-developer/answer/9799150?hl=en).
 
-Actualmente seleccionar “QR” no procesa una transacción. Hace falta el circuito completo:
+**7. Build payments, commissions and settlements**
 
-- Separar estado del servicio y estado del pago: terminar un viaje no significa haber cobrado.
-- Generar un QR por obligación de pago, con importe, moneda, referencia y vencimiento.
-- Confirmar pagos desde el proveedor; manejar notificaciones duplicadas, tardías y reintentos sin duplicar cobros.
-- Guardar la tarifa y regla de comisión aplicadas al aceptar el servicio.
-- Implementar un registro contable auditable de cobros, comisiones, devoluciones, ajustes y liquidaciones.
-- En efectivo, registrar la declaración de cobro del conductor y la comisión adeudada, con posibilidad de reclamo.
-- Compensar comisiones pendientes contra liquidaciones QR y permitir su pago por QR.
-- Aplicar límites configurables de deuda a nuevas operaciones, conservando la finalización de servicios activos.
-- Conciliar diariamente los registros con el proveedor y disponer de una cola de diferencias para finanzas.
-- Sustituir la billetera vacía por pantallas reales de pagos y liquidaciones.
+Currently selecting "QR" does not process a transaction. The full circuit is needed:
 
-**Criterio de cierre:** cada importe puede explicarse desde el viaje hasta su cobro, comisión y liquidación, incluso tras una caída del servidor.
+- Separate service status and payment status: finishing a ride does not mean having collected.
+- Generate a QR per payment obligation, with amount, currency, reference and expiry.
+- Confirm payments from the provider; handle duplicate and late notifications and retries without duplicating charges.
+- Store the fare and commission rule applied when accepting the service.
+- Implement an auditable accounting ledger of collections, commissions, refunds, adjustments and settlements.
+- For cash, record the driver's declaration of collection and the commission owed, with the possibility of a claim.
+- Offset pending commissions against QR settlements and allow paying them via QR.
+- Apply configurable debt limits to new operations, keeping the completion of active services.
+- Reconcile the records daily with the provider and have a discrepancy queue for finance.
+- Replace the empty wallet with real payment and settlement screens.
 
-**8. Completar encomiendas**
+**Exit criterion:** every amount can be explained from the ride to its collection, commission and settlement, even after a server outage.
 
-- Añadir remitente, destinatario, teléfonos, descripción y límites del paquete.
-- Informar artículos restringidos y condiciones del servicio.
-- Registrar retiro, entrega y comprobación de recepción mediante código.
-- Resolver destinatario ausente, entrega fallida, devolución e incidentes.
-- Asociar cualquier ajuste de cobro con una causa y aprobación auditables.
+**8. Complete parcels**
 
-**Criterio de cierre:** una entrega puede completarse o resolverse excepcionalmente sin editar la base de datos.
+- Add sender, recipient, phones, description and package limits.
+- Report restricted items and service conditions.
+- Record pickup, delivery and receipt confirmation through a code.
+- Resolve an absent recipient, failed delivery, return and incidents.
+- Associate any payment adjustment with an auditable cause and approval.
 
-**9. Preparar infraestructura, despliegues y observabilidad**
+**Exit criterion:** a delivery can be completed or resolved exceptionally without editing the database.
 
-Arquitectura inicial propuesta: **Render de pago**, con API permanente, PostgreSQL administrado con réplica de disponibilidad, Redis/Valkey privado y panel estático. Validar la latencia desde redes móviles bolivianas antes de fijar región; Render actualmente no ofrece región sudamericana. [Regiones disponibles](https://render.com/docs/regions).
+**9. Prepare infrastructure, deployments and observability**
 
-- Separar desarrollo, pruebas y producción conforme al aislamiento y flujo de promoción definidos a continuación.
-- Crear imágenes reproducibles y despliegue automatizado con HTTPS/WSS.
-- Ejecutar migraciones mediante un único proceso y comprobar compatibilidad antes de actualizar.
-- Validar configuración productiva: secretos, conexiones y URLs; rechazar valores locales o inseguros.
-- Completar la promoción gradual del sistema realtime existente y certificar dos réplicas.
-- Centralizar errores de backend y Android, registros sanitizados, métricas y alertas con destinatario real.
-- Proteger métricas y herramientas administrativas.
-- Configurar backups, recuperación a un momento determinado y copia externa; ensayar restauración y rollback.
-- Fijar versiones de dependencias, escaneo de secretos y controles obligatorios para integrar cambios.
+Proposed initial architecture: **paid Render**, with a permanent API, managed PostgreSQL with an availability replica, private Redis/Valkey and a static panel. Validate latency from Bolivian mobile networks before choosing a region; Render currently offers no South American region. [Available regions](https://render.com/docs/regions).
 
-**Tres entornos, tres propósitos**
+- Separate development, testing and production according to the isolation and promotion flow defined below.
+- Create reproducible images and automated deployment with HTTPS/WSS.
+- Run migrations through a single process and check compatibility before updating.
+- Validate the production configuration: secrets, connections and URLs; reject local or insecure values.
+- Complete the gradual promotion of the existing realtime system and certify two replicas.
+- Centralize backend and Android errors, sanitized logs, metrics and alerts with a real receiver.
+- Protect metrics and administrative tools.
+- Configure backups, point-in-time recovery and an external copy; rehearse restoration and rollback.
+- Pin dependency versions, secret scanning and mandatory checks to merge changes.
 
-| Entorno | Propósito y despliegue | Datos e integraciones | App Android |
+**Three environments, three purposes**
+
+| Environment | Purpose and deployment | Data and integrations | Android app |
 |---|---|---|---|
-| Desarrollo | Trabajo diario en la computadora del desarrollador, API y servicios locales; validar cambios antes de PR | Datos ficticios reiniciables, pagos simulados y OTP simulado con autocompletado, siempre sin proveedor externo | Perfil EAS `development`; nombre ViajaYa Desarrollo e identificador `com.viajaya.app.dev` |
-| Pruebas | Entorno alojado y privado para QA, integración entre teléfonos y certificación del candidato; versiones y arquitectura equivalentes a producción con recursos ajustados | Base y caché propias; datos sintéticos, pasarela sandbox y OTP simulado con autocompletado sin SMS ni cargos de proveedor; ensayos de mapas limitados cuando sean necesarios | Perfil EAS `preview`; nombre ViajaYa Pruebas e identificador `com.viajaya.app.pruebas` |
-| Producción | Servicio público para pasajeros, conductores y operación real; únicamente versiones certificadas | Datos reales, pasarela de cobro real, credenciales productivas, backups y monitoreo permanente | Perfil EAS `production`; nombre ViajaYa e identificador `com.viajaya.app` |
+| Development | Daily work on the developer's computer, local API and services; validate changes before a PR | Resettable fictitious data, simulated payments and simulated OTP with autofill, always without an external provider | EAS profile `development`; name ViajaYa Desarrollo and identifier `com.viajaya.app.dev` |
+| Testing | Hosted, private environment for QA, phone-to-phone integration and candidate certification; versions and architecture equivalent to production with adjusted resources | Own database and cache; synthetic data, sandbox gateway and simulated OTP with autofill without SMS or provider charges; limited maps trials when necessary | EAS profile `preview`; name ViajaYa Pruebas and identifier `com.viajaya.app.pruebas` |
+| Production | Public service for passengers, drivers and real operations; only certified versions | Real data, real payment gateway, production credentials, backups and permanent monitoring | EAS profile `production`; name ViajaYa and identifier `com.viajaya.app` |
 
-Los tres perfiles EAS ya existen en el repositorio. Falta materializar la separación completa de aplicación, infraestructura e integraciones; un perfil de build por sí solo no constituye un entorno aislado. Desarrollo inicia local para contener costos y facilitar el trabajo en Windows; pruebas y producción se despliegan en la nube.
+The three EAS profiles already exist in the repository. The full separation of app, infrastructure and integrations still has to be built; a build profile alone is not an isolated environment. Development starts locally to contain costs and make work on Windows easier; testing and production are deployed to the cloud.
 
-**Aislamiento obligatorio**
+**Mandatory isolation**
 
-- Cada entorno tiene su propia API, PostgreSQL, Redis/Valkey, almacenamiento de documentos, cuentas operativas, flags y secretos. No compartir recursos de datos entre pruebas y producción. La API y el panel de pruebas se restringen al equipo y testers.
-- Asignar URLs distintas a API, WebSocket, panel y webhooks; el dominio concreto se configura al contratarlo. El servidor valida su entorno al iniciar y rechaza combinaciones cruzadas o valores locales en producción.
-- Separar claves de firma y validación de sesiones, identidades de emisor/audiencia, cuentas de servicio y permisos. Un token de desarrollo o pruebas debe ser rechazado por producción, aunque los números de teléfono sean iguales.
-- Separar proyectos/credenciales de Google Maps y Navigation, clientes OAuth, aplicaciones o configuración de prueba de Facebook, claves de pasarela y secretos de webhooks. Configurar firmas Android, redirecciones y cuotas para el identificador correspondiente.
-- Aislar OTP, correo y push por entorno. OTP es exclusivamente simulado y autocompletado en desarrollo/pruebas, sin credenciales ni llamadas al proveedor real. Para correo y push, mantener simulaciones/sandbox o destinatarios de prueba autorizados según la integración. Los códigos fijos, autocompletado de prueba, pagos simulados y modos de test deben provocar rechazo de configuración si se intentan activar en producción.
-- Mantener destinos de actualización móvil y configuración de runtime separados, ligados a su build y entorno. La app productiva no ofrece un selector de servidor; desarrollo y pruebas tienen nombre distintivo y un indicador de entorno para evitar confusiones, y pueden instalarse junto a producción.
-- Promover reglas y versiones de flags de manera explícita; activarlas en pruebas no debe activarlas en producción. Identificar el entorno en registros, errores, alertas, copias de seguridad y métricas de gasto, con accesos y retención propios.
-- Usar datos sintéticos; si se necesita reproducir un caso real, anonimizarlo mediante un procedimiento revisado. No copiar datos personales, documentos, tokens ni secretos productivos a desarrollo o pruebas.
+- Each environment has its own API, PostgreSQL, Redis/Valkey, document storage, operational accounts, flags and secrets. Do not share data resources between testing and production. The testing API and panel are restricted to the team and testers.
+- Assign different URLs to the API, WebSocket, panel and webhooks; the concrete domain is configured when it is hired. The server validates its environment on startup and rejects cross combinations or local values in production.
+- Separate signing and session validation keys, issuer/audience identities, service accounts and permissions. A development or testing token must be rejected by production, even if the phone numbers are the same.
+- Separate Google Maps and Navigation projects/credentials, OAuth clients, Facebook test apps or configuration, gateway keys and webhook secrets. Configure Android signatures, redirects and quotas for the corresponding identifier.
+- Isolate OTP, email and push per environment. OTP is exclusively simulated and autofilled in development/testing, without credentials or calls to the real provider. For email and push, keep simulations/sandbox or authorized test recipients depending on the integration. Fixed codes, test autofill, simulated payments and test modes must cause a configuration rejection if someone tries to enable them in production.
+- Keep mobile update destinations and runtime configuration separate, tied to their build and environment. The production app offers no server selector; development and testing have a distinctive name and an environment indicator to avoid confusion, and can be installed next to production.
+- Promote flag rules and versions explicitly; enabling them in testing must not enable them in production. Identify the environment in logs, errors, alerts, backups and spend metrics, with their own access and retention.
+- Use synthetic data; if a real case needs to be reproduced, anonymize it through a reviewed procedure. Do not copy personal data, documents, tokens or production secrets to development or testing.
 
-**Promoción de versiones: desarrollo → pruebas → producción**
+**Version promotion: development → testing → production**
 
-- Desarrollo: implementar en una rama y enviar PR. CI ejecuta contratos y pruebas sobre bases temporales desechables; estas bases son recursos de test, no un cuarto entorno permanente.
-- Pruebas: desplegar el candidato identificado por commit y versión, aplicar migraciones y ejecutar QA funcional, OTP simulado con autocompletado, OAuth, pagos sandbox, navegación, realtime y comprobaciones de aislamiento. Ensayar cambios de esquema, restauración y rollback antes de promoverlos.
-- Producción: promover la misma imagen backend certificada, con configuración y secretos de producción. Ejecutar migraciones compatibles mediante un único proceso y comprobar salud; conservar la imagen anterior para rollback. No ejecutar suites destructivas o seeds de pruebas sobre datos reales.
-- Android: generar las variantes de entorno desde el mismo commit. Como sus identificadores y credenciales son diferentes, certificar también el AAB productivo firmado en la pista interna/cerrada de Google Play antes de promover ese mismo AAB al público. Una pista de distribución no cambia automáticamente la API a la que apunta el binario.
-- Registrar versión, entorno, resultado de pruebas y responsable de promoción. El despliegue público queda bloqueado si fallan las comprobaciones, existen secretos cruzados o quedan simulaciones activadas. Los cambios nativos requieren un binario compatible; las actualizaciones móviles no deben cruzar entornos.
+- Development: implement on a branch and send a PR. CI runs contracts and tests on disposable temporary databases; these databases are test resources, not a fourth permanent environment.
+- Testing: deploy the candidate identified by commit and version, apply migrations and run functional QA, simulated OTP with autofill, OAuth, sandbox payments, navigation, realtime and isolation checks. Rehearse schema changes, restoration and rollback before promoting them.
+- Production: promote the same certified backend image, with production configuration and secrets. Run compatible migrations through a single process and check health; keep the previous image for rollback. Do not run destructive suites or test seeds on real data.
+- Android: generate the environment variants from the same commit. Since their identifiers and credentials are different, also certify the signed production AAB on Google Play's internal/closed track before promoting that same AAB to the public. A distribution track does not automatically change the API the binary points to.
+- Record version, environment, test result and the person responsible for the promotion. The public deployment is blocked if the checks fail, there are crossed secrets or simulations remain enabled. Native changes require a compatible binary; mobile updates must not cross environments.
 
-**Criterio de cierre del frente 9:** los tres entornos están identificados y aislados; probar o reiniciar desarrollo/pruebas no altera producción. Un candidato puede recorrer el flujo completo de validación, promoción y rollback con evidencia.
+**Exit criterion of track 9:** the three environments are identified and isolated; testing or restarting development/testing does not alter production. A candidate can go through the full validation, promotion and rollback flow with evidence.
 
-**10. Privacidad y publicación Android**
+**10. Privacy and Android publication**
 
-- Publicar términos, privacidad, soporte y condiciones de conductores.
-- Guardar aceptación versionada de términos.
-- Implementar solicitud de eliminación, anonimización y reglas de conservación por categoría.
-- Proporcionar eliminación desde la app y una vía web accesible: Google Play exige ambas para aplicaciones que crean cuentas. [Política de eliminación](https://support.google.com/googleplay/android-developer/answer/13327111?hl=en-EN).
-- Completar Data Safety, declaraciones de permisos, ficha, capturas y acceso para revisión.
-- Generar y probar el AAB firmado sin depender de Metro.
-- Certificar Google/Facebook con las firmas y credenciales de producción.
-- Comprobar si aplica la prueba cerrada de 12 participantes durante 14 días, exigida a determinadas cuentas personales nuevas. [Requisitos de pruebas](https://support.google.com/googleplay/android-developer/answer/14151465?hl=en-GB).
+- Publish terms, privacy, support and driver conditions.
+- Store a versioned acceptance of the terms.
+- Implement deletion requests, anonymization and retention rules per category.
+- Provide deletion from the app and an accessible web path: Google Play requires both for apps that create accounts. [Deletion policy](https://support.google.com/googleplay/android-developer/answer/13327111?hl=en-EN).
+- Complete Data Safety, permission declarations, listing, screenshots and review access.
+- Generate and test the signed AAB without depending on Metro.
+- Certify Google/Facebook with production signatures and credentials.
+- Check whether the closed test of 12 participants for 14 days applies, required for certain new personal accounts. [Testing requirements](https://support.google.com/googleplay/android-developer/answer/14151465?hl=en-GB).
 
-## 3. Contratos y compatibilidad
+## 3. Contracts and compatibility
 
-Cada bloque transversal actualizará backend y mobile conjuntamente:
+Each cross-cutting block will update backend and mobile together:
 
-| Contrato | Incorporación |
+| Contract | Addition |
 |---|---|
-| Autenticación | Solicitud/verificación de OTP, alta unificada por teléfono, identidades Google/Facebook, vinculación, cambio de número, sesiones, recuperación y revocación |
-| Configuración | Países, zonas, moneda, servicios, países SMS, navegación integrada/externa y capacidades habilitadas |
-| Conductores | Solicitudes, documentos, aprobación y elegibilidad |
-| Viajes y tiempo real | Ubicación autorizada, etapa/destino de navegación, ETA, incidentes y datos de encomiendas |
-| Dinero | Pagos, comisiones, deuda, devoluciones y liquidaciones |
-| Administración | Acciones protegidas, permisos y auditoría |
+| Authentication | OTP request/verification, unified phone sign-up, Google/Facebook identities, linking, number change, sessions, recovery and revocation |
+| Configuration | Countries, zones, currency, services, SMS countries, integrated/external navigation and enabled capabilities |
+| Drivers | Requests, documents, approval and eligibility |
+| Rides and real time | Authorized location, navigation stage/destination, ETA, incidents and parcel data |
+| Money | Payments, commissions, debt, refunds and settlements |
+| Administration | Protected actions, permissions and audit |
 
-Mantener `/api/v1`, DTO en `snake_case`, mapeo mobile y pruebas de contratos. Los cambios de esquema llevarán migraciones revisadas y una transición compatible con versiones de la app que aún estén instaladas.
+Keep `/api/v1`, `snake_case` DTOs, mobile mapping and contract tests. Schema changes will carry reviewed migrations and a transition compatible with app versions that are still installed.
 
-La respuesta OTP de desarrollo/pruebas puede incluir `codigo_prueba` para el autocompletado. El contrato productivo no incluye ese campo; CI debe certificar su ausencia y el rechazo de cualquier solicitud que intente activar el modo simulado desde el cliente.
+The development/testing OTP response may include `codigo_prueba` for autofill. The production contract does not include that field; CI must certify its absence and the rejection of any request that tries to enable the simulated mode from the client.
 
-## 4. Presupuesto y control del gasto
+## 4. Budget and spend control
 
-**Conviene separar el costo fijo de mantener el servicio del costo variable de cada operación.** Sin presupuesto definido, estas referencias permiten decidir cuándo contratar y cuánto reservar.
+**It is worth separating the fixed cost of keeping the service running from the variable cost of each operation.** Without a defined budget, these references allow deciding when to hire and how much to reserve.
 
-Estimaciones mensuales en USD, con precios consultados el **9 de septiembre de 2026**:
+Monthly estimates in USD, with prices consulted on **September 9, 2026**:
 
-| Concepto | Apertura acotada | Preparación para la capacidad objetivo |
+| Item | Bounded launch | Preparation for the target capacity |
 |---|---:|---:|
-| Infraestructura de pruebas y producción, backups y monitoreo | **300–400** | **700–1.000** |
-| Mapas | Según búsquedas y rutas | Puede superar al costo de infraestructura |
-| Navegación Google integrada | Según destinos solicitados al SDK | Ejemplo de dos destinos por viaje: USD 6.475/mes |
-| OTP en desarrollo y pruebas | **0 USD de envío/verificación externa**, mediante simulación y autocompletado | **0 USD de envío/verificación externa**; hosting contabilizado aparte |
-| OTP real en producción | Según altas, inicios que requieran OTP, cambios de número y reintentos | Según consumo y país; no equivale a SMS por viaje |
-| Correo transaccional | Según proveedor y volumen | Según proveedor y volumen |
-| Pasarela y liquidaciones | Según contrato y volumen cobrado | Según contrato y volumen cobrado |
-| Desarrollo, soporte, seguros y obligaciones comerciales | Presupuesto separado | Presupuesto separado |
+| Testing and production infrastructure, backups and monitoring | **300–400** | **700–1,000** |
+| Maps | Depending on searches and routes | May exceed the infrastructure cost |
+| Integrated Google navigation | Depending on destinations requested from the SDK | Example with two destinations per ride: USD 6,475/month |
+| OTP in development and testing | **USD 0 of external sending/verification**, through simulation and autofill | **USD 0 of external sending/verification**; hosting accounted separately |
+| Real OTP in production | Depending on sign-ups, sign-ins that require OTP, number changes and retries | Depending on usage and country; not equivalent to an SMS per ride |
+| Transactional email | Depending on provider and volume | Depending on provider and volume |
+| Gateway and settlements | Depending on contract and collected volume | Depending on contract and collected volume |
+| Development, support, insurance and commercial obligations | Separate budget | Separate budget |
 
-Las bandas de infraestructura son estimaciones propias basadas en producción con dos réplicas API, PostgreSQL con disponibilidad y caché privada, más un entorno de pruebas alojado. Desarrollo se ejecuta localmente y no suma otro despliegue permanente en nube; su equipo, conectividad y uso de APIs se presupuestan aparte. Pruebas ya estaba incluido como staging, por lo que esta aclaración no añade un tercer cargo de hosting a las bandas anteriores. **No garantizan capacidad** y deben ajustarse con mediciones. [Precios de Render](https://render.com/pricing).
+The infrastructure bands are our own estimates based on production with two API replicas, PostgreSQL with availability and a private cache, plus a hosted testing environment. Development runs locally and does not add another permanent cloud deployment; its equipment, connectivity and API usage are budgeted separately. Testing was already included as staging, so this clarification does not add a third hosting charge to the previous bands. **They do not guarantee capacity** and must be adjusted with measurements. [Render prices](https://render.com/pricing).
 
-Para dimensionar mapas: **5.000 viajes/día × 30 días × 2 rutas = 300.000 cálculos mensuales**, aproximadamente **USD 1.250 en Routes Essentials**. Añadiendo, como hipótesis, un detalle Essentials y cinco solicitudes de autocompletado por viaje, el conjunto sería aproximadamente **USD 3.488/mes**, antes de geocodificación, búsquedas abandonadas y recálculos adicionales. [Tarifas de Google Maps](https://developers.google.com/maps/billing-and-pricing/pricing).
+To size maps: **5,000 rides/day × 30 days × 2 routes = 300,000 monthly computations**, approximately **USD 1,250 in Routes Essentials**. Adding, as a hypothesis, one Essentials detail and five autocomplete requests per ride, the total would be approximately **USD 3,488/month**, before geocoding, abandoned searches and additional recalculations. [Google Maps prices](https://developers.google.com/maps/billing-and-pricing/pricing).
 
-Ese escenario base daría **unos USD 4.200–4.500 mensuales entre infraestructura y mapas, sin navegación giro a giro**. No representa el presupuesto completo del alcance actualizado.
+That base scenario would give **about USD 4,200–4,500 per month between infrastructure and maps, without turn-by-turn navigation**. It does not represent the full budget of the updated scope.
 
-**Costo adicional de navegación integrada.** A 5.000 viajes/día durante 30 días, un destino de navegación por viaje suma 150.000 destinos (aproximadamente **USD 3.475/mes**); dos destinos, recogida y entrega, suman 300.000 (aproximadamente **USD 6.475/mes**). Con el supuesto conservador de conservar las consultas de mapas anteriores, infraestructura + mapas + dos destinos de navegación serían **unos USD 10.700–11.000/mes**, antes de SMS, pasarela, impuestos y operación humana. Son escenarios de uso a tarifa pública, no una cotización ni el costo de empezar. [Tarifas de Navigation Request](https://developers.google.com/maps/billing-and-pricing/pricing).
+**Additional cost of integrated navigation.** At 5,000 rides/day for 30 days, one navigation destination per ride adds 150,000 destinations (approximately **USD 3,475/month**); two destinations, pickup and drop-off, add 300,000 (approximately **USD 6,475/month**). With the conservative assumption of keeping the previous maps queries, infrastructure + maps + two navigation destinations would be **about USD 10,700–11,000/month**, before SMS, gateway, taxes and human operations. These are usage scenarios at public prices, not a quote or the cost of getting started. [Navigation Request prices](https://developers.google.com/maps/billing-and-pricing/pricing).
 
-La facturación depende de destinos solicitados y del contrato; iniciar la guía y los desvíos automáticos posteriores no tienen un cargo adicional por sí mismos. Evitar consultas duplicadas entre Routes y el SDK y medir si la integración permite reducir el supuesto anterior. Pedir condiciones de movilidad/volumen sin asumir descuentos. [Facturación de Navigation SDK](https://developers.google.com/maps/documentation/navigation/android-sdk/pricing).
+Billing depends on the requested destinations and the contract; starting the guidance and the later automatic detours have no additional charge by themselves. Avoid duplicate queries between Routes and the SDK and measure whether the integration allows reducing the previous assumption. Ask for mobility/volume terms without assuming discounts. [Navigation SDK billing](https://developers.google.com/maps/documentation/navigation/android-sdk/pricing).
 
-Otros consumos que deben quedar visibles:
+Other usage that must stay visible:
 
-- Verificación real en producción: Twilio Verify publica USD 0,05 por verificación exitosa **más el costo del canal**; 1.000 verificaciones serían USD 50 antes del SMS aplicable a Bolivia. Cotizar entrega y tarifa local antes de elegir proveedor. Desarrollo y pruebas no consumen este servicio. [Precios de Verify](https://www.twilio.com/en-us/verify/pricing).
-- Compilaciones y actualizaciones: EAS tiene nivel gratuito y Starter de USD 19/mes más consumo. Elegir según uso real. [Precios de Expo](https://expo.dev/pricing).
-- Cobros: calcular comisiones de pasarela, liquidaciones y devoluciones sobre el contrato real; no asumir que recibir QR es gratuito.
+- Real verification in production: Twilio Verify publishes USD 0.05 per successful verification **plus the channel cost**; 1,000 verifications would be USD 50 before the SMS applicable to Bolivia. Get a quote for delivery and the local rate before choosing a provider. Development and testing do not consume this service. [Verify prices](https://www.twilio.com/en-us/verify/pricing).
+- Builds and updates: EAS has a free tier and Starter at USD 19/month plus usage. Choose based on real usage. [Expo prices](https://expo.dev/pricing).
+- Payments: compute gateway commissions, settlements and refunds on the real contract; do not assume that receiving QR is free.
 
-Implementar en pruebas y producción, con medición y límites separados:
+Implement in testing and production, with separate measurement and limits:
 
-- Indicadores de costo por entorno, búsqueda, viaje, destino de navegación y país. Medir envío/verificación OTP, entrega y reintentos SMS solo para producción; en desarrollo/pruebas registrar desafíos simulados y comprobar cero llamadas al proveedor externo.
-- Alertas al 50 %, 80 % y 100 % del presupuesto configurado.
-- Cuotas y límites de consumo, además de alertas: una alerta presupuestaria por sí sola no detiene cargos. [Control de costos de Maps](https://developers.google.com/maps/billing-and-pricing/manage-costs).
-- Control de abuso, campos mínimos de Places y límites de recálculo.
-- Margen por servicio: **comisión ingresada menos pasarela, consumo tecnológico, ajustes y devoluciones**.
+- Cost indicators per environment, search, ride, navigation destination and country. Measure OTP sending/verification, SMS delivery and retries only for production; in development/testing record simulated challenges and check zero calls to the external provider.
+- Alerts at 50 %, 80 % and 100 % of the configured budget.
+- Quotas and usage limits, in addition to alerts: a budget alert alone does not stop charges. [Maps cost control](https://developers.google.com/maps/billing-and-pricing/manage-costs).
+- Abuse control, minimal Places fields and recalculation limits.
+- Margin per service: **commission earned minus gateway, technology usage, adjustments and refunds**.
 
-## 5. Pruebas y condiciones para abrir al público
+## 5. Tests and conditions to open to the public
 
-Ejecutar los bloques anteriores mediante PR separados, con sus pruebas y criterios de cierre. Preparar proveedores y configuración comercial en paralelo con seguridad y panel; integrar pagos y encomiendas antes de certificar el lanzamiento completo.
+Run the previous blocks through separate PRs, with their tests and exit criteria. Prepare providers and commercial configuration in parallel with security and the panel; integrate payments and parcels before certifying the full launch.
 
-La apertura requiere:
+The launch requires:
 
-- CI completa aprobada: backend, PostgreSQL/Redis, contratos, TypeScript, lint y pruebas mobile.
-- Tres entornos aislados: los tokens, webhooks y actualizaciones de pruebas no son aceptados por producción; la variante móvil muestra la identidad y consume la API correcta. Probar que reiniciar o limpiar recursos de desarrollo/pruebas no toca datos productivos.
-- Promoción backend por la misma imagen certificada y revisión del AAB productivo antes de publicar. Confirmar rechazo de secretos cruzados, OTP simulado/fijo, autocompletado de prueba y pasarela simulada en producción; para correo/push de pruebas, comprobar la lista de destinatarios autorizados.
-- Desarrollo/pruebas: recorrer alta por teléfono, OTP posterior a Google/Facebook y cambio de número con autocompletado, verificando cero llamadas al proveedor SMS tanto al enviar como al validar y reenviar. Desactivar autocompletado para comprobar códigos incorrectos, caducidad y uso único.
-- Producción: certificar que ni parámetros, headers, flags ni un build de entorno bajo habiliten el simulador o devuelvan `codigo_prueba`. La entrega real de SMS se comprueba con el proveedor productivo de forma acotada y presupuestada; las pruebas simuladas no la sustituyen.
-- Recorrido real en dos teléfonos para taxi, moto y encomienda, incluyendo efectivo y QR.
-- Pruebas de alta e inicio por teléfono, OTP válido/incorrecto/vencido/reutilizado, reenvío, demora del SMS, abuso, cambio de número y recuperación sin pantallas bloqueadas.
-- Google/Facebook con y sin teléfono verificado; vinculación explícita, teléfono ya registrado, altas concurrentes y migración de cuentas existentes sin perder historial ni elevar roles. Verificar que no se emitan sesiones operativas antes del OTP requerido.
-- Pruebas de sesión inválida, cuenta suspendida y revocación; mientras exista acceso antiguo, incluir su manejo seguro de contraseñas largas.
-- Pruebas de red lenta, reconexión, cierre de app, segundo plano, permisos denegados y GPS antiguo.
-- Navegación Google en taxi/moto/encomienda hacia recogida y destino: voz, desvíos, llegada sin cierre automático, cambio de etapa y recuperación tras reinicio. Verificar Waze instalado/ausente, retorno a ViajaYa, seguimiento del pasajero y ausencia de cargos duplicados por render/reconexión.
-- Pagos duplicados o tardíos, efectivo disputado, deuda de comisión, devolución y liquidación fallida.
-- Aislamiento entre usuarios, conductores, zonas y permisos administrativos.
-- Prueba sostenida con 500 conductores y una hipótesis inicial de 500 pasajeros conectados, más ráfagas de doble carga.
-- Objetivos iniciales: API propia p95 ≤ 500 ms y evento realtime visible p95 ≤ 2 s, sin asignaciones duplicadas, cobros duplicados ni cancelaciones falsas.
-- Restauración ensayada con objetivo RPO ≤ 15 minutos y RTO ≤ 2 horas; alerta real recibida y procedimiento de rollback comprobado.
-- Instalación limpia, actualización, accesibilidad y binario firmado aceptado por Google Play.
-- Conductores aprobados, soporte disponible y conciliación funcionando en cada zona habilitada.
+- Full CI passing: backend, PostgreSQL/Redis, contracts, TypeScript, lint and mobile tests.
+- Three isolated environments: testing tokens, webhooks and updates are not accepted by production; the mobile variant shows its identity and consumes the right API. Test that restarting or cleaning development/testing resources does not touch production data.
+- Backend promotion through the same certified image and review of the production AAB before publishing. Confirm the rejection of crossed secrets, simulated/fixed OTP, test autofill and a simulated gateway in production; for testing email/push, check the list of authorized recipients.
+- Development/testing: walk through phone sign-up, the OTP after Google/Facebook and number change with autofill, verifying zero calls to the SMS provider when sending, validating and resending. Disable autofill to check wrong codes, expiry and single use.
+- Production: certify that neither parameters, headers, flags nor a lower-environment build enable the simulator or return `codigo_prueba`. Real SMS delivery is checked with the production provider in a bounded and budgeted way; simulated tests do not replace it.
+- A real walkthrough on two phones for taxi, moto and parcel, including cash and QR.
+- Tests of phone sign-up and sign-in, valid/wrong/expired/reused OTP, resend, SMS delay, abuse, number change and recovery without blocked screens.
+- Google/Facebook with and without a verified phone; explicit linking, an already registered phone, concurrent sign-ups and migration of existing accounts without losing history or elevating roles. Verify that no operational sessions are issued before the required OTP.
+- Tests of an invalid session, a suspended account and revocation; while an old access exists, include its safe handling of long passwords.
+- Tests of slow network, reconnection, closing the app, background, denied permissions and stale GPS.
+- Google navigation for taxi/moto/parcel to the pickup and destination: voice, detours, arrival without automatic closing, stage change and recovery after restart. Verify Waze installed/missing, returning to ViajaYa, passenger tracking and the absence of duplicate charges per render/reconnection.
+- Duplicate or late payments, disputed cash, commission debt, refund and failed settlement.
+- Isolation between users, drivers, zones and administrative permissions.
+- A sustained test with 500 drivers and an initial hypothesis of 500 connected passengers, plus bursts of double load.
+- Initial targets: own API p95 ≤ 500 ms and visible realtime event p95 ≤ 2 s, without duplicate assignments, duplicate charges or false cancellations.
+- Restoration rehearsed with a target of RPO ≤ 15 minutes and RTO ≤ 2 hours; a real alert received and the rollback procedure checked.
+- Clean installation, update, accessibility and a signed binary accepted by Google Play.
+- Approved drivers, available support and working reconciliation in each enabled zone.
 
-Publicar primero mediante pruebas internas/cerradas y después abrir zonas gradualmente con las flags. Ampliar cobertura y capacidad según estabilidad, demanda y costo observado. La expansión a cada nuevo país será una entrega independiente con proveedores, moneda, documentación, soporte y condiciones locales certificados.
+Publish first through internal/closed tests and then open zones gradually with the flags. Extend coverage and capacity according to stability, demand and observed cost. Expansion to each new country will be an independent delivery with certified local providers, currency, documents, support and conditions.

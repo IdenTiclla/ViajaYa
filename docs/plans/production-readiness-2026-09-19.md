@@ -1,141 +1,141 @@
-# Revisión de avance y preparación para producción — 19/09/2026
+# Progress review and production readiness — 2026-09-19
 
-## Alcance y conclusión
+## Scope and conclusion
 
-Revisión del código versionado de `main`, commit `986dd79` (merge del PR #15 del
-14/09), los planes activos y las comprobaciones locales indicadas abajo. El núcleo
-del viaje y la identidad tienen una implementación amplia; el servicio comercial
-todavía requiere desarrollo, integración con proveedores y certificación operativa.
-El [plan de salida](plan-salida-produccion.md) queda actualizado a la revisión 10.
+Review of the versioned code of `main`, commit `986dd79` (merge of PR #15 on
+2026-09-14), the active plans and the local checks listed below. The ride and
+identity core have a broad implementation; the commercial service
+still requires development, provider integration and operational certification.
+The [launch plan](production-launch-plan.md) is updated to revision 10.
 
-No se cambiaron funciones de la app/API, configuraciones secretas, datos ni servicios.
-Los directorios preexistentes sin seguimiento `agent-harness-framework/`,
-`done-sin-renders/` y `ui-redesign-flow/` no se incluyeron en la evaluación del
-producto versionado. No se hicieron commits ni pushes en esta revisión.
+No app/API functions, secret configurations, data or services were changed.
+The pre-existing untracked directories `agent-harness-framework/`,
+`done-sin-renders/` and `ui-redesign-flow/` were not included in the evaluation of the
+versioned product. No commits or pushes were made in this review.
 
-## Evidencia actual frente a antecedentes
+## Current evidence versus background
 
-| Área | Evidencia revisada | Conclusión y límite |
+| Area | Evidence reviewed | Conclusion and limit |
 |---|---|---|
-| Entornos | `backend/app/infrastructure/environment.py`, `mobile/eas.json`, `ops/compose.hosted.yml`, plan 0009 | Configuración y variantes implementadas. Instalaciones y túnel son evidencia histórica; no se certificó disponibilidad actual ni alojamiento permanente. |
-| Teléfono/sesión/social | `backend/app/api/v1/routers/account_access.py`, `phone_verification.py`, casos de uso de acceso y tests HTTP/WS | Implementados con OTP simulado en entornos bajos. Google real en Desarrollo consta en el plan 0010 del 13/09; el candidato actual de Pruebas sigue sin recorrido documentado. |
-| SMS productivo | `backend/app/api/deps.py`, `backend/app/application/use_cases/request_phone_code.py` | La solicitud exige `mock_enabled`; en producción se rechaza con indisponibilidad. No existe un adaptador real conectado que permita cerrar F02-C. |
-| Recuperación | `request_account_recovery.py`, `review_account_recovery.py`, `mobile/src/features/auth/application/phoneAccessController.ts`, `PhoneEntryScreen.tsx` | Existe lógica y contrato; la pantalla única actual no presenta la solicitud. Falta recorrido visible y herramienta de operador F03-B. |
-| Conductores | `register_driver_vehicle.py`, `switch_account_mode.py`, migraciones `0027`/`0028`, feature móvil `driver` | Alta, varios vehículos, servicios y modo activo implementados. Documentos y gestión administrativa siguen pendientes. |
-| Territorio | `backend/app/domain/value_objects.py`, `schemas/rides.py`, `get_driver_earnings.py`, `mobile/src/features/rides/domain/money.ts` | Bolivia, moneda/formato y horario permanecen fijos. El plan 0011 no es implementación; se corrigieron sus números de migración propuestos. |
-| Tiempo real | Outbox, Redis, scheduler, contratos y plan 0008 | Implementación y antecedentes de integración local. Faltan rollout representativo, monitoreo con destinatario real y certificación de carga del candidato. |
-| GPS/mapas/navegación | Features `home`/`booking`/`rides`, rutas HTTP, contrato WS y `mobile/package.json` | Hay posición del dispositivo, mapas y rutas. No se encontró circuito completo de GPS conductor→pasajero, push ni dependencia de Navigation SDK. |
-| Pagos | Rutas y entidades backend; `mobile/src/app/(app)/(tabs)/wallet.tsx` | `qr`/`cash` son opciones del viaje; la billetera es un placeholder. No hay evidencia del circuito de cobro, comisión, conciliación y liquidación. |
-| Encomiendas/mudanzas | Tipos `delivery`/`moving` y compatibilidad de servicios por vehículo | Tipos soportados en el viaje; no certifican destinatario/paquete/entrega ni operación comercial de mudanzas. |
-| CI/despliegue | `.github/workflows/ci.yml`, Dockerfile, scripts operativos y monitoreo | Definiciones versionadas. Merge confirmado en Git local; estado remoto de Actions, nube y Google Play no consultados. |
+| Environments | `backend/app/infrastructure/environment.py`, `mobile/eas.json`, `ops/compose.hosted.yml`, plan 0009 | Configuration and variants implemented. Installations and the tunnel are historical evidence; current availability and permanent hosting were not certified. |
+| Phone/session/social | `backend/app/api/v1/routers/account_access.py`, `phone_verification.py`, access use cases and HTTP/WS tests | Implemented with simulated OTP in lower environments. Real Google in Development is recorded in plan 0010 on 2026-09-13; the current Testing candidate still has no documented walkthrough. |
+| Production SMS | `backend/app/api/deps.py`, `backend/app/application/use_cases/request_phone_code.py` | The request requires `mock_enabled`; in production it is rejected as unavailable. There is no real adapter connected that would allow closing F02-C. |
+| Recovery | `request_account_recovery.py`, `review_account_recovery.py`, `mobile/src/features/auth/application/phoneAccessController.ts`, `PhoneEntryScreen.tsx` | Logic and contract exist; the current single screen does not present the request. A visible flow and the F03-B operator tool are missing. |
+| Drivers | `register_driver_vehicle.py`, `switch_account_mode.py`, migrations `0027`/`0028`, mobile `driver` feature | Sign-up, several vehicles, services and active mode implemented. Documents and administrative management remain pending. |
+| Territory | `backend/app/domain/value_objects.py`, `schemas/rides.py`, `get_driver_earnings.py`, `mobile/src/features/rides/domain/money.ts` | Bolivia, currency/format and time zone remain fixed. Plan 0011 is not an implementation; its proposed migration numbers were corrected. |
+| Real time | Outbox, Redis, scheduler, contracts and plan 0008 | Implementation and background of local integration. A representative rollout, monitoring with a real receiver and load certification of the candidate are missing. |
+| GPS/maps/navigation | `home`/`booking`/`rides` features, HTTP routes, WS contract and `mobile/package.json` | There is device position, maps and routes. No complete driver→passenger GPS circuit, push or Navigation SDK dependency was found. |
+| Payments | Backend routes and entities; `mobile/src/app/(app)/(tabs)/wallet.tsx` | `qr`/`cash` are ride options; the wallet is a placeholder. There is no evidence of the collection, commission, reconciliation and settlement circuit. |
+| Parcels/moving | `delivery`/`moving` types and service compatibility per vehicle | Types supported in the ride; they do not certify recipient/package/delivery or the commercial operation of moving. |
+| CI/deployment | `.github/workflows/ci.yml`, Dockerfile, operation scripts and monitoring | Versioned definitions. Merge confirmed in local Git; remote Actions status, cloud and Google Play not queried. |
 
-Las rutas abreviadas de casos de uso corresponden a
-`backend/app/application/use_cases/`. La revisión no constituye una auditoría
-exhaustiva de seguridad ni una medición de capacidad.
+The abbreviated use-case paths correspond to
+`backend/app/application/use_cases/`. The review is not an exhaustive
+security audit or a capacity measurement.
 
-## Comprobaciones ejecutadas el 19/09
+## Checks run on 2026-09-19
 
-| Comprobación | Resultado |
+| Check | Result |
 |---|---|
-| Backend: `.venv/bin/pytest tests/unit tests/e2e -q` | **700 aprobadas**, 5 advertencias; 36,14 s. |
-| Backend: `.venv/bin/ruff check .` | Aprobado. |
-| Backend: `.venv/bin/python -m scripts.export_openapi --check` | Snapshot vigente. |
-| Backend: `.venv/bin/python -m scripts.export_realtime_contract --check` | Contrato vigente. |
-| Raíz: `npm run openapi:check` | Tipos móviles vigentes. |
-| Mobile: `npm test` | **275 aprobadas**, cero fallos y cero omitidas. |
-| Mobile: `./node_modules/.bin/tsc --noEmit` | Aprobado. |
-| Mobile: `EXPO_NO_DOTENV=1 npm run lint` | Aprobado. |
+| Backend: `.venv/bin/pytest tests/unit tests/e2e -q` | **700 passing**, 5 warnings; 36.14 s. |
+| Backend: `.venv/bin/ruff check .` | Passed. |
+| Backend: `.venv/bin/python -m scripts.export_openapi --check` | Snapshot up to date. |
+| Backend: `.venv/bin/python -m scripts.export_realtime_contract --check` | Contract up to date. |
+| Root: `npm run openapi:check` | Mobile types up to date. |
+| Mobile: `npm test` | **275 passing**, zero failures and zero skipped. |
+| Mobile: `./node_modules/.bin/tsc --noEmit` | Passed. |
+| Mobile: `EXPO_NO_DOTENV=1 npm run lint` | Passed. |
 
-Las advertencias backend incluyen dos deprecaciones de Starlette/AnyIO y tres
-helpers importados como `test_settings` que pytest cuenta como pruebas aunque
-devuelven configuración. El total de 700 es el informado por pytest, no una
-medida de cobertura funcional. Corregir esa recolección es mantenimiento pendiente.
+The backend warnings include two Starlette/AnyIO deprecations and three
+helpers imported as `test_settings` that pytest counts as tests even though
+they return configuration. The total of 700 is the one reported by pytest, not a
+measure of functional coverage. Fixing that collection is pending maintenance.
 
-El sandbox bloqueó la primera ejecución backend al inicializar SQLite async y
-limitó el detalle de los procesos móviles. Ambas suites se repitieron fuera de
-ese aislamiento, mediante escalación aprobada automáticamente, con los resultados
-anteriores. Un ensayo diagnóstico móvil con `--test-isolation=none` produjo un
-fallo de contrato HTTP; no es el comando configurado por el proyecto. La ejecución
-normal con aislamiento por archivo pasó sus 275 casos; no se modificaron pruebas
-para conseguir el resultado.
+The sandbox blocked the first backend run when initializing async SQLite and
+limited the detail of the mobile processes. Both suites were repeated outside
+that isolation, through automatically approved escalation, with the results
+above. A diagnostic mobile trial with `--test-isolation=none` produced an
+HTTP contract failure; it is not the command configured by the project. The normal
+run with per-file isolation passed its 275 cases; no tests were modified
+to achieve the result.
 
-Logs de trabajo locales (temporales, no necesarios para usar el plan):
+Local working logs (temporary, not needed to use the plan):
 
 - `/tmp/viajaya-production-review-backend-tests.log`.
 - `/tmp/viajaya-production-review-mobile-tests.log`.
 - `/tmp/viajaya-production-review-mobile-lint.log`.
 
-## Comprobaciones que siguen pendientes
+## Checks still pending
 
-- PostgreSQL/Redis opt-in, migraciones y carreras reales sobre una base desechable
-  del candidato actual. El plan 0010 conserva antecedentes de esas pruebas; no
-  se trasladan automáticamente a esta versión.
-- Ejecución remota completa de CI asociada al commit candidato.
-- API/HTTPS/WSS de Pruebas, migraciones desplegadas, APK vigente y recorrido con
-  dos teléfonos; acceso social, sesión, cambio de número y recuperación.
-- GPS/segundo plano/push/navegación, cobro QR/efectivo con contabilidad y encomienda
-  completa, después de implementar sus bloques.
-- Carga de 500 conductores, hipótesis de pasajeros concurrentes, latencias,
-  restauración, alertas reales, rollback y costos observados.
-- SMS real, credenciales productivas, condiciones comerciales, privacidad,
-  eliminación de cuenta y distribución por Google Play.
+- Opt-in PostgreSQL/Redis, migrations and real races on a disposable database
+  of the current candidate. Plan 0010 keeps the background of those tests; they
+  are not automatically carried over to this version.
+- A full remote CI run associated with the candidate commit.
+- Testing API/HTTPS/WSS, deployed migrations, current APK and a walkthrough with
+  two phones; social access, session, number change and recovery.
+- GPS/background/push/navigation, QR/cash collection with accounting and full
+  parcels, after implementing their blocks.
+- Load of 500 drivers, concurrent-passenger hypotheses, latencies,
+  restoration, real alerts, rollback and observed costs.
+- Real SMS, production credentials, commercial terms, privacy,
+  account deletion and distribution through Google Play.
 
-## Correcciones al plan
+## Corrections to the plan
 
-- F01 y F02 ya están integradas en Git; se retiró el estado obsoleto «sin publicar».
-- F04 pasa a avance parcial explícito por alta/vehículos/modos; no se marca cerrada.
-- HTTPS y APK inicial de F02-B se reconocen como antecedentes completados; la
-  actualización y certificación de Pruebas siguen abiertas.
-- Se distingue recuperación implementada en lógica de recuperación accesible en
-  la pantalla y resuelta por soporte.
-- F03-A conserva su alcance acordado y se planifica después de la migración
-  `0028`. F03-B/C siguen pospuestas, pero son necesarias para la apertura.
-- Facebook continúa aplazado. Mudanzas existe parcialmente en código; no se
-  añade por inferencia al lanzamiento acordado de taxi, moto y encomiendas.
-- Se mantiene un calendario por hitos, sin inventar fecha, responsables,
-  presupuesto aprobado ni porcentaje global de avance.
-- La presentación HTML se actualizó también a la revisión 10 por solicitud del
-  usuario. Conserva 32 diapositivas; su vista completa y descarga incorporan el
-  Markdown vigente.
+- F01 and F02 are already merged in Git; the obsolete «unpublished» status was removed.
+- F04 moves to explicit partial progress for sign-up/vehicles/modes; it is not marked closed.
+- HTTPS and the initial F02-B APK are recognized as completed background; the
+  update and certification of Testing remain open.
+- Recovery implemented in logic is distinguished from recovery accessible on
+  the screen and resolved by support.
+- F03-A keeps its agreed scope and is planned after migration
+  `0028`. F03-B/C remain postponed, but are necessary for launch.
+- Facebook remains postponed. Moving exists partially in code; it is not
+  added by inference to the agreed launch of taxi, moto and parcels.
+- A milestone-based calendar is kept, without inventing a date, owners,
+  an approved budget or a global progress percentage.
+- The HTML presentation was also updated to revision 10 at the user's
+  request. It keeps 32 slides; its full view and download include the
+  current Markdown.
 
-## Referencias externas revisadas
+## External references reviewed
 
-Estas consultas actualizan referencias de planificación; no acreditan cuentas,
-contratos ni disponibilidad del proyecto en los proveedores.
+These queries update planning references; they do not prove accounts,
+contracts or the project's availability with the providers.
 
-- [Google Maps: lista de precios](https://developers.google.com/maps/billing-and-pricing/pricing)
-  y [facturación de Navigation SDK](https://developers.google.com/maps/documentation/navigation/android-sdk/pricing):
-  se conservan los escenarios de consumo del plan; no son una cotización del piloto.
-- [Render: regiones](https://render.com/docs/regions): el catálogo consultado no
-  incluye Sudamérica; la selección sigue condicionada a medir latencia en Bolivia.
-  Las bandas propias de infraestructura requieren cotización detallada.
-- [Twilio Verify](https://www.twilio.com/en-us/verify/pricing) y
-  [EAS](https://expo.dev/pricing): las referencias de USD 0,05 por verificación
-  más canal y Starter de USD 19/mes más consumo siguen publicadas; no se eligió
-  un proveedor ni se contrataron servicios.
-- [Google Play: pruebas de cuentas personales](https://support.google.com/googleplay/android-developer/answer/14151465?hl=en-GB):
-  verificar aplicabilidad al titular; las cuentas personales creadas después del
-  13/11/2023 tienen requisito de 12 testers durante 14 días continuos.
-- [Google Play: eliminación de cuentas](https://support.google.com/googleplay/android-developer/answer/13327111?hl=en-EN):
-  conservar en F09 la solicitud desde la app y una vía web accesible.
-
-
-## Continuación: negociaciones simultáneas (revisión 15)
-
-El plan [0015](../implementation-plans/0015-concurrent-negotiations.md) documenta
-el envío independiente por pasajero, recuperación al navegar y apertura del viaje
-asignado desde otra negociación. Verificado: 334 pruebas mobile, 62 API/WS,
-4 PostgreSQL y 17 casos UI. Bundle Android actualizado, API/Metro sanos.
-No modifica los cierres productivos pendientes ni atribuye la suite completa del
-backend de las revisiones anteriores a esta ejecución. Falta el recorrido en teléfonos.
+- [Google Maps: price list](https://developers.google.com/maps/billing-and-pricing/pricing)
+  and [Navigation SDK billing](https://developers.google.com/maps/documentation/navigation/android-sdk/pricing):
+  the plan's consumption scenarios are kept; they are not a quote for the pilot.
+- [Render: regions](https://render.com/docs/regions): the catalog consulted does not
+  include South America; the choice remains conditioned on measuring latency in Bolivia.
+  The own infrastructure bands require a detailed quote.
+- [Twilio Verify](https://www.twilio.com/en-us/verify/pricing) and
+  [EAS](https://expo.dev/pricing): the references of USD 0.05 per verification
+  plus channel and Starter at USD 19/month plus usage are still published; no
+  provider was chosen and no services were hired.
+- [Google Play: personal account testing](https://support.google.com/googleplay/android-developer/answer/14151465?hl=en-GB):
+  verify applicability to the owner; personal accounts created after
+  2023-11-13 have a requirement of 12 testers for 14 continuous days.
+- [Google Play: account deletion](https://support.google.com/googleplay/android-developer/answer/13327111?hl=en-EN):
+  keep in F09 the request from the app and an accessible web path.
 
 
-## Continuación: auditoría de negociaciones (revisión 16)
+## Continuation: simultaneous negotiations (revision 15)
 
-El [plan 0016](../implementation-plans/0016-negotiation-race-audit.md) documenta
-cuatro bugs reproducidos y corregidos: eventos antiguos que ocultan mejoras,
-respuestas de otro viaje que pisan el activo, solicitudes fuera de la primera
-página y ETA asociada a una recogida que cambió durante el cálculo.
-Verificado: 344 pruebas mobile, 725 backend (88 omitidas, cinco advertencias),
-7 PostgreSQL y 27 casos UI. OpenAPI/tipos sincronizados, bundle Android actualizado,
-API y Metro sanos. Sin migración de la base ni commits. Falta el recorrido en teléfonos.
+Plan [0015](../implementation-plans/0015-concurrent-negotiations.md) documents
+independent sending per passenger, recovery when navigating and opening the
+assigned ride from another negotiation. Verified: 334 mobile tests, 62 API/WS,
+4 PostgreSQL and 17 UI cases. Android bundle updated, API/Metro healthy.
+It does not modify the pending production closures or attribute the full backend
+suite of earlier revisions to this run. The walkthrough on phones is missing.
+
+
+## Continuation: negotiation audit (revision 16)
+
+[Plan 0016](../implementation-plans/0016-negotiation-race-audit.md) documents
+four reproduced and fixed bugs: old events that hide improvements,
+responses from another ride that overwrite the active one, requests outside the first
+page and an ETA tied to a pickup that changed during the computation.
+Verified: 344 mobile tests, 725 backend (88 skipped, five warnings),
+7 PostgreSQL and 27 UI cases. OpenAPI/types in sync, Android bundle updated,
+API and Metro healthy. No database migration or commits. The walkthrough on phones is missing.

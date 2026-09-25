@@ -1,60 +1,60 @@
-# Experiencia de negociación, recogida y cierre
+# Negotiation, pickup and closing experience
 
-19/09/2026 · Implementado y verificado localmente · `codex/ui-improvements-and-bugfixes`.
+2026-09-19 · Implemented and verified locally · `codex/ui-improvements-and-bugfixes`.
 
-Mejorar los recorridos de taxi/mototaxi para ambos participantes:
+Improve the taxi/mototaxi flows for both participants:
 
-- Reservar espacio estable para el mapa y mantener las acciones principales visibles.
-- Dar prioridad al punto de recogida/destino y a la identificación de la otra persona.
-- Separar cancelación de la acción principal y explicar quién hace el siguiente paso.
-- Permitir comparar ofertas por precio o llegada sin alterar la decisión del pasajero.
-- Simplificar la calificación, mantener el envío visible y el comentario opcional.
+- Reserve stable space for the map and keep the main actions visible.
+- Give priority to the pickup/destination point and to identifying the other person.
+- Separate cancellation from the main action and explain who takes the next step.
+- Allow comparing offers by price or arrival without altering the passenger's decision.
+- Simplify rating, keep submission visible and the comment optional.
 
-Reutilizar los componentes y tokens existentes; no cambiar contratos ni reglas de
-asignación, presencia, TTL, cancelación o calificaciones. Probar taxi/moto, ambos
-roles, temas claro/oscuro, pantalla pequeña, letra grande, actualizaciones en vivo
-y cierre. Las verificaciones con adaptadores no certifican mapa/GPS nativos.
+Reuse the existing components and tokens; do not change contracts or rules for
+assignment, presence, TTL, cancellation or ratings. Test taxi/moto, both
+roles, light/dark themes, small screen, large text, live updates
+and closing. Verifications with adapters do not certify native map/GPS.
 
-## Entrega
+## Delivery
 
-- Panel fijo al 64 % de la vista en ofertas y seguimiento de ambos roles. Su
-  contenido se desplaza dentro del panel; el mapa conserva el espacio restante
-  y sus gestos bloqueados. Abrir detalles no mueve el panel ni la acción principal.
-- Conductor: origen al recoger y destino al viajar dentro del aviso de etapa;
-  nombre, llamada y mensaje antes del detalle ampliado. Tarifa/pago compactos.
-  La confirmación sigue siendo obligatoria antes de llegar, iniciar o finalizar.
-- Pasajero: aviso de llegada destacado, confirmación de «ya salí» clara y resumen
-  ampliable con ruta, tarifa y pago. Al iniciar desaparece la cancelación; en
-  etapas anteriores se conserva como acción secundaria y con confirmación.
-- Ofertas: selección explícita entre recientes, menor precio y menor llegada.
-  Las ofertas con ETA desconocida van al final y los empates conservan su orden;
-  no se modifica el array de React Query ni se elige un conductor automáticamente.
-- Calificación: envío visible desde el comienzo, deshabilitado hasta elegir
-  estrellas. El comentario es opcional y se abre a demanda; ocultarlo o fallar
-  el envío conserva estrellas y borrador. Omitir sigue disponible.
+- Fixed panel at 64 % of the view in offers and tracking for both roles. Its
+  content scrolls inside the panel; the map keeps the remaining space
+  and its locked gestures. Opening details does not move the panel or the main action.
+- Driver: origin when picking up and destination when traveling inside the stage notice;
+  name, call and message before the expanded detail. Compact fare/payment.
+  Confirmation is still required before arriving, starting or finishing.
+- Passenger: highlighted arrival notice, a clear «ya salí» confirmation and an
+  expandable summary with route, fare and payment. On start the cancellation disappears; in
+  earlier stages it is kept as a secondary action with confirmation.
+- Offers: explicit selection between recent, lowest price and fastest arrival.
+  Offers with an unknown ETA go last and ties keep their order;
+  the React Query array is not modified and no driver is chosen automatically.
+- Rating: submission visible from the start, disabled until stars are
+  chosen. The comment is optional and opens on demand; hiding it or a failed
+  submission keeps stars and draft. Skip is still available.
 
-## Evidencia del 19/09/2026
+## Evidence of 2026-09-19
 
-- **373 pruebas móviles aprobadas**, incluidas seis nuevas para comparación;
-  TypeScript y lint limpios. `git diff --check` sin errores.
-- **14 casos UI nuevos:** cinco recorridos por servicio para detalle estable,
-  llegada/aviso/inicio, calificación del conductor con fallo/reintento, recogida
-  y cierre del pasajero y comparación/selección; cuatro pantallas adicionales
-  con 320×640, tema oscuro y letra al 200 %.
-- **27 casos UI anteriores aprobados de nuevo**: negociación simultánea,
-  navegación, retirada, respuestas atrasadas, recogida modificada y paginación.
-  Total: **41 casos**, sin errores JavaScript. Se inspeccionaron capturas de
-  ambos roles, negociación, calificación y accesibilidad. Pantallas y hooks reales;
-  adaptadores de red, GPS, mapa, navegación y contacto nativo.
-- API y Metro responden HTTP 200; bundle Android actualizado de **11.909.378 bytes**,
-  con la nueva comparación de ofertas. No se reiniciaron servicios.
-- Backend/contratos/base de datos sin cambios. Se conserva como histórica la
-  evidencia de la revisión 17: 731 backend y 9 PostgreSQL aprobadas.
-- Plan y presentación actualizados a revisión 18: 32 diapositivas verificadas,
-  navegación/lectura/impresión y descarga idéntica al plan, sin desbordamientos
-  en escritorio/móvil ni errores JavaScript.
-- Acciones secundarias basadas en `Button`, controles táctiles de al menos 48
-  puntos, foco visible y marca de selección además del color al ordenar ofertas.
+- **373 mobile tests passing**, including six new ones for comparison;
+  TypeScript and lint clean. `git diff --check` without errors.
+- **14 new UI cases:** five flows per service for stable detail,
+  arrival/notice/start, driver rating with failure/retry, passenger pickup
+  and closing and comparison/selection; four additional screens
+  at 320×640, dark theme and 200 % text.
+- **27 previous UI cases passing again**: simultaneous negotiation,
+  navigation, withdrawal, late responses, modified pickup and pagination.
+  Total: **41 cases**, without JavaScript errors. Screenshots of
+  both roles, negotiation, rating and accessibility were inspected. Real screens and hooks;
+  network, GPS, map, navigation and native contact adapters.
+- API and Metro respond HTTP 200; updated Android bundle of **11,909,378 bytes**,
+  with the new offer comparison. No services were restarted.
+- Backend/contracts/database unchanged. The revision 17 evidence is kept
+  as historical: 731 backend and 9 PostgreSQL tests passing.
+- Plan and presentation updated to revision 18: 32 slides verified,
+  navigation/reading/printing and a download identical to the plan, without overflow
+  on desktop/mobile or JavaScript errors.
+- Secondary actions based on `Button`, touch controls of at least 48
+  points, visible focus and a selection mark in addition to color when sorting offers.
 
-Evidencia reproducible y capturas: `local-files/trip-experience-2026-09-19/`.
-Continúa pendiente el recorrido de la versión actual en dos teléfonos reales.
+Reproducible evidence and screenshots: `local-files/trip-experience-2026-09-19/`.
+The walkthrough of the current version on two real phones is still pending.

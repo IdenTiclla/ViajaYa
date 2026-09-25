@@ -1,24 +1,24 @@
-# Monitoreo realtime de ViajaYa
+# ViajaYa realtime monitoring
 
-Con `OPENMETRICS_ENABLED=true`, la API expone `/metrics` en formato OpenMetrics
-1.0. El endpoint no publica payloads, topics, DSN ni errores internos. En `off`
-informa únicamente la configuración y los contadores locales; en `shadow`,
-`live_local` o `live_redis` añade el corte persistido de la outbox. En
-`live_redis` expone además conexión, reconexiones, mensajes inválidos, fanout y
-cantidad de sockets locales, sin publicar canales ni payloads. Si la presencia
-compartida está activa, añade salud y contadores de renovaciones, desconexiones,
-observaciones y fallos; nunca incluye ride IDs ni connection IDs.
-Cuando `SCHEDULED_ACTIONS_MODE=shadow|live`, el mismo documento añade backlog,
-leases, ejecución y retención del scheduler; `/health/scheduled-actions` ofrece
-el corte JSON equivalente para diagnóstico. Shadow ejecuta el worker además del
-timer legacy, por lo que no debe acumular acciones `due` como comportamiento normal.
+With `OPENMETRICS_ENABLED=true`, the API exposes `/metrics` in OpenMetrics
+1.0 format. The endpoint does not publish payloads, topics, DSNs or internal errors. In `off`
+it reports only the configuration and the local counters; in `shadow`,
+`live_local` or `live_redis` it adds the persisted outbox slice. In
+`live_redis` it also exposes connection, reconnections, invalid messages, fanout and
+number of local sockets, without publishing channels or payloads. If shared presence
+is active, it adds health and counters for renewals, disconnections,
+observations and failures; it never includes ride IDs or connection IDs.
+When `SCHEDULED_ACTIONS_MODE=shadow|live`, the same document adds the scheduler's backlog,
+leases, execution and retention; `/health/scheduled-actions` offers
+the equivalent JSON slice for diagnostics. Shadow runs the worker in addition to the
+legacy timer, so it should not accumulate `due` actions as normal behavior.
 
-`prometheus.yml` conecta el scrape local, las reglas y Alertmanager. El job
-comienza con `viajaya-backend`, como esperan las alertas. El perfil de Compose
-expone las dos interfaces únicamente en loopback:
+`prometheus.yml` wires the local scrape, the rules and Alertmanager. The job
+starts with `viajaya-backend`, as the alerts expect. The Compose profile
+exposes both interfaces only on loopback:
 
 ```bash
-# El backend debe publicar /metrics antes de iniciar el perfil.
+# The backend must publish /metrics before starting the profile.
 OPENMETRICS_ENABLED=true
 
 docker compose --profile monitoring up -d prometheus alertmanager
@@ -27,29 +27,29 @@ docker compose --profile monitoring up -d prometheus alertmanager
 # Alertmanager: http://127.0.0.1:9093
 ```
 
-Dentro de Docker, `host.docker.internal:8000` alcanza el backend de desarrollo
-que corre en el host. Staging y producción deben reemplazar el target y
-`external_labels.environment` por sus valores reales.
+Inside Docker, `host.docker.internal:8000` reaches the development backend
+running on the host. Staging and production must replace the target and
+`external_labels.environment` with their real values.
 
-El Alertmanager versionado usa un receptor sin salidas externas: permite
-comprobar agrupación, resolución y silencios desde su interfaz sin guardar
-credenciales. Para un entorno real, monta un archivo administrado por secretos:
+The versioned Alertmanager uses a receiver without external outputs: it allows
+checking grouping, resolution and silences from its interface without storing
+credentials. For a real environment, mount a secret-managed file:
 
 ```bash
-VIAJAYA_ALERTMANAGER_CONFIG_PATH=/ruta/segura/alertmanager.yml \
+VIAJAYA_ALERTMANAGER_CONFIG_PATH=/secure/path/alertmanager.yml \
   docker compose --profile monitoring up -d alertmanager prometheus
 ```
 
-Ese archivo no debe vivir en el repositorio. Debe configurar el receptor real y
-su política de escalamiento.
+That file must not live in the repository. It must configure the real receiver and
+its escalation policy.
 
-Las reglas comunes asumen un Prometheus aislado por entorno. Si una misma
-instancia monitorea varios jobs ViajaYa, cada entorno debe copiar y acotar las
-reglas `absent(...)` a su `job` o label de entorno; una expresión genérica no
-puede descubrir el nombre de un job que desapareció por completo.
+The common rules assume one Prometheus isolated per environment. If a single
+instance monitors several ViajaYa jobs, each environment must copy and scope the
+`absent(...)` rules to its `job` or environment label; a generic expression cannot
+discover the name of a job that disappeared completely.
 
-Desde la raíz del repositorio se valida la configuración completa con las mismas
-versiones fijadas en CI:
+From the repository root, validate the full configuration with the same
+versions pinned in CI:
 
 ```bash
 docker run --rm --entrypoint /bin/promtool \
@@ -63,55 +63,55 @@ docker run --rm --entrypoint /bin/amtool \
   check-config /etc/alertmanager/alertmanager.yml
 ```
 
-Las reglas asumen un scrape cada 30–60 s. Los umbrales de 120 s para
-backlog, 10 s para publicación y 10 min para reintentos son valores canary:
-deben ajustarse con datos de staging antes de promover cada modo live.
+The rules assume a scrape every 30–60 s. The thresholds of 120 s for
+backlog, 10 s for publication and 10 min for retries are canary values:
+they must be tuned with staging data before promoting each live mode.
 
-`ViajaYaRealtimeNuevaCuarentena` usa el incremento de una gauge durable porque
-las cuarentenas nunca son podadas por la retención. Puede perder un incremento
-ocurrido durante una caída larga de Prometheus; al recuperarlo, operación debe
-revisar también el estado persistente en `/health/realtime`. Los destinos reales
-de Alertmanager se configuran fuera del repositorio para no versionar
-credenciales; la configuración local versionada no envía notificaciones.
+`ViajaYaRealtimeNuevaCuarentena` uses the increase of a durable gauge because
+quarantines are never pruned by retention. It can miss an increase
+that happened during a long Prometheus outage; after recovering it, operations must
+also review the persistent state in `/health/realtime`. The real Alertmanager
+destinations are configured outside the repository so credentials are not versioned;
+the versioned local configuration does not send notifications.
 
-El despliegue debe restringir `/metrics` a Prometheus mediante ingress, firewall
-o política de red. El flag evita publicar accidentalmente el endpoint, pero no
-reemplaza ese control perimetral.
+The deployment must restrict `/metrics` to Prometheus through ingress, firewall
+or network policy. The flag prevents accidentally publishing the endpoint, but it does not
+replace that perimeter control.
 
-Las métricas de backlog y cuarentena describen la misma PostgreSQL desde cada
-réplica; las reglas eliminan `instance`/`pod` para no duplicar alertas. Las
-señales de procesos (`up`, dispatcher y retención) sí permanecen por instancia.
+The backlog and quarantine metrics describe the same PostgreSQL from each
+replica; the rules drop `instance`/`pod` so alerts are not duplicated. The
+process signals (`up`, dispatcher and retention) do remain per instance.
 
-El modo esperado depende del entorno y no se codifica en las reglas comunes.
-Staging o producción deben añadir una regla sobre
-`viajaya_realtime_outbox_info{mode="live_redis"}` cuando esa fase sea obligatoria.
+The expected mode depends on the environment and is not encoded in the common rules.
+Staging or production must add a rule on
+`viajaya_realtime_outbox_info{mode="live_redis"}` when that phase is mandatory.
 
-## Diagnóstico rápido
+## Quick diagnosis
 
-- Scrape o colección: consulta `/health/live`, `/health/ready`,
-  `/health/realtime` y `/health/scheduled-actions`; confirma red, PostgreSQL y
-  migraciones `0018`–`0023`.
-- Dispatcher o retención detenidos: revisa readiness y logs sanitizados del
-  proceso; no reinicies otro consumidor hasta confirmar el advisory lock.
-- Redis desconectado o inestable: confirma `PING`, red y ACL. El proceso debe
-  quedar fuera de readiness y cerrar sus sockets con 1012; no fuerces `published_at`
-  porque PostgreSQL conserva el batch para retry cuando el publish falla.
-- Presencia compartida: confirma ambas señales Redis (bridge y store). Durante
-  la caída y durante una gracia completa después de recuperarse,
-  `cancel_absent_ride` debe aplazarse sin pasar a `dead`.
-- Backlog o reintentos: compara edad, batches y último publish. Conserva las
-  filas pendientes para replay; no las marques manualmente como publicadas.
-- Cuarentena: registra el código, identifica el productor incompatible y fuerza
-  un nuevo snapshot después de corregirlo. La retención no borra la evidencia.
-- Publicación lenta: correlaciona el instante de la última publicación con carga
-  de PostgreSQL. Esta gauge describe el último batch, no un percentil ni un SLO.
-- Scheduler: una acción `due` envejecida indica ejecución atrasada; un lease
-  `stale` debe recuperarse automáticamente. No borres acciones `dead`: conserva
-  su código sanitizado y corrige el handler antes de reprogramarlas. La retención
-  automática solo elimina `succeeded/cancelled` después del TTL configurado. La
-  alerta crítica observa nuevas transiciones a `dead` en una ventana de 10 min y
-  se resuelve al cesar el incidente; la gauge `dead_persisted` conserva el inventario.
+- Scrape or collection: query `/health/live`, `/health/ready`,
+  `/health/realtime` and `/health/scheduled-actions`; confirm network, PostgreSQL and
+  migrations `0018`–`0023`.
+- Dispatcher or retention stopped: review readiness and the process's sanitized
+  logs; do not restart another consumer until the advisory lock is confirmed.
+- Redis disconnected or unstable: confirm `PING`, network and ACL. The process must
+  stay out of readiness and close its sockets with 1012; do not force `published_at`
+  because PostgreSQL keeps the batch for retry when the publish fails.
+- Shared presence: confirm both Redis signals (bridge and store). During
+  the outage and during a full grace period after recovering,
+  `cancel_absent_ride` must be postponed without becoming `dead`.
+- Backlog or retries: compare age, batches and last publish. Keep the
+  pending rows for replay; do not mark them manually as published.
+- Quarantine: record the code, identify the incompatible producer and force
+  a new snapshot after fixing it. Retention does not delete the evidence.
+- Slow publication: correlate the time of the last publication with
+  PostgreSQL load. This gauge describes the last batch, not a percentile or an SLO.
+- Scheduler: an aged `due` action indicates delayed execution; a
+  `stale` lease must recover automatically. Do not delete `dead` actions: keep
+  their sanitized code and fix the handler before rescheduling them. Automatic
+  retention only removes `succeeded/cancelled` after the configured TTL. The
+  critical alert watches new transitions to `dead` in a 10 min window and
+  resolves when the incident stops; the `dead_persisted` gauge keeps the inventory.
 
-La automatización del receptor, silencios y escalamiento pertenece a
-Alertmanager del entorno. No hay un acknowledgement persistido para cuarentenas;
-el runbook debe comprobarlas después de cualquier interrupción de Prometheus.
+Automating the receiver, silences and escalation belongs to the environment's
+Alertmanager. There is no persisted acknowledgement for quarantines;
+the runbook must check them after any Prometheus interruption.

@@ -1,65 +1,65 @@
-# Mejoras de UI móvil y correcciones — 19/09/2026
+# Mobile UI improvements and fixes — 2026-09-19
 
-Rama de trabajo: `codex/ui-improvements-and-bugfixes`, creada desde `main`
-(`986dd79`). Los cambios locales previos del plan de producción y de su
-presentación HTML se conservaron íntegros al cambiar de rama. Esta entrega
-permanece local, sin commit ni push.
+Working branch: `codex/ui-improvements-and-bugfixes`, created from `main`
+(`986dd79`). The previous local changes to the production plan and its
+HTML presentation were kept intact when switching branches. This delivery
+remains local, without commit or push.
 
-## Cambios realizados
+## Changes made
 
-- **Acceso por teléfono:** pegar un número con `+` o `00` reconoce el prefijo
-  internacional y selecciona un país habilitado. Se evita duplicar el prefijo,
-  se conserva como inválido un país no admitido y no se trunca silenciosamente
-  un número demasiado largo. El país inicial respeta el catálogo del servidor.
-- **Selector de país:** áreas táctiles de al menos 48 puntos, texto adaptable,
-  estado seleccionado accesible y error junto al campo. El servidor sigue
-  validando las reglas de numeración de cada país.
-- **OTP:** pegar seis dígitos separados por espacios conserva el código completo.
-  La pantalla distingue un código solicitado, uno enviado y uno simulado; ya no
-  anuncia un envío que todavía no ocurrió.
-- **Registro de conductor:** secciones de vehículo, servicios y datos; errores
-  de placa/modelo junto a sus campos; confirmación y errores desplazables.
-  Volver y cambiar de vehículo se deshabilitan durante el guardado. Un bloqueo
-  inmediato evita envíos repetidos antes de actualizar el estado visual.
-- **Selección de servicios:** volver a tocar el vehículo seleccionado ya no
-  restablece todos sus servicios. Los datos permanecen disponibles para reintentar
-  tras un fallo de registro.
-- **Estados del registro:** carga con salida, reintento visible, cupo completo y
-  enlace de edición no disponible. Registrar el último tipo de vehículo conserva
-  su confirmación después de actualizar la lista.
-- **Mensajes compartidos:** el modo compacto de `FeedbackState` conserva la
-  altura necesaria para su texto, evitando solapar el botón siguiente al ampliar
-  la tipografía. El modo expandido mantiene su comportamiento anterior.
+- **Phone access:** pasting a number with `+` or `00` recognizes the international
+  prefix and selects an enabled country. Duplicating the prefix is avoided,
+  an unsupported country is kept as invalid and a number that is too long
+  is not silently truncated. The initial country follows the server catalog.
+- **Country selector:** touch areas of at least 48 points, adaptive text,
+  accessible selected state and an error next to the field. The server still
+  validates the numbering rules of each country.
+- **OTP:** pasting six digits separated by spaces keeps the full code.
+  The screen distinguishes a requested code, a sent one and a simulated one; it no longer
+  announces a sending that has not happened yet.
+- **Driver registration:** vehicle, services and data sections; plate/model errors
+  next to their fields; scrollable confirmation and errors.
+  Back and switching vehicle are disabled while saving. An immediate
+  lock prevents repeated submissions before the visual state updates.
+- **Service selection:** tapping the selected vehicle again no longer
+  resets all its services. The data remains available for retrying
+  after a registration failure.
+- **Registration states:** loading with an exit, visible retry, full quota and
+  an unavailable edit link. Registering the last vehicle type keeps
+  its confirmation after the list refreshes.
+- **Shared messages:** the compact mode of `FeedbackState` keeps the
+  height its text needs, avoiding overlapping the next button when enlarging
+  the typography. The expanded mode keeps its previous behavior.
 
-## Verificación
+## Verification
 
-| Comprobación | Resultado |
+| Check | Result |
 |---|---|
-| `cd mobile && npm test` | **283 pruebas aprobadas**, sin fallos ni omitidas; incluye 8 regresiones nuevas de entrada telefónica. |
-| `cd mobile && ./node_modules/.bin/tsc --noEmit` | Aprobado. |
-| `cd mobile && EXPO_NO_DOTENV=1 npm run lint` | Aprobado. |
-| `git diff --check` | Aprobado. |
-| Componentes reales compilados con Metro para React Native Web | Teléfono internacional, selección de país, OTP formateado, selección repetida, guardado, reintento, edición y estados del registro aprobados. Sin errores JavaScript. |
-| Geometría en Chromium | 32 combinaciones: acceso/registro/error/cupo completo × 320/390 px × claro/oscuro × texto 100/200 %. Sin desbordamiento horizontal; mensajes sin solapamiento; última acción alcanzable mediante desplazamiento. |
+| `cd mobile && npm test` | **283 tests passing**, no failures or skips; includes 8 new phone-input regressions. |
+| `cd mobile && ./node_modules/.bin/tsc --noEmit` | Passed. |
+| `cd mobile && EXPO_NO_DOTENV=1 npm run lint` | Passed. |
+| `git diff --check` | Passed. |
+| Real components compiled with Metro for React Native Web | International phone, country selection, formatted OTP, repeated selection, saving, retry, editing and registration states passed. No JavaScript errors. |
+| Geometry in Chromium | 32 combinations: access/registration/error/full quota × 320/390 px × light/dark × text 100/200 %. No horizontal overflow; messages without overlap; last action reachable by scrolling. |
 
-El visor de UI sustituyó los hooks de red y navegación por datos simulados;
-usó los componentes de presentación y los controladores de teléfono reales.
-La escala de texto se simuló en React Native Web. Se inspeccionaron también las
-capturas, lo que permitió detectar y corregir el solapamiento de los mensajes.
+The UI viewer replaced the network and navigation hooks with simulated data;
+it used the real presentation components and phone controllers.
+Text scaling was simulated in React Native Web. The screenshots were also
+inspected, which made it possible to detect and fix the message overlap.
 
-Evidencia local, excluida de Git: `local-files/mobile-ui-review-2026-09-19/`
-(capturas, resultados de interacción y log de pruebas). El visor y su script de
-comprobación se generaron en `/tmp/viajaya-mobile-ui-review/`; no son una nueva
-aplicación ni una dependencia del producto.
+Local evidence, excluded from Git: `local-files/mobile-ui-review-2026-09-19/`
+(screenshots, interaction results and test log). The viewer and its check
+script were generated in `/tmp/viajaya-mobile-ui-review/`; they are neither a new
+application nor a product dependency.
 
-## Límites y cierre pendiente
+## Limits and pending closure
 
-Esta comprobación no certifica teclado, TalkBack, autofill ni navegación nativa
-en un dispositivo Android. Falta recorrer acceso y registro con el dev build,
-texto grande, teclado abierto y una conexión real. No se generó un APK nuevo.
-No hubo cambios en contratos HTTP/WebSocket, backend, secretos ni servicios.
+This check does not certify keyboard, TalkBack, autofill or native navigation
+on an Android device. Walking through access and registration with the dev build,
+large text, an open keyboard and a real connection is still missing. No new APK was built.
+There were no changes to HTTP/WebSocket contracts, backend, secrets or services.
 
-Los **275 tests móviles** del informe de preparación para producción siguen
-siendo la evidencia de la base `main` revisada antes de estas correcciones;
-los **283** corresponden a esta rama de trabajo. Las fases F02 y F04 mantienen
-sus pendientes y criterios de cierre del [plan de producción](plan-salida-produccion.md).
+The **275 mobile tests** of the production readiness report remain
+the evidence for the `main` base reviewed before these fixes;
+the **283** correspond to this working branch. Phases F02 and F04 keep
+their pending items and exit criteria from the [production plan](production-launch-plan.md).

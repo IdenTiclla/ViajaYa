@@ -1,29 +1,32 @@
-# Generación de la presentación de producción
+# Generating the production presentation
 
-Desde la raíz del repositorio:
+From the repository root:
 
 ```bash
 python3 docs/plans/generador/generar_presentacion.py
 ```
 
-El generador solo requiere la biblioteca estándar de Python 3. Lee:
+The generator only requires the Python 3 standard library. It reads:
 
-- `../plan-salida-produccion.md`: documento íntegro para lectura y descarga;
-  también aporta los nombres y estados del resumen F01–F10.
-- `production-slides.json`: contenido resumido de las 32 diapositivas, fecha y revisión.
-- `presentation.css`: diseño original verde, adaptación móvil e impresión.
-- `navegacion.js`: navegación por teclado, selector, vista completa, descarga e impresión.
+- `../production-launch-plan.md`: the full document for reading and download;
+  it also provides the names and statuses of the F01–F10 summary.
+- `production-slides.json`: summarized content of the 32 slides, date and revision.
+- `presentation.css`: original green design, mobile adaptation and printing.
+- `navegacion.js`: keyboard navigation, selector, full view, download and printing.
 
-Escribe `../presentacion-salida-produccion.html` como archivo autónomo. Las
-diapositivas y el plan funcionan sin conexión; las fuentes externas requieren red.
-Los enlaces a documentos del repositorio requieren conservar la estructura de
-carpetas. No descarga dependencias ni consulta servicios.
+It writes `../presentacion-salida-produccion.html` as a standalone file. The
+slides and the plan work offline; external fonts require network access.
+Links to repository documents require keeping the folder
+structure. It does not download dependencies or query services.
 
-Para futuras revisiones, actualizar primero el plan y el resumen JSON y regenerar.
-El script comprueba coincidencia de fecha/revisión y cobertura de las diez fases.
-Revisar en navegador el ajuste de texto, las vistas móvil/escritorio y la impresión.
-La descarga `.md` debe coincidir exactamente con el plan fuente.
+For future revisions, first update the plan and the JSON summary and regenerate.
+The script checks that the date/revision match and that all ten phases are covered.
+Review the text wrapping, the mobile/desktop views and printing in a browser.
+The `.md` download must match the source plan exactly.
 
-Los scripts de organización, `fases.json` y los archivos de revisión 4 se conservan
-como antecedentes; no son entradas del generador vigente. El comando actual ya
-no requiere archivos temporales en `.build`.
+The slides (`production-slides.json`) are user-facing and stay in Spanish; the plan
+document is written in English since 2026-09-24.
+
+The organization scripts, `fases.json` and the revision 4 files are kept
+as background; they are not inputs of the current generator. The current command no
+longer requires temporary files in `.build`.

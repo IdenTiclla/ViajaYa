@@ -1,26 +1,26 @@
-# Entornos de ViajaYa
+# ViajaYa environments
 
-**Política vigente (19/09/2026):** usamos únicamente **Desarrollo**. **Pruebas (`testing`/`preview`/staging) queda temporalmente deprecado**: no iniciar, desplegar ni generar entregas para ese entorno. Producción sigue siendo un objetivo futuro. Las configuraciones anteriores se conservan como referencia; las pruebas automatizadas y las bases desechables de CI continúan vigentes.
+**Current policy (2026-09-19):** we only use **Development**. **Testing (`testing`/`preview`/staging) is temporarily deprecated**: do not start, deploy or produce deliveries for that environment. Production remains a future goal. Previous configurations are kept for reference; automated tests and disposable CI databases still apply.
 
-La fase F01 prepara configuración, identidades móviles, dependencias y despliegues reproducibles. El aprovisionamiento de nube, la certificación de proveedores reales y la apertura pública se cierran en F09–F10.
+Phase F01 prepares configuration, mobile identities, dependencies and reproducible deployments. Cloud provisioning, certification of real providers and the public launch close in F09–F10.
 
-## Contrato común
+## Common contract
 
-| Entorno | `APP_ENV` | Perfil / entorno EAS | Aplicación | Esquema de enlaces | OTP |
+| Environment | `APP_ENV` | EAS profile / environment | Application | Link scheme | OTP |
 |---|---|---|---|---|---|
-| Desarrollo | `development` | `development` / `development` | `com.viajaya.app.dev` | `viajaya-dev` | Simulado; autofill habilitado por defecto |
-| Pruebas | `testing` | `preview` / `preview` | `com.viajaya.app.testing` | `viajaya-testing` | Simulado; autofill habilitado por defecto |
-| Producción | `production` | `production` / `production` | `com.viajaya.app` | `viajaya` | Proveedor real; autofill de prueba prohibido |
+| Development | `development` | `development` / `development` | `com.viajaya.app.dev` | `viajaya-dev` | Simulated; autofill enabled by default |
+| Testing | `testing` | `preview` / `preview` | `com.viajaya.app.testing` | `viajaya-testing` | Simulated; autofill enabled by default |
+| Production | `production` | `production` / `production` | `com.viajaya.app` | `viajaya` | Real provider; test autofill forbidden |
 
-`preview` es el nombre del perfil/entorno administrado por EAS para pruebas, no un cuarto entorno. `NODE_ENV` controla optimizaciones del compilador y no selecciona el entorno de negocio. El identificador técnico de pruebas usa `.testing`, conforme a la preferencia de código en inglés; el nombre visible sigue siendo **ViajaYa Pruebas**.
+`preview` is the name of the EAS-managed profile/environment for testing, not a fourth environment. `NODE_ENV` controls compiler optimizations and does not select the business environment. The technical testing identifier uses `.testing`, following the English-code preference; the visible name is still **ViajaYa Pruebas**.
 
-Backend valida desde `Settings`. Mobile valida durante la resolución de `app.config.ts` y nuevamente desde `src/core/config/env.ts`. Los módulos de la aplicación consumen `env`, sin leer variables de proceso directamente.
+The backend validates from `Settings`. Mobile validates while resolving `app.config.ts` and again from `src/core/config/env.ts`. Application modules consume `env`, without reading process variables directly.
 
-## Desarrollo en Windows
+## Development on Windows
 
-Usar Node.js 24.19.0 para reproducir las comprobaciones actuales, Python 3.13 y uv 0.12.12. `uv.lock` fija dependencias y hashes; incluye `tzdata` para que `America/La_Paz` funcione también en Windows.
+Use Node.js 24.19.0 to reproduce the current checks, Python 3.13 and uv 0.12.12. `uv.lock` pins dependencies and hashes; it includes `tzdata` so that `America/La_Paz` also works on Windows.
 
-Desde `backend/`:
+From `backend/`:
 
 ```powershell
 python -m pip install uv==0.12.12
@@ -29,7 +29,7 @@ uv run --locked --no-sync python -m pytest -q
 uv run --locked --no-sync python -m ruff check .
 ```
 
-Si ya existe un backend usando `.venv`, preparar la verificación en otro entorno antes de sustituir dependencias:
+If a backend is already using `.venv`, prepare the verification in another environment before replacing dependencies:
 
 ```powershell
 $env:UV_PROJECT_ENVIRONMENT = '.venv-f01'
@@ -37,7 +37,7 @@ uv sync --locked --extra dev
 uv run --locked --no-sync python -m pytest -q
 ```
 
-Desde `mobile/`:
+From `mobile/`:
 
 ```powershell
 npm ci
@@ -48,62 +48,62 @@ npm run verify:environments
 npm run verify:environments:native
 ```
 
-La verificación nativa genera copias aisladas bajo `local-files/phase01/`, omite archivos `.env` y utiliza configuración sintética. Comprueba los identificadores, esquemas y nombres realmente generados por Expo. No instala aplicaciones ni inicia emuladores. Generar el proyecto nativo no equivale a compilar y certificar un APK/AAB firmado en un teléfono.
+The native verification generates isolated copies under `local-files/phase01/`, skips `.env` files and uses synthetic configuration. It checks the identifiers, schemes and names actually generated by Expo. It does not install apps or start emulators. Generating the native project is not equivalent to building and certifying a signed APK/AAB on a phone.
 
-Para arrancar el desarrollo, inspeccionar primero PostgreSQL, Redis, backend y Metro existentes. Si faltan servicios locales, usar `docker compose up -d db redis` desde la raíz. Aplicar migraciones únicamente sobre la base de desarrollo identificada. Desde backend, `uv run --locked --no-sync python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000`; desde mobile, `npm start`. En teléfonos físicos, `API_URL` debe apuntar a la IP LAN del backend. Los `.env` privados existentes no se modifican automáticamente.
+To start development, first inspect the existing PostgreSQL, Redis, backend and Metro. If local services are missing, use `docker compose up -d db redis` from the root. Apply migrations only to the identified development database. From backend, `uv run --locked --no-sync python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000`; from mobile, `npm start`. On physical phones, `API_URL` must point to the backend's LAN IP. Existing private `.env` files are not modified automatically.
 
-## Aislamiento y rechazo de configuraciones
+## Isolation and rejection of configurations
 
-- JWT incluye y exige `iss=viajaya:<APP_ENV>` y `aud=viajaya:mobile:<APP_ENV>`, tanto en access como refresh. Cada despliegue usa además su propio secreto. Un token de otro entorno se rechaza aunque por error se comparta una clave.
-- Mobile declara `X-App-Environment` en todas las solicitudes HTTP, incluido login/refresh; el backend rechaza discrepancias antes de ejecutar la ruta e identifica su entorno en la respuesta. Es una protección contra errores de configuración, no una autenticación del binario. Clientes antiguos sin cabecera conservan compatibilidad; JWT y la política OTP del servidor siguen siendo obligatorios.
-- **Transición de sesiones:** los tokens anteriores sin emisor/audiencia dejan de ser válidos. Al cargar esta versión será necesario iniciar sesión otra vez; no se modifican usuarios ni historial. La recuperación de sesión existente permite volver al acceso.
-- Pruebas/producción exigen API HTTPS, CORS explícito, PostgreSQL remoto con nombre terminado en `_testing` o `_production`, claves no predeterminadas y namespaces Redis/storage correspondientes al entorno.
-- Un namespace evita mezclar claves, pero **no reemplaza recursos físicos ni permisos separados**. F09 debe crear bases, cachés, almacenamiento y cuentas propias y comprobar que una operación sobre pruebas no afecte producción.
-- Desarrollo/pruebas rechazan `OTP_MODE=provider` y cualquier `OTP_PROVIDER_API_KEY`; producción exige proveedor y rechaza `OTP_TEST_AUTOFILL=true`. En entornos bajos el autofill puede apagarse para probar errores, manteniendo OTP simulado.
-- Pagos exigen `mock` en desarrollo, `sandbox` en pruebas y `live` en producción. Correo/push en ambientes bajos solo admiten `mock` o `restricted` con destinatarios explícitos; producción exige `live`.
+- JWT includes and requires `iss=viajaya:<APP_ENV>` and `aud=viajaya:mobile:<APP_ENV>`, in both access and refresh. Each deployment also uses its own secret. A token from another environment is rejected even if a key is shared by mistake.
+- Mobile declares `X-App-Environment` on every HTTP request, including login/refresh; the backend rejects mismatches before running the route and identifies its environment in the response. It is a protection against configuration errors, not an authentication of the binary. Old clients without the header keep compatibility; JWT and the server OTP policy are still mandatory.
+- **Session transition:** earlier tokens without issuer/audience are no longer valid. When loading this version you will need to sign in again; users and history are not modified. The existing session recovery allows returning to access.
+- Testing/production require an HTTPS API, explicit CORS, remote PostgreSQL with a name ending in `_testing` or `_production`, non-default keys and Redis/storage namespaces matching the environment.
+- A namespace avoids mixing keys, but it **does not replace separate physical resources or permissions**. F09 must create its own databases, caches, storage and accounts and check that an operation on testing does not affect production.
+- Development/testing reject `OTP_MODE=provider` and any `OTP_PROVIDER_API_KEY`; production requires a provider and rejects `OTP_TEST_AUTOFILL=true`. In lower environments autofill can be turned off to test errors, while keeping simulated OTP.
+- Payments require `mock` in development, `sandbox` in testing and `live` in production. Email/push in lower environments only allow `mock` or `restricted` with explicit recipients; production requires `live`.
 
-**Límite de F01:** estos modos establecen contratos y validaciones de configuración. F02-A ya incorpora desafíos OTP simulados, verificación y un formulario reutilizable, comprobados en aislamiento. Su activación en el acceso unificado corresponde a F02-B; los adaptadores de pago a F07. Las fábricas/adaptadores deben consumir las reglas de entorno antes de cualquier llamada externa. F01 no envía SMS ni certifica proveedores. Estado y activación del OTP: `docs/implementation-plans/0010-phone-identity-and-otp.md`.
+**F01 limit:** these modes establish configuration contracts and validations. F02-A already adds simulated OTP challenges, verification and a reusable form, checked in isolation. Their activation in the unified access belongs to F02-B; payment adapters to F07. Factories/adapters must consume the environment rules before any external call. F01 does not send SMS or certify providers. OTP status and activation: `docs/implementation-plans/0010-phone-identity-and-otp.md`.
 
-## Configuración y distribución móvil
+## Mobile configuration and distribution
 
-Desarrollo conserva las variables públicas existentes, como `API_URL` y `GOOGLE_MAPS_API_KEY_ANDROID`. Pruebas utiliza exclusivamente `TESTING_API_URL`, `TESTING_GOOGLE_*`, `TESTING_FACEBOOK_APP_ID`, etc.; producción utiliza `PRODUCTION_*`. Una variante alojada nunca toma como respaldo las claves o la API local. Backend y servicios de proveedores conservan sus secretos fuera de mobile: `extra` y los binarios son públicos.
+Development keeps the existing public variables, such as `API_URL` and `GOOGLE_MAPS_API_KEY_ANDROID`. Testing uses exclusively `TESTING_API_URL`, `TESTING_GOOGLE_*`, `TESTING_FACEBOOK_APP_ID`, etc.; production uses `PRODUCTION_*`. A hosted variant never falls back to the local keys or API. The backend and provider services keep their secrets outside mobile: `extra` and the binaries are public.
 
-Los identificadores nativos y esquemas cambian por entorno. Cada aplicación debe registrarse con sus firmas y credenciales propias en Google/Facebook/Maps. Al generar una variante nueva hace falta un nuevo binario. Si se cambia de variante con directorios nativos previos, Expo requiere regenerarlos; evitar borrar trabajo nativo manual y seguir el procedimiento de CNG. [Variantes de aplicación de Expo](https://docs.expo.dev/build-reference/variants/).
+Native identifiers and schemes change per environment. Each app must be registered with its own signatures and credentials in Google/Facebook/Maps. Generating a new variant requires a new binary. If you switch variants with previous native directories, Expo requires regenerating them; avoid deleting manual native work and follow the CNG procedure. [Expo app variants](https://docs.expo.dev/build-reference/variants/).
 
-Los perfiles declaran canales `development`, `testing` y `production`, y la configuración separa `runtimeVersion`. **OTA permanece deshabilitado**: no se habilita un mecanismo de actualización sin certificar compatibilidad, destino y rollback en F09. La variante productiva no tiene un selector de API ni un distintivo de pruebas. Las otras muestran su entorno sin interceptar los controles.
+The profiles declare `development`, `testing` and `production` channels, and the configuration separates `runtimeVersion`. **OTA stays disabled**: no update mechanism is enabled without certifying compatibility, target and rollback in F09. The production variant has no API selector or testing badge. The others show their environment without intercepting the controls.
 
-### Estado de instalación en esta PC
+### Installation status on this PC
 
-Se generaron y verificaron APK firmados de **ViajaYa Desarrollo** y **ViajaYa Pruebas** en EAS. Desarrollo usa Metro y el usuario confirmó el login en su teléfono. Pruebas incorpora el JavaScript en el APK y abre la aplicación directamente; el usuario confirmó el login y el distintivo **Pruebas**. Los enlaces, QR, cuentas ficticias y comprobaciones están en `local-files/phase01/instalacion-android.md`; las credenciales locales no se incluyen en Git.
+Signed APKs of **ViajaYa Desarrollo** and **ViajaYa Pruebas** were generated and verified on EAS. Development uses Metro and the user confirmed the login on their phone. Testing embeds the JavaScript in the APK and opens the app directly; the user confirmed the login and the **Pruebas** badge. Links, QR codes, fictitious accounts and checks are in `local-files/phase01/instalacion-android.md`; local credentials are not included in Git.
 
-El backend temporal de Pruebas corre en el proyecto Docker `viajaya-testing-local`, con PostgreSQL, Redis y JWT separados de Desarrollo. Un túnel de Cloudflare proporciona HTTPS mientras esta PC, Docker y el túnel estén activos. No requiere contratar un servidor. Reiniciar el túnel cambia su URL y obliga a recompilar el APK con la nueva dirección; los datos persisten en su volumen de PostgreSQL. Este entorno temporal no cierra los requisitos de alojamiento permanente, disponibilidad ni operación de F09.
+The temporary Testing backend runs in the Docker project `viajaya-testing-local`, with PostgreSQL, Redis and JWT separate from Development. A Cloudflare tunnel provides HTTPS while this PC, Docker and the tunnel are active. It does not require hiring a server. Restarting the tunnel changes its URL and forces rebuilding the APK with the new address; data persists in its PostgreSQL volume. This temporary environment does not close the F09 requirements for permanent hosting, availability or operations.
 
-La variable de Maps de Pruebas se configuró explícitamente con la clave pública móvil existente. La separación de claves de Google y la certificación de sus restricciones por paquete y firma siguen pendientes. El APK instalado corresponde a F01. Ambas API ya tienen F02-B activado y el acceso por teléfono/sesiones pasó la verificación local. Desarrollo está disponible por Wi-Fi con Metro. El usuario autorizó compilar el APK de Pruebas, pero dos túneles de Cloudflare devolvieron dominios sin DNS válido; la distribución espera recuperar HTTPS. Se propuso ngrok gratuito con dominio asignado estable, sujeto a una cuenta del usuario. El estado se registra en `docs/implementation-plans/0010-phone-identity-and-otp.md`.
+The Testing Maps variable was explicitly configured with the existing public mobile key. Separating Google keys and certifying their restrictions by package and signature is still pending. The installed APK corresponds to F01. Both APIs already have F02-B enabled and phone/session access passed local verification. Development is available over Wi-Fi with Metro. The user authorized building the Testing APK, but two Cloudflare tunnels returned domains without valid DNS; distribution waits for HTTPS to be recovered. Free ngrok with a stable assigned domain was proposed, subject to a user account. The status is recorded in `docs/implementation-plans/0010-phone-identity-and-otp.md`.
 
-## Imagen y despliegue preparados
+## Prepared image and deployment
 
-El Dockerfile fija Python y uv por digest y consume `uv.lock`. La imagen de runtime ejecuta un solo worker como UID 10001, excluye archivos `.env` y no aplica migraciones automáticamente. Su entorno predeterminado es producción y rechaza arrancar con la configuración insegura por defecto. Las dependencias de pruebas quedan fuera del runtime.
+The Dockerfile pins Python and uv by digest and consumes `uv.lock`. The runtime image runs a single worker as UID 10001, excludes `.env` files and does not apply migrations automatically. Its default environment is production and it refuses to start with the insecure default configuration. Test dependencies stay out of the runtime.
 
-Desde la raíz:
+From the root:
 
 ```powershell
 docker build --target runtime --tag viajaya-phase1:runtime backend
 ```
 
-Desde backend:
+From backend:
 
 ```powershell
 uv run --locked --no-sync python -m scripts.smoke_environment_image
 ```
 
-La prueba crea red, PostgreSQL y API propios, aplica migraciones en su base desechable, comprueba `/health/ready`, registro, refresh, tokens cruzados y usuario no root. Retira únicamente los contenedores que ella creó. No usa puertos fijos ni la base de desarrollo.
+The test creates its own network, PostgreSQL and API, applies migrations to its disposable database, checks `/health/ready`, registration, refresh, cross tokens and a non-root user. It removes only the containers it created. It does not use fixed ports or the development database.
 
-`ops/compose.hosted.yml` define API y un proceso de migración separado para usar detrás de un proxy HTTPS. Requiere `VIAJAYA_DEPLOYMENT_ENV`, `VIAJAYA_API_IMAGE`, `VIAJAYA_BACKEND_ENV_FILE` y `VIAJAYA_API_PORT`. Pruebas/producción utilizan archivos privados, proyectos y puertos distintos. El valor de imagen debe ser el digest certificado del registro; promover la misma imagen entre entornos. Las plantillas `ops/environments/*.env.example` contienen marcadores y no son credenciales válidas.
+`ops/compose.hosted.yml` defines the API and a separate migration process to use behind an HTTPS proxy. It requires `VIAJAYA_DEPLOYMENT_ENV`, `VIAJAYA_API_IMAGE`, `VIAJAYA_BACKEND_ENV_FILE` and `VIAJAYA_API_PORT`. Testing/production use different private files, projects and ports. The image value must be the certified registry digest; promote the same image across environments. The `ops/environments/*.env.example` templates contain placeholders and are not valid credentials.
 
-Esta definición no contrata infraestructura ni configura Render automáticamente. En F09 se elegirá/aprovisionará el alojamiento, conectará PostgreSQL/Redis/storage y certificará TLS, permisos, migración única, rollback y operación. Conservar el rollout técnico existente de outbox/presencia/scheduler; no activar múltiples workers simplemente por tener dos entornos.
+This definition does not hire infrastructure or configure Render automatically. In F09 the hosting will be chosen/provisioned, PostgreSQL/Redis/storage connected and TLS, permissions, single migration, rollback and operations certified. Keep the existing technical outbox/presence/scheduler rollout; do not enable multiple workers simply because there are two environments.
 
-## Verificación continua
+## Continuous verification
 
-CI consume el lockfile del backend y `npm ci`. Mantiene pruebas rápidas, contratos OpenAPI/realtime, PostgreSQL/Redis, tipos y lint; agrega configuración/JWT en Windows, generación de las tres variantes y construcción/smoke de la imagen. Ejecutar los comandos localmente verifica sus componentes; la ejecución de GitHub Actions se confirma solo después de publicar la rama.
+CI consumes the backend lockfile and `npm ci`. It keeps fast tests, OpenAPI/realtime contracts, PostgreSQL/Redis, types and lint; it adds configuration/JWT on Windows, generation of the three variants and building/smoke of the image. Running the commands locally verifies their components; the GitHub Actions run is only confirmed after publishing the branch.
 
-La evidencia y los pendientes de F01 se registran en `docs/implementation-plans/0009-environment-foundation.md`.
+The F01 evidence and pending items are recorded in `docs/implementation-plans/0009-environment-foundation.md`.

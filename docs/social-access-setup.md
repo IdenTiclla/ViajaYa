@@ -1,26 +1,26 @@
-# Configurar el acceso social de ViajaYa
+# Configuring ViajaYa social access
 
-Estado del 2026-09-13: Google está configurado y certificado en Desarrollo (cliente web + cliente Android con el SHA-1 del keystore de debug; recorrido completo en emulador y teléfono). Facebook queda aplazado: Meta exige verificación de negocio para operar fuera del modo desarrollo, y la app mantiene su botón deshabilitado mientras `FACEBOOK_APP_ID` esté vacío. Pruebas todavía no tiene cliente Android propio (requiere el SHA-1 del keystore administrado por EAS). No se ha contratado un proveedor SMS: Desarrollo y Pruebas siguen usando OTP simulado; Producción continúa bloqueando el OTP hasta conectar el adaptador real.
+Status as of 2026-09-13: Google is configured and certified in Development (web client + Android client with the debug keystore SHA-1; full walkthrough on emulator and phone). Facebook is postponed: Meta requires business verification to operate outside development mode, and the app keeps its button disabled while `FACEBOOK_APP_ID` is empty. Testing does not have its own Android client yet (it requires the SHA-1 of the EAS-managed keystore). No SMS provider has been hired: Development and Testing still use simulated OTP; Production keeps blocking OTP until the real adapter is connected.
 
-## Credenciales por entorno
+## Credentials per environment
 
-| Variante | Identificador Android | Prefijo de variables móviles |
+| Variant | Android identifier | Mobile variable prefix |
 |---|---|---|
-| Desarrollo | `com.viajaya.app.dev` | Sin prefijo |
-| Pruebas | `com.viajaya.app.testing` | `TESTING_` |
-| Producción | `com.viajaya.app` | `PRODUCTION_` |
+| Development | `com.viajaya.app.dev` | No prefix |
+| Testing | `com.viajaya.app.testing` | `TESTING_` |
+| Production | `com.viajaya.app` | `PRODUCTION_` |
 
-Google necesita un cliente OAuth Android asociado al identificador y a la huella SHA-1 del certificado que firma ese APK (Desarrollo: keystore de debug `mobile/android/app/debug.keystore`; Pruebas/Producción: `eas credentials -p android` muestra la huella del keystore administrado). Ese cliente solo se registra en Google; el SDK Android usa únicamente el ID del cliente web. También necesita un cliente OAuth web: su ID se configura como `GOOGLE_OAUTH_CLIENT_ID_WEB` en mobile y `GOOGLE_CLIENT_ID` en la API del mismo entorno. El SDK nativo solicita el ID token para esa audiencia. El cliente Android se registra en Google; no se pasa al SDK como audiencia del backend. Para iOS se configura además `GOOGLE_OAUTH_CLIENT_ID_IOS` y su esquema inverso se deriva mediante el plugin.
+Google needs an Android OAuth client associated with the identifier and with the SHA-1 fingerprint of the certificate that signs that APK (Development: debug keystore `mobile/android/app/debug.keystore`; Testing/Production: `eas credentials -p android` shows the fingerprint of the managed keystore). That client is only registered in Google; the Android SDK only uses the web client ID. It also needs a web OAuth client: its ID is configured as `GOOGLE_OAUTH_CLIENT_ID_WEB` in mobile and `GOOGLE_CLIENT_ID` in the API of the same environment. The native SDK requests the ID token for that audience. The Android client is registered in Google; it is not passed to the SDK as the backend audience. For iOS, `GOOGLE_OAUTH_CLIENT_ID_IOS` is also configured and its reversed scheme is derived through the plugin.
 
-Facebook necesita una aplicación con Login, usuarios de prueba y la plataforma Android registrada con identificador, actividad y hash de firma (base64 del SHA-1 del certificado). Mientras la app de Meta esté en modo desarrollo solo entran sus roles; publicarla exige verificación de negocio. Mobile recibe `FACEBOOK_APP_ID` y `FACEBOOK_CLIENT_TOKEN`, que es el token público de cliente utilizado por el SDK. El backend recibe `FACEBOOK_APP_ID` y `FACEBOOK_APP_SECRET`; el secreto de aplicación nunca entra en mobile. No se necesitan permisos de correo para vincular la identidad. Facebook Limited Login en iOS requiere un contrato adicional y permanece deshabilitado.
+Facebook needs an app with Login, test users and the Android platform registered with identifier, activity and signature hash (base64 of the certificate SHA-1). While the Meta app is in development mode only its roles can sign in; publishing it requires business verification. Mobile receives `FACEBOOK_APP_ID` and `FACEBOOK_CLIENT_TOKEN`, which is the public client token used by the SDK. The backend receives `FACEBOOK_APP_ID` and `FACEBOOK_APP_SECRET`; the app secret never goes into mobile. No email permissions are needed to link the identity. Facebook Limited Login on iOS requires an additional contract and stays disabled.
 
-Las variantes alojadas solo leen sus variables con prefijo. Configura los valores en el entorno local/EAS correspondiente sin versionar archivos `.env`. El backend anuncia los proveedores configurados en `GET /api/v1/auth/phone/capabilities`; la app exige además configuración móvil y que el APK contenga el SDK nativo.
+Hosted variants only read their prefixed variables. Configure the values in the corresponding local/EAS environment without versioning `.env` files. The backend announces the configured providers in `GET /api/v1/auth/phone/capabilities`; the app also requires mobile configuration and an APK that contains the native SDK.
 
-## Compilar y comprobar
+## Build and check
 
-Los APK de F02-B descargados durante la transferencia no incluyen los nuevos SDK. Metro puede entregar la corrección del OTP a Desarrollo, pero Google/Facebook requieren un nuevo dev build y un nuevo APK de Pruebas. No se publicó ninguna compilación nueva durante esta continuación.
+The F02-B APKs downloaded during the handover do not include the new SDKs. Metro can deliver the OTP fix to Development, but Google/Facebook require a new dev build and a new Testing APK. No new build was published during this continuation.
 
-Antes de compilar se pueden comprobar las configuraciones sin credenciales reales:
+Before building, the configurations can be checked without real credentials:
 
 ```bash
 cd mobile
@@ -28,17 +28,17 @@ node scripts/verify-environments.mjs --native
 node scripts/verify-environments.mjs --native --social
 ```
 
-Ambos comandos generan copias aisladas en `local-files/phase01/`. El segundo usa valores sintéticos, comprueba los recursos Facebook y mantiene desactivados inicio automático, eventos y recopilación publicitaria.
+Both commands generate isolated copies in `local-files/phase01/`. The second one uses synthetic values, checks the Facebook resources and keeps auto-init, events and advertising collection disabled.
 
-La pantalla de consentimiento de Google en modo *Testing* solo admite los usuarios de prueba registrados; con los scopes básicos (`openid`, `email`, `profile`) basta publicarla para admitir cualquier cuenta, sin verificación de Google.
+The Google consent screen in *Testing* mode only admits the registered test users; with the basic scopes (`openid`, `email`, `profile`) publishing it is enough to admit any account, without Google verification.
 
-Recorrido en cada Android con credenciales reales (Google completado en Desarrollo el 2026-09-13; pendiente en Pruebas):
+Walkthrough on each Android with real credentials (Google completed in Development on 2026-09-13; pending in Testing):
 
-1. Continuar con Google/Facebook desde una cuenta sin vincular: debe pedir teléfono y OTP sin permitir viajes todavía.
-2. Verificar el número y confirmar la vinculación. Una cuenta nueva pide nombre y condiciones; una antigua conserva UUID, rol y viajes.
-3. Salir y volver a entrar con el mismo proveedor: debe reutilizar la cuenta y mostrar una sesión administrada.
-4. Cancelar el selector del proveedor o volver antes de confirmar: no debe crear ni vincular cuentas.
-5. Probar una identidad ya vinculada a otro número: debe rechazar el conflicto y conservar las cuentas.
-6. Verificar cierre de sesión, revocación y la separación entre Desarrollo y Pruebas.
+1. Continue with Google/Facebook from an unlinked account: it must ask for phone and OTP without allowing rides yet.
+2. Verify the number and confirm the linking. A new account asks for name and terms; an old one keeps its UUID, role and rides.
+3. Sign out and sign in again with the same provider: it must reuse the account and show a managed session.
+4. Cancel the provider picker or go back before confirming: it must not create or link accounts.
+5. Try an identity already linked to another number: it must reject the conflict and keep the accounts.
+6. Verify sign-out, revocation and the separation between Development and Testing.
 
-Referencias de configuración: [Expo 56](https://docs.expo.dev/versions/v56.0.0/), [Google nativo en Expo](https://docs.expo.dev/guides/google-authentication/), [plugin de Google](https://react-native-google-signin.github.io/docs/setting-up/expo), [Facebook en Expo](https://docs.expo.dev/guides/facebook-authentication/), [validación de ID tokens de Google](https://developers.google.com/identity/sign-in/android/backend-auth) y [versión de Graph API del SDK de Meta](https://github.com/facebook/facebook-python-business-sdk/blob/main/facebook_business/apiconfig.py).
+Configuration references: [Expo 56](https://docs.expo.dev/versions/v56.0.0/), [native Google in Expo](https://docs.expo.dev/guides/google-authentication/), [Google plugin](https://react-native-google-signin.github.io/docs/setting-up/expo), [Facebook in Expo](https://docs.expo.dev/guides/facebook-authentication/), [Google ID token validation](https://developers.google.com/identity/sign-in/android/backend-auth) and [Meta SDK Graph API version](https://github.com/facebook/facebook-python-business-sdk/blob/main/facebook_business/apiconfig.py).

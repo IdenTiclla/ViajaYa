@@ -1,29 +1,29 @@
 # ViajaYa mobile
 
-Aplicación para pasajeros y conductores construida con Expo 56, React Native,
-Expo Router y TypeScript.
+App for passengers and drivers built with Expo 56, React Native,
+Expo Router and TypeScript.
 
-## Preparación
+## Setup
 
 ```bash
 npm install
 cp .env.example .env
 ```
 
-Configura en `.env` la URL de la API y las credenciales de Maps/OAuth. La app
-usa módulos nativos, por lo que debe ejecutarse con un dev build, no con Expo Go.
+Set the API URL and the Maps/OAuth credentials in `.env`. The app uses
+native modules, so it must run in a dev build, not in Expo Go.
 
-## Desarrollo
+## Development
 
 ```bash
 npm start
-npm run android  # crea o actualiza el dev build de Android cuando sea necesario
+npm run android  # creates or updates the Android dev build when needed
 ```
 
-Antes de abrir procesos nuevos, verifica si PostgreSQL, backend y Metro ya están
-corriendo para evitar reinicios o conflictos de puertos.
+Before starting new processes, check whether PostgreSQL, the backend and Metro are
+already running to avoid restarts or port conflicts.
 
-## Calidad
+## Quality
 
 ```bash
 npx tsc --noEmit

@@ -1,75 +1,75 @@
-# Llegada cercana y mapas despejados
+# Nearby arrival and clean maps
 
-19/09/2026 · Implementado; verificación local registrada abajo y cartografía nativa pendiente · `codex/ui-improvements-and-bugfixes`.
+2026-09-19 · Implemented; local verification recorded below and native cartography pending · `codex/ui-improvements-and-bugfixes`.
 
-## Problemas reproducidos
+## Reproduced problems
 
-- Al ofertar junto al pasajero, Google devuelve HTTP 200, duración `0s`, un solo
-  punto y omite `distanceMeters` por ser cero. El selector exigía dos puntos y
-  distancia explícita; rechazaba esa respuesta válida y mostraba un falso error
-  de conexión. Se reprodujo con taxi y mototaxi, coordenadas coincidentes y
-  separadas unos 4 m. Las consultas normales también respondieron correctamente.
-- Configuración comenzaba el mapa debajo de una franja de 64 más el área segura,
-  aunque los controles superiores ya eran flotantes.
-- Búsqueda sin ofertas reservaba 160 arriba y un margen inferior duplicado. La
-  hoja podía cubrir el 88 %; con letra grande, el aviso de moto tapaba la ruta y
-  el botón Cancelar recortaba su texto.
-- El usuario volvió a observar oscurecimiento al ampliar en tema claro. La
-  revisión 20 desactivaba edificios 3D y recoloreaba huellas, pero todavía dejaba
-  geometrías de terreno/POI e interiores; los selectores permitían inclinación.
-  Sin teléfono conectado no se atribuye el efecto visual a una única capa.
+- When offering next to the passenger, Google returns HTTP 200, duration `0s`, a single
+  point and omits `distanceMeters` because it is zero. The selector required two points and
+  an explicit distance; it rejected that valid response and showed a false connection
+  error. Reproduced with taxi and mototaxi, coincident coordinates and
+  coordinates about 4 m apart. Normal queries also responded correctly.
+- Configure started the map below a 64 strip plus the safe area,
+  even though the top controls were already floating.
+- Search without offers reserved 160 at the top and a duplicated bottom margin. The
+  sheet could cover 88 %; with large text, the moto notice covered the route and
+  the Cancel button clipped its text.
+- The user again observed darkening when zooming in the light theme. Revision
+  20 disabled 3D buildings and recolored footprints, but still left
+  terrain/POI geometries and interiors; the selectors allowed tilt.
+  With no phone connected, the visual effect is not attributed to a single layer.
 
-## Cambios
+## Changes
 
-- Aceptar un solo punto exclusivamente en rutas estacionarias de duración y
-  distancia cero; normalizar distancia omitida únicamente en ese caso. Se
-  conservan validación geográfica y elección de la alternativa más rápida.
-- Llegada calculada automáticamente; el mínimo del contrato sigue siendo 1 min.
-  No se inventa geometría ni se sustituye ruta de moto por automóvil. En mapas,
-  el encuadre usa los puntos del viaje si la respuesta tiene un solo punto y
-  no dibuja una línea como si fuera una ruta calculada.
-- Separar proveedor no disponible, ruta inexistente, respuesta incompleta,
-  timeout y fallo de conexión; conservar abortos. La consulta de mapa termina
-  sin reintentos automáticos prolongados y mantiene reintento explícito.
-- Mapa de configuración desde el borde superior; Volver y lugares encima, con
-  altura real de cabecera para proteger los marcadores. Panel estable al cambiar
-  de servicio. Búsqueda usa cabecera/panel medidos y hoja de máximo 64 % con
-  desplazamiento interno. Aviso de moto dentro de la hoja; cancelar y campo de
-  oferta crecen con el texto. Controles superiores y reintento de 48 como mínimo.
-- Los siete mapas desactivan edificios, interiores, selector de planta e
-  inclinación. El estilo común oculta las geometrías de construcciones, relieve
-  y POI, conserva parques y calles, y separa el control de nombres de lugares.
-  No se limita el zoom de los selectores ni se añade un velo sobre el mapa.
+- Accept a single point exclusively on stationary routes with zero duration and
+  distance; normalize an omitted distance only in that case. Geographic
+  validation and choosing the fastest alternative are kept.
+- Arrival computed automatically; the contract minimum is still 1 min.
+  No geometry is invented and a moto route is not replaced by a car one. On maps,
+  the framing uses the ride's points if the response has a single point and
+  does not draw a line as if it were a computed route.
+- Separate unavailable provider, nonexistent route, incomplete response,
+  timeout and connection failure; keep aborts. The map query ends
+  without prolonged automatic retries and keeps an explicit retry.
+- Configure map from the top edge; Back and places on top, with the
+  real header height to protect the markers. Stable panel when switching
+  service. Search uses measured header/panel and a sheet of at most 64 % with
+  internal scrolling. Moto notice inside the sheet; cancel and the offer
+  field grow with the text. Top controls and retry of at least 48.
+- The seven maps disable buildings, interiors, level picker and
+  tilt. The common style hides the geometry of buildings, relief
+  and POIs, keeps parks and streets, and separates the place-names control.
+  The selectors' zoom is not limited and no veil is added over the map.
 
-## Evidencia
+## Evidence
 
-- **396 pruebas móviles aprobadas**, 19 nuevas respecto de revisión 20: integración
-  del cliente HTTP, parser y publicación de oferta con la respuesta real cercana;
-  errores de proveedor/red/timeout/cancelación; validación de geometría; inventario
-  de todos los sitios MapView para evitar reactivar las capas y la inclinación.
-- **Seis consultas reales con el código productivo de rutas aprobadas:** taxi y
-  moto en el mismo punto, a pocos metros y en un trayecto normal. No se crearon
-  viajes u ofertas remotos. Evidencia antes/después sin claves ni tokens.
-- **68 casos UI aprobados:** diez nuevos de controles sobre el mapa en ambos
-  temas, búsqueda taxi/moto a 390×844 y 320×640 con texto al 200 %, llegada cercana
-  y recuperación de errores; 17 de mapas, 14 de experiencia, 23 de negociación y
-  cuatro de paginación. Sin errores JavaScript. Capturas inspeccionadas.
-- TypeScript, lint y `git diff --check` limpios. API y Metro HTTP 200; bundle
-  Android actualizado de **11.913.183 bytes**, sin reiniciar servicios. No se creó un emulador.
-- Pantallas/hooks productivos, con superficie de mapa/GPS/red/navegación adaptados
-  en las pruebas UI: comprueban espacio, cámara, props y acciones, **no** el
-  sombreado de los tiles de Google Maps. ADB sin dispositivos. Falta confirmar
-  visualmente en el teléfono del usuario zoom cercano en tema claro, tanto
-  seleccionando ubicaciones como en configuración, espera y seguimiento.
-- Plan/presentación sincronizados en revisión 21: 32 diapositivas verificadas en
-  escritorio/móvil, navegación, lectura, impresión y descarga exacta del plan
-  aprobadas. Backend y contratos sin cambios;
-  se conserva como histórica la evidencia de backend/PostgreSQL de revisión 17.
+- **396 mobile tests passing**, 19 new ones compared to revision 20: HTTP client
+  integration, parser and offer publication with the real nearby response;
+  provider/network/timeout/cancellation errors; geometry validation; an inventory
+  of every MapView site to avoid re-enabling layers and tilt.
+- **Six real queries with the production route code passing:** taxi and
+  moto at the same point, a few meters apart and on a normal trip. No remote
+  rides or offers were created. Before/after evidence without keys or tokens.
+- **68 UI cases passing:** ten new ones for controls over the map in both
+  themes, taxi/moto search at 390×844 and 320×640 with 200 % text, nearby arrival
+  and error recovery; 17 of maps, 14 of experience, 23 of negotiation and
+  four of pagination. No JavaScript errors. Screenshots inspected.
+- TypeScript, lint and `git diff --check` clean. API and Metro HTTP 200; updated
+  Android bundle of **11,913,183 bytes**, without restarting services. No emulator was created.
+- Production screens/hooks, with the map/GPS/network/navigation surface adapted
+  in the UI tests: they check space, camera, props and actions, **not** the
+  shading of the Google Maps tiles. ADB without devices. Visually confirming
+  close zoom in the light theme on the user's phone is still missing, both
+  when selecting locations and in configure, waiting and tracking.
+- Plan/presentation in sync at revision 21: 32 slides verified on
+  desktop/mobile; navigation, reading, printing and an exact plan download
+  passed. Backend and contracts unchanged;
+  the backend/PostgreSQL evidence of revision 17 is kept as historical.
 
-Evidencia reproducible: `local-files/arrival-map-2026-09-19/`.
+Reproducible evidence: `local-files/arrival-map-2026-09-19/`.
 
-Referencias: [Expo 56](https://docs.expo.dev/versions/v56.0.0/),
-[campos por defecto omitidos en Google Routes](https://developers.google.com/maps/documentation/routes/choose_fields),
-[estilos de Google Maps Android](https://developers.google.com/maps/documentation/android-sdk/style-reference).
-También se revisó el puente Android instalado de react-native-maps 1.27.2 para
-confirmar el envío de propiedades al mapa nativo y sus valores predeterminados.
+References: [Expo 56](https://docs.expo.dev/versions/v56.0.0/),
+[default fields omitted in Google Routes](https://developers.google.com/maps/documentation/routes/choose_fields),
+[Google Maps Android styles](https://developers.google.com/maps/documentation/android-sdk/style-reference).
+The installed Android bridge of react-native-maps 1.27.2 was also reviewed to
+confirm how properties are sent to the native map and their default values.

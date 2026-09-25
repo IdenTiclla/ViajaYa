@@ -1,65 +1,65 @@
-# Cobertura adicional de negociación y acciones del viaje
+# Additional negotiation and ride-action coverage
 
-19/09/2026 · Rama `codex/ui-improvements-and-bugfixes`.
+2026-09-19 · Branch `codex/ui-improvements-and-bugfixes`.
 
-Se añaden **31 casos automatizados** a los planes 0012–0016: 23 móviles,
-6 de integración HTTP/WebSocket y 2 de concurrencia PostgreSQL. Se mantienen
-los casos anteriores; la cantidad de pruebas no es un porcentaje de cobertura
-de líneas o ramas.
+**31 automated cases** are added to plans 0012–0016: 23 mobile,
+6 HTTP/WebSocket integration and 2 PostgreSQL concurrency. The
+previous cases are kept; the number of tests is not a line or branch
+coverage percentage.
 
-## Casos añadidos
+## Added cases
 
-| Suite | Casos | Comportamiento protegido |
+| Suite | Cases | Protected behavior |
 |---|---:|---|
-| `mobile/tests/tripActions.test.mjs` | 23 | Transiciones, cancelación por etapa, pulsaciones repetidas, exclusión entre acciones, respuesta perdida y reintento, callbacks atrasados, aviso de recogida, errores de llamada/mensaje y datos compartidos de taxi/moto |
-| `backend/tests/e2e/test_offer_version_contract.py` | 4 | Taxi/moto y aceptar tarifa/contraofertar: versiones inválidas devuelven 422/409, conservan la oferta vigente y no producen eventos de reemplazo; versión omitida o nula mantiene compatibilidad |
-| `backend/tests/e2e/test_negotiation_ws.py` | 2 | Tres pasajeros y dos conductores, seis negociaciones por v2, eventos con versión consecutiva, desconexión durante asignación y recuperación de las ofertas restantes para ambos roles |
-| `backend/tests/postgresql/test_pg_concurrency.py` | 2 | Dos conductores ofertan a ambos pasajeros y ganan viajes diferentes simultáneamente, sin bloquearse entre sí y retirando solo las ofertas competidoras |
+| `mobile/tests/tripActions.test.mjs` | 23 | Transitions, cancellation per stage, repeated taps, mutual exclusion between actions, lost response and retry, late callbacks, pickup notice, call/message errors and shared taxi/moto data |
+| `backend/tests/e2e/test_offer_version_contract.py` | 4 | Taxi/moto and accept fare/counter-offer: invalid versions return 422/409, keep the current offer and produce no replacement events; an omitted or null version keeps compatibility |
+| `backend/tests/e2e/test_negotiation_ws.py` | 2 | Three passengers and two drivers, six negotiations over v2, events with consecutive versions, disconnection during assignment and recovery of the remaining offers for both roles |
+| `backend/tests/postgresql/test_pg_concurrency.py` | 2 | Two drivers make offers to both passengers and win different rides simultaneously, without blocking each other and withdrawing only the competing offers |
 
-## Regresión detectada y corregida
+## Regression detected and fixed
 
-Cinco casos fallaron inicialmente: el hook `useTripActions` comprobaba el viaje y
-el estado de una renderización anterior cuando se conservaba su callback. Las
-pantallas ya tenían controles para ocultar confirmaciones obsoletas, pero el hook
-no garantizaba por sí mismo el rechazo de esas llamadas atrasadas.
+Five cases initially failed: the `useTripActions` hook checked the ride and
+the status of an earlier render when its callback was kept. The
+screens already had controls to hide stale confirmations, but the hook
+did not by itself guarantee rejecting those late calls.
 
-Ahora vuelve a comprobar la identidad, etapa y operación pendiente del último
-render confirmado antes de enviar. También evita repetir el aviso de recogida si
-el reconocimiento ya llegó por WebSocket. Las 23 pruebas del hook pasan después
-del cambio, incluidas las cinco regresiones.
+It now re-checks the identity, stage and pending operation of the last
+confirmed render before sending. It also avoids repeating the pickup notice if
+the acknowledgement already arrived over WebSocket. The hook's 23 tests pass after
+the change, including the five regressions.
 
-Las pruebas móviles ejecutan el hook original con estado/ref conservados entre
-renders y promesas controladas. Sustituyen React, los hooks de mutación y las APIs
-nativas: verifican decisiones y efectos del hook, no certifican el ciclo nativo
-de React, GPS, teléfono ni SMS. Las pruebas v2 usan FastAPI, outbox y sockets reales
-con SQLite temporal; las carreras se comprueban por separado en PostgreSQL.
+The mobile tests run the original hook with state/refs kept between
+renders and controlled promises. They replace React, the mutation hooks and the
+native APIs: they verify the hook's decisions and effects, they do not certify the native
+React lifecycle, GPS, phone or SMS. The v2 tests use real FastAPI, outbox and sockets
+with temporary SQLite; races are checked separately on PostgreSQL.
 
-## Reproducción
+## Reproduction
 
-Desde `mobile/`: `npm test`, `npx tsc --noEmit`, `npm run lint`.
+From `mobile/`: `npm test`, `npx tsc --noEmit`, `npm run lint`.
 
-Desde `backend/`: `.venv/bin/pytest -q`, `.venv/bin/ruff check .`.
-Para PostgreSQL, establecer `VIAJAYA_TEST_DATABASE_URL` apuntando exclusivamente a
-una base desechable cuyo nombre empiece por `test_`; después ejecutar
+From `backend/`: `.venv/bin/pytest -q`, `.venv/bin/ruff check .`.
+For PostgreSQL, set `VIAJAYA_TEST_DATABASE_URL` pointing exclusively to
+a disposable database whose name starts with `test_`; then run
 `.venv/bin/pytest -q tests/postgresql/test_pg_concurrency.py`.
-El fixture recrea su esquema. La verificación de esta revisión crea una base
-nueva y la elimina al finalizar; no migra ni limpia la base de desarrollo.
+The fixture recreates its schema. The verification of this revision creates a new
+database and drops it when finished; it neither migrates nor cleans the development database.
 
-## Resultados verificados
+## Verified results
 
-- Mobile: **367 aprobadas**, frente a 344 anteriores; TypeScript y lint limpios.
-- Backend: **731 aprobadas**, frente a 725 anteriores; 90 omitidas por configuración
-  opt-in y cinco advertencias preexistentes. Ruff limpio.
-- PostgreSQL: **9 aprobadas**, frente a 7 anteriores, en una base nueva desechable
-  eliminada al terminar. Estas pruebas requieren una ejecución separada de la suite
-  estándar; no se suman como nuevas las siete que ya existían.
-- UI: **27 casos existentes aprobados de nuevo** con el bundle del código actual.
-  Pantallas/hooks reales y servicios nativos simulados; sin errores JavaScript.
-- Plan y presentación actualizados a revisión 17. Se conserva como histórica la
-  verificación de OpenAPI y del bundle Android de la revisión 16; no hubo cambios
-  en contratos HTTP, WebSocket ni esquema PostgreSQL en esta entrega.
-- Presentación: 32 diapositivas verificadas, navegación/lectura/impresión y descarga
-  idéntica al plan, sin desbordamientos en escritorio/móvil ni errores JavaScript.
+- Mobile: **367 passing**, versus 344 before; TypeScript and lint clean.
+- Backend: **731 passing**, versus 725 before; 90 skipped by opt-in
+  configuration and five pre-existing warnings. Ruff clean.
+- PostgreSQL: **9 passing**, versus 7 before, on a new disposable database
+  dropped at the end. These tests require a run separate from the standard
+  suite; the seven that already existed are not counted as new.
+- UI: **27 existing cases passing again** with the bundle of the current code.
+  Real screens/hooks and simulated native services; without JavaScript errors.
+- Plan and presentation updated to revision 17. The OpenAPI and Android bundle
+  verification of revision 16 is kept as historical; there were no changes
+  to HTTP or WebSocket contracts or the PostgreSQL schema in this delivery.
+- Presentation: 32 slides verified, navigation/reading/printing and a download
+  identical to the plan, without overflow on desktop/mobile or JavaScript errors.
 
-Evidencia local: `local-files/test-coverage-2026-09-19/`. El recorrido en dos
-teléfonos con GPS y red reales sigue pendiente; las pruebas locales no cierran F09.
+Local evidence: `local-files/test-coverage-2026-09-19/`. The walkthrough on two
+phones with real GPS and network is still pending; local tests do not close F09.

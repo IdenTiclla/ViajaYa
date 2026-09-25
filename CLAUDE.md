@@ -1,99 +1,102 @@
 # ViajaYa — Monorepo
 
-Aplicación de **taxis y envío de encomiendas** con negociación de tarifa en tiempo real entre
-pasajero y conductor. Monorepo con dos proyectos independientes que siguen **Clean Architecture**:
-un backend FastAPI y una app móvil Expo/React Native.
+A **taxi and parcel delivery** app with real-time fare negotiation between passenger and
+driver. A monorepo with two independent projects that follow **Clean Architecture**:
+a FastAPI backend and an Expo/React Native mobile app.
 
-## Estructura
+## Structure
 
 ```
 ViajaYa/
-├── backend/                 # API FastAPI (Python 3.11+, async, PostgreSQL). Ver backend/CLAUDE.md
-├── mobile/                  # App Expo + React Native + TypeScript. Ver mobile/CLAUDE.md
-├── docs/implementation-plans/   # Planes de implementación por fases (0001-…)
-├── docs/plans/              # Plan de salida a producción (F01-F10) y su presentación
-├── docker-compose.yml       # PostgreSQL + Redis para desarrollo
-└── README.md                # Estado del producto y contexto de negocio
+├── backend/                 # FastAPI API (Python 3.11+, async, PostgreSQL). See backend/CLAUDE.md
+├── mobile/                  # Expo + React Native + TypeScript app. See mobile/CLAUDE.md
+├── docs/implementation-plans/   # Phased implementation plans (0001-…)
+├── docs/plans/              # Production launch plan (F01-F10) and its presentation
+├── docker-compose.yml       # PostgreSQL + Redis for development
+└── README.md                # Product status and business context
 ```
 
-**Cada subproyecto tiene su propio `CLAUDE.md`** con arquitectura, comandos y convenciones detalladas.
-**Léelo antes de trabajar dentro de `backend/` o `mobile/`.**
+**Each subproject has its own `CLAUDE.md`** with detailed architecture, commands and conventions.
+**Read it before working inside `backend/` or `mobile/`.**
 
-## Cómo orientarte
+## Finding your way
 
-| ¿Qué vas a tocar? | Dónde mirar |
+| What are you touching? | Where to look |
 |---|---|
-| API, dominio, DB, auth o WebSockets del servidor | `backend/CLAUDE.md` |
-| Pantallas, navegación, mapas, estado o WS del cliente | `mobile/CLAUDE.md` |
-| Contexto/estado del producto, decisiones de negocio | `README.md` + `docs/implementation-plans/` |
-| Hoja de ruta hasta producción y estado por fase | `docs/plans/plan-salida-produccion.md` |
-| Contrato entre backend y mobile | sección "Contrato backend ↔ mobile" abajo |
+| Server API, domain, DB, auth or WebSockets | `backend/CLAUDE.md` |
+| Screens, navigation, maps, state or client WS | `mobile/CLAUDE.md` |
+| Product context/status, business decisions | `README.md` + `docs/implementation-plans/` |
+| Roadmap to production and status per phase | `docs/plans/production-launch-plan.md` |
+| Backend ↔ mobile contract | "Backend ↔ mobile contract" section below |
 
-## Arranque rápido
+## Quick start
 
 ```bash
-# 1) Infraestructura local (PostgreSQL + Redis en Docker)
+# 1) Local infrastructure (PostgreSQL + Redis in Docker)
 docker compose up -d db redis
 
 # 2) Backend
 cd backend
-source .venv/bin/activate         # o: uv sync && source .venv/bin/activate
-pip install -e ".[dev]"           # o: uv sync (si usas uv — recomendado)
-cp .env.example .env              # editar JWT_SECRET y credenciales OAuth
+source .venv/bin/activate         # or: uv sync && source .venv/bin/activate
+pip install -e ".[dev]"           # or: uv sync (if you use uv — recommended)
+cp .env.example .env              # edit JWT_SECRET and OAuth credentials
 alembic upgrade head
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000   # Swagger: /docs
 
-# 3) Mobile (en otra terminal)
+# 3) Mobile (in another terminal)
 cd mobile
 npm install
-cp .env.example .env              # API_URL = IP LAN del backend, claves Maps/OAuth
-npx expo start                    # dev build en emulador/dispositivo (NO Expo Go)
+cp .env.example .env              # API_URL = backend LAN IP, Maps/OAuth keys
+npx expo start                    # dev build on emulator/device (NOT Expo Go)
 ```
 
-> **Entorno Python:** si usas VSCode vía snap, crea el venv con `uv` (Pythons en `~/.local`) —
-> el snap de VSCode rompe el venv del backend al actualizarse.
+> **Python environment:** if you use VSCode via snap, create the venv with `uv` (Pythons in `~/.local`) —
+> the VSCode snap breaks the backend venv when it updates.
 
-## Modelo de negocio (resumen)
+## Business model (summary)
 
-- El **pasajero** crea un `RideRequest` (`SEARCHING`) con origen, destino, tipo de servicio
-  (`taxi`/`moto`), método de pago (`qr`/`cash`) y una tarifa inicial.
-- Cualquier usuario puede **registrarse como conductor** desde su perfil con **hasta un vehículo
-  de cada tipo** (`taxi`/`moto`/`truck`) y los servicios que ofrece con cada uno: taxi,
-  taxi + encomiendas, moto, moto + encomiendas o **mudanzas** (`moving`, solo camioneta). Cada
-  vehículo queda `pending` hasta la revisión (F04-A); en desarrollo `DRIVER_AUTO_APPROVE=true` lo
-  aprueba al instante. La cuenta tiene **un modo activo** (`role`): pasajero o conductor; al
-  entrar en modo conductor (o al iniciar sesión) se elige con qué vehículo se trabaja.
-- Los **conductores** cuyos servicios ofrecidos incluyen el de la solicitud la ven y **ofertan**:
-  aceptar al fare del pasajero o contraofertar (precio + ETA). La oferta caduca a los **30 s**.
-- **El pasajero decide**: aceptar una oferta = asignación directa atómica del conductor; o
-  **modificar** su solicitud (la pausa del pool sin cancelar); o **aumentar su oferta** (sube el
-  fare para atraer más conductores).
-- El conductor avanza el viaje: `ACCEPTED → ARRIVING → IN_PROGRESS → COMPLETED`; al final el
-  pasajero califica (score 1–5, recalcula el rating del conductor).
-- **Tiempo real:** todo esto se notifica por **WebSocket** (pool de conductores, ride del pasajero,
-  conductor individual); el polling HTTP del cliente queda solo como respaldo lento.
+- The **passenger** creates a `RideRequest` (`SEARCHING`) with origin, destination, service type
+  (`taxi`/`moto`), payment method (`qr`/`cash`) and an initial fare.
+- Any user can **register as a driver** from their profile with **up to one vehicle
+  of each type** (`taxi`/`moto`/`truck`) and the services offered with each one: taxi,
+  taxi + parcels, moto, moto + parcels or **moving** (`moving`, truck only). Each
+  vehicle stays `pending` until reviewed (F04-A); in development `DRIVER_AUTO_APPROVE=true`
+  approves it instantly. The account has **one active mode** (`role`): passenger or driver; when
+  entering driver mode (or signing in) the user picks which vehicle to work with.
+- **Drivers** whose offered services include the request's service see it and **make offers**:
+  accept the passenger's fare or counter-offer (price + ETA). The offer expires after **30 s**.
+- **The passenger decides**: accepting an offer = atomic direct assignment of the driver; or
+  **edit** the request (pauses it in the pool without cancelling); or **raise the offer** (raises the
+  fare to attract more drivers).
+- The driver advances the ride: `ACCEPTED → ARRIVING → IN_PROGRESS → COMPLETED`; at the end the
+  passenger rates it (score 1–5, recalculates the driver's rating).
+- **Real time:** all of this is notified over **WebSocket** (driver pool, passenger ride,
+  individual driver); client HTTP polling remains only as a slow fallback.
 
-## Contrato backend ↔ mobile
+## Backend ↔ mobile contract
 
-- La API vive bajo `/api/v1`. El mobile la consume vía `env.apiUrl` (config en `mobile/app.config.ts`).
-- **Auth:** solo teléfono + OTP (Google/Facebook opcionales, siempre vinculados a un teléfono
-  verificado); **no existe acceso por correo/contraseña**. JWT Bearer de sesión administrada: el
-  cliente guarda access/refresh y refresca ante 401 (interceptor en `mobile/src/core/http/client.ts`);
-  el backend valida en `backend/app/api/deps.py`.
-- **WebSocket:** token por subprotocolos `viajaya.auth` + access token, nunca en la URL.
-  Endpoints: `/ws/driver` (pool + viaje activo del conductor), `/ws/rides/{ride_id}` (ofertas y
-  estado al pasajero). Eventos en `backend/app/api/v1/events.py`.
-- **Al cambiar un endpoint o un schema en el backend, actualiza el tipo/repositorio correspondiente
-  en el feature del mobile** (`features/<feature>/data` y `domain/types.ts`). Mantén ambos lados en sintonía.
-- **CORS:** orígenes permitidos con `CORS_ORIGINS` en el backend (`.cors_origins_list`).
+- The API lives under `/api/v1`. Mobile consumes it via `env.apiUrl` (config in `mobile/app.config.ts`).
+- **Auth:** phone + OTP only (Google/Facebook optional, always linked to a verified
+  phone); **there is no email/password access**. Managed-session JWT Bearer: the
+  client stores access/refresh and refreshes on 401 (interceptor in `mobile/src/core/http/client.ts`);
+  the backend validates in `backend/app/api/deps.py`.
+- **WebSocket:** token via the `viajaya.auth` subprotocol + access token, never in the URL.
+  Endpoints: `/ws/driver` (driver pool + active ride), `/ws/rides/{ride_id}` (offers and
+  status for the passenger). Events in `backend/app/api/v1/events.py`.
+- **When you change an endpoint or a schema in the backend, update the matching type/repository
+  in the mobile feature** (`features/<feature>/data` and `domain/types.ts`). Keep both sides in sync.
+- **CORS:** allowed origins via `CORS_ORIGINS` in the backend (`.cors_origins_list`).
 
-## Convenciones globales
+## Global conventions
 
-- **Idioma:** código, identificadores, comentarios y docstrings nuevos en **inglés**, por preferencia del usuario del 2026-09-09. Interfaz, comunicación y documentación para el usuario en español. Verifica cada implementación; conserva la compatibilidad al modificar nombres existentes. Ver la preferencia persistente en `AGENTS.md`.
-- **Arquitectura:** ambos proyectos respetan límites de capas (dominio sin dependencias hacia afuera).
-  No cruces capas para "ir más rápido"; sigue las reglas del `CLAUDE.md` del subproyecto.
-- **Antes de commitear:** corre lint y type-check del subproyecto tocado
-  (`ruff check .` / `pytest` en backend; `npx tsc --noEmit` / `npm run lint` en mobile).
-- **Commits:** mensajes en español, estilo Conventional Commits (`feat(scope): …`, `fix(scope): …`,
-  `docs(scope): …`, `chore(scope): …`), como en el historial.
-- **Secretos:** nunca commitees `.env`; usa los `.env.example` como plantilla.
+- **Language:** code, identifiers, comments, docstrings, tests and repository documentation in
+  **English** (user preference of 2026-09-09, extended to documentation on 2026-09-24).
+  App UI text and conversation with the user stay in Spanish. Verify every implementation; keep
+  compatibility when renaming existing names. See the persistent preference in `AGENTS.md`.
+- **Architecture:** both projects respect layer boundaries (domain without outward dependencies).
+  Do not cross layers "to go faster"; follow the subproject `CLAUDE.md` rules.
+- **Before committing:** run lint and type-check for the touched subproject
+  (`ruff check .` / `pytest` in backend; `npx tsc --noEmit` / `npm run lint` in mobile).
+- **Commits:** messages in Spanish, Conventional Commits style (`feat(scope): …`, `fix(scope): …`,
+  `docs(scope): …`, `chore(scope): …`), as in the history.
+- **Secrets:** never commit `.env`; use the `.env.example` files as templates.

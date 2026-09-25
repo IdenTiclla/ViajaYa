@@ -25,7 +25,9 @@ Review the text wrapping, the mobile/desktop views and printing in a browser.
 The `.md` download must match the source plan exactly.
 
 The slides (`production-slides.json`) are user-facing and stay in Spanish; the plan
-document is written in English since 2026-09-24.
+document is written in English since 2026-09-24. `plan_date` must match the plan's
+English date and `phases` holds the Spanish phase names/statuses shown in the deck
+(keep them in sync with the phase table of the plan).
 
 The organization scripts, `fases.json` and the revision 4 files are kept
 as background; they are not inputs of the current generator. The current command no

@@ -1,6 +1,6 @@
 # ViajaYa production launch plan
 
-Initial date: September 9, 2026. **Update: September 19, 2026 · Revision 23.** Reviewed base: `main`, commit `986dd79` (merge of PR #15, 2026-09-14).
+Initial date: September 9, 2026. **Update: September 24, 2026 · Revision 24.** Reviewed base: `main`, commit `a5246b7` (merge of PR #19, 2026-09-24).
 
 **Current policy (2026-09-19):** we only use **Development**. **Testing (`testing`/`preview`/staging) is temporarily deprecated**: do not start, deploy or produce deliveries for that environment. Production remains a future goal. Previous configurations are kept for reference; automated tests and disposable CI databases still apply.
 
@@ -18,22 +18,24 @@ The status is based on code, history and [the evidence of this review](productio
 
 **Arrival and map space (revision 21):** fixed the offer with a nearby pickup, which discarded a valid Google response and showed a false connection error. Configure uses controls over the map; search measures its space and brings the route closer. Every map disables interiors and tilt and hides building/relief geometry, also in the light theme. See [evidence and native verification limit 0021](../implementation-plans/0021-nearby-arrival-and-clear-maps.md).
 
-**Tracking and navigation (revision 22):** the previous work was stored in `e10e6ae`. Private per-ride GPS is added with snapshot/reconnection, a stale signal and a cutoff at closing; an Android service to share while using Waze; Google Navigation to the pickup and the destination, without automatically advancing the ride. Progress recorded in a separate commit on the same branch; no push was made. See [implementation, evidence and pending items 0022](../implementation-plans/0022-driver-navigation-and-live-tracking.md).
+**Tracking and navigation (revision 22):** the previous work was stored in `e10e6ae`. Private per-ride GPS is added with snapshot/reconnection, a stale signal and a cutoff at closing; an Android service to share while using Waze; Google Navigation to the pickup and the destination, without automatically advancing the ride. Merged into `main` with PR #16 on 2026-09-22. See [implementation, evidence and pending items 0022](../implementation-plans/0022-driver-navigation-and-live-tracking.md).
+
+**Integration and verification (revision 24):** all the work of revisions 11–22 is now in `main` (PR #16, 2026-09-22). PR #17 adds the visual identity (logo, native splash and launch screen with the slogan) and fixes the A/B tooltips in configure. PR #18 moves code, comments and tests to English and makes the A/B route pins exact: they have the selection pin's shape and the stem tip is the coordinate; checked with a debug crosshair on a physical phone (passenger search and the driver's requests map). PR #19 moves the repository documentation to English. **The remote CI of `main` (`a5246b7`) passed all 5 jobs** (fast backend, PostgreSQL integration, runtime image smoke, Windows environment contracts and mobile types/tests/lint). Local run on 2026-09-24: **746 backend tests passing** (91 opt-in skipped, five existing warnings) and **454 mobile tests passing**. Phase statuses do not change: the two-phone certification of GPS/navigation, real SMS, the panel, payments and parcels are still pending.
 
 ### What we have and what prevents launching
 
 | Area | Verifiable progress | Pending to operate |
 |---|---|---|
 | Rides | Simultaneous negotiations, atomic assignment, arrival, «ya salí» notice, start, closing, history and ratings | Incidents, verified pickup and operational support |
-| Access | Phone/simulated OTP, revocable sessions, social linking; Google tested in Development | Real SMS, updated Testing APK/walkthrough and recovery accessible to the user and the operator |
+| Access | Phone/simulated OTP, revocable sessions, social linking; Google tested in Development | Real SMS, phone walkthrough of the current candidate and recovery accessible to the user and the operator |
 | Drivers | Registration from Profile, up to one vehicle per type, services and mode/vehicle switching | Private documents, administrative review, suspension, expirations and per-zone eligibility |
-| Real time and maps | WebSockets, outbox, Redis, scheduler, maps and routes | Operational rollout, driver GPS to the passenger, background, push and Navigation SDK |
+| Real time and maps | WebSockets, outbox, Redis, scheduler, maps, routes, driver GPS to the passenger and Android navigation (local) | Operational rollout, two-phone certification of GPS/navigation, push |
 | Money and parcels | QR/cash selection and the `delivery` service type | Verifiable collection, commissions, settlements, recipient, package and delivery confirmation |
 | Deployment | Configuration of three environments, Docker, CI and Android variants | Certified hosting, restoration, target load, privacy and Google Play |
 
 **No global percentage is computed:** the ten phases have different sizes and several contain partial progress. A phase closed locally is not equivalent to 10 % of the product nor does it certify production.
 
-The [HTML presentation](presentacion-salida-produccion.html) was synchronized with revision 23: it summarizes the ten phases, the evidence and the next deliveries. Its «Plan completo» view and its download contain this full document (in its Spanish version at that time; the plan is written in English since 2026-09-24).
+The [HTML presentation](presentacion-salida-produccion.html) was synchronized with revision 24: it summarizes the ten phases, the evidence and the next deliveries. Its «Plan completo» view and its download contain this full document (in English; the slides stay in Spanish).
 
 ## 1. Goal and starting decisions
 
@@ -55,7 +57,7 @@ Initial decisions:
 - Keep the agreed launch scope: taxi, moto and parcels. The code already includes truck/`moving` (moving services); its commercial inclusion requires an explicit decision and its own criteria before enabling it to the public.
 - Use the following figures as budget guidance; hiring services will be a later milestone.
 
-**Summarized history:** revisions 2–4 set phone/OTP, integrated navigation and three environments with simulated OTP in Development. Revisions 5–9 organized the ten phases and recorded F01, F02-A/B, APK and the HTTPS recovery. On 2026-09-13 Google was verified in Development and password access was removed. On 2026-09-14 those changes and driver registration with several vehicles were merged into `main`. The historical details remain in the [implementation plans](../implementation-plans/0010-phone-identity-and-otp.md). Revision 10 corrected statuses, practical dependencies and next deliveries. Revision 11 adds the local evidence of UI and of the taxi/mototaxi flow on the working branch; it does not close the production certification. Revision 12 verifies the fix of H01–H05, manual ETA and route profiles per service. Revision 13 adds persistent pickup coordination, offer confirmation and protection against late reconnections; it verifies both roles and visual accessibility. Revision 14 incorporates the feedback from the user's tests: closing without an internal cancellation error, automatic ETA, traffic-aware routes and a stable map. Revision 15 verifies several negotiations per driver and passenger, independent submissions and a single assignment even with simultaneous acceptances. Revision 16 fixes four reproduced concurrency, pagination and request-version bugs.
+**Summarized history:** revisions 2–4 set phone/OTP, integrated navigation and three environments with simulated OTP in Development. Revisions 5–9 organized the ten phases and recorded F01, F02-A/B, APK and the HTTPS recovery. On 2026-09-13 Google was verified in Development and password access was removed. On 2026-09-14 those changes and driver registration with several vehicles were merged into `main`. The historical details remain in the [implementation plans](../implementation-plans/0010-phone-identity-and-otp.md). Revision 10 corrected statuses, practical dependencies and next deliveries. Revision 11 adds the local evidence of UI and of the taxi/mototaxi flow on the working branch; it does not close the production certification. Revision 12 verifies the fix of H01–H05, manual ETA and route profiles per service. Revision 13 adds persistent pickup coordination, offer confirmation and protection against late reconnections; it verifies both roles and visual accessibility. Revision 14 incorporates the feedback from the user's tests: closing without an internal cancellation error, automatic ETA, traffic-aware routes and a stable map. Revision 15 verifies several negotiations per driver and passenger, independent submissions and a single assignment even with simultaneous acceptances. Revision 16 fixes four reproduced concurrency, pagination and request-version bugs. Revisions 17–21 add test coverage, ride experience, shared components and map fixes. Revision 22 adds GPS tracking and Android navigation; revision 23 deprecates Testing. Revision 24 records that everything is merged into `main` (PRs #16–#19) with remote CI passing, the visual identity and exact A/B pins.
 
 ## 2. Roadmap by phase
 
@@ -82,7 +84,7 @@ Each phase produces a reviewable delivery. The suggested PRs order implementatio
 
 | Order | Concrete work | Evidence to consider it done | Dependency / required owner |
 |---|---|---|---|
-| 1 | Complete the visible entry to recovery, update the Testing candidate from an identified commit and certify access on Android | API/migrations and APK match; phone, Google, session, number change, recovery request and passenger/driver walkthrough tested on phones; remote CI linked | Development + a person doing QA; Testing credentials; recovery approval in F03-B |
+| 1 | Complete the visible entry to recovery and certify the current candidate (`main`) in Development on two Android phones | API/migrations and Development APK identified by commit; phone, Google, session, number change, recovery request and passenger/driver ride with GPS/navigation tested on phones; remote CI linked (already green on `a5246b7`) | Development + a person doing QA; recovery approval in F03-B |
 | 2 | Implement F03-A per plan 0011 | Zone and currency in backend/mobile, compatible amounts and a backfill tested on disposable PostgreSQL | Development; can move ahead while the SMS provider is decided |
 | 3 | Complete F03-B/C and the administrative part of F04-A | An operator reviews vehicles/documents and recovery with permissions/audit; flags control new operations | Development + definition of support owners |
 | 4 | Complete F04-B/C and F05; move F06-A ahead | Ride on two phones, authorized location and recovery; native navigation test resolved | Android QA and a bounded maps budget |
@@ -91,7 +93,7 @@ Each phase produces a reviewable delivery. The suggested PRs order implementatio
 
 **Parallel track that cannot be left to the end:** choose the SMS provider and implement its adapter in F02-C; get QR quotes for F07; confirm the Play account type, initial city/zone, monthly budget and support team. Facebook remains postponed and disabled; it does not block independent tasks. Before certifying F09, record whether it enters this launch or stays disabled as an optional alternative.
 
-**Launch date:** to be defined after closing scope, team and providers. No date is promised based only on the number of phases. The next measurable milestone is an updated Testing candidate with the documented access and ride walkthrough; that is not a commercial launch yet.
+**Launch date:** to be defined after closing scope, team and providers. No date is promised based only on the number of phases. The next measurable milestone is the current candidate walked through in Development on two phones, with access and ride documented; that is not a commercial launch yet. While Testing stays deprecated, the F02 exit criterion items that mention the Testing APK and Google in Testing remain open; reactivating Testing or redefining those items is a user decision.
 
 **How to execute and track**
 
@@ -114,7 +116,7 @@ It starts together with F01 and does not prevent preparing the project locally. 
 
 ### Phase 01. Technical foundation and environment policy
 
-**Status:** Completed and verified locally; merged into `main` through PR #15. **Evidence:** [plan 0009](../implementation-plans/0009-environment-foundation.md). The CI definition exists; the candidate's remote result was not checked in this review. Hosting and deployment certification remain in F09.
+**Status:** Completed and verified locally; merged into `main` through PR #15. **Evidence:** [plan 0009](../implementation-plans/0009-environment-foundation.md). The remote CI of `main` (`a5246b7`, 2026-09-24) passed its 5 jobs. Hosting and deployment certification remain in F09.
 
 **Goal:** Keep Development reproducible and preserve the isolation of future configurations. Testing stays inactive until a new decision.
 
@@ -631,7 +633,7 @@ Publish first through internal/closed tests and then open zones gradually with t
 
 ## 6. Decisions needed to set the launch
 
-| Decision | Status as of 2026-09-19 | Must be resolved before |
+| Decision | Status as of 2026-09-24 | Must be resolved before |
 |---|---|---|
 | Initial city/zone, pilot volume and support owners/hours | No closed selection is recorded in the reviewed plans | Configuring coverage in F03/F04 and launching in F10 |
 | SMS provider, delivery in Bolivia and budget for the real trial | No provider chosen in the latest evidence | Closing F02-C and the F09 certification |

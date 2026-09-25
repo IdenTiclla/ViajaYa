@@ -1,7 +1,7 @@
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { Tabs } from 'expo-router/js-tabs';
 
-import { PillTabBar } from '@/core/components/PillTabBar';
+import { DriverTabBar } from '@/features/driver/presentation/DriverTabBar';
 
 /**
  * Driver's main navigation: Solicitudes / Historial / Ganancias / Perfil.
@@ -9,10 +9,11 @@ import { PillTabBar } from '@/core/components/PillTabBar';
  * The active tab carries the Stitch yellow pill (see PillTabBar). "Solicitudes" is
  * the initial screen on entry (redirect in app/index.tsx). "index" stays as a
  * hidden redirect (`tabBarButton: () => null`) from the base segment to Solicitudes.
+ * The bar hides while a ride is in its flow (see DriverTabBar).
  */
 export default function DriverTabsLayout() {
   return (
-    <Tabs tabBar={(props) => <PillTabBar {...props} />} screenOptions={{ headerShown: false }}>
+    <Tabs tabBar={(props) => <DriverTabBar {...props} />} screenOptions={{ headerShown: false }}>
       <Tabs.Screen name="index" options={{ tabBarButton: () => null }} />
       <Tabs.Screen
         name="requests"

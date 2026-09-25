@@ -362,7 +362,7 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    height: '51%',
+    height: '46%',
     backgroundColor: colors.background,
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,

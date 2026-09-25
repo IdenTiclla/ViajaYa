@@ -190,7 +190,7 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
   flex: { flex: 1 },
   ratingContent: { flexGrow: 1, padding: spacing.lg },
   resultContent: { flexGrow: 1, justifyContent: 'center', padding: spacing.lg, gap: spacing.md },
-  sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '51%',
+  sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '46%',
     backgroundColor: colors.background, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg,
     paddingTop: spacing.sm, shadowColor: '#000', shadowOpacity: 0.12,
     shadowRadius: 12, shadowOffset: { width: 0, height: -3 }, elevation: 12 },

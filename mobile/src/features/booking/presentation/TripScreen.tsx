@@ -7,12 +7,13 @@ import { DriverLocationStatus } from '@/features/tracking/presentation/DriverLoc
  * Shows the route on the map and a bottom card with the assigned
  * driver (vehicle, rating, plate) and Message / Call / Share actions.
  * Depending on the status, a banner says whether the driver is on the way or has arrived.
- * When completed, it leads to rating; it allows cancelling before the ride starts.
+ * When completed, it goes straight to the full-screen rating (no intermediate
+ * "Viaje finalizado" step); it allows cancelling before the ride starts.
  */
 import { Ionicons, type IoniconsIconName } from '@react-native-vector-icons/ionicons';
 import { useQueryClient } from '@tanstack/react-query';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useState } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -90,26 +91,13 @@ export function TripScreen() {
   const actions = useTripActions(ride);
   const [confirmCancel, setConfirmCancel] = useState<{ id: string; status: RideStatus } | null>(null);
   const [sheetHeight, setSheetHeight] = useState(380);
-  useBlockHardwareBack(Boolean(ride) && ride?.status !== 'cancelled' && ride?.status !== 'completed');
+  useBlockHardwareBack(Boolean(ride) && ride?.status !== 'cancelled');
 
   const goHome = () => router.dismissTo('/(app)/(tabs)');
   const closeAndGoHome = () => {
     queryClient.setQueryData<Ride | null>(PASSENGER_ACTIVE_RIDE_KEY, (current) => current?.id === id ? null : current);
     goHome();
   };
-  const goRate = () => router.replace(`/(app)/booking/rating?rideId=${id}`);
-
-  // When the ride is completed (live notice over WS), it leads to rating after a
-  // short pause so the passenger sees the "Viaje finalizado" banner.
-  const completed = ride?.status === 'completed';
-  useEffect(() => {
-    if (!completed || !id) return;
-    const timer = setTimeout(
-      () => router.replace(`/(app)/booking/rating?rideId=${id}`),
-      1500,
-    );
-    return () => clearTimeout(timer);
-  }, [completed, id, router]);
 
   if (!id) {
     return (
@@ -147,6 +135,12 @@ export function TripScreen() {
     );
   }
 
+  // Completed (live notice over WS or on reopening): the rating screen already
+  // closes the ride, so go there directly instead of flashing a "Calificar" step.
+  if (ride.status === 'completed') {
+    return <Redirect href={{ pathname: '/booking/rating', params: { rideId: ride.id } }} />;
+  }
+
   const isDelivery = ride.service === 'delivery';
   const pickupAcknowledged = Boolean(ride.riderOnTheWayAt);
   const supportsPickupNotice = ride.service === 'taxi' || ride.service === 'moto';
@@ -155,7 +149,6 @@ export function TripScreen() {
     ? { icon: 'checkmark-circle' as const, title: 'Tu conductor sabe que vas al punto',
         hint: 'Tu aviso fue enviado. Verifica su nombre y la placa antes de subir.' }
     : (isDelivery ? DELIVERY_BANNER : BANNER)[ride.status];
-  const isCompleted = ride.status === 'completed';
   const isCancelled = ride.status === 'cancelled';
   const canCancel = CANCELLABLE.includes(ride.status);
 
@@ -163,15 +156,13 @@ export function TripScreen() {
     <View style={styles.root}>
       <TripRouteMap vehicle={tracking.location ? { coordinates: tracking.location, heading: tracking.location.heading, type: ride.driver?.vehicleType ?? null, stale: tracking.freshness !== "live" } : undefined} service={ride.service} origin={ride.origin} destination={ride.destination} topPadding={48} bottomPadding={sheetHeight} />
 
-      {(isCompleted || isCancelled) && (
+      {isCancelled && (
         <SafeAreaView style={styles.topBar} edges={['top']} pointerEvents="box-none">
           <TouchableOpacity
             style={styles.iconBtn}
-            onPress={isCancelled ? closeAndGoHome : goRate}
+            onPress={closeAndGoHome}
             accessibilityRole="button"
-            accessibilityLabel={
-              isCancelled ? 'Volver al inicio' : isDelivery ? 'Calificar entrega' : 'Calificar viaje'
-            }>
+            accessibilityLabel="Volver al inicio">
             <Ionicons name="arrow-back" size={24} color={colors.text} />
           </TouchableOpacity>
         </SafeAreaView>
@@ -201,7 +192,7 @@ export function TripScreen() {
         )}
 
         {ride.driver && <>
-          {!isCompleted && !isCancelled && <DriverLocationStatus freshness={tracking.freshness} onRetry={tracking.retry} />}
+          {!isCancelled && <DriverLocationStatus freshness={tracking.freshness} onRetry={tracking.retry} />}
           <DriverCard ride={ride} />
         </>}
         <TripSummary key={ride.id} ride={ride} compact />
@@ -211,7 +202,7 @@ export function TripScreen() {
         )}
 
         </ScrollView>
-        {(atPickup || actions.error || isCompleted || isCancelled || canCancel) && <View style={styles.tripActions}>
+        {(atPickup || actions.error || isCancelled || canCancel) && <View style={styles.tripActions}>
         {atPickup && (
           <Button title={pickupAcknowledged ? 'Aviso enviado: voy al punto' : 'Ya salí, voy al punto'}
             leadingIcon={pickupAcknowledged ? 'checkmark-circle-outline' : 'walk-outline'}
@@ -222,9 +213,7 @@ export function TripScreen() {
           <Text accessibilityRole="alert" style={styles.error}>{actions.error}</Text>
         )}
 
-        {isCompleted ? (
-          <Button title={isDelivery ? 'Calificar entrega' : 'Calificar viaje'} onPress={goRate} />
-        ) : isCancelled ? (
+        {isCancelled ? (
           <Button title="Volver al inicio" onPress={closeAndGoHome} />
         ) : canCancel ? (
           <TripSecondaryAction

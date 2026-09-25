@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useBlockHardwareBack } from '@/core/navigation/useBlockHardwareBack';
 import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import { useRoute } from '@/features/booking/application/useRoute';
 import { useTripActions, useTripContact } from '@/features/rides/application/useTripActions';
@@ -57,6 +58,8 @@ export function DriverTripInProgressScreen({ ride }: { ride: Ride }) {
   const terminal = ride.status === 'completed' || ride.status === 'cancelled';
   const { route } = useRoute(terminal ? null : ride.origin, terminal ? null : ride.destination, ride.service);
   const nouns = serviceNouns(ride.service);
+  // The flow is closed explicitly (rating or "Volver a solicitudes"), never with back.
+  useBlockHardwareBack(true);
 
   const close = async (rated = false) => {
     // Rating mutations already reconcile both caches before invoking onDone.

@@ -117,6 +117,10 @@ the active icon has a yellow background pill (`colors.accent` = `#F5C518`).
 All labels stay below their icon; with large text they spread
 over two rows to keep the full text.
 Hidden routes declare `tabBarButton: () => null` (e.g. the driver's `index` redirect).
+The driver uses it through `features/driver/presentation/DriverTabBar`, which hides the bar
+during the ride flow (active ride or pending rating) and returns the driver to Requests,
+where that flow is rendered. The passenger's `TripScreen` redirects straight to
+`booking/rating` once the ride is `completed` (no intermediate "Calificar" step).
 
 ## State management
 

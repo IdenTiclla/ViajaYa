@@ -1,7 +1,49 @@
 {
-  "revision": 23,
-  "date": "19 de septiembre de 2026",
-  "plan_date": "September 19, 2026",
+  "revision": 24,
+  "date": "24 de septiembre de 2026",
+  "plan_date": "September 24, 2026",
+  "phases": {
+    "1": {
+      "title": "Base técnica y política de entornos",
+      "status": "Completada localmente"
+    },
+    "2": {
+      "title": "Teléfono, OTP y cuentas sociales",
+      "status": "En curso"
+    },
+    "3": {
+      "title": "Países, panel base y feature flags",
+      "status": "Pendiente"
+    },
+    "4": {
+      "title": "Conductores y operación del viaje",
+      "status": "En curso parcial"
+    },
+    "5": {
+      "title": "Seguimiento, mapas y notificaciones",
+      "status": "Parcial"
+    },
+    "6": {
+      "title": "Navegación del conductor",
+      "status": "Parcial"
+    },
+    "7": {
+      "title": "Cobros, comisiones y liquidaciones",
+      "status": "Pendiente"
+    },
+    "8": {
+      "title": "Encomiendas completas",
+      "status": "Pendiente"
+    },
+    "9": {
+      "title": "Certificación productiva y cumplimiento",
+      "status": "Pendiente"
+    },
+    "10": {
+      "title": "Google Play y apertura gradual",
+      "status": "Pendiente"
+    }
+  },
   "slides": [
     {
       "title": "ViajaYa<br>Salida a producción",
@@ -24,50 +66,51 @@
         {
           "title": "Pendiente para operar",
           "items": [
-            "SMS real, recuperación y Pruebas actualizado.",
+            "SMS real y recuperación visible en la app.",
             "Panel, documentos y soporte operativo.",
-            "Seguimiento, navegación y cobros verificables.",
+            "Certificar GPS/navegación en dos teléfonos y cobros verificables.",
             "Encomiendas completas y certificación alojada."
           ]
         }
       ],
       "criterion": "F01 cerrada localmente; F02 en curso y F04 parcial. La apertura pública todavía no está certificada.",
-      "source": "Base revisada: main · 986dd79 · PR #15 integrado el 14/09/2026.",
+      "source": "Base revisada: main · a5246b7 · PR #16–#19 integrados (22–24/09/2026).",
       "lead": "Desarrollo es el único entorno operativo; Pruebas queda temporalmente deprecado."
     },
     {
       "title": "Evidencia de la base integrada",
       "stats": [
         [
-          "700",
+          "746",
           "pruebas backend aprobadas"
         ],
         [
-          "275",
+          "454",
           "pruebas móviles aprobadas"
         ],
         [
-          "19/09",
-          "fecha de la comprobación local"
+          "5/5",
+          "jobs de CI remota en verde"
         ]
       ],
       "columns": [
         {
           "title": "También aprobado",
           "items": [
+            "CI remota de main (a5246b7): PostgreSQL, imagen, Windows y mobile.",
             "Ruff, TypeScript y lint.",
-            "OpenAPI, contrato WebSocket y tipos móviles."
+            "Pines A/B exactos comprobados en un teléfono real."
           ]
         },
         {
-          "title": "Sin repetir en esta revisión",
+          "title": "Sin certificar todavía",
           "items": [
-            "PostgreSQL/Redis y CI remota.",
-            "Builds, teléfonos, carga y despliegue alojado."
+            "Recorrido GPS/navegación en dos teléfonos.",
+            "Carga, despliegue alojado y Google Play."
           ]
         }
       ],
-      "source": "Pytest informó 5 advertencias; 3 corresponden a helpers contados como tests. [Evidencia y límites](production-readiness-2026-09-19.md)."
+      "source": "Comprobación local del 24/09: backend con 91 pruebas opt-in omitidas y 5 advertencias existentes. [Evidencia anterior y límites](production-readiness-2026-09-19.md)."
     },
     {
       "title": "Estado de las diez fases",
@@ -126,7 +169,7 @@
           "title": "Límite del cierre local",
           "items": [
             "APK instalados: antecedente del 09/09.",
-            "CI remota del candidato aún por comprobar.",
+            "CI remota en verde sobre main a5246b7 (24/09).",
             "Alojamiento y operación se certifican en F09."
           ]
         }
@@ -181,14 +224,14 @@
         {
           "title": "Para cerrar la fase",
           "items": [
-            "API y APK de Pruebas del mismo candidato.",
+            "APK de Desarrollo del candidato actual (main).",
             "Recorrido real de acceso y sesión en Android.",
             "Proveedor y adaptador SMS productivo.",
             "Solicitud de recuperación visible en la app."
           ]
         }
       ],
-      "criterion": "El código está integrado. Su cierre requiere pruebas del candidato y completar las funciones pendientes."
+      "criterion": "El código está integrado. El criterio de cierre aún menciona el APK de Pruebas, que está deprecado: reactivarlo o redefinir ese punto es una decisión pendiente."
     },
     {
       "phase": 2,
@@ -305,15 +348,15 @@
     {
       "phase": 4,
       "title": "Operación y soporte del viaje",
-      "criterion": "Recorrido funcional verificado localmente. Falta certificación nativa; GPS, navegación y cobros mantienen sus cierres F05–F07.",
+      "criterion": "Recorrido funcional integrado en main. Falta la certificación nativa completa en dos teléfonos; GPS, navegación y cobros mantienen sus cierres F05–F07.",
       "columns": [
         {
-          "title": "Taxi y mototaxi · avance local",
+          "title": "Taxi y mototaxi · integrado en main",
           "items": [
-            "Llegada cercana corregida; ETA automática con Google real.",
-            "Controles sobre el mapa; búsqueda con ruta más cercana.",
-            "396 pruebas móviles, 68 casos UI y seis rutas reales.",
-            "Capas de relieve retiradas; confirmar zoom en teléfono."
+            "Negociación, recogida, cierre y calificación en main (PR #16).",
+            "Pines A/B con la punta en la coordenada; comprobado en teléfono.",
+            "Identidad visual: logo, splash y pantalla de inicio (PR #17).",
+            "746 pruebas backend, 454 móviles y CI remota en verde."
           ]
         },
         {
@@ -326,7 +369,7 @@
           ]
         }
       ],
-      "source": "Revisión 21 · codex/ui-improvements-and-bugfixes, base e10e6ae · llegada y mapas 0021. Backend/PostgreSQL: evidencia histórica de revisión 17."
+      "source": "Revisión 24 · main a5246b7 · PR #16–#19. Detalle de mapas en el plan 0021."
     },
     {
       "phase": 5,
@@ -350,7 +393,7 @@
         }
       ],
       "criterion": "Un viaje en dos teléfonos se recupera de red perdida, permisos denegados y cambios de app.",
-      "source": "Revisión 22 · plan 0022 · API/WS y Redis verificados; UI con mapa de prueba."
+      "source": "Revisión 22 · plan 0022 · integrado en main con el PR #16 (22/09). API/WS y Redis verificados; UI con mapa de prueba."
     },
     {
       "phase": 5,
@@ -639,7 +682,7 @@
         {
           "title": "Primeros cierres",
           "items": [
-            "1. Recuperación visible y candidato de Pruebas actualizado.",
+            "1. Recuperación visible y candidato de main recorrido en dos teléfonos.",
             "2. F03-A: territorio, zona, moneda y horario.",
             "3. Panel, permisos y revisión de conductores."
           ]
@@ -696,7 +739,7 @@
             "F07 puede avanzar junto con F05–F06.",
             "F06-A despeja compatibilidad nativa antes.",
             "Cuentas y cotizaciones desde ahora.",
-            "Alojar Pruebas antes de certificar lo que lo requiere."
+            "Pruebas sigue deprecado: no se aloja por ahora."
           ]
         }
       ],
@@ -704,21 +747,21 @@
     },
     {
       "title": "Siguiente hito verificable",
-      "intro": "Un candidato actualizado de Pruebas con acceso y viaje documentados en teléfonos.",
+      "intro": "El candidato actual (main a5246b7) recorrido en Desarrollo con dos teléfonos: acceso y viaje documentados.",
       "columns": [
         {
           "title": "Resultado esperado",
           "items": [
-            "API, migraciones y APK identificados por versión.",
+            "API, migraciones y APK de Desarrollo identificados por versión.",
             "Teléfono, Google y sesión recorridos.",
             "Cambio de número y solicitud de recuperación.",
-            "Flujo pasajero/conductor sin bloqueos."
+            "Viaje pasajero/conductor con GPS y navegación."
           ]
         },
         {
           "title": "Evidencia del cierre",
           "items": [
-            "CI remota y comprobaciones locales.",
+            "CI remota (ya en verde en a5246b7) y comprobaciones locales.",
             "Fecha, entorno, versión y responsable.",
             "Resultados y pendientes registrados.",
             "Sin confundir el ensayo con apertura comercial."
@@ -726,7 +769,7 @@
         }
       ],
       "criterion": "Después: F03-A y la operación administrativa. SMS y QR avanzan como gestiones paralelas.",
-      "source": "[Plan completo, revisión 16](production-launch-plan.md) · [Evidencia del 19/09](production-readiness-2026-09-19.md)."
+      "source": "[Plan completo, revisión 24](production-launch-plan.md) · [Evidencia del 19/09](production-readiness-2026-09-19.md)."
     }
   ]
 }

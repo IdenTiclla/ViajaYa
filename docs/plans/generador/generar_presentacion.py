@@ -91,6 +91,9 @@ def bullets(items):
 phase_rows = re.findall(r'^\| F(\d{2}) \| (.*?) \| (.*?) \| (.*?) \|$', PLAN, re.M)
 assert len(phase_rows) == 10, 'The plan must define ten phases.'
 PHASES = {int(number): {'title': title, 'status': status.split(':')[0]} for number, title, _, status in phase_rows}
+# The plan is written in English; the slides show the Spanish phase names and statuses.
+for number, phase in CONTENT.get('phases', {}).items():
+    PHASES[int(number)] = phase
 assert any(f'{word} {CONTENT["revision"]}' in PLAN for word in ('Revision', 'Revisión')), \
     'Slide revision must match the plan.'
 # The plan is written in English; the slides keep their Spanish date.
@@ -103,7 +106,7 @@ for number, slide in enumerate(CONTENT['slides'], 1):
     title = slide['title']
     phase = slide.get('phase')
     layout = slide.get('layout')
-    label = f'FASE {phase:02d} · {PHASES[phase]["status"].upper()}' if phase else 'PLAN DE PRODUCCIÓN · REVISIÓN 10'
+    label = f'FASE {phase:02d} · {PHASES[phase]["status"].upper()}' if phase else f'PLAN DE PRODUCCIÓN · REVISIÓN {CONTENT["revision"]}'
     selector_title = (f'F{phase:02d} · ' if phase else '') + title
     body = []
     if layout == 'cover':

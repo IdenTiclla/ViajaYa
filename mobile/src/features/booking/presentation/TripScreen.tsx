@@ -13,7 +13,7 @@ import { DriverLocationStatus } from '@/features/tracking/presentation/DriverLoc
 import { Ionicons, type IoniconsIconName } from '@react-native-vector-icons/ionicons';
 import { useQueryClient } from '@tanstack/react-query';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -31,6 +31,9 @@ import {
   PASSENGER_ACTIVE_RIDE_KEY,
   useRide,
 } from '@/features/rides/application/useRides';
+import { usePickupRoute } from '@/features/rides/application/usePickupRoute';
+import { formatKm } from '@/features/rides/domain/geo';
+import { isPickupPhase } from '@/features/rides/domain/pickupRoute';
 import { TripRouteMap } from '@/features/rides/presentation/TripRouteMap';
 import { TripProgress } from '@/features/rides/presentation/TripProgress';
 import { TripSummary } from '@/features/rides/presentation/TripSummary';
@@ -89,6 +92,13 @@ export function TripScreen() {
   const { ride, isLoading, isError, error, refetch } = useRide(id);
   const tracking = useDriverLocation(ride);
   const actions = useTripActions(ride);
+  const pickupPhase = Boolean(ride && isPickupPhase(ride.status));
+  const vehicleLatitude = tracking.location?.latitude;
+  const vehicleLongitude = tracking.location?.longitude;
+  const vehicle = useMemo(() => vehicleLatitude != null && vehicleLongitude != null
+    ? { latitude: vehicleLatitude, longitude: vehicleLongitude } : null, [vehicleLatitude, vehicleLongitude]);
+  const { route: pickupRoute } = usePickupRoute(pickupPhase ? vehicle : null,
+    pickupPhase ? ride?.origin.coordinates ?? null : null, ride?.service ?? 'taxi');
   const [confirmCancel, setConfirmCancel] = useState<{ id: string; status: RideStatus } | null>(null);
   const [sheetHeight, setSheetHeight] = useState(380);
   useBlockHardwareBack(Boolean(ride) && ride?.status !== 'cancelled');
@@ -154,7 +164,7 @@ export function TripScreen() {
 
   return (
     <View style={styles.root}>
-      <TripRouteMap vehicle={tracking.location ? { coordinates: tracking.location, heading: tracking.location.heading, type: ride.driver?.vehicleType ?? null, stale: tracking.freshness !== "live" } : undefined} service={ride.service} origin={ride.origin} destination={ride.destination} topPadding={48} bottomPadding={sheetHeight} />
+      <TripRouteMap phase={pickupPhase ? 'pickup' : 'trip'} vehicle={tracking.location ? { coordinates: tracking.location, heading: tracking.location.heading, type: ride.driver?.vehicleType ?? null, stale: tracking.freshness !== "live" } : undefined} service={ride.service} origin={ride.origin} destination={ride.destination} topPadding={48} bottomPadding={sheetHeight} />
 
       {isCancelled && (
         <SafeAreaView style={styles.topBar} edges={['top']} pointerEvents="box-none">
@@ -187,7 +197,11 @@ export function TripScreen() {
             <Text style={[styles.hint, banner.accent && styles.bannerAccentText]}>{banner.hint}</Text>
           </View>
         </View>
-        {ride.acceptedEtaMin != null && ride.status === 'accepted' && (
+        {ride.status === 'accepted' && pickupRoute ? (
+          <Text style={styles.hint}>
+            Llega en {Math.max(1, Math.round(pickupRoute.durationSeconds / 60))} min · a {formatKm(pickupRoute.distanceMeters / 1000)} del punto de recogida.
+          </Text>
+        ) : ride.acceptedEtaMin != null && ride.status === 'accepted' && (
           <Text style={styles.hint}>Llegada estimada al aceptar: {ride.acceptedEtaMin} min.</Text>
         )}
 
@@ -348,7 +362,7 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    height: '64%',
+    height: '46%',
     backgroundColor: colors.background,
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,

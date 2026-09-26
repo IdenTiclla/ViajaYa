@@ -1,9 +1,11 @@
-import { VehicleMarker } from '@/features/driver/presentation/VehicleMarker';
-import type { VehicleType } from '@/features/auth/domain/types';
 /**
  * Background map of the ride in progress: draws the origin→destination street route
  * and refits so both points fit.
  * Reused by the passenger tracking and driver navigation views.
+ *
+ * In the `pickup` phase (driver assigned, not yet on board) it instead draws the
+ * route from the driver's live position to the pickup point, hides the
+ * destination and frames only the driver, that route and the pickup point.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
@@ -16,6 +18,10 @@ import { useMapStyle } from '@/features/booking/presentation/mapStyle';
 import { RoutePinMarker } from '@/features/rides/presentation/RoutePinMarker';
 import { RoutePolyline } from '@/features/rides/presentation/RoutePolyline';
 import { useMapBearing } from '@/features/rides/application/useMapBearing';
+import { usePickupRoute } from '@/features/rides/application/usePickupRoute';
+import { isTightCluster, streetLevelFrame } from '@/features/rides/domain/pickupRoute';
+import { VehicleMarker } from '@/features/driver/presentation/VehicleMarker';
+import type { VehicleType } from '@/features/auth/domain/types';
 import { MotorcycleRouteNotice } from './MotorcycleRouteNotice';
 import { getTripMapPadding } from './tripMapLayout';
 
@@ -28,7 +34,10 @@ export function TripRouteMap({
   showPlaceNamesInTooltip = false,
   showMotorcycleNotice = true,
   vehicle,
+  phase = 'trip',
 }: {
+  /** `pickup`: driver → pickup point only; `trip`: origin → destination. */
+  phase?: 'pickup' | 'trip';
   vehicle?: { coordinates: Coordinates; heading: number | null; type: VehicleType | null; stale?: boolean };
   origin: Place;
   service: ServiceType;
@@ -46,9 +55,22 @@ export function TripRouteMap({
   const [size, setSize] = useState({ width: 0, height: 0 });
   const { mapStyle, mapMode } = useMapStyle(true);
   const { mapBearing, mapZoom, updateBearing } = useMapBearing(mapRef);
-  const { route } = useRoute(origin, destination, service);
+  const pickupPhase = phase === 'pickup';
+  const { route } = useRoute(pickupPhase ? null : origin, pickupPhase ? null : destination, service);
 
-  const region: Region = {
+  const vehicleLatitude = vehicle?.coordinates.latitude;
+  const vehicleLongitude = vehicle?.coordinates.longitude;
+  const vehicleCoordinates = useMemo<Coordinates | null>(() => vehicleLatitude != null && vehicleLongitude != null
+    ? { latitude: vehicleLatitude, longitude: vehicleLongitude } : null, [vehicleLatitude, vehicleLongitude]);
+  const { route: pickupRoute } = usePickupRoute(pickupPhase ? vehicleCoordinates : null,
+    pickupPhase ? origin.coordinates : null, service);
+
+  const region: Region = pickupPhase ? {
+    latitude: origin.coordinates.latitude,
+    longitude: origin.coordinates.longitude,
+    latitudeDelta: 0.01,
+    longitudeDelta: 0.01,
+  } : {
     latitude: (origin.coordinates.latitude + destination.coordinates.latitude) / 2,
     longitude: (origin.coordinates.longitude + destination.coordinates.longitude) / 2,
     latitudeDelta: Math.max(
@@ -61,28 +83,38 @@ export function TripRouteMap({
     ),
   };
 
-  const coordinates = route?.coordinates;
-  const polyline: Coordinates[] = useMemo(() => coordinates && coordinates.length >= 2
-    ? coordinates
-    : [origin.coordinates, destination.coordinates], [coordinates, origin.coordinates, destination.coordinates]);
+  const coordinates = pickupPhase ? pickupRoute?.coordinates : route?.coordinates;
+  // Pickup without a route yet: a straight driver→pickup frame (not drawn), or
+  // just the pickup point until the driver's position arrives.
+  const polyline: Coordinates[] = useMemo(() => {
+    if (coordinates && coordinates.length >= 2) return coordinates;
+    if (!pickupPhase) return [origin.coordinates, destination.coordinates];
+    return vehicleCoordinates ? [vehicleCoordinates, origin.coordinates] : [origin.coordinates];
+  }, [coordinates, pickupPhase, vehicleCoordinates, origin.coordinates, destination.coordinates]);
 
-  const vehicleLatitude = vehicle?.coordinates.latitude;
-  const vehicleLongitude = vehicle?.coordinates.longitude;
+  const fitted = useRef(false);
   const fit = useCallback((animated: boolean) => {
-    if (!ready || size.width <= 0 || size.height <= 0 || polyline.length < 2) return;
+    const map = mapRef.current;
+    if (!map || !ready || size.width <= 0 || size.height <= 0) return;
+    const points = vehicleCoordinates && !pickupPhase ? [...polyline, vehicleCoordinates] : polyline;
+    const edgePadding = getTripMapPadding(size.width, size.height,
+      topPadding + (service === 'moto' && showMotorcycleNotice ? noticeHeight : 0), bottomPadding,
+      showPlaceNamesInTooltip ? 72 : 40, showPlaceNamesInTooltip ? 88 : 44);
+    // A lone pickup point (or a driver already there) would max out the zoom:
+    // frame ~90 m around it (plus the vehicle) in the area left above the sheet.
+    const tight = points.length < 2 || isTightCluster(points, 40);
+    if (tight && !pickupPhase) return;
     // Compact labels need less margin than full addresses. Fit the entire
     // geometry into the remaining viewport without zooming away from the route.
-    const tooltipInset = showPlaceNamesInTooltip ? 72 : 40;
-    const tooltipSideInset = showPlaceNamesInTooltip ? 88 : 44;
-    mapRef.current?.fitToCoordinates(vehicleLatitude != null && vehicleLongitude != null ? [...polyline, { latitude: vehicleLatitude, longitude: vehicleLongitude }] : polyline, {
-      edgePadding: getTripMapPadding(size.width, size.height, topPadding + (service === 'moto' && showMotorcycleNotice ? noticeHeight : 0), bottomPadding, tooltipInset, tooltipSideInset),
-      animated,
-    });
-  }, [ready, size, polyline, topPadding, bottomPadding, showPlaceNamesInTooltip, noticeHeight, service, showMotorcycleNotice, vehicleLatitude, vehicleLongitude]);
+    map.fitToCoordinates(tight ? [...streetLevelFrame(origin.coordinates, 90), ...points] : points, { edgePadding, animated });
+  }, [ready, size, polyline, topPadding, bottomPadding, showPlaceNamesInTooltip, noticeHeight, service,
+    showMotorcycleNotice, vehicleCoordinates, pickupPhase, origin.coordinates]);
 
   useEffect(() => {
-    fit(false);
-  }, [fit]);
+    // The first framing jumps into place; later ones (the vehicle moving) glide.
+    fit(fitted.current);
+    if (ready && size.width > 0) fitted.current = true;
+  }, [fit, ready, size.width]);
 
   return (
     <>
@@ -118,16 +150,18 @@ export function TripRouteMap({
         route={polyline}
         mapBearing={mapBearing}
         mapZoom={mapZoom}
-        label={showPlaceNamesInTooltip ? `Origen: ${getPlaceStreetName(origin)}` : 'Origen'}
+        label={pickupPhase
+          ? (showPlaceNamesInTooltip ? `Recogida: ${getPlaceStreetName(origin)}` : 'Recogida')
+          : (showPlaceNamesInTooltip ? `Origen: ${getPlaceStreetName(origin)}` : 'Origen')}
       />
-      <RoutePinMarker
+      {!pickupPhase && <RoutePinMarker
         kind="B"
         coordinate={destination.coordinates}
         route={polyline}
         mapBearing={mapBearing}
         mapZoom={mapZoom}
         label={showPlaceNamesInTooltip ? `Destino: ${getPlaceStreetName(destination)}` : 'Destino'}
-      />
+      />}
       <RoutePolyline coordinates={coordinates ?? []} />
       {vehicle && <VehicleMarker coordinates={vehicle.coordinates} heading={vehicle.heading}
         vehicleType={vehicle.type ?? (service === 'moto' ? 'moto' : service === 'taxi' ? 'taxi' : null)}

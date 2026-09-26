@@ -10,6 +10,9 @@ import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } fr
 import { useRoute } from '@/features/booking/application/useRoute';
 import { useTripActions, useTripContact } from '@/features/rides/application/useTripActions';
 import { DRIVER_ACTIVE_RIDE_KEY } from '@/features/rides/application/useRides';
+import { usePickupRoute } from '@/features/rides/application/usePickupRoute';
+import { formatKm } from '@/features/rides/domain/geo';
+import { isPickupPhase } from '@/features/rides/domain/pickupRoute';
 import { serviceNouns } from '@/features/rides/domain/serviceNouns';
 import type { Ride, RideStatus } from '@/features/rides/domain/types';
 import { RideRatingCard } from '@/features/rides/presentation/RideRatingCard';
@@ -57,6 +60,9 @@ export function DriverTripInProgressScreen({ ride }: { ride: Ride }) {
   const [sheetHeight, setSheetHeight] = useState(440);
   const terminal = ride.status === 'completed' || ride.status === 'cancelled';
   const { route } = useRoute(terminal ? null : ride.origin, terminal ? null : ride.destination, ride.service);
+  const pickupPhase = isPickupPhase(ride.status);
+  const vehicle = sharing.rideId === ride.id && sharing.coordinates ? sharing.coordinates : null;
+  const { route: pickupRoute } = usePickupRoute(pickupPhase ? vehicle : null, pickupPhase ? ride.origin.coordinates : null, ride.service);
   const nouns = serviceNouns(ride.service);
   // The flow is closed explicitly (rating or "Volver a solicitudes"), never with back.
   useBlockHardwareBack(true);
@@ -104,7 +110,7 @@ export function DriverTripInProgressScreen({ ride }: { ride: Ride }) {
 
   return (
     <View style={styles.root}>
-      <TripRouteMap vehicle={sharing.rideId === ride.id && sharing.coordinates ? { coordinates: sharing.coordinates, heading: sharing.heading, type: ride.driver?.vehicleType ?? null } : undefined} service={ride.service} origin={ride.origin} destination={ride.destination} topPadding={48} bottomPadding={sheetHeight} />
+      <TripRouteMap phase={pickupPhase ? 'pickup' : 'trip'} vehicle={vehicle ? { coordinates: vehicle, heading: sharing.heading, type: ride.driver?.vehicleType ?? null } : undefined} service={ride.service} origin={ride.origin} destination={ride.destination} topPadding={48} bottomPadding={sheetHeight} />
       <SafeAreaView style={styles.sheet} edges={['bottom']} onLayout={(event) => setSheetHeight(event.nativeEvent.layout.height)}>
         <View style={styles.handle} />
         <ScrollView contentContainerStyle={styles.sheetContent} bounces={false}>
@@ -112,6 +118,9 @@ export function DriverTripInProgressScreen({ ride }: { ride: Ride }) {
           <View style={styles.stage} accessibilityLiveRegion="polite">
             <Text accessibilityRole="header" style={styles.stageTitle}>{stage.title}</Text>
             <Text style={styles.hint}>{stage.hint}</Text>
+            {ride.status === 'accepted' && pickupRoute && <Text style={styles.pickupEta}>
+              A {formatKm(pickupRoute.distanceMeters / 1000)} · {Math.max(1, Math.round(pickupRoute.durationSeconds / 60))} min del punto de recogida
+            </Text>}
           </View>
 
           <DriverNavigationActions ride={ride} />
@@ -181,7 +190,7 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
   flex: { flex: 1 },
   ratingContent: { flexGrow: 1, padding: spacing.lg },
   resultContent: { flexGrow: 1, justifyContent: 'center', padding: spacing.lg, gap: spacing.md },
-  sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '64%',
+  sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '46%',
     backgroundColor: colors.background, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg,
     paddingTop: spacing.sm, shadowColor: '#000', shadowOpacity: 0.12,
     shadowRadius: 12, shadowOffset: { width: 0, height: -3 }, elevation: 12 },
@@ -191,6 +200,7 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
   stage: { padding: spacing.sm, gap: spacing.xs, backgroundColor: colors.primarySoft, borderRadius: radius.md },
   stageTitle: { fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.primary },
   hint: { fontSize: fontSize.sm, color: colors.textSecondary, lineHeight: 20 },
+  pickupEta: { fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.text },
   passenger: { gap: spacing.xs, padding: spacing.sm, backgroundColor: colors.surfaceMuted, borderRadius: radius.md },
   label: { fontSize: fontSize.sm, color: colors.textSecondary },
   name: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.text },

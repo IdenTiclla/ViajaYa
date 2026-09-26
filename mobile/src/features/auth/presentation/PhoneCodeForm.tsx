@@ -3,10 +3,10 @@ import { AppState, StyleSheet, Text, View } from 'react-native';
 
 import { fontSize, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import { Button } from '@/shared/components/Button';
-import { TextField } from '@/shared/components/TextField';
 import { usePhoneVerification } from '../application/usePhoneVerification';
 import type { PhoneChallenge, PhoneVerificationProof } from '../domain/phoneVerification';
 import { AuthHeading, AuthNotice } from './entry/AuthScaffold';
+import { OneTimeCodeInput } from './OneTimeCodeInput';
 
 type Props = {
   phone: string;
@@ -65,10 +65,8 @@ export function PhoneCodeForm({ phone, deviceId, onVerified, onChangePhone,
       </View>}
       {state.challenge && (
         <>
-          <TextField label="Código de seis dígitos" value={state.code} leadingIcon="shield-checkmark-outline"
-            onChangeText={controller.setCode} keyboardType="number-pad"
-            editable={!busy} autoComplete="one-time-code" textContentType="oneTimeCode"
-            placeholder="123456" style={styles.code} error={state.error ?? undefined} />
+          <OneTimeCodeInput value={state.code} onChangeText={controller.setCode}
+            editable={!busy} error={state.error ?? undefined} />
           <Button title={verifySeconds ? `Continuar en ${verifySeconds} s` : 'Continuar'}
             loading={state.phase === 'verifying'}
             disabled={busy || state.code.length !== 6 || verifySeconds > 0}
@@ -82,7 +80,7 @@ export function PhoneCodeForm({ phone, deviceId, onVerified, onChangePhone,
           disabled={busy || retrySeconds > 0}
           onPress={() => { void controller.request(phone, deviceId); }} />
       )}
-      <Button title="Cambiar número" variant="secondary" onPress={() => {
+      <Button title="Cambiar número" variant="text" leadingIcon="chevron-back" onPress={() => {
         controller.reset();
         onChangePhone();
       }} />
@@ -93,5 +91,4 @@ export function PhoneCodeForm({ phone, deviceId, onVerified, onChangePhone,
 const createStyles = ({ colors }: Theme) => StyleSheet.create({
   container: { gap: spacing.md },
   hint: { fontSize: fontSize.sm, color: colors.warning },
-  code: { fontSize: fontSize.lg, letterSpacing: 6 },
 });

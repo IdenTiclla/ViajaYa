@@ -53,8 +53,8 @@ test('input bounds include the country prefix and never truncate a long paste', 
   assert.match(getPhoneInputError('712', '+591'), /completo/);
   assert.equal(getPhoneInputError('71234567', '+591'), undefined);
   assert.equal(getPhoneInputError('123456789012', '+51'), undefined);
-  const result = normalizePhoneInput('+591 123 456 789 012 3', '+591', countries);
-  assert.equal(result.number, '1234567890123');
+  const result = normalizePhoneInput('+51 123 456 789 012 34', '+591', countries);
+  assert.equal(result.number, '12345678901234');
   assert.match(getPhoneInputError(result.number, result.callingCode), /demasiado largo/);
 });
 
@@ -77,4 +77,10 @@ test('only an unfinished number waits for blur; wrong prefixes and extra digits 
 test('the format hint is specific to Bolivia', () => {
   assert.match(getPhoneInputHint('+591'), /8 dígitos/);
   assert.equal(getPhoneInputHint('+51'), undefined);
+});
+
+test('bolivian input stops at 8 digits, typed or pasted', () => {
+  assert.deepEqual(normalizePhoneInput('712345678', '+591', countries), { callingCode: '+591', number: '71234567' });
+  assert.deepEqual(normalizePhoneInput('+591 7123 45678', '+51', countries), { callingCode: '+591', number: '71234567' });
+  assert.deepEqual(normalizePhoneInput('9123456789', '+51', countries), { callingCode: '+51', number: '9123456789' });
 });

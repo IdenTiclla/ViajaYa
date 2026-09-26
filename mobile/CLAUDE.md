@@ -270,10 +270,11 @@ UFL licence beside it) loaded at runtime by `useBrandFontStyle` (`core/theme/bra
 imported directly, not from the barrel, so Node unit tests do not load `expo-font`); until it
 loads, the system bold is used.
 Android runs edge-to-edge (`edgeToEdgeEnabled`), so `adjustResize` does not shrink the window: the
-access view uses `KeyboardAvoidingView behavior="padding"` on both platforms and, on
-`keyboardDidShow`, scrolls the focused input (label included) into view. Phone input: Bolivian
-numbers (+591) must be 8-digit mobiles starting with 6 or 7 (`getPhoneInputIssue`); a wrong
-prefix or extra digits show while typing, an unfinished number only after blur.
+access view does not use `KeyboardAvoidingView` (its padding stayed after closing): it adds the
+keyboard height as bottom room in the scroll content, scrolls the focused input (label included)
+into view, and on hide removes the room and scrolls back to the top. Phone input: Bolivian
+numbers (+591) are capped at 8 digits while typing or pasting and must start with 6 or 7
+(`getPhoneInputIssue`); a wrong prefix shows while typing, an unfinished number only after blur.
 
 ### Controls and accessibility
 

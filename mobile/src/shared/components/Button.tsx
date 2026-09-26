@@ -2,6 +2,8 @@ import { Ionicons, type IoniconsIconName } from '@react-native-vector-icons/ioni
 import { useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
+  type ImageSourcePropType,
   Pressable,
   type PressableProps,
   StyleSheet,
@@ -20,6 +22,8 @@ type Props = PressableProps & {
   variant?: Variant;
   /** Name of an Ionicons icon shown before the title. */
   leadingIcon?: IoniconsIconName;
+  /** Full-color mark shown before the title (e.g. a provider logo); takes precedence over `leadingIcon`. */
+  leadingImage?: ImageSourcePropType;
   /** Name of an Ionicons icon shown to the right of the title. */
   trailingIcon?: IoniconsIconName;
 };
@@ -30,6 +34,7 @@ export function Button({
   loadingLabel,
   variant = 'primary',
   leadingIcon,
+  leadingImage,
   trailingIcon,
   disabled,
   accessibilityLabel,
@@ -79,6 +84,8 @@ export function Button({
             size="small"
             color={textColor}
           />
+        ) : leadingImage ? (
+          <Image source={leadingImage} style={[styles.leadingImage, isDisabled && styles.leadingImageDisabled]} />
         ) : leadingIcon ? (
           <Ionicons
             name={leadingIcon}
@@ -128,5 +135,7 @@ const createStyles = ({ colors, mode }: Theme) => StyleSheet.create({
   pressed: { transform: [{ translateY: 1 }], shadowOpacity: 0, elevation: 0 },
   disabled: { backgroundColor: colors.disabledBackground, borderColor: 'transparent', shadowOpacity: 0, elevation: 0 },
   content: { maxWidth: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
+  leadingImage: { width: 20, height: 20 },
+  leadingImageDisabled: { opacity: 0.5 },
   label: { flexShrink: 1, fontSize: fontSize.sm, fontWeight: fontWeight.semibold, textAlign: 'center' },
 });

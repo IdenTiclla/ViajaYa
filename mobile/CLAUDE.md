@@ -269,6 +269,11 @@ light status bar). Wordmark and auth headings use Ubuntu Bold (`assets/fonts/Ubu
 UFL licence beside it) loaded at runtime by `useBrandFontStyle` (`core/theme/brandFont.ts`,
 imported directly, not from the barrel, so Node unit tests do not load `expo-font`); until it
 loads, the system bold is used.
+Android runs edge-to-edge (`edgeToEdgeEnabled`), so `adjustResize` does not shrink the window: the
+access view uses `KeyboardAvoidingView behavior="padding"` on both platforms and, on
+`keyboardDidShow`, scrolls the focused input (label included) into view. Phone input: Bolivian
+numbers (+591) must be 8-digit mobiles starting with 6 or 7 (`getPhoneInputIssue`); a wrong
+prefix or extra digits show while typing, an unfinished number only after blur.
 
 ### Controls and accessibility
 
@@ -299,6 +304,8 @@ loads, the system bold is used.
   centering and tracking use `setCamera`, with gestures locked. The radar lives
   inside `DriverSearchMap` and takes the GPS projection from `pointForCoordinate`;
   it discards late responses and hides if the projection fails. See plan 0020.
+- `Button` takes `leadingImage` for full-color marks (the Google «G», `assets/images/google-g.png`);
+  Ionicons are single-color.
 - Reuse `Button` for form and screen-footer actions: minimum height
   of 48, 14 text and natural growth when enlarging the font. Avoid fixed
   heights and `adjustsFontSizeToFit` to make action labels fit.

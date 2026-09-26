@@ -3,6 +3,8 @@ import test from 'node:test';
 
 import {
   getPhoneInputError,
+  getPhoneInputHint,
+  getPhoneInputIssue,
   normalizePhoneInput,
   resolveCallingCode,
 } from '../src/features/auth/domain/phoneNumberInput.ts';
@@ -50,8 +52,29 @@ test('input bounds include the country prefix and never truncate a long paste', 
   assert.equal(getPhoneInputError('', '+591'), undefined);
   assert.match(getPhoneInputError('712', '+591'), /completo/);
   assert.equal(getPhoneInputError('71234567', '+591'), undefined);
-  assert.equal(getPhoneInputError('123456789012', '+591'), undefined);
+  assert.equal(getPhoneInputError('123456789012', '+51'), undefined);
   const result = normalizePhoneInput('+591 123 456 789 012 3', '+591', countries);
   assert.equal(result.number, '1234567890123');
   assert.match(getPhoneInputError(result.number, result.callingCode), /demasiado largo/);
+});
+
+test('bolivian numbers must be 8-digit mobiles starting with 6 or 7', () => {
+  assert.equal(getPhoneInputError('71234567', '+591'), undefined);
+  assert.equal(getPhoneInputError('61234567', '+591'), undefined);
+  assert.match(getPhoneInputError('21234567', '+591'), /6 o 7/);
+  assert.match(getPhoneInputError('5', '+591'), /6 o 7/);
+  assert.match(getPhoneInputError('712345678', '+591'), /8 dígitos/);
+  assert.match(getPhoneInputError('7123456', '+591'), /completo/);
+});
+
+test('only an unfinished number waits for blur; wrong prefixes and extra digits show while typing', () => {
+  assert.equal(getPhoneInputIssue('7123', '+591').incomplete, true);
+  assert.equal(getPhoneInputIssue('2123', '+591').incomplete, false);
+  assert.equal(getPhoneInputIssue('712345678', '+591').incomplete, false);
+  assert.equal(getPhoneInputIssue('9123', '+51').incomplete, true);
+});
+
+test('the format hint is specific to Bolivia', () => {
+  assert.match(getPhoneInputHint('+591'), /8 dígitos/);
+  assert.equal(getPhoneInputHint('+51'), undefined);
 });

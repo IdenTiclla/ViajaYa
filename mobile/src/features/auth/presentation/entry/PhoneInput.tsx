@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { controls, fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import { TextField } from '@/shared/components';
 import type { PhoneCapabilities } from '../../domain/phoneAccess';
-import { getPhoneInputError, normalizePhoneInput } from '../../domain/phoneNumberInput';
+import { getPhoneInputHint, getPhoneInputIssue, normalizePhoneInput } from '../../domain/phoneNumberInput';
 
 type Country = PhoneCapabilities['countries'][number];
 
@@ -32,7 +32,9 @@ export function PhoneInput({ countries, callingCode, onChangeCallingCode, number
   const { styles, focusStyle } = useThemedStyles(createStyles);
   const [focusedRegion, setFocusedRegion] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
-  const error = getPhoneInputError(number, callingCode);
+  const issue = getPhoneInputIssue(number, callingCode);
+  // A wrong prefix or extra digits show while typing; an unfinished number waits for blur.
+  const showIssue = touched || number.startsWith('+') || (issue && !issue.incomplete);
   return (
     <View style={styles.wrapper}>
       {countries.length > 1 && (
@@ -63,7 +65,8 @@ export function PhoneInput({ countries, callingCode, onChangeCallingCode, number
           onChangeCallingCode(next.callingCode);
           onChangeNumber(next.number);
         }}
-        onBlur={() => setTouched(true)} error={touched || number.startsWith('+') ? error : undefined}
+        onBlur={() => setTouched(true)} error={showIssue ? issue?.message : undefined}
+        helperText={getPhoneInputHint(callingCode)}
         keyboardType="phone-pad" autoComplete="tel-national" textContentType="telephoneNumber"
         placeholder="Tu número sin prefijo" editable={editable}
         accessibilityHint={`Código de país ${callingCode}`} />

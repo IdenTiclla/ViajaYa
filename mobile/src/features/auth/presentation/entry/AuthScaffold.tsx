@@ -1,6 +1,6 @@
 import { StatusBar } from 'expo-status-bar';
-import { type ReactNode } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { type ReactNode, useEffect, useRef } from 'react';
+import { ActivityIndicator, Keyboard, KeyboardAvoidingView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
@@ -11,23 +11,57 @@ import { AuthHero, SHEET_RADIUS } from './AuthHero';
 
 type Props = { subtitle?: string; children: ReactNode };
 
+/** Room kept above the focused field so its label (and the heading, when it fits) stay in view. */
+const FOCUS_TOP_GAP = 96;
+/** Waits for the keyboard padding to shrink the viewport; scrolling earlier clamps to the old range. */
+const KEYBOARD_SETTLE_MS = 150;
+
+/**
+ * Scrolls the focused field above the keyboard. Android runs edge-to-edge (`edgeToEdgeEnabled`), so
+ * `adjustResize` no longer shrinks the window and nothing else brings the field back into view.
+ */
+function useKeepFocusedInputVisible() {
+  const scrollRef = useRef<ScrollView>(null);
+  const contentRef = useRef<View>(null);
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const subscription = Keyboard.addListener('keyboardDidShow', () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        const input = TextInput.State.currentlyFocusedInput();
+        const content = contentRef.current;
+        if (!input || !content) return;
+        input.measureLayout(content, (_x, y) => {
+          scrollRef.current?.scrollTo({ y: Math.max(0, y - FOCUS_TOP_GAP), animated: true });
+        }, () => {});
+      }, KEYBOARD_SETTLE_MS);
+    });
+    return () => { clearTimeout(timer); subscription.remove(); };
+  }, []);
+  return { scrollRef, contentRef };
+}
+
 /** Frame for the entry screen: the splash route on brand navy, and the form on a sheet over it. */
 export function AuthScaffold({ subtitle, children }: Props) {
   const { styles } = useThemedStyles(createStyles);
   const insets = useSafeAreaInsets();
+  const { scrollRef, contentRef } = useKeepFocusedInputVisible();
   return (
     <View style={styles.root}>
       <StatusBar style="light" />
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled"
+      {/* Padding on both platforms: edge-to-edge Android does not resize the window for the keyboard. */}
+      <KeyboardAvoidingView style={styles.flex} behavior="padding">
+        <ScrollView ref={scrollRef} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag" bounces={false} overScrollMode="never">
-          <AuthHero subtitle={subtitle} topInset={insets.top} />
-          <View style={[styles.sheet, {
-            paddingBottom: Math.max(insets.bottom, spacing.md) + spacing.lg,
-            paddingLeft: Math.max(insets.left, spacing.lg),
-            paddingRight: Math.max(insets.right, spacing.lg),
-          }]}>
-            <View style={styles.card}>{children}</View>
+          <View ref={contentRef} collapsable={false} style={styles.flexGrow}>
+            <AuthHero subtitle={subtitle} topInset={insets.top} />
+            <View style={[styles.sheet, {
+              paddingBottom: Math.max(insets.bottom, spacing.md) + spacing.lg,
+              paddingLeft: Math.max(insets.left, spacing.lg),
+              paddingRight: Math.max(insets.right, spacing.lg),
+            }]}>
+              <View style={styles.card}>{children}</View>
+            </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -79,6 +113,7 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
   // The navy root also fills the overscroll area above the hero.
   root: { flex: 1, backgroundColor: colors.brand },
   flex: { flex: 1 },
+  flexGrow: { flexGrow: 1 },
   content: { flexGrow: 1, backgroundColor: colors.background },
   sheet: { flexGrow: 1, marginTop: -SHEET_RADIUS, paddingTop: spacing.xl - spacing.xs,
     borderTopLeftRadius: SHEET_RADIUS, borderTopRightRadius: SHEET_RADIUS, backgroundColor: colors.background },

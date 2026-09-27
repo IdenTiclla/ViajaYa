@@ -473,6 +473,16 @@ npm run lint               # expo lint (eslint-config-expo)
   After modifying the maps, also verify the Android bundle with Metro:
   TypeScript and unit tests do not catch every resolution failure
   of the dev server the phone receives.
+- **Configure sheet** (`ConfigureTripScreen`): `RouteEstimateMarker` is a bubble anchored halfway
+  along the road route (`routeMidpoint`) with time, distance and arrival (brand blue in both
+  themes); the camera frames it through the `floating` boxes of `getLabelAwareFitCoordinates`.
+  Below: `ServiceTileSelector` (illustrated tiles with a check badge; Home keeps
+  `ServiceTypeSelector`), `FareAndPaymentPicker` (typed fare + ±1 Bs via `stepFare`, cash/QR),
+  `AutoAcceptToggle` (`useBookingStore.autoAccept` → `auto_accept` on create/edit; drivers see
+  «Acepta su precio y el viaje es tuyo» on `RequestCard`) and the yellow `Button variant="accent"`.
+  The duotone service/payment icons are PNGs per theme (`assets/images/trip-options`, no SVG
+  renderer in the app): edit and rerun `scripts/render_trip_option_icons.py`
+  (`uvx --with cairosvg python scripts/render_trip_option_icons.py`).
 - **AppState-aware hooks** (they do not freeze in the background): `useCountdown`, `socket.ts` recompute
   when returning to foreground. Follow that pattern for hooks with time/connection.
 - Code, identifiers, comments, JSDoc and documentation in **English**, per the persistent preference in `../AGENTS.md`. Keep the UI in Spanish and verify every implementation.

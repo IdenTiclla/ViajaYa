@@ -1,9 +1,11 @@
 /**
  * Configure trip — final step of the flow: shows origin and destination marked on
- * the map, joined by the real street route (Google Routes API), and lets the user
- * choose a service, propose a fare and search for driver offers.
+ * the map, joined by the real street route (Google Routes API) with a bubble that
+ * highlights travel time, distance and arrival, and lets the user choose a service,
+ * propose a fare, pick the payment method, opt into automatic acceptance and search
+ * for driver offers.
  *
- * The camera stays locked around the complete road route.
+ * The camera stays locked around the complete road route and its bubble.
  */
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useQueryClient } from '@tanstack/react-query';
@@ -15,7 +17,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   useWindowDimensions,
   View,
@@ -37,14 +38,14 @@ import {
   getPlaceStreetName,
   isPlaceLabelResolved,
 } from '@/features/booking/domain/placeLabels';
-import type { Coordinates, PaymentMethod } from '@/features/booking/domain/types';
-import {
-  SelectableOptionCards,
-  type SelectableOption,
-} from '@/features/booking/presentation/SelectableOptionCards';
-import { ServiceTypeSelector } from '@/features/booking/presentation/ServiceTypeSelector';
+import { routeMidpoint } from '@/features/booking/domain/routeEstimate';
+import type { Coordinates } from '@/features/booking/domain/types';
+import { AutoAcceptToggle } from '@/features/booking/presentation/AutoAcceptToggle';
+import { FareAndPaymentPicker } from '@/features/booking/presentation/FareAndPaymentPicker';
+import { RouteEstimateMarker } from '@/features/booking/presentation/RouteEstimateMarker';
+import { ServiceTileSelector } from '@/features/booking/presentation/ServiceTileSelector';
 import { useCancelRide, useEditRide } from '@/features/rides/application/useRideMutations';
-import { formatBolivianosInput } from '@/features/rides/domain/money';
+import { formatBolivianos, formatBolivianosInput } from '@/features/rides/domain/money';
 import {
   PASSENGER_ACTIVE_RIDE_KEY,
   useRide,
@@ -60,26 +61,15 @@ import { useMapBearing } from '@/features/rides/application/useMapBearing';
 import { MotorcycleRouteNotice } from '@/features/rides/presentation/MotorcycleRouteNotice';
 import { Button, ConfirmDialog, FeedbackState } from '@/shared/components';
 
-const PAYMENTS: readonly SelectableOption<PaymentMethod>[] = [
-  { id: 'cash', label: 'Efectivo', icon: 'cash', accessibilityLabel: 'Pagar con efectivo' },
-  { id: 'qr', label: 'QR', icon: 'qr-code', accessibilityLabel: 'Pagar con QR' },
-];
-
 // Tight fit around the route; the A/B labels get room only where they need it.
 const FIT_INSET = 16;
 // Smallest route area the camera keeps when the viewport is tiny.
 const MIN_FIT_SPAN = 48;
 // RoutePinMarker's initial label estimate, used until it reports the real size.
 const DEFAULT_LABEL_SIZE: LabelSize = { width: 178, height: 40 };
+// RouteEstimateMarker's initial size estimate, used until it reports the real one.
+const DEFAULT_ESTIMATE_SIZE: LabelSize = { width: 150, height: 70 };
 const MIN_KEYBOARD_TRANSLATION = 280;
-
-function formatDistance(meters: number): string {
-  return meters >= 1000 ? `${(meters / 1000).toFixed(1)} km` : `${Math.round(meters)} m`;
-}
-
-function formatDuration(seconds: number): string {
-  return `${Math.max(1, Math.round(seconds / 60))} min`;
-}
 
 export function ConfigureTripScreen() {
   const { colors, styles } = useThemedStyles(createStyles);
@@ -99,6 +89,8 @@ export function ConfigureTripScreen() {
   const setPayment = useBookingStore((s) => s.setPayment);
   const fare = useBookingStore((s) => s.fare);
   const setFare = useBookingStore((s) => s.setFare);
+  const autoAccept = useBookingStore((s) => s.autoAccept);
+  const setAutoAccept = useBookingStore((s) => s.setAutoAccept);
   const {
     labelsReady,
     isResolving: labelsResolving,
@@ -116,6 +108,9 @@ export function ConfigureTripScreen() {
   const [mapReady, setMapReady] = useState(false);
   const [mapSize, setMapSize] = useState({ width: 0, height: 0 });
   const [labelSizes, setLabelSizes] = useState({ A: DEFAULT_LABEL_SIZE, B: DEFAULT_LABEL_SIZE });
+  const [estimateSize, setEstimateSize] = useState(DEFAULT_ESTIMATE_SIZE);
+  const reportEstimateSize = useCallback((size: LabelSize) => setEstimateSize((current) =>
+    current.width === size.width && current.height === size.height ? current : size), []);
   const reportLabelSize = (kind: 'A' | 'B') => (size: LabelSize) =>
     setLabelSizes((current) => current[kind].width === size.width && current[kind].height === size.height
       ? current : { ...current, [kind]: size });
@@ -165,6 +160,7 @@ export function ConfigureTripScreen() {
     setService(existingRide.service);
     setPayment(existingRide.payment);
     setFare(formatBolivianosInput(existingRide.fare));
+    setAutoAccept(existingRide.autoAccept);
     // existingRide viene de la caché; se hidrata una sola vez.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rideId, existingRide]);
@@ -251,6 +247,8 @@ export function ConfigureTripScreen() {
 
   // Never present a straight line as a computed road route.
   const polylineCoordinates = route?.coordinates ?? [];
+  // The estimate bubble only exists for a real road route.
+  const estimatePoint = useMemo(() => (route ? routeMidpoint(route.coordinates) : null), [route]);
 
   // react-native-maps keeps native overlays internally. A key based
   // on both points forces replacing them when editing origin or destination, so
@@ -277,13 +275,16 @@ export function ConfigureTripScreen() {
           size: labelSizes.B,
         },
       ];
+      const floating = estimatePoint ? [{ coordinate: estimatePoint, size: estimateSize }] : [];
       mapRef.current?.fitToCoordinates(
-        getLabelAwareFitCoordinates(fitCoordinates, labels, mapSize.width, mapSize.height, edgePadding),
+        getLabelAwareFitCoordinates(
+          fitCoordinates, labels, mapSize.width, mapSize.height, edgePadding, floating,
+        ),
         { edgePadding, animated },
       );
     },
     [fitCoordinates, origin?.coordinates, destination?.coordinates, mapReady, mapSize.width,
-      mapSize.height, headerHeight, labelSizes],
+      mapSize.height, headerHeight, labelSizes, estimatePoint, estimateSize],
   );
 
   // Refit the camera when the route arrives/changes or the sheet is measured.
@@ -370,6 +371,9 @@ export function ConfigureTripScreen() {
 
   const fareValue = Number(fare.replace(',', '.'));
   const fareIsValid = Number.isFinite(fareValue) && fareValue > 0;
+  const primaryActionTitle = isEditing
+    ? 'Guardar cambios'
+    : autoAccept ? 'Buscar conductor' : 'Buscar ofertas';
   const unresolvedMapLabel = labelsError ? 'Dirección pendiente' : 'Obteniendo dirección…';
   const originMapLabel = isPlaceLabelResolved(origin)
     ? getPlaceStreetName(origin)
@@ -382,7 +386,7 @@ export function ConfigureTripScreen() {
 
   const searchOffers = () => {
     if (!tripInServiceArea || !labelsReady || !fareIsValid || createRide.isPending) return;
-    createRide.mutate({ origin, destination, service, payment, fare: fareValue }, {
+    createRide.mutate({ origin, destination, service, payment, fare: fareValue, autoAccept }, {
       onSuccess: (ride) => router.replace({
         pathname: ride.status === 'searching' ? '/booking/offers' : '/booking/trip',
         params: { rideId: ride.id },
@@ -395,7 +399,7 @@ export function ConfigureTripScreen() {
       return;
     }
     editRide.mutate(
-      { rideId, input: { origin, destination, service, payment, fare: fareValue } },
+      { rideId, input: { origin, destination, service, payment, fare: fareValue, autoAccept } },
       {
         onSuccess: () => {
           setExitAfterSave(true);
@@ -475,6 +479,15 @@ export function ConfigureTripScreen() {
             onPress={editDestination}
           />
           <RoutePolyline coordinates={polylineCoordinates} />
+          {route && estimatePoint && (
+            <RouteEstimateMarker
+              key={`estimate-${tripMapKey}`}
+              coordinate={estimatePoint}
+              distanceMeters={route.distanceMeters}
+              durationSeconds={route.durationSeconds}
+              onSize={reportEstimateSize}
+            />
+          )}
         </MapView>
         </View>
       )}
@@ -520,38 +533,37 @@ export function ConfigureTripScreen() {
             keyboardDismissMode="on-drag"
             showsVerticalScrollIndicator={false}
             bounces={false}>
-            <View style={[styles.estimate, { minHeight: 32 * fontScale }]}>
-                <Ionicons name="navigate" size={16} color={colors.primary} />
-                <Text style={styles.estimateText}>
-                  {routeLoading ? 'Actualizando ruta…' : route
-                    ? `${formatDistance(route.distanceMeters)} · ${formatDuration(route.durationSeconds)}`
-                    : 'No pudimos calcular la ruta'}
+            <View style={styles.handle} />
+            {!route && (
+              <View style={[styles.routeStatus, { minHeight: 32 * fontScale }]}
+                accessibilityLiveRegion="polite">
+                <Ionicons
+                  name={routeLoading ? 'navigate' : 'alert-circle'}
+                  size={16}
+                  color={routeLoading ? colors.primary : colors.danger}
+                />
+                <Text style={styles.routeStatusText}>
+                  {routeLoading ? 'Calculando la ruta…' : 'No pudimos calcular la ruta'}
                 </Text>
               </View>
+            )}
             {!route && !routeLoading && <Button title="Reintentar ruta" variant="secondary" onPress={retryRoute} />}
 
-        <Text style={styles.fieldLabel}>Tipo de servicio</Text>
-        <ServiceTypeSelector value={service} onChange={setService} />
+        <ServiceTileSelector value={service} onChange={setService} />
 
-        <Text style={styles.fieldLabel}>Método de pago</Text>
-        <SelectableOptionCards options={PAYMENTS} value={payment} onChange={setPayment} />
+        <FareAndPaymentPicker
+          fare={fare}
+          onFareChange={setFare}
+          onFareBlur={() => setKeyboardOffset(0)}
+          payment={payment}
+          onPaymentChange={setPayment}
+        />
 
-        <Text style={styles.fieldLabel}>Tu oferta</Text>
-        <View style={styles.fareRow}>
-          <Text style={styles.fareCurrency}>Bs</Text>
-          <TextInput
-            value={fare}
-            onChangeText={setFare}
-            placeholder="30"
-            placeholderTextColor={colors.placeholder}
-            keyboardType="decimal-pad"
-            inputMode="decimal"
-            maxLength={9}
-            onBlur={() => setKeyboardOffset(0)}
-            style={styles.fareInput}
-            accessibilityLabel="Monto de tu oferta en bolivianos"
-          />
-        </View>
+        <AutoAcceptToggle
+          value={autoAccept}
+          onChange={setAutoAccept}
+          fareLabel={fareIsValid ? formatBolivianos(fareValue) : undefined}
+        />
 
         {createRide.isError && (
           <Text style={styles.error}>{getApiErrorMessage(createRide.error)}</Text>
@@ -593,10 +605,13 @@ export function ConfigureTripScreen() {
 
           <View style={styles.sheetFooter}>
             <Button
-              title={isEditing ? 'Guardar cambios' : 'Buscar ofertas'}
+              title={primaryActionTitle}
+              variant="accent"
               trailingIcon="arrow-forward"
+              style={styles.primaryAction}
               loading={createRide.isPending || editRide.isPending || labelsResolving}
-              loadingLabel={labelsResolving ? 'Obteniendo direcciones…' : isEditing ? 'Guardando…' : 'Buscando ofertas…'}
+              loadingLabel={labelsResolving ? 'Obteniendo direcciones…'
+                : isEditing ? 'Guardando…' : `${primaryActionTitle}…`}
               disabled={
                 !tripInServiceArea ||
                 !labelsReady ||
@@ -686,8 +701,8 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
   sheet: {
     width: '100%',
     backgroundColor: colors.background,
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
     shadowColor: '#000',
     shadowOpacity: 0.12,
     shadowRadius: 12,
@@ -697,44 +712,37 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
   },
   sheetScroll: { flex: 1 },
   sheetContent: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
+    paddingHorizontal: spacing.lg - 4,
+    paddingTop: spacing.sm + 2,
     paddingBottom: spacing.xs,
-    gap: spacing.sm,
+    gap: spacing.md,
+  },
+  handle: {
+    alignSelf: 'center',
+    width: 40,
+    height: 5,
+    borderRadius: radius.pill,
+    backgroundColor: colors.border,
+    marginBottom: -spacing.xs,
   },
   sheetFooter: {
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.lg - 4,
     paddingTop: spacing.xs,
     paddingBottom: spacing.sm,
   },
+  primaryAction: { minHeight: 60, borderRadius: radius.pill, paddingLeft: spacing.lg, paddingRight: spacing.sm },
 
-  estimate: {
+  routeStatus: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    alignSelf: 'flex-start',
+    alignSelf: 'center',
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,
     borderRadius: radius.pill,
     backgroundColor: colors.surfaceMuted,
   },
-  estimateText: { fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: colors.text },
-
-  fieldLabel: { fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.text },
-  fareRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    minHeight: 48,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.controlBorder,
-    backgroundColor: colors.surface,
-  },
-  fareCurrency: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.textSecondary },
-  fareInput: { flex: 1, fontSize: fontSize.lg, fontWeight: fontWeight.semibold, color: colors.text, padding: 0 },
+  routeStatusText: { fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: colors.text },
 
   locationStatus: { color: colors.textSecondary, fontSize: fontSize.sm, textAlign: 'center' },
   locationError: { gap: spacing.xs },

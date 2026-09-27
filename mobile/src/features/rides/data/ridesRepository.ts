@@ -88,6 +88,7 @@ export function toOpenRide(dto: OpenRideDto): OpenRide {
       rating: dto.rider.rating,
       tripsCompleted: dto.rider.trips_completed,
     },
+    autoAccept: dto.auto_accept ?? false,
     poolVersion: dto.pool_version,
     createdAt: dto.created_at,
   };
@@ -124,6 +125,7 @@ export function toRide(dto: RideDto): Ride {
     service: dto.service_type,
     fare: Number.parseFloat(dto.fare),
     payment: dto.payment_method,
+    autoAccept: dto.auto_accept ?? false,
     origin: toPlace(dto.origin),
     destination: toPlace(dto.destination),
     driver: dto.driver
@@ -359,6 +361,7 @@ export const ridesRepository = {
       service_type: input.service,
       fare: input.fare,
       payment_method: input.payment,
+      auto_accept: input.autoAccept,
     });
     return toRide(data);
   },

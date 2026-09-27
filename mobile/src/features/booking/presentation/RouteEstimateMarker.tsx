@@ -11,7 +11,7 @@ import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Marker, type MapMarker } from 'react-native-maps';
 
-import { fontSize, fontWeight, spacing, useThemedStyles, type Theme } from '@/core/theme';
+import { fontWeight, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import { useBrandFontStyle } from '@/core/theme/brandFont';
 import type { Coordinates } from '@/features/booking/domain/types';
 import {
@@ -32,7 +32,7 @@ type Props = {
   onSize?: (size: LabelSize) => void;
 };
 
-const POINTER = 12;
+const POINTER = 10;
 const LATE_REDRAW_MS = 400;
 const CLOCK_TICK_MS = 30_000;
 
@@ -74,7 +74,7 @@ export function RouteEstimateMarker({ coordinate, distanceMeters, durationSecond
             <Text style={styles.distance}>{distance}</Text>
           </View>
           <View style={styles.arrivalRow}>
-            <Ionicons name="flag" size={12} color={colors.accent} />
+            <Ionicons name="flag" size={10} color={colors.accent} />
             <Text style={styles.arrival}>
               Llegas a las <Text style={styles.arrivalTime}>{arrival}</Text>
             </Text>
@@ -92,26 +92,26 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
   wrap: {
     alignItems: 'center',
     paddingBottom: (Math.SQRT2 * POINTER) / 2 - POINTER / 2,
-    paddingHorizontal: 6,
+    paddingHorizontal: 5,
     paddingTop: 2,
   },
   bubble: {
-    paddingHorizontal: spacing.md - 2,
-    paddingVertical: spacing.sm + 2,
-    borderRadius: 16,
+    paddingHorizontal: spacing.sm + 3,
+    paddingVertical: spacing.sm,
+    borderRadius: 13,
     backgroundColor: colors.brand,
-    gap: 4,
+    gap: 3,
     shadowColor: '#000',
     shadowOpacity: 0.25,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 3 },
     elevation: 6,
   },
-  mainRow: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm },
-  duration: { fontSize: 24, fontWeight: fontWeight.bold, color: colors.textOnBrand },
-  distance: { fontSize: fontSize.sm, fontWeight: fontWeight.bold, color: colors.accent },
-  arrivalRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  arrival: { fontSize: fontSize.xs, color: colors.textOnBrand, opacity: 0.85 },
+  mainRow: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
+  duration: { fontSize: 19, fontWeight: fontWeight.bold, color: colors.textOnBrand },
+  distance: { fontSize: 11, fontWeight: fontWeight.bold, color: colors.accent },
+  arrivalRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  arrival: { fontSize: 10, color: colors.textOnBrand, opacity: 0.85 },
   arrivalTime: { fontWeight: fontWeight.bold, opacity: 1 },
   pointer: {
     width: POINTER,

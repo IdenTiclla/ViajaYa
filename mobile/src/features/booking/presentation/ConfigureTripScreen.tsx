@@ -39,7 +39,7 @@ import {
   isPlaceLabelResolved,
 } from '@/features/booking/domain/placeLabels';
 import { routeMidpoint } from '@/features/booking/domain/routeEstimate';
-import type { Coordinates } from '@/features/booking/domain/types';
+import type { Coordinates, ServiceType } from '@/features/booking/domain/types';
 import { AutoAcceptToggle } from '@/features/booking/presentation/AutoAcceptToggle';
 import { FareAndPaymentPicker } from '@/features/booking/presentation/FareAndPaymentPicker';
 import { RouteEstimateMarker } from '@/features/booking/presentation/RouteEstimateMarker';
@@ -58,7 +58,6 @@ import {
 } from '@/features/rides/presentation/routeTooltipLayout';
 import { RoutePolyline } from '@/features/rides/presentation/RoutePolyline';
 import { useMapBearing } from '@/features/rides/application/useMapBearing';
-import { MotorcycleRouteNotice } from '@/features/rides/presentation/MotorcycleRouteNotice';
 import { Button, ConfirmDialog, FeedbackState } from '@/shared/components';
 
 // Tight fit around the route; the A/B labels get room only where they need it.
@@ -68,7 +67,9 @@ const MIN_FIT_SPAN = 48;
 // RoutePinMarker's initial label estimate, used until it reports the real size.
 const DEFAULT_LABEL_SIZE: LabelSize = { width: 178, height: 40 };
 // RouteEstimateMarker's initial size estimate, used until it reports the real one.
-const DEFAULT_ESTIMATE_SIZE: LabelSize = { width: 150, height: 70 };
+const DEFAULT_ESTIMATE_SIZE: LabelSize = { width: 120, height: 56 };
+// Road profile of the previewed route (Google DRIVE), independent of the chosen service.
+const PREVIEW_ROUTE_SERVICE: ServiceType = 'taxi';
 const MIN_KEYBOARD_TRANSLATION = 280;
 
 export function ConfigureTripScreen() {
@@ -219,10 +220,12 @@ export function ConfigureTripScreen() {
     ? getBoliviaPlaceError(destination)
     : BOLIVIA_SERVICE_AREA_MESSAGE;
   const tripInServiceArea = serviceAreaError == null && destinationAreaError == null;
+  // The preview always shows the best road route, whatever service is picked:
+  // switching between taxi, moto, parcels or moving must not redraw the trip.
   const { route, isLoading: routeLoading, retry: retryRoute } = useRoute(
     tripInServiceArea ? origin : null,
     tripInServiceArea ? destination : null,
-    service,
+    PREVIEW_ROUTE_SERVICE,
   );
 
   const region = useMemo<Region | undefined>(() => {
@@ -600,7 +603,6 @@ export function ConfigureTripScreen() {
         {cancelRecoveryRide.isError && (
           <Text style={styles.error}>{getApiErrorMessage(cancelRecoveryRide.error)}</Text>
         )}
-        <MotorcycleRouteNotice service={service} />
           </ScrollView>
 
           <View style={styles.sheetFooter}>

@@ -476,6 +476,8 @@ npm run lint               # expo lint (eslint-config-expo)
 - **Configure sheet** (`ConfigureTripScreen`): `RouteEstimateMarker` is a bubble anchored halfway
   along the road route (`routeMidpoint`) with time, distance and arrival (brand blue in both
   themes); the camera frames it through the `floating` boxes of `getLabelAwareFitCoordinates`.
+  The preview always requests the best DRIVE route (`PREVIEW_ROUTE_SERVICE`), so switching
+  service never redraws the trip; trip and driver screens keep their vehicle's route mode.
   Below: `ServiceTileSelector` (illustrated tiles with a check badge; Home keeps
   `ServiceTypeSelector`), `FareAndPaymentPicker` (typed fare + ±1 Bs via `stepFare`, cash/QR),
   `AutoAcceptToggle` (`useBookingStore.autoAccept` → `auto_accept` on create/edit; drivers see

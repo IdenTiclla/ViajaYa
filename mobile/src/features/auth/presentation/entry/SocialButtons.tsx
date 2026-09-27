@@ -19,7 +19,8 @@ export function SocialButtons({ providers, google, facebook }: Props) {
         <View style={styles.line} />
       </View>
       {providers.includes('google') && (
-        <Button title="Continuar con Google" variant="secondary" leadingIcon="logo-google"
+        <Button title="Continuar con Google" variant="secondary"
+          leadingImage={require('@/assets/images/google-g.png')}
           loading={google.loading} disabled={google.disabled} onPress={google.onPress} />
       )}
       {providers.includes('facebook') && (

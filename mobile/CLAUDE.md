@@ -41,7 +41,8 @@ src/
 │   ├── auth/              # domain/ (types + vehicleCatalog: VEHICLE_META, SERVICES_FOR_VEHICLE) · data/
 │   │                      #   · application/ (phoneAccessController + useAuthController)
 │   │                      # presentation/: PhoneEntryScreen · PhoneCodeForm · AccountSecurityPanel
-│   │                      #   entry/ = blocks of the access view (AuthScaffold, PhoneInput, SocialButtons, TermsCheckbox…)
+│   │                      #   entry/ = blocks of the access view (AuthScaffold + AuthHero, PhoneInput, SocialButtons, TermsCheckbox…)
+│   │                      #   OneTimeCodeInput = six-cell SMS code over one transparent TextInput (autofill/paste)
 │   ├── booking/           # 4 full layers (booking flow)
 │   ├── home/              # domain/ (orientation) · data/ · application/ · presentation/
 │   ├── rides/             # offers + ride lifecycle + passenger and driver WS hooks
@@ -228,7 +229,7 @@ Light palette:
 - `colors.primary #16308C` (TaxiGo blue) · `colors.primaryDark #0F2266` · `colors.accent #F5C518`
   (Stitch yellow: active tab, stars, accents) · `brand #16308C` + `textOnBrand #FFFFFF`
   (fixed in both themes: the name «Viaja» in white + «Ya» in `accent` over blue, like the logo and splash;
-  used by the Home header and `LaunchScreen`) · `success #167347` · `danger #C52C22` ·
+  used by the Home header, `LaunchScreen` and the access view's `AuthHero`) · `success #167347` · `danger #C52C22` ·
   `text #182230` · `textSecondary #536174` · `surfaceMuted #F3F5F8` · `border #DCE2EB`.
 - `controlBorder #7D8796` identifies fields and options; `border` is reserved for
   decorative separators. `primarySoft` and `dangerSoft` go with secondary
@@ -261,6 +262,19 @@ changing them requires prebuild + rebuilding the APK. After the native splash, `
 shows `launch-screen.png` (yellow route with taxi and mototaxi, name and slogan «Taxi o moto, tú pones
 el precio.») while `bootstrap` restores the session, with a minimum of 1.2 s (`LAUNCH_MIN_MS`), only on
 cold start; login, logout and Reintentar show the lightweight spinner.
+The access view (`AuthScaffold`) continues the splash: `AuthHero` draws the wordmark, slogan and
+`auth-route.png` (the splash route with taxi and mototaxi, 3x, transparent) on `brand`, scaled
+down on short screens, and the form sits on a `background` sheet with radius 28 over it (fixed
+light status bar). Wordmark and auth headings use Ubuntu Bold (`assets/fonts/Ubuntu-Bold.ttf`,
+UFL licence beside it) loaded at runtime by `useBrandFontStyle` (`core/theme/brandFont.ts`,
+imported directly, not from the barrel, so Node unit tests do not load `expo-font`); until it
+loads, the system bold is used.
+Android runs edge-to-edge (`edgeToEdgeEnabled`), so `adjustResize` does not shrink the window: the
+access view does not use `KeyboardAvoidingView` (its padding stayed after closing): it adds the
+keyboard height as bottom room in the scroll content, scrolls the focused input (label included)
+into view, and on hide removes the room and scrolls back to the top. Phone input: Bolivian
+numbers (+591) are capped at 8 digits while typing or pasting and must start with 6 or 7
+(`getPhoneInputIssue`); a wrong prefix shows while typing, an unfinished number only after blur.
 
 ### Controls and accessibility
 
@@ -291,6 +305,8 @@ cold start; login, logout and Reintentar show the lightweight spinner.
   centering and tracking use `setCamera`, with gestures locked. The radar lives
   inside `DriverSearchMap` and takes the GPS projection from `pointForCoordinate`;
   it discards late responses and hides if the projection fails. See plan 0020.
+- `Button` takes `leadingImage` for full-color marks (the Google «G», `assets/images/google-g.png`);
+  Ionicons are single-color.
 - Reuse `Button` for form and screen-footer actions: minimum height
   of 48, 14 text and natural growth when enlarging the font. Avoid fixed
   heights and `adjustsFontSizeToFit` to make action labels fit.

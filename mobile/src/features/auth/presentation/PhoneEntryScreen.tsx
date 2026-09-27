@@ -32,15 +32,15 @@ export function PhoneEntryScreen() {
   const phoneError = getPhoneInputError(number, callingCode);
 
   return (
-    <AuthScaffold subtitle="Tu ciudad, a un toque de distancia.">
+    <AuthScaffold subtitle="Taxi o moto, tú pones el precio.">
       {state.step === 'loading' && (
         <AuthLoading busy={state.busy} error={state.error} onRetry={() => { void controller.initialize(); }} />
       )}
       {state.step === 'phone' && <>
-        <AuthHeading title={state.socialProvider ? `Vincula ${socialName} a tu número` : 'Bienvenido a ViajaYa'}
+        <AuthHeading title={state.socialProvider ? `Vincula ${socialName} a tu número` : '¿A dónde vamos hoy?'}
           text={state.socialProvider
             ? `Verificamos tu cuenta de ${socialName}. Ahora confirma tu número; después podrás vincular ambos.`
-            : 'Ingresa tu número y te enviaremos un código por SMS. Si es tu primera vez, crearemos tu cuenta.'} />
+            : 'Ingresa tu número y te enviamos un código por SMS. Si es tu primera vez, creamos tu cuenta.'} />
         <PhoneInput countries={countries} callingCode={callingCode}
           onChangeCallingCode={setCallingCode} number={number} onChangeNumber={setNumber} editable={!busy} />
         {!enabled && <AuthNotice tone="error">

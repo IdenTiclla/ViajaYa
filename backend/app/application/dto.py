@@ -332,6 +332,7 @@ class CreateRideRequestInput:
     service_type: ServiceType
     fare: Decimal
     payment_method: PaymentMethod = PaymentMethod.CASH
+    auto_accept: bool = False
 
 
 @dataclass(frozen=True)

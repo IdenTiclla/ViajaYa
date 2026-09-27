@@ -398,6 +398,9 @@ class RideRequestModel(Base):
     paused: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="0", nullable=False
     )
+    auto_accept: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="0", nullable=False
+    )
     pool_version: Mapped[int] = mapped_column(
         Integer, default=1, server_default="1", nullable=False
     )

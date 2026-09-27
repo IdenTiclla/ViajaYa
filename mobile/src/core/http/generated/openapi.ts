@@ -1024,6 +1024,11 @@ export interface components {
         };
         /** CreateRideRequestRequest */
         CreateRideRequestRequest: {
+            /**
+             * Auto Accept
+             * @default false
+             */
+            auto_accept: boolean;
             destination: components["schemas"]["PointInputSchema"];
             /** Fare */
             fare: number | string;
@@ -1298,6 +1303,11 @@ export interface components {
          * @description Open request as a driver sees it in their list.
          */
         OpenRideResponse: {
+            /**
+             * Auto Accept
+             * @default false
+             */
+            auto_accept: boolean;
             /** Created At */
             created_at: string | null;
             destination: components["schemas"]["PointSchema"];
@@ -1777,6 +1787,11 @@ export interface components {
          * @description Changes to save when modifying a paused request (same fields as on creation).
          */
         RideEdit: {
+            /**
+             * Auto Accept
+             * @default false
+             */
+            auto_accept: boolean;
             destination: components["schemas"]["PointInputSchema"];
             /** Fare */
             fare: number | string;
@@ -1828,6 +1843,11 @@ export interface components {
         };
         /** RideRequestResponse */
         RideRequestResponse: {
+            /**
+             * Auto Accept
+             * @default false
+             */
+            auto_accept: boolean;
             /** Created At */
             created_at: string | null;
             destination: components["schemas"]["PointSchema"];
@@ -1852,6 +1872,11 @@ export interface components {
             accepted_eta_min: number | null;
             /** Accepted Price */
             accepted_price: string | null;
+            /**
+             * Auto Accept
+             * @default false
+             */
+            auto_accept: boolean;
             /** Cancelled At */
             cancelled_at: string | null;
             /** Completed At */

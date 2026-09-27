@@ -103,6 +103,7 @@ class EditRide:
                 service_type=data.service_type,
                 fare=fare.amount,
                 payment_method=data.payment_method,
+                auto_accept=data.auto_accept,
                 paused=False,
                 # Every reopening is a new publication, even if the passenger
                 # saves without changing visible fields. The previous close and the

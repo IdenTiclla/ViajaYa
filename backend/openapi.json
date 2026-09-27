@@ -116,6 +116,11 @@
       },
       "CreateRideRequestRequest": {
         "properties": {
+          "auto_accept": {
+            "default": false,
+            "title": "Auto Accept",
+            "type": "boolean"
+          },
           "destination": {
             "$ref": "#/components/schemas/PointInputSchema"
           },
@@ -831,6 +836,11 @@
       "OpenRideResponse": {
         "description": "Open request as a driver sees it in their list.",
         "properties": {
+          "auto_accept": {
+            "default": false,
+            "title": "Auto Accept",
+            "type": "boolean"
+          },
           "created_at": {
             "anyOf": [
               {
@@ -2077,6 +2087,11 @@
       "RideEdit": {
         "description": "Changes to save when modifying a paused request (same fields as on creation).",
         "properties": {
+          "auto_accept": {
+            "default": false,
+            "title": "Auto Accept",
+            "type": "boolean"
+          },
           "destination": {
             "$ref": "#/components/schemas/PointInputSchema"
           },
@@ -2244,6 +2259,11 @@
       },
       "RideRequestResponse": {
         "properties": {
+          "auto_accept": {
+            "default": false,
+            "title": "Auto Accept",
+            "type": "boolean"
+          },
           "created_at": {
             "anyOf": [
               {
@@ -2320,6 +2340,11 @@
               }
             ],
             "title": "Accepted Price"
+          },
+          "auto_accept": {
+            "default": false,
+            "title": "Auto Accept",
+            "type": "boolean"
           },
           "cancelled_at": {
             "anyOf": [

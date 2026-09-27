@@ -50,6 +50,7 @@ from app.application.managed_sessions import ManagedSessions
 from app.application.social_accounts import SocialAccounts
 from app.application.use_cases.accept_offer import AcceptOffer
 from app.application.use_cases.announce_open_ride import AnnounceOpenRide
+from app.application.use_cases.auto_accept_offer import AutoAcceptOffer
 from app.application.use_cases.build_driver_realtime_snapshot import (
     BuildDriverRealtimeSnapshot,
 )
@@ -528,6 +529,14 @@ def get_accept_offer(
         recorder,
         clock=lambda: database_utc_now(session),
     )
+
+
+def get_auto_accept_offer(
+    rides: RideRequestRepositoryDep,
+    users: UserRepositoryDep,
+    accept_offer: Annotated[AcceptOffer, Depends(get_accept_offer)],
+) -> AutoAcceptOffer:
+    return AutoAcceptOffer(rides, users, accept_offer)
 
 
 def get_withdraw_offer(

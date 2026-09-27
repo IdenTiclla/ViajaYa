@@ -106,6 +106,8 @@ class CreateRideRequestRequest(BaseModel):
     service_type: ServiceType
     fare: Decimal = Field(gt=0, max_digits=10, decimal_places=2)
     payment_method: PaymentMethod = PaymentMethod.CASH
+    # Assign the first driver who accepts ``fare`` without waiting for the passenger.
+    auto_accept: bool = False
 
 
 class RideEdit(CreateRideRequestRequest):
@@ -118,6 +120,7 @@ class RideRequestResponse(BaseModel):
     service_type: ServiceType
     fare: Decimal
     payment_method: PaymentMethod
+    auto_accept: bool = False
     origin: PointSchema
     destination: PointSchema
     created_at: UtcAwareDatetime | None
@@ -130,6 +133,7 @@ class RideRequestResponse(BaseModel):
             service_type=ride.service_type,
             fare=ride.fare,
             payment_method=ride.payment_method,
+            auto_accept=ride.auto_accept,
             origin=PointSchema.from_location(ride.origin),
             destination=PointSchema.from_location(ride.destination),
             created_at=ride.created_at,
@@ -164,6 +168,7 @@ class OpenRideResponse(BaseModel):
     service_type: ServiceType
     fare: Decimal
     payment_method: PaymentMethod
+    auto_accept: bool = False
     origin: PointSchema
     destination: PointSchema
     rider: OpenRideRiderResponse
@@ -179,6 +184,7 @@ class OpenRideResponse(BaseModel):
             service_type=ride.service_type,
             fare=ride.fare,
             payment_method=ride.payment_method,
+            auto_accept=ride.auto_accept,
             origin=PointSchema.from_location(ride.origin),
             destination=PointSchema.from_location(ride.destination),
             rider=OpenRideRiderResponse(
@@ -236,6 +242,7 @@ class RideResponse(BaseModel):
     service_type: ServiceType
     fare: Decimal
     payment_method: PaymentMethod
+    auto_accept: bool = False
     origin: PointSchema
     destination: PointSchema
     paused: bool
@@ -281,6 +288,7 @@ class RideResponse(BaseModel):
             service_type=ride.service_type,
             fare=ride.fare,
             payment_method=ride.payment_method,
+            auto_accept=ride.auto_accept,
             origin=PointSchema.from_location(ride.origin),
             destination=PointSchema.from_location(ride.destination),
             paused=ride.paused,

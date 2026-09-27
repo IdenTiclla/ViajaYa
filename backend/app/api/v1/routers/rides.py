@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Annotated
 
@@ -18,6 +19,7 @@ from app.api.deps import (
     SettingsDep,
     build_expire_offer_and_complete_scheduled_action,
     get_accept_offer,
+    get_auto_accept_offer,
     get_cancel_ride,
     get_create_offer,
     get_create_ride_request,
@@ -62,6 +64,7 @@ from app.application.dto import (
     RideDetail,
 )
 from app.application.use_cases.accept_offer import AcceptOffer
+from app.application.use_cases.auto_accept_offer import AutoAcceptOffer
 from app.application.use_cases.cancel_ride import CancelRide
 from app.application.use_cases.create_offer import CreateOffer
 from app.application.use_cases.create_ride_request import CreateRideRequest
@@ -155,6 +158,7 @@ async def create_ride(
             service_type=body.service_type,
             fare=body.fare,
             payment_method=body.payment_method,
+            auto_accept=body.auto_accept,
         ),
     )
     # The request shows up for drivers when the passenger opens their
@@ -372,6 +376,7 @@ async def create_offer(
     body: OfferCreate,
     current_user: CurrentUserDep,
     use_case: Annotated[CreateOffer, Depends(get_create_offer)],
+    auto_accept: Annotated[AutoAcceptOffer, Depends(get_auto_accept_offer)],
     session_factory: SessionFactoryDep,
     settings: SettingsDep,
 ) -> OfferResponse:
@@ -403,6 +408,13 @@ async def create_offer(
         )
         _EXPIRY_TASKS.add(task)
         task.add_done_callback(_EXPIRY_TASKS.discard)
+    # A request with auto_accept is assigned to the first driver who accepts its fare.
+    acceptance = await auto_accept.execute(result.detail.offer)
+    if acceptance is not None:
+        await events.publish_offer_accepted(acceptance)
+        return OfferResponse.from_detail(
+            replace(result.detail, offer=acceptance.detail.accepted_offer or result.detail.offer)
+        )
     return OfferResponse.from_detail(result.detail)
 
 
@@ -487,6 +499,7 @@ async def edit_ride(
             service_type=body.service_type,
             fare=body.fare,
             payment_method=body.payment_method,
+            auto_accept=body.auto_accept,
         ),
     )
     await events.publish_ride_republished(result)

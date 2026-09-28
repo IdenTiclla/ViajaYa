@@ -32,7 +32,7 @@ type Props = {
   onSize?: (size: LabelSize) => void;
 };
 
-const POINTER = 9;
+const POINTER = 8;
 const LATE_REDRAW_MS = 400;
 const CLOCK_TICK_MS = 30_000;
 
@@ -74,7 +74,7 @@ export function RouteEstimateMarker({ coordinate, distanceMeters, durationSecond
             <Text style={styles.distance}>{distance}</Text>
           </View>
           <View style={styles.arrivalRow}>
-            <Ionicons name="flag" size={9} color={colors.accent} />
+            <Ionicons name="flag" size={8} color={colors.accent} />
             <Text style={styles.arrival}>
               Llegas a las <Text style={styles.arrivalTime}>{arrival}</Text>
             </Text>
@@ -96,22 +96,22 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
     paddingTop: 2,
   },
   bubble: {
-    paddingHorizontal: spacing.sm + 2,
-    paddingVertical: 7,
-    borderRadius: 12,
+    paddingHorizontal: spacing.sm + 1,
+    paddingVertical: 6,
+    borderRadius: 11,
     backgroundColor: colors.brand,
-    gap: 3,
+    gap: 2,
     shadowColor: '#000',
     shadowOpacity: 0.25,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 3 },
     elevation: 6,
   },
-  mainRow: { flexDirection: 'row', alignItems: 'baseline', gap: 5 },
-  duration: { fontSize: 17, fontWeight: fontWeight.bold, color: colors.textOnBrand },
-  distance: { fontSize: 10, fontWeight: fontWeight.bold, color: colors.accent },
-  arrivalRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  arrival: { fontSize: 9, color: colors.textOnBrand, opacity: 0.85 },
+  mainRow: { flexDirection: 'row', alignItems: 'baseline', gap: 4 },
+  duration: { fontSize: 15, fontWeight: fontWeight.bold, color: colors.textOnBrand },
+  distance: { fontSize: 9, fontWeight: fontWeight.bold, color: colors.accent },
+  arrivalRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  arrival: { fontSize: 8, color: colors.textOnBrand, opacity: 0.85 },
   arrivalTime: { fontWeight: fontWeight.bold, opacity: 1 },
   pointer: {
     width: POINTER,

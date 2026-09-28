@@ -67,7 +67,7 @@ const MIN_FIT_SPAN = 48;
 // RoutePinMarker's initial label estimate, used until it reports the real size.
 const DEFAULT_LABEL_SIZE: LabelSize = { width: 178, height: 40 };
 // RouteEstimateMarker's initial size estimate, used until it reports the real one.
-const DEFAULT_ESTIMATE_SIZE: LabelSize = { width: 108, height: 50 };
+const DEFAULT_ESTIMATE_SIZE: LabelSize = { width: 97, height: 45 };
 // Road profile of the previewed route (Google DRIVE), independent of the chosen service.
 const PREVIEW_ROUTE_SERVICE: ServiceType = 'taxi';
 const MIN_KEYBOARD_TRANSLATION = 280;

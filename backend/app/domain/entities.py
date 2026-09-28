@@ -282,6 +282,8 @@ class RideRequest:
     service_type: ServiceType
     fare: Decimal
     payment_method: PaymentMethod = PaymentMethod.CASH
+    # The passenger lets the first driver who accepts their fare take the ride.
+    auto_accept: bool = False
     status: RideStatus = RideStatus.SEARCHING
     driver_id: uuid.UUID | None = None
     accepted_offer_id: uuid.UUID | None = None

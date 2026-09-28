@@ -262,6 +262,7 @@ def _ride_to_entity(row: RideRequestModel) -> RideRequest:
         service_type=row.service_type,
         fare=row.fare,
         payment_method=row.payment_method,
+        auto_accept=row.auto_accept,
         status=row.status,
         driver_id=row.driver_id,
         accepted_offer_id=row.accepted_offer_id,
@@ -301,6 +302,7 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
             service_type=ride.service_type,
             fare=ride.fare,
             payment_method=ride.payment_method,
+            auto_accept=ride.auto_accept,
             status=ride.status,
             driver_id=ride.driver_id,
             accepted_offer_id=ride.accepted_offer_id,
@@ -377,6 +379,7 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
         row.service_type = ride.service_type
         row.fare = ride.fare
         row.payment_method = ride.payment_method
+        row.auto_accept = ride.auto_accept
         row.status = ride.status
         row.driver_id = ride.driver_id
         row.accepted_offer_id = ride.accepted_offer_id
@@ -428,6 +431,7 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
                 service_type=ride.service_type,
                 fare=ride.fare,
                 payment_method=ride.payment_method,
+                auto_accept=ride.auto_accept,
                 status=ride.status,
                 driver_id=ride.driver_id,
                 accepted_offer_id=ride.accepted_offer_id,

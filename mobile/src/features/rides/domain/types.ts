@@ -63,6 +63,8 @@ export type OpenRide = {
   origin: Place;
   destination: Place;
   rider: OpenRideRider;
+  /** The first driver who accepts `fare` gets the ride without the passenger choosing. */
+  autoAccept: boolean;
   /** Changes when the request's visible terms are modified. */
   poolVersion: number;
   createdAt: string | null;
@@ -98,6 +100,8 @@ export type Ride = {
   service: ServiceType;
   payment: PaymentMethod;
   fare: number;
+  /** The passenger lets the first driver who accepts `fare` take the ride. */
+  autoAccept: boolean;
   origin: Place;
   destination: Place;
   driver: RideDriver | null;
@@ -169,4 +173,5 @@ export type EditRideInput = {
   service: ServiceType;
   payment: PaymentMethod;
   fare: number;
+  autoAccept: boolean;
 };

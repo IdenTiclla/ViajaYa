@@ -189,11 +189,19 @@ export type RoutePinLabel = {
 
 type EdgePadding = { top: number; bottom: number; left: number; right: number };
 
+/** A marker drawn centered above its coordinate (e.g. the route estimate bubble). */
+export type FloatingMapBox = {
+  coordinate: Coordinates;
+  /** Measured marker size, in logical pixels, including its pointer. */
+  size: LabelSize;
+};
+
 /**
  * Extra points so `fitToCoordinates` frames the route *and* its A/B labels on a
  * north-up map. Each label is placed with the same rules RoutePinMarker uses
  * (side, separation and visibility depend on the zoom), so the scale is refined
- * until the labels' outer corners fit the padded viewport.
+ * until the labels' outer corners fit the padded viewport. `floating` markers
+ * (drawn centered above their coordinate) are framed the same way.
  */
 export function getLabelAwareFitCoordinates(
   route: readonly Coordinates[],
@@ -201,10 +209,12 @@ export function getLabelAwareFitCoordinates(
   width: number,
   height: number,
   padding: EdgePadding,
+  floating: readonly FloatingMapBox[] = [],
 ): Coordinates[] {
   const innerWidth = width - padding.left - padding.right;
   const innerHeight = height - padding.top - padding.bottom;
-  if (route.length < 2 || labels.length === 0 || innerWidth <= 0 || innerHeight <= 0) {
+  if (route.length < 2 || (labels.length === 0 && floating.length === 0)
+    || innerWidth <= 0 || innerHeight <= 0) {
     return [...route];
   }
 
@@ -247,6 +257,12 @@ export function getLabelAwareFitCoordinates(
       const reach = (labelBaseOffset(placement) + separation + pin.size.height) / scale;
       const y = placement === 'above' ? pin.y + reach : pin.y - reach;
       corners.push({ x: pin.x - halfWidth, y }, { x: pin.x + halfWidth, y });
+    }
+    for (const box of floating) {
+      const x = longitudeDelta(ref, box.coordinate.longitude) / 360;
+      const top = mercatorY(box.coordinate.latitude) + box.size.height / scale;
+      const halfWidth = box.size.width / 2 / scale;
+      corners.push({ x: x - halfWidth, y: top }, { x: x + halfWidth, y: top });
     }
     return corners;
   };

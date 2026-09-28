@@ -13,7 +13,8 @@ import {
 
 import { controls, fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 
-type Variant = 'primary' | 'secondary' | 'danger' | 'dangerSoft' | 'text';
+/** `accent` is the yellow call to action (dark text, arrow in a brand-blue circle). */
+type Variant = 'primary' | 'accent' | 'secondary' | 'danger' | 'dangerSoft' | 'text';
 
 type Props = PressableProps & {
   title: string;
@@ -53,6 +54,7 @@ export function Button({
     ? colors.disabledText
     : variant === 'primary' || variant === 'danger'
       ? colors.textOnPrimary
+      : variant === 'accent' ? colors.textOnAccent
       : variant === 'dangerSoft' ? colors.danger : variant === 'text' ? colors.textSecondary : colors.primary;
 
   return (
@@ -96,7 +98,11 @@ export function Button({
         <Text style={[styles.label, variant === 'text' && styles.textLabel, { color: textColor }]}>
           {visibleText}
         </Text>
-        {!loading && trailingIcon ? (
+        {!loading && trailingIcon && variant === 'accent' ? (
+          <View style={[styles.trailingBadge, isDisabled && styles.trailingBadgeDisabled]}>
+            <Ionicons name={trailingIcon} size={20} color={colors.textOnBrand} />
+          </View>
+        ) : !loading && trailingIcon ? (
           <Ionicons
             name={trailingIcon}
             size={20}
@@ -122,6 +128,9 @@ const createStyles = ({ colors, mode }: Theme) => StyleSheet.create({
   primary: { backgroundColor: colors.primary, borderColor: colors.primary,
     shadowColor: colors.primary, shadowOpacity: mode === 'light' ? 0.16 : 0,
     shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: mode === 'light' ? 2 : 0 },
+  accent: { backgroundColor: colors.accent, borderColor: colors.accent,
+    shadowColor: colors.accent, shadowOpacity: mode === 'light' ? 0.35 : 0,
+    shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: mode === 'light' ? 3 : 0 },
   primaryPressed: { backgroundColor: colors.primaryDark, borderColor: colors.primaryDark },
   secondaryPressed: { backgroundColor: colors.primarySoft, borderColor: colors.primary },
   secondary: {
@@ -136,6 +145,15 @@ const createStyles = ({ colors, mode }: Theme) => StyleSheet.create({
   disabled: { backgroundColor: colors.disabledBackground, borderColor: 'transparent', shadowOpacity: 0, elevation: 0 },
   content: { maxWidth: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   leadingImage: { width: 20, height: 20 },
+  trailingBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.brand,
+  },
+  trailingBadgeDisabled: { opacity: 0.5 },
   leadingImageDisabled: { opacity: 0.5 },
   label: { flexShrink: 1, fontSize: fontSize.sm, fontWeight: fontWeight.semibold, textAlign: 'center' },
 });

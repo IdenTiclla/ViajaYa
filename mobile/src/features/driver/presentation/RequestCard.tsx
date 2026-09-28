@@ -114,7 +114,7 @@ export function RequestCard({
         activeOpacity={0.9}
         onPress={onPress}
         accessibilityRole="button"
-        accessibilityLabel={`Solicitud de ${rider.fullName}, ${SERVICE_META[ride.service].label}, ${offered && offerPrice != null ? `tu oferta Bs ${formatBolivianos(offerPrice)}` : `Bs ${formatBolivianos(ride.fare)}`}`}
+        accessibilityLabel={`Solicitud de ${rider.fullName}, ${SERVICE_META[ride.service].label}, ${ride.autoAccept ? 'aceptación inmediata, ' : ''}${offered && offerPrice != null ? `tu oferta Bs ${formatBolivianos(offerPrice)}` : `Bs ${formatBolivianos(ride.fare)}`}`}
         style={styles.card}>
         {offered && (
           <OfferedBanner expiresAt={offerExpiresAt} />
@@ -171,6 +171,13 @@ export function RequestCard({
             <Text style={styles.meta} numberOfLines={1}>
               {meta}
             </Text>
+            {ride.autoAccept && (
+              // The passenger turned on automatic acceptance: taking the fare wins the ride.
+              <View style={styles.autoAccept}>
+                <Ionicons name="flash" size={12} color={colors.warning} />
+                <Text style={styles.autoAcceptText}>Acepta su precio y el viaje es tuyo</Text>
+              </View>
+            )}
           </View>
           <View style={styles.priceCol}>
             <Text style={styles.fare}>Bs {formatBolivianos(displayPrice)}</Text>
@@ -453,6 +460,8 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
   cardInfo: { flex: 1, gap: 3, justifyContent: 'center' },
   riderName: { fontSize: fontSize.md, fontWeight: fontWeight.bold, color: colors.text },
   meta: { fontSize: fontSize.xs, color: colors.textSecondary },
+  autoAccept: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
+  autoAcceptText: { fontSize: fontSize.xs, fontWeight: fontWeight.bold, color: colors.warning },
 
   priceCol: { alignItems: 'flex-end', justifyContent: 'center' },
   fare: { fontSize: fontSize.xl, fontWeight: fontWeight.bold, color: colors.primary },

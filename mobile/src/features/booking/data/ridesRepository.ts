@@ -23,6 +23,7 @@ type RideRequestDto = {
   status: string;
   service_type: ServiceType;
   payment_method: PaymentMethod;
+  auto_accept?: boolean;
   fare: string;
   origin: PointDto;
   destination: PointDto;
@@ -35,6 +36,7 @@ export type RideRequest = {
   service: ServiceType;
   payment: PaymentMethod;
   fare: number;
+  autoAccept: boolean;
   origin: Place;
   destination: Place;
 };
@@ -65,6 +67,7 @@ export type CreateRideInput = {
   service: ServiceType;
   payment: PaymentMethod;
   fare: number;
+  autoAccept: boolean;
 };
 
 export const ridesRepository = {
@@ -75,6 +78,7 @@ export const ridesRepository = {
       service_type: input.service,
       payment_method: input.payment,
       fare: input.fare,
+      auto_accept: input.autoAccept,
     });
     return {
       id: data.id,
@@ -82,6 +86,7 @@ export const ridesRepository = {
       service: data.service_type,
       payment: data.payment_method,
       fare: Number.parseFloat(data.fare),
+      autoAccept: data.auto_accept ?? false,
       origin: toPlace(data.origin),
       destination: toPlace(data.destination),
     };

@@ -65,6 +65,8 @@ export const openRideDtoSchema = z.object({
   service_type: serviceTypeSchema,
   fare: positiveDecimalSchema,
   payment_method: paymentMethodSchema,
+  // Older backends omit it: the passenger then keeps choosing manually.
+  auto_accept: z.boolean().optional().default(false),
   origin: pointDtoSchema,
   destination: pointDtoSchema,
   rider: z.object({
@@ -96,6 +98,8 @@ export const rideDtoSchema = z.object({
   service_type: serviceTypeSchema,
   fare: positiveDecimalSchema,
   payment_method: paymentMethodSchema,
+  // Older backends omit it: the passenger then keeps choosing manually.
+  auto_accept: z.boolean().optional().default(false),
   origin: pointDtoSchema,
   destination: pointDtoSchema,
   driver: z

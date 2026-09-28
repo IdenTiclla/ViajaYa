@@ -76,6 +76,7 @@ class CreateRideRequest:
             service_type=data.service_type,
             fare=fare.amount,
             payment_method=data.payment_method,
+            auto_accept=data.auto_accept,
         )
         created = await self._rides.add_if_no_active(ride)
         if created is None:

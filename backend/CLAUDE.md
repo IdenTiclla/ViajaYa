@@ -293,7 +293,7 @@ Access: `request_phone_code`, `verify_phone_code`, `complete_phone_sign_in`,
 `change_account_phone`, `request_account_recovery`, `review_account_recovery`,
 `complete_account_recovery`. Rides: `create_ride_request`, `announce_open_ride`, `list_recent_destinations`, `list_open_rides`, `dismiss_open_ride`,
 `get_ride`, `get_passenger_active_ride`, `get_pending_rating_ride`, `list_ride_history`,
-`create_offer`, `list_offers_for_ride`, `accept_offer`, `reject_offer`,
+`create_offer`, `list_offers_for_ride`, `accept_offer`, `auto_accept_offer`, `reject_offer`,
 `withdraw_offer`, `expire_offer`, `update_ride_status`, `update_ride_fare`, `cancel_ride`,
 `cancel_ride_on_disconnect`, `pause_ride_for_edit`, `edit_ride`,
 `rate_ride`, `skip_ride_rating`, `register_driver_vehicle`, `list_driver_vehicles`,
@@ -331,6 +331,12 @@ chosen driver's live offers on **other rides** (`OfferAcceptance.withdrawn_offer
   request from the pool and emits **three** things: `RIDE_CLOSED` to the pool, `RIDE_PAUSED` (full ride
   payload) to each driver with a live offer, and `OFFER_WITHDRAWN` to the passenger. `PATCH /{id}` edits
   origin/destination/service/fare/payment and republishes it. Flag `RideRequest.paused`.
+- **Automatic acceptance** (`RideRequest.auto_accept`, migration `0031`): the passenger opts in when
+  creating or editing the request. Right after `POST /{id}/offers` commits, `AutoAcceptOffer` runs
+  the regular `AcceptOffer` as the passenger when the offer asks for no more than `fare`
+  (counter-offers above it keep waiting). The acceptance is atomic as always; a lost race leaves
+  the offer `PENDING` and the 201 reports it as such. The flag is exposed in `RideResponse`,
+  `RideRequestResponse` and `OpenRideResponse` (so drivers see it in the pool).
 - **Raise offer**: `PATCH /{id}/fare` raises the fare (only in `SEARCHING`) and re-announces to the pool
   (`ride_created` with the new amount).
 - **Expiry**: the offer expires after 30 s (`OFFER_TTL` in `domain/ride_policy.py`); the request
@@ -422,8 +428,8 @@ closing the app or losing both channels for the whole grace period cancels the s
 ## Migrations (Alembic)
 
 - Config: `alembic.ini` + `migrations/env.py` (**async** engine with `async_engine_from_config`).
-- **28 migrations** in `migrations/versions/` (`0001_create_users` …
-  `0028_driver_vehicles`). `0025` rejects the downgrade if there are phone-only accounts.
+- **31 migrations** in `migrations/versions/` (`0001_create_users` …
+  `0031_ride_auto_accept`). `0025` rejects the downgrade if there are phone-only accounts.
   `0027` adds `users.driver_services` (JSON/JSONB) and `driver_status`, and approves
   existing drivers with all the services of their vehicle. `0028` creates
   `driver_vehicles` and copies each driver's current vehicle there.

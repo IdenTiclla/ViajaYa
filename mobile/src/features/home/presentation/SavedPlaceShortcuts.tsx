@@ -23,7 +23,7 @@ type Props = {
   onManage: () => void;
 };
 
-const CIRCLE_SIZE = 52;
+const CIRCLE_SIZE = 46;
 
 export function SavedPlaceShortcuts({
   places,
@@ -40,7 +40,7 @@ export function SavedPlaceShortcuts({
   const disabled = isLoading || isError;
 
   return (
-    <View style={styles.section}>
+    <View>
       <View style={styles.header}>
         <Text style={styles.title} accessibilityRole="header">Lugares guardados</Text>
         <TouchableOpacity
@@ -104,7 +104,6 @@ export function SavedPlaceShortcuts({
 }
 
 const createStyles = ({ colors }: Theme) => StyleSheet.create({
-  section: { gap: spacing.xs },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   title: { fontSize: fontSize.md, fontWeight: fontWeight.bold, color: colors.text },
   headerAction: { minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.xs },

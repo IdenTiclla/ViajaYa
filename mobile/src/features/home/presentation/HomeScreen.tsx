@@ -65,6 +65,10 @@ function firstName(fullName: string | undefined): string {
 
 /** Collapsed height used until the sheet content has been measured. */
 const FALLBACK_PEEK = 236;
+/** Brand pill / avatar height of the top bar that floats over the map. */
+const TOP_BAR_HEIGHT = 44;
+/** Vertical rhythm of the sheet: between the 8 and 16 steps, keeps it compact. */
+const SHEET_GAP = spacing.sm + spacing.xs;
 
 function coordinatesNearlyEqual(a: Coordinates, b: Coordinates): boolean {
   return (
@@ -79,6 +83,8 @@ export function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { height: screenHeight } = useWindowDimensions();
   const availableHeight = Math.max(320, screenHeight - insets.top - spacing.md);
+  // Top edge of the map area that is not covered by the floating top bar.
+  const mapTop = insets.top + spacing.sm + TOP_BAR_HEIGHT + spacing.sm;
   // Measured sheet content: its offset/height and where the saved places end.
   const [contentLayout, setContentLayout] = useState<{ top: number; height: number } | null>(null);
   const [savedBottom, setSavedBottom] = useState<number | null>(null);
@@ -179,6 +185,22 @@ export function HomeScreen() {
       translateY.setValue(wasExpanded ? 0 : maxTranslate);
     });
   }, [maxTranslate, translateY]);
+
+  // The camera centers on the map area left visible by the top bar and the collapsed
+  // sheet, so the origin (and the pin over it) is centered and fully visible.
+  const mapPadding = useMemo(
+    () => ({ top: mapTop, right: 0, bottom: sheetPeek, left: 0 }),
+    [mapTop, sheetPeek],
+  );
+
+  // Changing the padding moves the visible center: bring the origin back under the pin.
+  useEffect(() => {
+    if (!mapReady.current) return;
+    const target = originAdjustedByUser.current
+      ? useBookingStore.getState().origin?.coordinates
+      : automaticOriginCoordinates.current;
+    if (target) mapRef.current?.animateCamera({ center: target }, { duration: 250 });
+  }, [mapPadding]);
 
   const onContentLayout = (event: LayoutChangeEvent) => {
     const { y, height } = event.nativeEvent.layout;
@@ -399,7 +421,23 @@ export function HomeScreen() {
     handleRegionChange(region);
   };
 
+  // With map padding the region bounds are not centered on the pin: the origin is
+  // the camera target, which is the center of the padded (visible) area.
+  const regionChangeSeq = useRef(0);
   const handleMapRegionChange = (nextRegion: Region, details: Details) => {
+    const seq = ++regionChangeSeq.current;
+    const map = mapRef.current;
+    if (!map) return;
+    void map
+      .getCamera()
+      .then((camera) => ({ ...nextRegion, ...camera.center }))
+      .catch(() => nextRegion)
+      .then((centered) => {
+        if (seq === regionChangeSeq.current) applyMapRegionChange(centered, details);
+      });
+  };
+
+  const applyMapRegionChange = (nextRegion: Region, details: Details) => {
     if (details.isGesture) {
       originAdjustedByUser.current = true;
       pendingAutomaticRegion.current = null;
@@ -522,12 +560,20 @@ export function HomeScreen() {
           pitchEnabled={false}
           style={StyleSheet.absoluteFill}
           initialRegion={region}
+          mapPadding={mapPadding}
           showsUserLocation
           showsMyLocationButton={false}
           onMapReady={() => {
             mapReady.current = true;
             mapRef.current?.setMapBoundaries(BOLIVIA_NORTH_EAST, BOLIVIA_SOUTH_WEST);
             const pending = pendingAutomaticRegion.current;
+            if (!pending && !originAdjustedByUser.current && automaticOriginCoordinates.current) {
+              // The initial region was framed before the padding existed: re-center it.
+              mapRef.current?.animateCamera(
+                { center: automaticOriginCoordinates.current },
+                { duration: 0 },
+              );
+            }
             if (!pending || originAdjustedByUser.current) return;
             pendingAutomaticRegion.current = null;
             automaticOriginCoordinates.current = {
@@ -554,7 +600,9 @@ export function HomeScreen() {
       )}
 
       {status === 'granted' && region && (
-        <CenterPin label={originPinLabel} loading={originResolving} />
+        <View style={[styles.pinArea, { top: mapTop, bottom: sheetPeek }]} pointerEvents="none">
+          <CenterPin label={originPinLabel} loading={originResolving} />
+        </View>
       )}
 
       <SafeAreaView style={styles.topBar} edges={['top']} pointerEvents="box-none">
@@ -613,7 +661,7 @@ export function HomeScreen() {
             </TouchableOpacity>
           </View>
 
-          <ServiceTileSelector value={service} onChange={setService} />
+          <ServiceTileSelector value={service} onChange={setService} compact />
 
           <View onLayout={onSavedLayout}>
             <SavedPlaceShortcuts
@@ -762,6 +810,7 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
   },
   retryText: { color: colors.textOnPrimary, fontWeight: fontWeight.semibold },
 
+  pinArea: { position: 'absolute', left: 0, right: 0 },
   topBar: {
     position: 'absolute',
     top: 0,
@@ -830,7 +879,7 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
   },
   handleArea: { alignItems: 'center', paddingTop: spacing.sm, paddingBottom: spacing.xs },
   handle: { width: 44, height: 5, borderRadius: radius.pill, backgroundColor: colors.border },
-  sheetContent: { paddingHorizontal: spacing.md, paddingTop: spacing.xs, gap: spacing.md },
+  sheetContent: { paddingHorizontal: spacing.md, paddingTop: spacing.xs, gap: SHEET_GAP },
   greeting: { fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.text },
   greetingName: { color: colors.primary },
 
@@ -840,16 +889,16 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    minHeight: 56,
+    minHeight: 48,
     paddingHorizontal: spacing.md,
-    borderRadius: 18,
+    borderRadius: radius.lg,
     backgroundColor: colors.surfaceMuted,
   },
   searchPlaceholder: { color: colors.textSecondary, fontSize: fontSize.md, fontWeight: fontWeight.medium },
   mapButton: {
-    width: 56,
-    minHeight: 56,
-    borderRadius: 18,
+    width: 48,
+    minHeight: 48,
+    borderRadius: radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.warningSoft,

@@ -50,82 +50,90 @@ export function FareAndPaymentPicker({
   const { colors, styles, mode } = useThemedStyles(createStyles);
   const { fontScale } = useWindowDimensions();
   const stacked = fontScale > 1.3;
+  const hasFare = fare.trim().length > 0;
 
   return (
-    <View style={[styles.row, stacked && styles.stacked]}>
-      <View style={styles.fareCard}>
-        <View style={styles.cashBadge}>
-          <Image source={getTripOptionIcon('cash', mode)} style={styles.cashIcon} accessible={false} />
-        </View>
-        <View style={styles.fareText}>
-          <Text style={styles.fareLabel}>Tu oferta</Text>
-          <View style={styles.amountRow}>
-            <Text style={styles.currency}>Bs</Text>
-            <TextInput
-              value={fare}
-              onChangeText={onFareChange}
-              onBlur={onFareBlur}
-              placeholder="30"
-              placeholderTextColor={colors.placeholder}
-              keyboardType="decimal-pad"
-              inputMode="decimal"
-              maxLength={9}
-              style={styles.amount}
-              accessibilityLabel="Monto de tu oferta en bolivianos"
-            />
+    <View style={styles.block}>
+      <View style={[styles.row, stacked && styles.stacked]}>
+        <View style={styles.fareCard}>
+          <View style={styles.cashBadge}>
+            <Image source={getTripOptionIcon('cash', mode)} style={styles.cashIcon} accessible={false} />
+          </View>
+          <View style={styles.fareText}>
+            <Text style={styles.fareLabel}>{hasFare ? 'Tu oferta' : 'Introduce tu oferta'}</Text>
+            <View style={styles.amountRow}>
+              <Text style={styles.currency}>Bs</Text>
+              <TextInput
+                value={fare}
+                onChangeText={onFareChange}
+                onBlur={onFareBlur}
+                placeholder="0"
+                placeholderTextColor={colors.placeholder}
+                keyboardType="decimal-pad"
+                inputMode="decimal"
+                maxLength={9}
+                style={styles.amount}
+                accessibilityLabel="Monto de tu oferta en bolivianos"
+                accessibilityHint="Escribe cuánto quieres pagar por el viaje"
+              />
+            </View>
+          </View>
+          <View style={styles.stepper}>
+            <Pressable
+              style={({ pressed }) => [styles.step, styles.stepUp, pressed && styles.pressed]}
+              onPress={() => onFareChange(stepFare(fare, 1))}
+              hitSlop={4}
+              accessibilityRole="button"
+              accessibilityLabel="Subir oferta un boliviano">
+              <Ionicons name="add" size={18} color={colors.textOnPrimary} />
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.step, styles.stepDown, pressed && styles.pressed]}
+              onPress={() => onFareChange(stepFare(fare, -1))}
+              hitSlop={4}
+              accessibilityRole="button"
+              accessibilityLabel="Bajar oferta un boliviano">
+              <Ionicons name="remove" size={18} color={colors.primary} />
+            </Pressable>
           </View>
         </View>
-        <View style={styles.stepper}>
-          <Pressable
-            style={({ pressed }) => [styles.step, styles.stepUp, pressed && styles.pressed]}
-            onPress={() => onFareChange(stepFare(fare, 1))}
-            hitSlop={4}
-            accessibilityRole="button"
-            accessibilityLabel="Subir oferta un boliviano">
-            <Ionicons name="add" size={18} color={colors.textOnPrimary} />
-          </Pressable>
-          <Pressable
-            style={({ pressed }) => [styles.step, styles.stepDown, pressed && styles.pressed]}
-            onPress={() => onFareChange(stepFare(fare, -1))}
-            hitSlop={4}
-            accessibilityRole="button"
-            accessibilityLabel="Bajar oferta un boliviano">
-            <Ionicons name="remove" size={18} color={colors.primary} />
-          </Pressable>
+
+        <View style={[styles.payments, stacked && styles.paymentsStacked]} accessibilityRole="radiogroup"
+          accessibilityLabel="Método de pago">
+          {PAYMENTS.map((option) => {
+            const selected = option.id === payment;
+            return (
+              <Pressable
+                key={option.id}
+                style={({ pressed }) => [
+                  styles.payment,
+                  stacked && styles.paymentStacked,
+                  selected && styles.paymentSelected,
+                  pressed && styles.pressed,
+                ]}
+                onPress={() => { if (!selected) onPaymentChange(option.id); }}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: selected }}
+                aria-checked={selected}
+                accessibilityLabel={option.accessibilityLabel}>
+                <Image source={getTripOptionIcon(option.icon, mode)} style={styles.paymentIcon} accessible={false} />
+                <Text style={[styles.paymentLabel, selected && styles.paymentLabelSelected]}>
+                  {option.label}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
       </View>
-
-      <View style={[styles.payments, stacked && styles.paymentsStacked]} accessibilityRole="radiogroup"
-        accessibilityLabel="Método de pago">
-        {PAYMENTS.map((option) => {
-          const selected = option.id === payment;
-          return (
-            <Pressable
-              key={option.id}
-              style={({ pressed }) => [
-                styles.payment,
-                stacked && styles.paymentStacked,
-                selected && styles.paymentSelected,
-                pressed && styles.pressed,
-              ]}
-              onPress={() => { if (!selected) onPaymentChange(option.id); }}
-              accessibilityRole="radio"
-              accessibilityState={{ checked: selected }}
-              aria-checked={selected}
-              accessibilityLabel={option.accessibilityLabel}>
-              <Image source={getTripOptionIcon(option.icon, mode)} style={styles.paymentIcon} accessible={false} />
-              <Text style={[styles.paymentLabel, selected && styles.paymentLabelSelected]}>
-                {option.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      <Text style={styles.helper}>
+        Es el precio que propones: los conductores pueden aceptarlo o contraofertar.
+      </Text>
     </View>
   );
 }
 
 const createStyles = ({ colors }: Theme) => StyleSheet.create({
+  block: { gap: spacing.xs + 2 },
   row: { flexDirection: 'row', gap: spacing.sm + 2, alignItems: 'stretch' },
   stacked: { flexDirection: 'column' },
   fareCard: {
@@ -187,5 +195,6 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
   paymentIcon: { width: 20, height: 20 },
   paymentLabel: { fontSize: fontSize.sm, fontWeight: fontWeight.bold, color: colors.textSecondary },
   paymentLabelSelected: { color: colors.textOnAccent },
+  helper: { fontSize: fontSize.xs, color: colors.textSecondary },
   pressed: { opacity: 0.85 },
 });

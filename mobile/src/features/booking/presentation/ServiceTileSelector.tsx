@@ -56,7 +56,11 @@ export function ServiceTileSelector({ value, onChange, disabled = false }: Props
                 </View>
               )}
             </View>
-            <Text style={[styles.label, selected && styles.labelSelected]} numberOfLines={2}>
+            <Text
+              style={[styles.label, selected && styles.labelSelected]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.8}>
               {option.shortLabel}
             </Text>
           </Pressable>
@@ -67,7 +71,8 @@ export function ServiceTileSelector({ value, onChange, disabled = false }: Props
 }
 
 const createStyles = ({ colors }: Theme) => StyleSheet.create({
-  grid: { flexDirection: 'row', gap: spacing.xs },
+  // Slightly wider than the sheet padding so «Encomiendas» fits on one line.
+  grid: { flexDirection: 'row', gap: 2, marginHorizontal: -spacing.xs },
   gridWrap: { flexWrap: 'wrap', rowGap: spacing.sm },
   option: { flex: 1, minWidth: 0, alignItems: 'center', gap: spacing.xs, paddingVertical: 2 },
   optionHalf: { flexBasis: '45%' },
@@ -98,7 +103,7 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
     borderColor: colors.background,
   },
   label: {
-    fontSize: fontSize.xs + 1,
+    fontSize: fontSize.xs,
     fontWeight: fontWeight.medium,
     color: colors.textSecondary,
     textAlign: 'center',

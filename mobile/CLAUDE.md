@@ -478,13 +478,18 @@ npm run lint               # expo lint (eslint-config-expo)
   themes); the camera frames it through the `floating` boxes of `getLabelAwareFitCoordinates`.
   The preview always requests the best DRIVE route (`PREVIEW_ROUTE_SERVICE`), so switching
   service never redraws the trip; trip and driver screens keep their vehicle's route mode.
-  Below: `ServiceTileSelector` (illustrated tiles with a check badge; Home keeps
-  `ServiceTypeSelector`), `FareAndPaymentPicker` (typed fare + ±1 Bs via `stepFare`, cash/QR),
+  Below: `ServiceTileSelector` (illustrated tiles with a check badge, also used by Home),
+  `FareAndPaymentPicker` (typed fare + ±1 Bs via `stepFare`, cash/QR),
   `AutoAcceptToggle` (`useBookingStore.autoAccept` → `auto_accept` on create/edit; drivers see
   «Acepta su precio y el viaje es tuyo» on `RequestCard`) and the yellow `Button variant="accent"`.
   The duotone service/payment icons are PNGs per theme (`assets/images/trip-options`, no SVG
   renderer in the app): edit and rerun `scripts/render_trip_option_icons.py`
   (`uvx --with cairosvg python scripts/render_trip_option_icons.py`).
+- **Home sheet** (`HomeScreen`): greeting, «¿A dónde vas?» + map button, `ServiceTileSelector`,
+  `SavedPlaceShortcuts` (circles: Casa/Trabajo always, then favorites, then «Agregar»; order in
+  `home/domain/savedPlaceShortcuts.ts`) and recent destinations. It is adaptive: the collapsed
+  height is measured up to the end of the saved places and dragging up reveals the recents
+  (`homeSheetLayout`); a re-measure keeps it expanded if the passenger left it so.
 - **AppState-aware hooks** (they do not freeze in the background): `useCountdown`, `socket.ts` recompute
   when returning to foreground. Follow that pattern for hooks with time/connection.
 - Code, identifiers, comments, JSDoc and documentation in **English**, per the persistent preference in `../AGENTS.md`. Keep the UI in Spanish and verify every implementation.

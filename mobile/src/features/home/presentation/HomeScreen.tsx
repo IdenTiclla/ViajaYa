@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  type LayoutChangeEvent,
   Linking,
   PanResponder,
   StyleSheet,
@@ -22,6 +23,7 @@ import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } fr
 import { useMapStyle } from '@/features/booking/presentation/mapStyle';
 import { useBookingStore } from '@/features/booking/application/useBookingStore';
 import { useRecentDestinations } from '@/features/booking/application/useRecentDestinations';
+import { useSavedPlaces } from '@/features/booking/application/useSavedPlaces';
 import { useRegionPlace } from '@/features/booking/application/useRegionPlace';
 import {
   BOLIVIA_NORTH_EAST,
@@ -35,11 +37,13 @@ import {
   getPlaceStreetName,
   isPlaceLabelResolved,
 } from '@/features/booking/domain/placeLabels';
-import type { Coordinates, Place } from '@/features/booking/domain/types';
+import type { Coordinates, Place, SavedPlace } from '@/features/booking/domain/types';
 import { CenterPin } from '@/features/booking/presentation/CenterPin';
-import { ServiceTypeSelector } from '@/features/booking/presentation/ServiceTypeSelector';
+import { ServiceTileSelector } from '@/features/booking/presentation/ServiceTileSelector';
 import { confirmRecovery } from '@/features/home/application/confirmRecovery';
 import { useCurrentLocation } from '@/features/home/application/useCurrentLocation';
+import { homeSheetLayout } from '@/features/home/presentation/homeSheetLayout';
+import { SavedPlaceShortcuts } from '@/features/home/presentation/SavedPlaceShortcuts';
 import {
   PASSENGER_ACTIVE_RIDE_KEY,
   usePendingRatingRide,
@@ -59,6 +63,13 @@ function firstName(fullName: string | undefined): string {
   return fullName?.trim().split(/\s+/)[0] ?? 'viajero';
 }
 
+/** Collapsed height used until the sheet content has been measured. */
+const FALLBACK_PEEK = 236;
+/** Brand pill / avatar height of the top bar that floats over the map. */
+const TOP_BAR_HEIGHT = 44;
+/** Vertical rhythm of the sheet: between the 8 and 16 steps, keeps it compact. */
+const SHEET_GAP = spacing.sm + spacing.xs;
+
 function coordinatesNearlyEqual(a: Coordinates, b: Coordinates): boolean {
   return (
     Math.abs(a.latitude - b.latitude) < 0.00001 &&
@@ -71,15 +82,12 @@ export function HomeScreen() {
   const user = useAuthStore((s) => s.user);
   const insets = useSafeAreaInsets();
   const { height: screenHeight } = useWindowDimensions();
-  // Keeps the greeting, search and services visible without needlessly covering the map.
   const availableHeight = Math.max(320, screenHeight - insets.top - spacing.md);
-  const sheetHeight = Math.min(
-    Math.max(Math.round(screenHeight * 0.66), 420),
-    570,
-    availableHeight,
-  );
-  const sheetPeek = Math.min(236 + Math.min(insets.bottom, spacing.sm), sheetHeight);
-  const maxTranslate = Math.max(0, sheetHeight - sheetPeek);
+  // Top edge of the map area that is not covered by the floating top bar.
+  const mapTop = insets.top + spacing.sm + TOP_BAR_HEIGHT + spacing.sm;
+  // Measured sheet content: its offset/height and where the saved places end.
+  const [contentLayout, setContentLayout] = useState<{ top: number; height: number } | null>(null);
+  const [savedBottom, setSavedBottom] = useState<number | null>(null);
   const router = useRouter();
   const queryClient = useQueryClient();
   const {
@@ -123,6 +131,12 @@ export function HomeScreen() {
     () => recentPlaces.filter(isPlaceInBolivia),
     [recentPlaces],
   );
+  const {
+    places: savedPlaces,
+    isLoading: savedPlacesLoading,
+    isError: savedPlacesError,
+    refetch: refetchSavedPlaces,
+  } = useSavedPlaces();
   // When the map stops moving, the center becomes the origin.
   const {
     onRegionChangeComplete: handleRegionChange,
@@ -139,15 +153,65 @@ export function HomeScreen() {
         ? `${originPrefix}: Dirección pendiente`
         : `${originPrefix}: ${origin ? 'Obteniendo dirección…' : 'Mueve el mapa'}`;
 
+  // Adaptive sheet: collapsed it shows up to the saved places; dragged up it
+  // reveals the recent destinations. Both snap points come from the measured content.
+  const collapsedContent =
+    (contentLayout && savedBottom != null ? contentLayout.top + savedBottom + spacing.md : FALLBACK_PEEK) +
+    Math.min(insets.bottom, spacing.sm);
+  const fullContent =
+    contentLayout && validRecentPlaces.length > 0
+      ? contentLayout.top + contentLayout.height
+      : collapsedContent;
+  const { height: sheetHeight, peek: sheetPeek } = homeSheetLayout({
+    collapsedContent,
+    fullContent,
+    maxHeight: availableHeight,
+  });
+  const maxTranslate = Math.max(0, sheetHeight - sheetPeek);
+
   // Starts collapsed (map visible). translateY: 0 = expanded, MAX = collapsed.
   // `useState` with a lazy initializer creates stable values; the drag offset
-  // is tracked by the Animated.Value itself (extractOffset/flattenOffset),
-  // so no ref needs to be read during render.
+  // is tracked by the Animated.Value itself (extractOffset/flattenOffset).
   const [translateY] = useState(() => new Animated.Value(maxTranslate));
+  const previousMaxTranslate = useRef(maxTranslate);
 
+  // A re-measure (e.g. saved places or recents loading) keeps the sheet where
+  // the passenger left it: expanded stays expanded, otherwise it re-collapses.
   useEffect(() => {
-    translateY.setValue(maxTranslate);
+    const previous = previousMaxTranslate.current;
+    previousMaxTranslate.current = maxTranslate;
+    translateY.stopAnimation((value) => {
+      const wasExpanded = previous > 0 && value < previous / 2;
+      translateY.setValue(wasExpanded ? 0 : maxTranslate);
+    });
   }, [maxTranslate, translateY]);
+
+  // The camera centers on the map area left visible by the top bar and the collapsed
+  // sheet, so the origin (and the pin over it) is centered and fully visible.
+  const mapPadding = useMemo(
+    () => ({ top: mapTop, right: 0, bottom: sheetPeek, left: 0 }),
+    [mapTop, sheetPeek],
+  );
+
+  // Changing the padding moves the visible center: bring the origin back under the pin.
+  useEffect(() => {
+    if (!mapReady.current) return;
+    const target = originAdjustedByUser.current
+      ? useBookingStore.getState().origin?.coordinates
+      : automaticOriginCoordinates.current;
+    if (target) mapRef.current?.animateCamera({ center: target }, { duration: 250 });
+  }, [mapPadding]);
+
+  const onContentLayout = (event: LayoutChangeEvent) => {
+    const { y, height } = event.nativeEvent.layout;
+    setContentLayout((current) =>
+      current?.top === y && current.height === height ? current : { top: y, height },
+    );
+  };
+  const onSavedLayout = (event: LayoutChangeEvent) => {
+    const { y, height } = event.nativeEvent.layout;
+    setSavedBottom(y + height);
+  };
 
   const pan = useMemo(
     () =>
@@ -357,7 +421,23 @@ export function HomeScreen() {
     handleRegionChange(region);
   };
 
+  // With map padding the region bounds are not centered on the pin: the origin is
+  // the camera target, which is the center of the padded (visible) area.
+  const regionChangeSeq = useRef(0);
   const handleMapRegionChange = (nextRegion: Region, details: Details) => {
+    const seq = ++regionChangeSeq.current;
+    const map = mapRef.current;
+    if (!map) return;
+    void map
+      .getCamera()
+      .then((camera) => ({ ...nextRegion, ...camera.center }))
+      .catch(() => nextRegion)
+      .then((centered) => {
+        if (seq === regionChangeSeq.current) applyMapRegionChange(centered, details);
+      });
+  };
+
+  const applyMapRegionChange = (nextRegion: Region, details: Details) => {
     if (details.isGesture) {
       originAdjustedByUser.current = true;
       pendingAutomaticRegion.current = null;
@@ -401,7 +481,20 @@ export function HomeScreen() {
     router.push('/booking/destination');
   };
 
-  const selectRecent = (place: Place) => {
+  const openDestinationMap = () => {
+    if (!requestValidOrigin()) return;
+    router.push('/booking/pick-on-map');
+  };
+
+  // Casa/Trabajo not set yet, or a new favorite: map → name/save, then back here.
+  const setUpSavedPlace = (category?: 'home' | 'work') => {
+    router.push({
+      pathname: '/booking/pick-on-map',
+      params: category ? { saveAs: '1', category } : { saveAs: '1' },
+    });
+  };
+
+  const selectDestination = (place: Place) => {
     if (!isPlaceInBolivia(place)) {
       Alert.alert(
         'Destino fuera de cobertura',
@@ -467,12 +560,20 @@ export function HomeScreen() {
           pitchEnabled={false}
           style={StyleSheet.absoluteFill}
           initialRegion={region}
+          mapPadding={mapPadding}
           showsUserLocation
           showsMyLocationButton={false}
           onMapReady={() => {
             mapReady.current = true;
             mapRef.current?.setMapBoundaries(BOLIVIA_NORTH_EAST, BOLIVIA_SOUTH_WEST);
             const pending = pendingAutomaticRegion.current;
+            if (!pending && !originAdjustedByUser.current && automaticOriginCoordinates.current) {
+              // The initial region was framed before the padding existed: re-center it.
+              mapRef.current?.animateCamera(
+                { center: automaticOriginCoordinates.current },
+                { duration: 0 },
+              );
+            }
             if (!pending || originAdjustedByUser.current) return;
             pendingAutomaticRegion.current = null;
             automaticOriginCoordinates.current = {
@@ -499,7 +600,9 @@ export function HomeScreen() {
       )}
 
       {status === 'granted' && region && (
-        <CenterPin label={originPinLabel} loading={originResolving} />
+        <View style={[styles.pinArea, { top: mapTop, bottom: sheetPeek }]} pointerEvents="none">
+          <CenterPin label={originPinLabel} loading={originResolving} />
+        </View>
       )}
 
       <SafeAreaView style={styles.topBar} edges={['top']} pointerEvents="box-none">
@@ -533,28 +636,54 @@ export function HomeScreen() {
           <View style={styles.handle} />
         </View>
 
-        <View style={[styles.sheetContent, { paddingBottom: insets.bottom + spacing.lg }]}>
+        <View
+          style={[styles.sheetContent, { paddingBottom: insets.bottom + spacing.lg }]}
+          onLayout={onContentLayout}>
           <Text style={styles.greeting}>
             {greeting()}, <Text style={styles.greetingName}>{firstName(user?.fullName)}</Text>
           </Text>
 
-          <TouchableOpacity
-            style={styles.search}
-            onPress={() => openDestinationSearch()}
-            accessibilityRole="button"
-            accessibilityLabel="Buscar destino">
-            <Ionicons name="search" size={20} color={colors.placeholder} />
-            <Text style={styles.searchPlaceholder}>¿A dónde?</Text>
-          </TouchableOpacity>
+          <View style={styles.searchRow}>
+            <TouchableOpacity
+              style={styles.search}
+              onPress={() => openDestinationSearch()}
+              accessibilityRole="button"
+              accessibilityLabel="Buscar destino">
+              <Ionicons name="search" size={20} color={colors.primary} />
+              <Text style={styles.searchPlaceholder}>¿A dónde vas?</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.mapButton}
+              onPress={openDestinationMap}
+              accessibilityRole="button"
+              accessibilityLabel="Elegir destino en el mapa">
+              <Ionicons name="location-outline" size={22} color={colors.primary} />
+            </TouchableOpacity>
+          </View>
 
-          <Text style={styles.serviceSectionLabel}>Tipo de servicio</Text>
-          <ServiceTypeSelector value={service} onChange={setService} />
+          <ServiceTileSelector value={service} onChange={setService} compact />
+
+          <View onLayout={onSavedLayout}>
+            <SavedPlaceShortcuts
+              places={savedPlaces}
+              isLoading={savedPlacesLoading}
+              isError={savedPlacesError}
+              onRetry={refetchSavedPlaces}
+              onSelect={(saved: SavedPlace) => selectDestination(saved.place)}
+              onSetUp={setUpSavedPlace}
+              onAdd={() => setUpSavedPlace()}
+              onManage={() => router.push('/booking/saved-places')}
+            />
+          </View>
 
           {validRecentPlaces.length > 0 && (
-            <>
+            <View style={styles.recentSection}>
               <View style={styles.recentHeader}>
-                <Text style={styles.sectionTitle}>Destinos recientes</Text>
-                <TouchableOpacity onPress={openDestinationSearch} accessibilityRole="button">
+                <Text style={styles.sectionTitle} accessibilityRole="header">Destinos recientes</Text>
+                <TouchableOpacity
+                  style={styles.viewAllButton}
+                  onPress={openDestinationSearch}
+                  accessibilityRole="button">
                   <Text style={styles.viewAll}>Ver todos</Text>
                 </TouchableOpacity>
               </View>
@@ -563,7 +692,7 @@ export function HomeScreen() {
                 <TouchableOpacity
                   key={`${place.coordinates.latitude},${place.coordinates.longitude}`}
                   style={styles.recentItem}
-                  onPress={() => selectRecent(place)}
+                  onPress={() => selectDestination(place)}
                   accessibilityRole="button"
                   accessibilityLabel={`Ir a ${place.name}`}>
                   <View style={styles.recentIcon}>
@@ -575,7 +704,7 @@ export function HomeScreen() {
                   </View>
                 </TouchableOpacity>
               ))}
-            </>
+            </View>
           )}
         </View>
       </Animated.View>
@@ -681,6 +810,7 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
   },
   retryText: { color: colors.textOnPrimary, fontWeight: fontWeight.semibold },
 
+  pinArea: { position: 'absolute', left: 0, right: 0 },
   topBar: {
     position: 'absolute',
     top: 0,
@@ -749,36 +879,38 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
   },
   handleArea: { alignItems: 'center', paddingTop: spacing.sm, paddingBottom: spacing.xs },
   handle: { width: 44, height: 5, borderRadius: radius.pill, backgroundColor: colors.border },
-  sheetContent: { paddingHorizontal: spacing.md, paddingTop: spacing.xs, gap: spacing.sm },
+  sheetContent: { paddingHorizontal: spacing.md, paddingTop: spacing.xs, gap: SHEET_GAP },
   greeting: { fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.text },
   greetingName: { color: colors.primary },
 
+  searchRow: { flexDirection: 'row', gap: spacing.sm },
   search: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    height: 48,
+    minHeight: 48,
     paddingHorizontal: spacing.md,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     backgroundColor: colors.surfaceMuted,
   },
-  searchPlaceholder: { color: colors.placeholder, fontSize: fontSize.md },
-  serviceSectionLabel: {
-    fontSize: fontSize.sm,
-    fontWeight: fontWeight.semibold,
-    color: colors.text,
-  },
-
-  recentHeader: {
-    flexDirection: 'row',
+  searchPlaceholder: { color: colors.textSecondary, fontSize: fontSize.md, fontWeight: fontWeight.medium },
+  mapButton: {
+    width: 48,
+    minHeight: 48,
+    borderRadius: radius.lg,
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: spacing.sm,
+    justifyContent: 'center',
+    backgroundColor: colors.warningSoft,
   },
-  sectionTitle: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.text },
-  viewAll: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.primary },
 
-  recentItem: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  recentSection: { gap: spacing.xs },
+  recentHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  sectionTitle: { fontSize: fontSize.md, fontWeight: fontWeight.bold, color: colors.text },
+  viewAllButton: { minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.xs },
+  viewAll: { fontSize: fontSize.sm, fontWeight: fontWeight.bold, color: colors.primary },
+
+  recentItem: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 56 },
   recentIcon: {
     width: 40,
     height: 40,

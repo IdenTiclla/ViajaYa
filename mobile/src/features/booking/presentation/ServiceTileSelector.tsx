@@ -16,11 +16,14 @@ type Props = {
   value: ServiceType;
   onChange: (service: ServiceType) => void;
   disabled?: boolean;
+  /** Smaller tiles for sheets that must leave more map visible (Home). */
+  compact?: boolean;
 };
 
 const TILE_SIZE = 62;
+const COMPACT_TILE_SIZE = 54;
 
-export function ServiceTileSelector({ value, onChange, disabled = false }: Props) {
+export function ServiceTileSelector({ value, onChange, disabled = false, compact = false }: Props) {
   const { colors, styles, focusStyle, mode } = useThemedStyles(createStyles);
   const { fontScale } = useWindowDimensions();
   const [focused, setFocused] = useState<ServiceType | null>(null);
@@ -48,8 +51,12 @@ export function ServiceTileSelector({ value, onChange, disabled = false }: Props
             accessibilityState={{ checked: selected, disabled }}
             aria-checked={selected}
             accessibilityLabel={option.label}>
-            <View style={[styles.tile, selected && styles.tileSelected]}>
-              <Image source={getTripOptionIcon(option.id, mode)} style={styles.icon} accessible={false} />
+            <View style={[styles.tile, compact && styles.tileCompact, selected && styles.tileSelected]}>
+              <Image
+                source={getTripOptionIcon(option.id, mode)}
+                style={[styles.icon, compact && styles.iconCompact]}
+                accessible={false}
+              />
               {selected && (
                 <View style={styles.check}>
                   <Ionicons name="checkmark" size={12} color={colors.textOnPrimary} accessible={false} />
@@ -87,8 +94,10 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
     borderWidth: 2,
     borderColor: 'transparent',
   },
+  tileCompact: { width: COMPACT_TILE_SIZE, height: COMPACT_TILE_SIZE, borderRadius: 18 },
   tileSelected: { backgroundColor: colors.warningSoft, borderColor: colors.primary },
   icon: { width: 38, height: 38 },
+  iconCompact: { width: 34, height: 34 },
   check: {
     position: 'absolute',
     top: -6,

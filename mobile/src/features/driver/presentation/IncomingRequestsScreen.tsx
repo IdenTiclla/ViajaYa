@@ -602,10 +602,11 @@ const ORDER_OPTIONS: { value: RequestOrder; label: string }[] = [
   { value: 'recent', label: 'Recientes' },
 ];
 
+/** Always one row: each choice takes a third, the selected one is filled. */
 function OrderChips({ value, onChange, nearestAvailable }: {
   value: RequestOrder; onChange: (order: RequestOrder) => void; nearestAvailable: boolean;
 }) {
-  const { colors, styles } = useThemedStyles(createStyles);
+  const { styles } = useThemedStyles(createStyles);
   return (
     <View style={styles.orderRow} accessibilityLabel="Ordenar solicitudes">
       {ORDER_OPTIONS.map((option) => {
@@ -620,7 +621,6 @@ function OrderChips({ value, onChange, nearestAvailable }: {
             accessibilityRole="button"
             accessibilityState={{ selected }}
             accessibilityHint={hint}>
-            {selected && <Ionicons name="checkmark" size={15} color={colors.primary} />}
             <Text style={[styles.orderChipText, selected && styles.orderChipTextSelected]}>{option.label}</Text>
           </TouchableOpacity>
         );
@@ -740,21 +740,22 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
   summary: { paddingHorizontal: spacing.md, paddingTop: spacing.xs, gap: 2 },
   summaryTitle: { fontSize: fontSize.xl, fontWeight: fontWeight.bold, color: colors.text },
   summarySubtitle: { fontSize: fontSize.sm, color: colors.textSecondary },
-  orderRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingHorizontal: spacing.md },
+  orderRow: { flexDirection: 'row', gap: spacing.xs + 2, paddingHorizontal: spacing.sm + 4 },
   orderChip: {
+    flex: 1,
     minHeight: 44,
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs + 2,
-    paddingHorizontal: spacing.sm + 6,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xs + 2,
+    paddingVertical: spacing.xs,
     borderRadius: radius.pill,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.controlBorder,
   },
-  orderChipSelected: { borderWidth: 1.5, borderColor: colors.primary, backgroundColor: colors.primarySoft },
-  orderChipText: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.text },
-  orderChipTextSelected: { fontWeight: fontWeight.bold, color: colors.primary },
+  orderChipSelected: { borderColor: colors.primary, backgroundColor: colors.primary },
+  orderChipText: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.text, textAlign: 'center' },
+  orderChipTextSelected: { fontWeight: fontWeight.bold, color: colors.textOnPrimary },
   pageLoader: { marginVertical: spacing.md },
   requestsWarning: {
     minHeight: 44,

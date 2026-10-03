@@ -479,8 +479,9 @@ export function OffersScreen() {
   );
 }
 
+/** Always one row: each choice takes a third, the selected one is filled. */
 function OfferOrderControl({ value, onChange }: { value: OfferOrder; onChange: (order: OfferOrder) => void }) {
-  const { colors, styles, focusStyle } = useThemedStyles(createStyles);
+  const { styles, focusStyle } = useThemedStyles(createStyles);
   const [focused, setFocused] = useState<OfferOrder | null>(null);
   const choices: { value: OfferOrder; label: string; description: string }[] = [
     { value: 'recent', label: 'Recientes', description: 'Ofertas más recientes primero' },
@@ -494,7 +495,6 @@ function OfferOrderControl({ value, onChange }: { value: OfferOrder; onChange: (
         accessibilityLabel={choice.description} accessibilityState={{ selected }}
         onPress={() => onChange(choice.value)} onFocus={() => setFocused(choice.value)} onBlur={() => setFocused(null)}
         style={[styles.orderButton, selected && styles.orderSelected, focused === choice.value && focusStyle]}>
-        {selected && <Ionicons accessible={false} name="checkmark" size={15} color={colors.primary} />}
         <Text style={[styles.orderLabel, selected && styles.orderSelectedLabel]}>{choice.label}</Text>
       </TouchableOpacity>;
     })}
@@ -580,13 +580,13 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceMuted },
   screen: { flex: 1 },
 
-  orderControl: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  orderButton: { minHeight: controls.minHeight, flexDirection: 'row', gap: spacing.xs + 2,
-    justifyContent: 'center', alignItems: 'center', paddingHorizontal: spacing.sm + 6,
-    borderRadius: radius.pill, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.controlBorder },
-  orderSelected: { borderWidth: 1.5, borderColor: colors.primary, backgroundColor: colors.primarySoft },
-  orderLabel: { flexShrink: 1, fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.text },
-  orderSelectedLabel: { fontWeight: fontWeight.bold, color: colors.primary },
+  orderControl: { flexDirection: 'row', gap: spacing.xs + 2 },
+  orderButton: { flex: 1, minHeight: controls.minHeight, justifyContent: 'center', alignItems: 'center',
+    paddingHorizontal: spacing.xs + 2, paddingVertical: spacing.xs, borderRadius: radius.pill,
+    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.controlBorder },
+  orderSelected: { borderColor: colors.primary, backgroundColor: colors.primary },
+  orderLabel: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.text, textAlign: 'center' },
+  orderSelectedLabel: { fontWeight: fontWeight.bold, color: colors.textOnPrimary },
 
   liveHeader: { paddingTop: spacing.md, gap: spacing.sm + 4 },
   liveTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },

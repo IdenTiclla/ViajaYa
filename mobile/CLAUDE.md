@@ -428,6 +428,9 @@ npm run lint               # expo lint (eslint-config-expo)
 - **Forms:** local state + `TextField`/`Button` from `shared/components` (react-hook-form was
   removed along with email sign-up); `zod` is reserved for validating WS frames.
 - **Maps:** `react-native-maps`; location with `expo-location` (permissions in `app.config.ts`).
+  On Android (1.27) `mapPadding` must not change between layout and `onMapReady`: the native
+  `applyBaseMapPadding` dereferences a null `GoogleMap` and the app closes. Pass it only after
+  `onMapReady` and reset that flag when the MapView unmounts (see `HomeScreen`).
   Shared map style: `features/booking/presentation/mapStyle.ts` (`declutteredMapStyle`).
 - **Route appearance:** every view reuses `RoutePolyline` and
   `RoutePinMarker`; tracking and the passenger's search (`SearchingDriversScreen`) also use

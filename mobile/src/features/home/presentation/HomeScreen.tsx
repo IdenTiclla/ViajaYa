@@ -110,6 +110,21 @@ export function HomeScreen() {
   const mapRef = useRef<MapView>(null);
   const { mapStyle, mapMode } = useMapStyle(false);
   const mapReady = useRef(false);
+  // react-native-maps 1.27 (Android) calls GoogleMap.setPadding without a null
+  // check: a padding change after layout but before onMapReady crashes the app.
+  // The padding is sent only once the native map exists, and this resets
+  // whenever the MapView unmounts (an active ride or a pending rating hide it).
+  const [mapLoaded, setMapLoaded] = useState(false);
+  const paddingApplied = useRef(false);
+  const attachMap = useCallback((instance: MapView | null) => {
+    mapRef.current = instance;
+    return () => {
+      mapRef.current = null;
+      mapReady.current = false;
+      paddingApplied.current = false;
+      setMapLoaded(false);
+    };
+  }, []);
   const pendingAutomaticRegion = useRef<Region | null>(null);
   const lastLocationRefresh = useRef(0);
   const seeded = useRef(false);
@@ -192,15 +207,19 @@ export function HomeScreen() {
     () => ({ top: mapTop, right: 0, bottom: sheetPeek, left: 0 }),
     [mapTop, sheetPeek],
   );
+  const appliedMapPadding = mapLoaded ? mapPadding : undefined;
 
   // Changing the padding moves the visible center: bring the origin back under the pin.
   useEffect(() => {
-    if (!mapReady.current) return;
+    if (!appliedMapPadding || !mapReady.current) return;
+    // The first padding lands right after the map loads: jump instead of gliding.
+    const duration = paddingApplied.current ? 250 : 0;
+    paddingApplied.current = true;
     const target = originAdjustedByUser.current
       ? useBookingStore.getState().origin?.coordinates
       : automaticOriginCoordinates.current;
-    if (target) mapRef.current?.animateCamera({ center: target }, { duration: 250 });
-  }, [mapPadding]);
+    if (target) mapRef.current?.animateCamera({ center: target }, { duration });
+  }, [appliedMapPadding]);
 
   const onContentLayout = (event: LayoutChangeEvent) => {
     const { y, height } = event.nativeEvent.layout;
@@ -552,7 +571,7 @@ export function HomeScreen() {
         <MapView
           customMapStyle={mapStyle}
           userInterfaceStyle={mapMode}
-          ref={mapRef}
+          ref={attachMap}
           provider={PROVIDER_GOOGLE}
           showsBuildings={false}
           showsIndoors={false}
@@ -560,11 +579,12 @@ export function HomeScreen() {
           pitchEnabled={false}
           style={StyleSheet.absoluteFill}
           initialRegion={region}
-          mapPadding={mapPadding}
+          mapPadding={appliedMapPadding}
           showsUserLocation
           showsMyLocationButton={false}
           onMapReady={() => {
             mapReady.current = true;
+            setMapLoaded(true);
             mapRef.current?.setMapBoundaries(BOLIVIA_NORTH_EAST, BOLIVIA_SOUTH_WEST);
             const pending = pendingAutomaticRegion.current;
             if (!pending && !originAdjustedByUser.current && automaticOriginCoordinates.current) {

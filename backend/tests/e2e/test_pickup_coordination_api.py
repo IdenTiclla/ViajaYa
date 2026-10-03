@@ -46,6 +46,7 @@ async def test_pickup_notice_is_authorized_durable_and_idempotent(client, sessio
     )
     assert arrived.status_code == 200
     assert arrived.json()["rider_on_the_way_at"] is None
+    assert arrived.json()["arrived_at"] is not None
     assert (await client.post(notice_path, headers=driver.headers)).status_code == 403
     notice = await client.post(notice_path, headers=rider.headers)
     assert notice.status_code == 200, notice.text

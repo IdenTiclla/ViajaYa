@@ -674,6 +674,17 @@
             ],
             "title": "Rating"
           },
+          "trips_completed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trips Completed"
+          },
           "vehicle_model": {
             "anyOf": [
               {
@@ -2340,6 +2351,18 @@
               }
             ],
             "title": "Accepted Price"
+          },
+          "arrived_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Arrived At"
           },
           "auto_accept": {
             "default": false,

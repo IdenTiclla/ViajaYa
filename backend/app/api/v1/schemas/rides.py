@@ -251,6 +251,7 @@ class RideResponse(BaseModel):
     accepted_price: Decimal | None
     accepted_eta_min: int | None
     rider_on_the_way_at: UtcAwareDatetime | None = None
+    arrived_at: UtcAwareDatetime | None = None
     created_at: UtcAwareDatetime | None
     completed_at: UtcAwareDatetime | None
     cancelled_at: UtcAwareDatetime | None
@@ -297,6 +298,7 @@ class RideResponse(BaseModel):
             accepted_price=offer.price if offer else None,
             accepted_eta_min=offer.eta_min if offer else None,
             rider_on_the_way_at=ride.rider_on_the_way_at,
+            arrived_at=ride.arrived_at,
             created_at=ride.created_at,
             completed_at=ride.completed_at,
             cancelled_at=ride.cancelled_at,

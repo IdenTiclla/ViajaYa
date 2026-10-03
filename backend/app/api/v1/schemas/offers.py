@@ -44,6 +44,7 @@ class OfferDriverSchema(BaseModel):
     vehicle_type: VehicleType | None
     plate: str | None
     vehicle_model: str | None
+    trips_completed: int | None = None
 
 
 class OfferResponse(BaseModel):
@@ -73,6 +74,7 @@ class OfferResponse(BaseModel):
                 vehicle_type=driver.vehicle_type,
                 plate=driver.plate,
                 vehicle_model=driver.vehicle_model,
+                trips_completed=detail.driver_trips_completed,
             ),
             created_at=offer.created_at,
             expires_at=offer_expires_at(offer),

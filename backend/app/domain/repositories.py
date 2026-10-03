@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import uuid
 from abc import ABC, abstractmethod
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
@@ -246,6 +247,12 @@ class RideRequestRepository(ABC):
     @abstractmethod
     async def list_by_driver(self, driver_id: uuid.UUID) -> list[RideRequest]:
         """Rides assigned to the driver, most recent first."""
+
+    @abstractmethod
+    async def count_completed_by_drivers(
+        self, driver_ids: Collection[uuid.UUID]
+    ) -> dict[uuid.UUID, int]:
+        """Completed rides per driver (drivers without any are omitted)."""
 
     @abstractmethod
     async def list_recent_destinations(

@@ -7,6 +7,7 @@ window (30 s) is still open.
 from __future__ import annotations
 
 import uuid
+from dataclasses import replace
 
 from app.application.dto import OfferDetail
 from app.domain.entities import User
@@ -43,4 +44,12 @@ class ListOffersForRide:
             if driver is None:  # pragma: no cover - integridad referencial
                 continue
             details.append(OfferDetail(offer=offer, driver=driver))
-        return details
+        if not details:
+            return details
+        trips = await self._rides.count_completed_by_drivers(
+            {detail.driver.id for detail in details}
+        )
+        return [
+            replace(detail, driver_trips_completed=trips.get(detail.driver.id, 0))
+            for detail in details
+        ]

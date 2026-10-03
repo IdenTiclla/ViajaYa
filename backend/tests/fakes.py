@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Collection
 from copy import deepcopy
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -246,9 +247,13 @@ class InMemoryRideRequestRepository(RideRequestRepository):
                 completed_at = now
             if ride.status is RideStatus.CANCELLED and cancelled_at is None:
                 cancelled_at = now
+            arrived_at = existing.arrived_at or ride.arrived_at
+            if ride.status is RideStatus.ARRIVING and arrived_at is None:
+                arrived_at = now
             updated = replace(
                 ride,
                 rider_on_the_way_at=existing.rider_on_the_way_at or ride.rider_on_the_way_at,
+                arrived_at=arrived_at,
                 completed_at=completed_at,
                 cancelled_at=cancelled_at,
             )
@@ -400,6 +405,15 @@ class InMemoryRideRequestRepository(RideRequestRepository):
 
     async def list_by_driver(self, driver_id: uuid.UUID) -> list[RideRequest]:
         return [r for r in reversed(self.rides) if r.driver_id == driver_id]
+
+    async def count_completed_by_drivers(
+        self, driver_ids: Collection[uuid.UUID]
+    ) -> dict[uuid.UUID, int]:
+        counts: dict[uuid.UUID, int] = {}
+        for ride in self.rides:
+            if ride.driver_id in driver_ids and ride.status is RideStatus.COMPLETED:
+                counts[ride.driver_id] = counts.get(ride.driver_id, 0) + 1
+        return counts
 
     async def list_recent_destinations(
         self, rider_id: uuid.UUID, limit: int = 10

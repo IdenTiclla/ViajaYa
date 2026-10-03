@@ -57,6 +57,9 @@ function advanceLabel(ride: Ride) {
   return ride.service === 'delivery' ? 'Desliza: confirmar entrega' : 'Desliza: finalizar viaje';
 }
 
+// Same as the passenger's confirmation: it moves on to navigation by itself.
+const CONFIRMATION_AUTO_CONTINUE_MS = 6000;
+
 export function DriverTripInProgressScreen({ ride }: { ride: Ride }) {
   const { colors, styles } = useThemedStyles(createStyles);
   const router = useRouter();
@@ -116,6 +119,7 @@ export function DriverTripInProgressScreen({ ride }: { ride: Ride }) {
   if (ride.status === 'accepted' && !confirmationSeen) return (
     <RideConfirmedScreen ride={ride} role="driver" actionLabel="Ir a recoger"
       pickupHint={pickupRoute ? `A ${formatKm(pickupRoute.distanceMeters / 1000)} · ${minutes(pickupRoute.durationSeconds)} min` : null}
+      autoContinueMs={CONFIRMATION_AUTO_CONTINUE_MS}
       onContinue={() => markConfirmationSeen(ride.id)} />
   );
 

@@ -4,7 +4,7 @@
  * the price and where to pick them up.
  */
 import { Ionicons } from '@react-native-vector-icons/ionicons';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Animated, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useReducedMotion } from 'react-native-reanimated';
@@ -25,9 +25,11 @@ type Props = {
   onContinue: () => void;
   /** Distance/time to the pickup, when the driver already knows it. */
   pickupHint?: string | null;
+  /** Continue on its own after this long, when nobody taps the button. */
+  autoContinueMs?: number;
 };
 
-export function RideConfirmedScreen({ ride, role, actionLabel, onContinue, pickupHint }: Props) {
+export function RideConfirmedScreen({ ride, role, actionLabel, onContinue, pickupHint, autoContinueMs }: Props) {
   const { colors, styles } = useThemedStyles(createStyles);
   const reducedMotion = useReducedMotion();
   const [scale] = useState(() => new Animated.Value(reducedMotion ? 1 : 0.4));
@@ -38,6 +40,16 @@ export function RideConfirmedScreen({ ride, role, actionLabel, onContinue, picku
     animation.start();
     return () => animation.stop();
   }, [reducedMotion, scale]);
+
+  const continueRef = useRef(onContinue);
+  useEffect(() => {
+    continueRef.current = onContinue;
+  });
+  useEffect(() => {
+    if (autoContinueMs == null) return;
+    const timer = setTimeout(() => continueRef.current(), autoContinueMs);
+    return () => clearTimeout(timer);
+  }, [autoContinueMs]);
 
   const driver = ride?.driver ?? null;
   const price = ride ? formatBolivianos(ride.acceptedPrice ?? ride.fare) : null;

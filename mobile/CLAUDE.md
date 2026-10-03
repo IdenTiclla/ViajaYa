@@ -55,7 +55,7 @@ src/
 │       ├── domain/          # DriverVehicle (up to one per type; MAX_DRIVER_VEHICLES)
 │       ├── data/            # driverAccountRepository (/drivers/me/vehicles · /me/mode)
 │       ├── application/     # useDriverRequests (zustand) · useDriverToasts · useDriverAccount
-│       └── presentation/    # IncomingRequestsScreen · DriverTopBar · RequestCard · DriverSearchMap
+│       └── presentation/    # IncomingRequestsScreen · RequestCard · RequestsMap · CounterOfferSheet · DriverSearchMap
 │                            #   · DriverRegistrationScreen · DriverAccountCard · VehicleSelector
 │                            #   · ChooseModeScreen · DriverProfileScreen · …
 ├── core/               # Cross-cutting infrastructure
@@ -485,6 +485,17 @@ npm run lint               # expo lint (eslint-config-expo)
   The duotone service/payment icons are PNGs per theme (`assets/images/trip-options`, no SVG
   renderer in the app): edit and rerun `scripts/render_trip_option_icons.py`
   (`uvx --with cairosvg python scripts/render_trip_option_icons.py`).
+- **Driver requests** (`IncomingRequestsScreen`): a top bar with the vehicle the driver works with
+  (informative chip, type + plate; switching vehicle stays in Profile) and the 44 dp Lista/Mapa toggle.
+  The list sits on a plain background (no map behind) and is sorted by `driver/domain/requestOrder.ts`
+  (Más cerca by GPS pickup distance, Mejor pago by Bs/km with a 1 km floor, Recientes); the map uses the
+  same order. List and map render the same `RequestCard` (`variant="map"` is compact, with the pager
+  inside and street km/min of the selected request); a sent/expired/rejected offer, a paused request or
+  one taken by another driver shows a status band and collapses the route to one line. Card actions are
+  ✕ · Contraofertar · Aceptar Bs X; Contraofertar opens `CounterOfferSheet` (− / +, quick amounts above
+  the fare). `RequestsMap` draws the driver's `VehicleMarker`, a dashed line to the selected pickup,
+  the selected A/B with `RoutePinMarker` and every other request as a `RequestPriceMarker` (green once
+  offered); framing uses the ~100 m GPS grid, not the raw 1 s fix. Pickup distances are straight-line.
 - **Home sheet** (`HomeScreen`): greeting, «¿A dónde vas?» + map button, `ServiceTileSelector`,
   `SavedPlaceShortcuts` (circles: Casa/Trabajo always, then favorites, then «Agregar»; order in
   `home/domain/savedPlaceShortcuts.ts`) and recent destinations. It is adaptive: the collapsed

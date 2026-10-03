@@ -487,8 +487,8 @@ npm run lint               # expo lint (eslint-config-expo)
   `FareAndPaymentPicker` (typed fare + ±1 Bs via `stepFare`, cash/QR),
   `AutoAcceptToggle` (`useBookingStore.autoAccept` → `auto_accept` on create/edit; drivers see
   «Acepta su precio y el viaje es tuyo» on `RequestCard`) and a yellow `SwipeToConfirm tone="accent"`
-  («Desliza: buscar ofertas / conductor», the same slide the driver uses for ride steps); editing a
-  request keeps the regular `Button` «Guardar cambios».
+  («Desliza: buscar ofertas / conductor», or «guardar cambios» when editing; the same slide the driver
+  uses for ride steps).
   The duotone service/payment icons are PNGs per theme (`assets/images/trip-options`, no SVG
   renderer in the app): edit and rerun `scripts/render_trip_option_icons.py`
   (`uvx --with cairosvg python scripts/render_trip_option_icons.py`).

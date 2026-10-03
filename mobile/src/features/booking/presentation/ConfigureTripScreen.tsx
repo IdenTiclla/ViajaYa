@@ -606,34 +606,17 @@ export function ConfigureTripScreen() {
           </ScrollView>
 
           <View style={styles.sheetFooter}>
-            {isEditing ? <Button
-              title={primaryActionTitle}
-              variant="accent"
-              trailingIcon="arrow-forward"
-              style={styles.primaryAction}
+            {/* Publishing or saving the request is a deliberate slide, like the driver's ride steps. */}
+            <SwipeToConfirm
+              tone="accent"
+              label={`Desliza: ${primaryActionTitle.toLowerCase()}`}
+              accessibilityLabel={primaryActionTitle}
               loading={createRide.isPending || editRide.isPending || labelsResolving}
               loadingLabel={labelsResolving ? 'Obteniendo direcciones…'
                 : isEditing ? 'Guardando…' : `${primaryActionTitle}…`}
-              disabled={
-                !tripInServiceArea ||
-                !labelsReady ||
-                !fareIsValid ||
-                createRide.isPending ||
-                editRide.isPending
-              }
-              onPress={saveEdit}
-            /> : (
-              // Publishing the request is a deliberate slide, like the driver's ride steps.
-              <SwipeToConfirm
-                tone="accent"
-                label={`Desliza: ${primaryActionTitle.toLowerCase()}`}
-                accessibilityLabel={primaryActionTitle}
-                loading={createRide.isPending || labelsResolving}
-                loadingLabel={labelsResolving ? 'Obteniendo direcciones…' : `${primaryActionTitle}…`}
-                disabled={!tripInServiceArea || !labelsReady || !fareIsValid}
-                onConfirm={searchOffers}
-              />
-            )}
+              disabled={!tripInServiceArea || !labelsReady || !fareIsValid}
+              onConfirm={isEditing ? saveEdit : searchOffers}
+            />
           </View>
         </SafeAreaView>
       </View>
@@ -743,7 +726,6 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
     paddingTop: spacing.xs,
     paddingBottom: spacing.sm,
   },
-  primaryAction: { minHeight: 60, borderRadius: radius.pill, paddingLeft: spacing.lg, paddingRight: spacing.sm },
 
   routeStatus: {
     flexDirection: 'row',

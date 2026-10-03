@@ -1,7 +1,8 @@
 /**
- * Slide-to-confirm control for actions a driver takes while driving: a
- * deliberate drag replaces the tap + dialog, so a stray touch does not advance
- * the ride. Screen readers activate it as a regular button.
+ * Slide-to-confirm control for decisive actions (the driver advancing a ride,
+ * the passenger publishing a request): a deliberate drag replaces the tap, so
+ * a stray touch does not trigger it. Screen readers activate it as a regular
+ * button.
  */
 import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useState } from 'react';
@@ -25,7 +26,7 @@ type Props = {
   disabled?: boolean;
   loading?: boolean;
   loadingLabel?: string;
-  tone?: 'primary' | 'success';
+  tone?: 'primary' | 'success' | 'accent';
 };
 
 export function SwipeToConfirm({
@@ -36,8 +37,10 @@ export function SwipeToConfirm({
   const offset = useSharedValue(0);
   const max = Math.max(0, trackWidth - KNOB - INSET * 2);
   const locked = disabled || loading;
-  // Fixed fills (not theme `success`) keep the white label readable in both themes.
-  const fill = tone === 'success' ? SUCCESS_FILL : colors.brand;
+  // Fixed fills (not theme `success`) keep the white label readable in both themes;
+  // the yellow accent is the same in both themes and carries dark text.
+  const fill = tone === 'success' ? SUCCESS_FILL : tone === 'accent' ? colors.accent : colors.brand;
+  const ink = tone === 'accent' ? colors.textOnAccent : colors.textOnBrand;
 
   const confirm = () => {
     if (!locked) onConfirm();
@@ -74,17 +77,20 @@ export function SwipeToConfirm({
       style={[styles.track, { backgroundColor: fill }, locked && styles.locked]}>
       <Animated.View style={[styles.labelWrap, labelStyle]} pointerEvents="none">
         {loading ? (
-          <ActivityIndicator color={colors.textOnBrand} />
+          <View style={styles.loadingRow}>
+            <ActivityIndicator color={ink} />
+            {!!loadingLabel && <Text style={[styles.label, { color: ink }]} numberOfLines={2}>{loadingLabel}</Text>}
+          </View>
         ) : (
-          <Text style={styles.label} numberOfLines={2}>{label}</Text>
+          <Text style={[styles.label, { color: ink }]} numberOfLines={2}>{label}</Text>
         )}
       </Animated.View>
       {!loading && (
-        <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.55)" style={styles.chevrons} />
+        <Ionicons name="chevron-forward" size={18} color={ink} style={styles.chevrons} />
       )}
       <GestureDetector gesture={pan}>
         <Animated.View style={[styles.knob, knobStyle]}>
-          <Ionicons name="arrow-forward" size={24} color={fill} />
+          <Ionicons name="arrow-forward" size={24} color={tone === 'accent' ? colors.textOnAccent : fill} />
         </Animated.View>
       </GestureDetector>
     </View>
@@ -105,7 +111,8 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
     alignItems: 'center',
   },
   label: { fontSize: fontSize.md, fontWeight: fontWeight.bold, color: colors.textOnBrand, textAlign: 'center' },
-  chevrons: { position: 'absolute', right: spacing.md },
+  loadingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
+  chevrons: { position: 'absolute', right: spacing.md, opacity: 0.55 },
   knob: {
     position: 'absolute',
     left: INSET,

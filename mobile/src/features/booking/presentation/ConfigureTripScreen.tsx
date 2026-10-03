@@ -58,7 +58,7 @@ import {
 } from '@/features/rides/presentation/routeTooltipLayout';
 import { RoutePolyline } from '@/features/rides/presentation/RoutePolyline';
 import { useMapBearing } from '@/features/rides/application/useMapBearing';
-import { Button, ConfirmDialog, FeedbackState } from '@/shared/components';
+import { Button, ConfirmDialog, FeedbackState, SwipeToConfirm } from '@/shared/components';
 
 // Tight fit around the route; the A/B labels get room only where they need it.
 const FIT_INSET = 16;
@@ -606,7 +606,7 @@ export function ConfigureTripScreen() {
           </ScrollView>
 
           <View style={styles.sheetFooter}>
-            <Button
+            {isEditing ? <Button
               title={primaryActionTitle}
               variant="accent"
               trailingIcon="arrow-forward"
@@ -621,8 +621,19 @@ export function ConfigureTripScreen() {
                 createRide.isPending ||
                 editRide.isPending
               }
-              onPress={isEditing ? saveEdit : searchOffers}
-            />
+              onPress={saveEdit}
+            /> : (
+              // Publishing the request is a deliberate slide, like the driver's ride steps.
+              <SwipeToConfirm
+                tone="accent"
+                label={`Desliza: ${primaryActionTitle.toLowerCase()}`}
+                accessibilityLabel={primaryActionTitle}
+                loading={createRide.isPending || labelsResolving}
+                loadingLabel={labelsResolving ? 'Obteniendo direcciones…' : `${primaryActionTitle}…`}
+                disabled={!tripInServiceArea || !labelsReady || !fareIsValid}
+                onConfirm={searchOffers}
+              />
+            )}
           </View>
         </SafeAreaView>
       </View>

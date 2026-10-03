@@ -45,9 +45,8 @@ import {
 import { useRide, useRideOffers } from '@/features/rides/application/useRides';
 import { deriveOfferTags, primaryTag } from '@/features/rides/domain/offerTags';
 import { orderOffers, type OfferOrder } from '@/features/rides/domain/offerComparison';
-import type { Offer } from '@/features/rides/domain/types';
+import type { Offer, Ride } from '@/features/rides/domain/types';
 import { TripRouteMap } from '@/features/rides/presentation/TripRouteMap';
-import { TripSecondaryAction } from '@/features/rides/presentation/TripSecondaryAction';
 import { Button, ConfirmDialog, FeedbackState } from '@/shared/components';
 
 export function OffersScreen() {
@@ -60,6 +59,7 @@ export function OffersScreen() {
   const destination = useBookingStore((s) => s.destination);
   const service = useBookingStore((s) => s.service);
   const fare = useBookingStore((s) => s.fare);
+  const payment = useBookingStore((s) => s.payment);
 
   const rideQuery = useRide(id);
   const { ride } = rideQuery;
@@ -104,6 +104,7 @@ export function OffersScreen() {
   const orderedOffers = useMemo(() => orderOffers(visibleOffers, offerOrder), [visibleOffers, offerOrder]);
 
   const [confirming, setConfirming] = useState(false);
+  const [confirmedRide, setConfirmedRide] = useState<Ride | null>(null);
   const [offerToAccept, setOfferToAccept] = useState<Offer | null>(null);
   const acceptingRef = useRef(false);
   const [sheetHeight, setSheetHeight] = useState(500);
@@ -195,6 +196,7 @@ export function OffersScreen() {
     acceptOffer.mutate({ offerId: offer.id, rideId: id }, {
       onSettled: () => { acceptingRef.current = false; },
       onSuccess: (savedRide) => {
+        setConfirmedRide(savedRide);
         setConfirming(savedRide.status === 'accepted');
         setAcceptIntent(false);
       },
@@ -307,6 +309,7 @@ export function OffersScreen() {
     return (
       <SearchingDriversScreen
         service={ride?.service ?? service}
+        payment={ride?.payment ?? payment}
         rideId={id}
         origin={displayOrigin}
         destination={displayDestination}
@@ -345,14 +348,14 @@ export function OffersScreen() {
           <View style={styles.liveHeader} pointerEvents="none">
             <TripProgress status="searching" />
             <View style={styles.liveTitleRow}>
-              <Text style={styles.liveTitle}>Ofertas en vivo</Text>
+              <Text style={styles.liveTitle}>Elige tu conductor</Text>
               <LiveDot />
             </View>
             <Text style={styles.liveSubtitle}>
               {visibleOffers.length}{' '}
-              {visibleOffers.length === 1 ? 'oferta disponible' : 'ofertas disponibles'}
+              {visibleOffers.length === 1 ? 'oferta' : 'ofertas'}
+              {ride ? ` · tu precio: Bs ${formatBolivianos(ride.fare)}` : ''} · cada una vence en 30 s
             </Text>
-            <Text style={styles.liveSubtitle}>Tú eliges. Cada oferta vence en 30 segundos.</Text>
           </View>
           <OfferOrderControl value={offerOrder} onChange={setOfferOrder} />
           {(rideQuery.isError || offersQuery.isError) && (
@@ -384,6 +387,7 @@ export function OffersScreen() {
               offer={offer}
               tag={primaryTag(tagsMap[offer.id])}
               now={now}
+              requestedFare={ride?.fare ?? null}
               acceptingId={acceptingId}
               decisionsLocked={negotiationBusy}
               onAccept={() => setOfferToAccept(offer)}
@@ -399,24 +403,30 @@ export function OffersScreen() {
         {cancelRide.isError && (
           <Text style={styles.error}>{getApiErrorMessage(cancelRide.error)}</Text>
         )}
-        <Button
-          title="Modificar solicitud"
-          variant="secondary"
-          leadingIcon="create-outline"
-          loading={pauseForEdit.isPending}
-          loadingLabel="Abriendo solicitud…"
-          onPress={onModify}
-          disabled={negotiationBusy || !id}
-        />
-        <TripSecondaryAction
-          title={cancelRide.isPending ? 'Cancelando…' : 'Cancelar solicitud'}
-          onPress={() => setConfirmCancel(true)}
-          disabled={negotiationBusy}
-        />
+        <View style={styles.footerRow}>
+          <Button
+            title="Modificar"
+            variant="secondary"
+            leadingIcon="create-outline"
+            loading={pauseForEdit.isPending}
+            loadingLabel="Abriendo solicitud…"
+            onPress={onModify}
+            disabled={negotiationBusy || !id}
+            style={styles.footerAction}
+          />
+          <Button
+            title={cancelRide.isPending ? 'Cancelando…' : 'Cancelar solicitud'}
+            variant="text"
+            onPress={() => setConfirmCancel(true)}
+            disabled={negotiationBusy}
+            style={styles.footerAction}
+          />
+        </View>
       </SafeAreaView>
       </View>
 
-      <ConfirmationOverlay visible={confirmationVisible} onDone={handleConfirmed} />
+      <ConfirmationOverlay visible={confirmationVisible}
+        ride={confirmedRide ?? (assigned ? ride ?? null : null)} onDone={handleConfirmed} />
 
       <ConfirmDialog visible={offerToAccept != null && !negotiationBusy}
         icon="car-sport-outline" title={activeOfferToAccept ? 'Confirma tu conductor' : 'Oferta no disponible'}
@@ -525,8 +535,8 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceMuted },
   mapFallback: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: colors.surfaceMuted },
 
-  overlay: { position: 'absolute', bottom: 0, left: 0, right: 0, height: '64%',
-    backgroundColor: colors.background, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg,
+  overlay: { position: 'absolute', bottom: 0, left: 0, right: 0, height: '72%',
+    backgroundColor: colors.background, borderTopLeftRadius: 24, borderTopRightRadius: 24,
     paddingTop: spacing.sm, overflow: 'hidden' },
   orderControl: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs,
     padding: spacing.xs, borderRadius: radius.md, backgroundColor: colors.surfaceMuted },
@@ -538,15 +548,15 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
   orderSelectedLabel: { color: colors.textOnPrimary },
 
   // Opaque header to keep it readable over the map.
-  liveHeader: { paddingVertical: spacing.xs },
+  liveHeader: { paddingVertical: spacing.xs, gap: spacing.sm },
   liveTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  liveTitle: { flexShrink: 1, fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.text },
+  liveTitle: { flexShrink: 1, fontSize: fontSize.xl, fontWeight: fontWeight.bold, color: colors.text },
   liveDot: { width: 8, height: 8, borderRadius: radius.pill, backgroundColor: colors.success },
   liveSubtitle: { fontSize: fontSize.sm, color: colors.textSecondary, marginTop: 2 },
 
   // Lista de tarjetas.
   list: { flex: 1 },
-  listContent: { paddingHorizontal: spacing.md, gap: spacing.sm, paddingBottom: spacing.md },
+  listContent: { paddingHorizontal: spacing.md, gap: spacing.sm + 4, paddingBottom: spacing.md },
   connectionWarning: {
     minHeight: 48,
     flexDirection: 'row',
@@ -566,6 +576,8 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
   },
   listBottomSpacer: { height: spacing.md },
 
+  footerRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  footerAction: { flexGrow: 1, flexBasis: 140 },
   actionsSheet: {
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,

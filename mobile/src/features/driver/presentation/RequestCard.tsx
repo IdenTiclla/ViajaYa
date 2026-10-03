@@ -9,7 +9,7 @@
  * **rejected by swiping** so it is not seen again until the passenger modifies it.
  */
 import { Ionicons } from '@react-native-vector-icons/ionicons';
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import ReanimatedSwipeable, {
   type SwipeableMethods,
@@ -23,6 +23,7 @@ import { formatKm, haversineKm, pricePerKm } from '@/features/rides/domain/geo';
 import { formatBolivianos } from '@/features/rides/domain/money';
 import { OfferLifeTimer } from '@/features/rides/presentation/OfferLifeTimer';
 import type { OpenRide } from '@/features/rides/domain/types';
+import type { Coordinates } from '@/features/booking/domain/types';
 import { serviceNouns } from '@/features/rides/domain/serviceNouns';
 import { PersonAvatar } from '@/shared/components';
 
@@ -55,6 +56,8 @@ type Props = {
   onOpenPriceInput: () => void;
   /** Withdraw the sent offer (offered state only). */
   onWithdraw: () => void;
+  /** The driver's current GPS fix, to show how far the pickup is. */
+  driverCoordinates?: Coordinates | null;
 };
 
 export function RequestCard({
@@ -75,8 +78,10 @@ export function RequestCard({
   onQuickAdd,
   onOpenPriceInput,
   onWithdraw,
+  driverCoordinates = null,
 }: Props) {
   const { colors, styles } = useThemedStyles(createStyles);
+  const isNew = useIsNew(ride.createdAt);
   const swipeRef = useRef<SwipeableMethods>(null);
   const tripKm = useMemo(
     () => haversineKm(ride.origin.coordinates, ride.destination.coordinates),
@@ -84,16 +89,20 @@ export function RequestCard({
   );
   // With a sent offer we show the amount the driver proposed (not the passenger's
   // fare), so they see their counter-offer reflected on the card.
+  const pickupKm = useMemo(
+    () => driverCoordinates ? haversineKm(driverCoordinates, ride.origin.coordinates) : null,
+    [driverCoordinates, ride.origin],
+  );
   const displayPrice = offered && offerPrice != null ? offerPrice : ride.fare;
   const perKm = pricePerKm(displayPrice, tripKm);
 
   const { rider } = ride;
   const { customer: customerNoun, request: requestNoun } = serviceNouns(ride.service);
   const meta = [
-    SERVICE_META[ride.service].shortLabel,
+    rider.rating != null ? `★ ${rider.rating.toFixed(1)}` : 'Nuevo',
     `${rider.tripsCompleted} ${rider.tripsCompleted === 1 ? 'viaje' : 'viajes'}`,
-    PAYMENT_LABELS[ride.payment],
   ].join(' · ');
+  const canOffer = !offered && !paused && !taken;
 
   const renderLeftActions = () => (
     <View style={styles.swipeAction}>
@@ -115,7 +124,12 @@ export function RequestCard({
         onPress={onPress}
         accessibilityRole="button"
         accessibilityLabel={`Solicitud de ${rider.fullName}, ${SERVICE_META[ride.service].label}, ${ride.autoAccept ? 'aceptación inmediata, ' : ''}${offered && offerPrice != null ? `tu oferta Bs ${formatBolivianos(offerPrice)}` : `Bs ${formatBolivianos(ride.fare)}`}`}
-        style={styles.card}>
+        style={[styles.card, isNew && !offered && !expired && !paused && !taken && styles.cardNew]}>
+        {isNew && !offered && !expired && !paused && !taken && (
+          <View style={styles.newBadge}>
+            <Text style={styles.newBadgeText}>Nueva</Text>
+          </View>
+        )}
         {offered && (
           <OfferedBanner expiresAt={offerExpiresAt} />
         )}
@@ -155,29 +169,29 @@ export function RequestCard({
           </View>
         )}
 
-        <View style={styles.cardTop}>
-          <View style={styles.avatarWrap}>
-            <PersonAvatar name={rider.fullName} size={48} />
-            {rider.rating != null && (
-              <View style={styles.ratingBadge}>
-                <Text style={styles.ratingBadgeText}>{rider.rating.toFixed(1)}★</Text>
-              </View>
-            )}
+        <View style={styles.tagsRow}>
+          <View style={styles.serviceTag}>
+            <Ionicons name={SERVICE_META[ride.service].icon} size={13} color={colors.primary} />
+            <Text style={styles.serviceTagText}>{SERVICE_META[ride.service].shortLabel}</Text>
           </View>
+          <View style={styles.paymentTag}>
+            <Ionicons name={ride.payment === 'qr' ? 'qr-code-outline' : 'cash-outline'} size={13} color={colors.success} />
+            <Text style={styles.paymentTagText}>{PAYMENT_LABELS[ride.payment]}</Text>
+          </View>
+          {ride.autoAccept && (
+            // The passenger turned on automatic acceptance: taking the fare wins the ride.
+            <View style={styles.autoAccept}>
+              <Ionicons name="flash" size={12} color={colors.warning} />
+              <Text style={styles.autoAcceptText}>Acepta su precio y es tuyo</Text>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.cardTop}>
+          <PersonAvatar name={rider.fullName} size={44} />
           <View style={styles.cardInfo}>
-            <Text style={styles.riderName} numberOfLines={1}>
-              {rider.fullName}
-            </Text>
-            <Text style={styles.meta} numberOfLines={1}>
-              {meta}
-            </Text>
-            {ride.autoAccept && (
-              // The passenger turned on automatic acceptance: taking the fare wins the ride.
-              <View style={styles.autoAccept}>
-                <Ionicons name="flash" size={12} color={colors.warning} />
-                <Text style={styles.autoAcceptText}>Acepta su precio y el viaje es tuyo</Text>
-              </View>
-            )}
+            <Text style={styles.riderName} numberOfLines={1}>{rider.fullName}</Text>
+            <Text style={styles.meta} numberOfLines={1}>{meta}</Text>
           </View>
           <View style={styles.priceCol}>
             <Text style={styles.fare}>Bs {formatBolivianos(displayPrice)}</Text>
@@ -189,98 +203,76 @@ export function RequestCard({
           </View>
         </View>
 
-        {/*
- * Quick counter-offer (quick +Bs and pencil): visible while offering is possible
- * (default, expired and rejected). In expired/rejected it is the way
- * to improve the offer after a rejection/expiry.
- */}
-        <View style={styles.quickSlot}>
-          {!offered && !paused && !taken && (
-            <View style={styles.quick}>
-              <Text style={styles.quickLabel}>CONTRAOFERTA RÁPIDA</Text>
-              <View style={styles.quickRow}>
-                {QUICK_DELTAS.map((delta) => (
-                  <TouchableOpacity
-                    key={delta}
-                    style={[styles.quickPill, disabled && styles.disabled]}
-                    onPress={() => onQuickAdd(delta)}
-                    disabled={disabled}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Contraofertar con Bs ${delta} más`}>
-                    <Text style={styles.quickPillText}>+Bs {delta}</Text>
-                  </TouchableOpacity>
-                ))}
-                <TouchableOpacity
-                  style={[styles.pencilBtn, disabled && styles.disabled]}
-                  onPress={onOpenPriceInput}
-                  disabled={disabled}
-                  accessibilityRole="button"
-                  accessibilityLabel="Contraoferta con precio personalizado">
-                  <Ionicons name="create-outline" size={16} color={colors.textSecondary} />
-                </TouchableOpacity>
-              </View>
+        <View style={styles.route}>
+          {pickupKm != null && (
+            <View style={styles.pickupRow}>
+              <Ionicons name="navigate" size={15} color={colors.primary} />
+              <Text style={styles.pickupText}>Recoger a {formatKm(pickupKm)} de ti</Text>
             </View>
           )}
+          <View style={styles.routeStop}>
+            <View style={styles.dotA}><Text style={styles.dotText}>A</Text></View>
+            <View style={styles.routeStopText}>
+              <Text style={styles.routeText} numberOfLines={1}>{ride.origin.name}</Text>
+              {!!ride.origin.address && ride.origin.address !== ride.origin.name && (
+                <Text style={styles.routeAddress} numberOfLines={1}>{ride.origin.address}</Text>
+              )}
+            </View>
+          </View>
+          <View style={styles.routeStop}>
+            <View style={styles.dotB}><Text style={[styles.dotText, styles.dotTextB]}>B</Text></View>
+            <View style={styles.routeStopText}>
+              <Text style={styles.routeText} numberOfLines={1}>{ride.destination.name}</Text>
+              <Text style={styles.routeAddress} numberOfLines={1}>Viaje de {formatKm(tripKm)} en línea recta</Text>
+            </View>
+          </View>
         </View>
 
-        <View style={styles.route}>
-          <View style={styles.routeStop}>
-            <Text style={styles.routeLabel}>ORIGEN</Text>
-            <Text style={styles.routeText} numberOfLines={1}>
-              {ride.origin.name}
-            </Text>
+        {canOffer && (
+          <View style={styles.quickRow}>
+            {QUICK_DELTAS.map((delta) => (
+              <TouchableOpacity
+                key={delta}
+                style={[styles.quickPill, disabled && styles.disabled]}
+                onPress={() => onQuickAdd(delta)}
+                disabled={disabled}
+                accessibilityRole="button"
+                accessibilityLabel={`Contraofertar Bs ${formatBolivianos(ride.fare + delta)}`}>
+                <Text style={styles.quickPillText}>Bs {formatBolivianos(ride.fare + delta)}</Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity
+              style={[styles.quickPill, disabled && styles.disabled]}
+              onPress={onOpenPriceInput}
+              disabled={disabled}
+              accessibilityRole="button"
+              accessibilityLabel="Contraoferta con otro monto">
+              <Ionicons name="create-outline" size={16} color={colors.text} />
+              <Text style={styles.quickPillText}>Otro</Text>
+            </TouchableOpacity>
           </View>
-          <View style={styles.routeStop}>
-            <Text style={styles.routeLabel}>DESTINO</Text>
-            <Text style={[styles.routeText, styles.routeDestination]} numberOfLines={1}>
-              {ride.destination.name} · {formatKm(tripKm)}
-            </Text>
-          </View>
-        </View>
+        )}
 
         <View style={styles.actionsSlot}>
           {offered && (
             <View style={styles.cardActions}>
-              <TouchableOpacity style={[styles.actionBtn, styles.accept]} onPress={onViewOffer}
-                accessibilityRole="button" accessibilityLabel={`Ver oferta para ${rider.fullName}`}>
-                <Text style={styles.acceptText}>Ver oferta</Text>
-              </TouchableOpacity>
               <TouchableOpacity
-                style={[
-                  styles.actionBtn,
-                  styles.decline,
-                  styles.withdrawAction,
-                  disabled && styles.disabled,
-                ]}
+                style={[styles.actionBtn, styles.decline, disabled && styles.disabled]}
                 onPress={onWithdraw}
                 disabled={disabled}
                 accessibilityRole="button"
                 accessibilityLabel="Retirar oferta">
-                <Ionicons name="close-circle-outline" size={19} color={colors.danger} />
-                <Text style={styles.declineText}>Retirar oferta</Text>
+                <Text style={styles.withdrawText}>Retirar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.actionBtn, styles.accept]} onPress={onViewOffer}
+                accessibilityRole="button" accessibilityLabel={`Ver oferta para ${rider.fullName}`}>
+                <Text style={styles.acceptText}>Ver mi oferta</Text>
               </TouchableOpacity>
             </View>
           )}
-          {!offered &&
-            !paused &&
-            !taken &&
-            (expired || rejected ? (
-              <View style={styles.cardActions}>
-                <TouchableOpacity
-                  style={[styles.actionBtn, styles.accept, disabled && styles.disabled]}
-                  onPress={onAccept}
-                  disabled={disabled}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Ofertar de nuevo por Bs ${formatBolivianos(ride.fare)}`}>
-                  {pendingAccept ? (
-                    <ActivityIndicator color={colors.textOnPrimary} size="small" />
-                  ) : (
-                    <Text style={styles.acceptText}>Ofertar de nuevo</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <View style={styles.cardActions}>
+          {canOffer && (
+            <View style={styles.cardActions}>
+              {!(expired || rejected) && (
                 <TouchableOpacity
                   style={[styles.actionBtn, styles.decline, disabled && styles.disabled]}
                   onPress={onDismiss}
@@ -289,23 +281,26 @@ export function RequestCard({
                   accessibilityLabel="Rechazar solicitud">
                   <Text style={styles.declineText}>Rechazar</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.actionBtn, styles.accept, disabled && styles.disabled]}
-                  onPress={onAccept}
-                  disabled={disabled}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Enviar oferta por Bs ${formatBolivianos(ride.fare)}`}>
-                  {pendingAccept ? (
-                    <View style={styles.acceptWaiting}>
-                      <ActivityIndicator color={colors.textOnPrimary} size="small" />
-                      <Text style={styles.acceptText}>Enviando…</Text>
-                    </View>
-                  ) : (
-                    <Text style={styles.acceptText}>Enviar oferta</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            ))}
+              )}
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.accept, disabled && styles.disabled]}
+                onPress={onAccept}
+                disabled={disabled}
+                accessibilityRole="button"
+                accessibilityLabel={`${expired || rejected ? 'Ofertar de nuevo' : 'Aceptar'} por Bs ${formatBolivianos(ride.fare)}`}>
+                {pendingAccept ? (
+                  <View style={styles.acceptWaiting}>
+                    <ActivityIndicator color={colors.textOnPrimary} size="small" />
+                    <Text style={styles.acceptText}>Enviando…</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.acceptText}>
+                    {expired || rejected ? 'Ofertar de nuevo' : 'Aceptar'} Bs {formatBolivianos(ride.fare)}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       </TouchableOpacity>
     </ReanimatedSwipeable>
@@ -334,7 +329,31 @@ function OfferedBanner({
   );
 }
 
+const NEW_REQUEST_MS = 20_000;
+
+/** True while a request is fresh enough to be highlighted as just arrived. */
+function useIsNew(createdAt: string | null) {
+  const created = createdAt ? Date.parse(createdAt) : Number.NaN;
+  const [isNew, setIsNew] = useState(() => !Number.isNaN(created) && created + NEW_REQUEST_MS > Date.now());
+  useEffect(() => {
+    if (!isNew) return;
+    const remaining = Math.min(NEW_REQUEST_MS, Math.max(0, created + NEW_REQUEST_MS - Date.now()));
+    const timer = setTimeout(() => setIsNew(false), remaining);
+    return () => clearTimeout(timer);
+  }, [created, isNew]);
+  return isNew;
+}
+
 const createStyles = ({ colors }: Theme) => StyleSheet.create({
+  cardNew: { borderWidth: 2, borderColor: colors.accent },
+  newBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: 3,
+    borderRadius: radius.pill,
+    backgroundColor: colors.accent,
+  },
+  newBadgeText: { fontSize: fontSize.xs, fontWeight: fontWeight.bold, color: colors.textOnAccent },
   swipeAction: {
     width: 96,
     backgroundColor: colors.textSecondary,
@@ -349,7 +368,7 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
   card: {
     padding: spacing.md,
     gap: spacing.md,
-    borderRadius: radius.lg,
+    borderRadius: 18,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
@@ -442,80 +461,68 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
   },
   rejectedBannerText: { color: colors.textOnPrimary, fontSize: fontSize.xs, fontWeight: fontWeight.bold },
 
-  cardTop: { flexDirection: 'row', gap: spacing.md },
-  avatarWrap: { width: 48, height: 48 },
-  ratingBadge: {
-    position: 'absolute',
-    bottom: -3,
-    right: -6,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accent,
-    borderWidth: 2,
-    borderColor: colors.surface,
-  },
-  ratingBadgeText: { color: colors.textOnAccent, fontSize: 10, fontWeight: fontWeight.bold },
-
-  cardInfo: { flex: 1, gap: 3, justifyContent: 'center' },
-  riderName: { fontSize: fontSize.md, fontWeight: fontWeight.bold, color: colors.text },
-  meta: { fontSize: fontSize.xs, color: colors.textSecondary },
-  autoAccept: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
+  tagsRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.xs },
+  serviceTag: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: spacing.sm, paddingVertical: 3,
+    borderRadius: radius.pill, backgroundColor: colors.primarySoft },
+  serviceTagText: { fontSize: fontSize.xs, fontWeight: fontWeight.bold, color: colors.primary },
+  paymentTag: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: spacing.sm, paddingVertical: 3,
+    borderRadius: radius.pill, backgroundColor: colors.successSoft },
+  paymentTagText: { fontSize: fontSize.xs, fontWeight: fontWeight.bold, color: colors.success },
+  autoAccept: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: spacing.sm, paddingVertical: 3,
+    borderRadius: radius.pill, backgroundColor: colors.warningSoft },
   autoAcceptText: { fontSize: fontSize.xs, fontWeight: fontWeight.bold, color: colors.warning },
 
-  priceCol: { alignItems: 'flex-end', justifyContent: 'center' },
-  fare: { fontSize: fontSize.xl, fontWeight: fontWeight.bold, color: colors.primary },
-  perKm: { fontSize: 10, color: colors.textSecondary, fontWeight: fontWeight.semibold, marginTop: 2 },
+  cardTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm + 4 },
+  cardInfo: { flex: 1, minWidth: 0, gap: 2 },
+  riderName: { fontSize: fontSize.md, fontWeight: fontWeight.bold, color: colors.text },
+  meta: { fontSize: fontSize.sm, color: colors.textSecondary },
+  priceCol: { alignItems: 'flex-end' },
+  fare: { fontSize: 26, fontWeight: fontWeight.bold, color: colors.text },
+  perKm: { fontSize: fontSize.xs, color: colors.textSecondary, fontWeight: fontWeight.semibold },
 
-  // Keep the height when hiding controls in terminal or pending states.
-  quickSlot: { minHeight: 50 },
-  quick: { gap: spacing.xs },
-  quickLabel: { fontSize: 10, color: colors.textSecondary, fontWeight: fontWeight.bold, letterSpacing: 0.5 },
-  quickRow: { flexDirection: 'row', gap: spacing.xs, alignItems: 'center' },
+  route: { gap: spacing.sm, padding: spacing.sm + 4, borderRadius: radius.md, backgroundColor: colors.surfaceMuted },
+  pickupRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs + 2 },
+  pickupText: { fontSize: fontSize.sm, fontWeight: fontWeight.bold, color: colors.primary },
+  routeStop: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  routeStopText: { flex: 1, minWidth: 0 },
+  dotA: { width: 20, height: 20, borderRadius: radius.pill, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' },
+  dotB: { width: 20, height: 20, borderRadius: radius.pill, backgroundColor: colors.text, alignItems: 'center', justifyContent: 'center' },
+  dotText: { fontSize: 11, fontWeight: fontWeight.bold, color: colors.textOnBrand },
+  dotTextB: { color: colors.background },
+  routeText: { fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.text },
+  routeAddress: { fontSize: fontSize.xs, color: colors.textSecondary },
+
+  quickRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   quickPill: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs + 2,
-    borderRadius: radius.pill,
-    backgroundColor: colors.warningSoft,
-    borderWidth: 1,
-    borderColor: 'rgba(245,197,24,0.5)',
-  },
-  quickPillText: { color: colors.warning, fontSize: fontSize.sm, fontWeight: fontWeight.bold },
-  pencilBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surfaceMuted,
+    flexGrow: 1,
+    flexDirection: 'row',
+    gap: 4,
+    minHeight: 40,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.controlBorder,
   },
+  quickPillText: { color: colors.text, fontSize: fontSize.sm, fontWeight: fontWeight.bold },
 
-  route: { flexDirection: 'row', gap: spacing.md },
-  routeStop: { flex: 1, minWidth: 0 },
-  routeLabel: {
-    fontSize: 10,
-    color: colors.textSecondary,
-    fontWeight: fontWeight.bold,
-    letterSpacing: 0.5,
-    marginBottom: 1,
-  },
-  routeText: { fontSize: fontSize.sm, color: colors.text },
-  routeDestination: { fontWeight: fontWeight.semibold },
-
-  actionsSlot: { minHeight: 48 },
+  actionsSlot: {},
   cardActions: { flexDirection: 'row', gap: spacing.sm },
   actionBtn: {
     flex: 1,
-    height: 48,
-    borderRadius: radius.md,
+    minHeight: 48,
+    borderRadius: radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: spacing.sm,
   },
-  withdrawAction: { flexDirection: 'row', gap: spacing.xs },
-  decline: { flex: 1, backgroundColor: colors.dangerSoft, borderWidth: 1, borderColor: colors.dangerBorder },
-  declineText: { color: colors.danger, fontSize: fontSize.md, fontWeight: fontWeight.bold },
+  decline: { flex: 1, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.controlBorder },
+  declineText: { color: colors.text, fontSize: fontSize.md, fontWeight: fontWeight.semibold },
+  withdrawText: { color: colors.danger, fontSize: fontSize.md, fontWeight: fontWeight.semibold },
   accept: { flex: 1.6, backgroundColor: colors.primary },
-  acceptText: { color: colors.textOnPrimary, fontSize: fontSize.md, fontWeight: fontWeight.bold },
+  acceptText: { color: colors.textOnPrimary, fontSize: fontSize.md, fontWeight: fontWeight.bold, textAlign: 'center' },
   acceptWaiting: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   disabled: { opacity: 0.5 },
 });

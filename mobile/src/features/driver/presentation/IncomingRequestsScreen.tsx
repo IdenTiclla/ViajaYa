@@ -114,6 +114,11 @@ export function IncomingRequestsScreen() {
   // Continuous location (navigation): the map follows the driver, centered, in the
   // searching state and behind the requests list.
   const position = useWatchPosition(focused && !activeRide && !pendingRatingRide);
+  // ~100 m grid: the cards' pickup distance should not re-render on every 1 s fix.
+  const gridLatitude = position.coordinates ? Math.round(position.coordinates.latitude * 1000) / 1000 : null;
+  const gridLongitude = position.coordinates ? Math.round(position.coordinates.longitude * 1000) / 1000 : null;
+  const cardDriverCoordinates = useMemo(() => gridLatitude != null && gridLongitude != null
+    ? { latitude: gridLatitude, longitude: gridLongitude } : null, [gridLatitude, gridLongitude]);
 
   const dismissed = useDriverRequests((s) => s.dismissed);
   // Self-healing: expires on the client the offers that ran out if the WS was lost
@@ -443,6 +448,7 @@ export function IncomingRequestsScreen() {
                   onQuickAdd={(delta) => quickAdd(item, delta)}
                   onOpenPriceInput={() => openPriceInput(item)}
                   onWithdraw={() => withdraw(item)}
+                  driverCoordinates={cardDriverCoordinates}
                 />
               )}
               onEndReached={loadMoreOpenRides}

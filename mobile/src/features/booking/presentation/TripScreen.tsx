@@ -24,7 +24,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
+import { useRoute } from '@/features/booking/application/useRoute';
 import { useBlockHardwareBack } from '@/core/navigation/useBlockHardwareBack';
+import { useNow } from '@/core/hooks/useNow';
 import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
 import { useTripActions, useTripContact } from '@/features/rides/application/useTripActions';
 import {
@@ -36,8 +38,8 @@ import { formatKm } from '@/features/rides/domain/geo';
 import { isPickupPhase } from '@/features/rides/domain/pickupRoute';
 import { TripRouteMap } from '@/features/rides/presentation/TripRouteMap';
 import { TripProgress } from '@/features/rides/presentation/TripProgress';
-import { TripSummary } from '@/features/rides/presentation/TripSummary';
 import { TripSecondaryAction } from '@/features/rides/presentation/TripSecondaryAction';
+import { ContactIconButton, formatElapsed, PaymentNote, PlateBadge, RouteLine } from '@/features/rides/presentation/TripParts';
 import type { Ride, RideStatus } from '@/features/rides/domain/types';
 import { Button, ConfirmDialog, FeedbackState, PersonAvatar } from '@/shared/components';
 import { vehicleLabel } from '@/features/auth/domain/vehicleCatalog';
@@ -99,6 +101,14 @@ export function TripScreen() {
     ? { latitude: vehicleLatitude, longitude: vehicleLongitude } : null, [vehicleLatitude, vehicleLongitude]);
   const { route: pickupRoute } = usePickupRoute(pickupPhase ? vehicle : null,
     pickupPhase ? ride?.origin.coordinates ?? null : null, ride?.service ?? 'taxi');
+  const travelling = ride?.status === 'in_progress';
+  const { route: tripRoute } = usePickupRoute(travelling ? vehicle : null,
+    travelling ? ride?.destination.coordinates ?? null : null, ride?.service ?? 'taxi');
+  const contact = useTripContact(ride, ride?.driver?.phone);
+  // Full origin → destination route (shared cache with the map) to show trip progress.
+  const { route: fullRoute } = useRoute(travelling ? ride?.origin ?? null : null,
+    travelling ? ride?.destination ?? null : null, ride?.service ?? 'taxi');
+  const now = useNow(ride?.status === 'arriving' ? 1000 : 30_000);
   const [confirmCancel, setConfirmCancel] = useState<{ id: string; status: RideStatus } | null>(null);
   const [sheetHeight, setSheetHeight] = useState(380);
   useBlockHardwareBack(Boolean(ride) && ride?.status !== 'cancelled');
@@ -162,6 +172,12 @@ export function TripScreen() {
   const isCancelled = ride.status === 'cancelled';
   const canCancel = CANCELLABLE.includes(ride.status);
 
+  const driver = ride.driver;
+  const firstName = driver?.fullName.trim().split(/\s+/)[0] ?? 'Tu conductor';
+  const pickupMinutes = pickupRoute ? Math.max(1, Math.round(pickupRoute.durationSeconds / 60)) : ride.acceptedEtaMin;
+  const tripMinutes = tripRoute ? Math.max(1, Math.round(tripRoute.durationSeconds / 60)) : null;
+  const arrivalClock = tripMinutes != null ? formatClock(now + tripMinutes * 60_000) : null;
+
   return (
     <View style={styles.root}>
       <TripRouteMap phase={pickupPhase ? 'pickup' : 'trip'} vehicle={tracking.location ? { coordinates: tracking.location, heading: tracking.location.heading, type: ride.driver?.vehicleType ?? null, stale: tracking.freshness !== "live" } : undefined} service={ride.service} origin={ride.origin} destination={ride.destination} topPadding={48} bottomPadding={sheetHeight} />
@@ -180,36 +196,90 @@ export function TripScreen() {
 
       <SafeAreaView style={styles.sheet} edges={['bottom']} onLayout={(event) => setSheetHeight(event.nativeEvent.layout.height)}>
         <ScrollView
+          style={styles.sheetScroll}
           contentContainerStyle={styles.sheetContent}
           showsVerticalScrollIndicator={false}
           bounces={false}>
         <View style={styles.sheetHandle} />
         <TripProgress status={ride.status} />
 
-        <View accessibilityLiveRegion="polite" style={[styles.banner, banner.accent && styles.bannerAccent]}>
-          <Ionicons
-            name={ride.service === 'moto' && ride.status === 'accepted' ? 'bicycle' : banner.icon}
-            size={26}
-            color={banner.accent ? colors.textOnAccent : colors.primary}
-          />
-          <View style={styles.bannerText}>
-            <Text accessibilityRole="header" style={[styles.bannerTitle, banner.accent && styles.bannerAccentText]}>{banner.title}</Text>
-            <Text style={[styles.hint, banner.accent && styles.bannerAccentText]}>{banner.hint}</Text>
+        {ride.status === 'arriving' ? (
+          <View accessibilityLiveRegion="assertive" style={styles.arrival}>
+            <View style={styles.arrivalHeader}>
+              <View style={styles.arrivalIcon}>
+                <Ionicons name={pickupAcknowledged ? 'checkmark-circle' : 'notifications'} size={26} color={colors.textOnAccent} />
+              </View>
+              <View style={styles.flex}>
+                <Text accessibilityRole="header" style={styles.arrivalTitle}>{banner.title}</Text>
+                {ride.arrivedAt && !pickupAcknowledged && (
+                  <Text style={styles.arrivalWait}>Te espera desde hace {formatElapsed(ride.arrivedAt, now)}</Text>
+                )}
+                <Text style={styles.arrivalHint}>{banner.hint}</Text>
+              </View>
+            </View>
+            {driver && (
+              <View style={styles.lookFor}>
+                <View style={styles.flex}>
+                  <Text style={styles.lookForLabel}>Busca</Text>
+                  <Text style={styles.lookForVehicle}>
+                    {[vehicleLabel(driver.vehicleType), driver.vehicleModel].filter(Boolean).join(' · ') || driver.fullName}
+                  </Text>
+                </View>
+                {!!driver.plate && <PlateBadge plate={driver.plate} large />}
+              </View>
+            )}
           </View>
-        </View>
-        {ride.status === 'accepted' && pickupRoute ? (
-          <Text style={styles.hint}>
-            Llega en {Math.max(1, Math.round(pickupRoute.durationSeconds / 60))} min · a {formatKm(pickupRoute.distanceMeters / 1000)} del punto de recogida.
-          </Text>
-        ) : ride.acceptedEtaMin != null && ride.status === 'accepted' && (
-          <Text style={styles.hint}>Llegada estimada al aceptar: {ride.acceptedEtaMin} min.</Text>
+        ) : ride.status === 'accepted' ? (
+          <View accessibilityLiveRegion="polite" style={styles.hero}>
+            <Text style={styles.heroLabel}>{banner.title}</Text>
+            <Text accessibilityRole="header" style={styles.heroTitle}>
+              {pickupMinutes != null ? `Llega en ${pickupMinutes} min` : 'En camino'}
+            </Text>
+            <Text style={styles.heroHint}>
+              {pickupRoute ? `A ${formatKm(pickupRoute.distanceMeters / 1000)} · ` : ''}te avisaremos cuando llegue
+            </Text>
+          </View>
+        ) : ride.status === 'in_progress' ? (
+          <View accessibilityLiveRegion="polite" style={styles.hero}>
+            <Text style={styles.heroLabel}>{isDelivery ? 'Encomienda en camino a' : 'Viaje en curso a'} {ride.destination.name}</Text>
+            <Text accessibilityRole="header" style={styles.heroTitle}>
+              {arrivalClock ? `${isDelivery ? 'Llega' : 'Llegas'} a las ${arrivalClock}` : banner.title}
+            </Text>
+            {tripRoute && (
+              <View style={styles.progressRow}>
+                {fullRoute && fullRoute.distanceMeters > 0 && (
+                  <View style={styles.progressTrack} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+                    <View style={[styles.progressFill, { width: `${Math.round(Math.min(1, Math.max(0.04,
+                      1 - tripRoute.distanceMeters / fullRoute.distanceMeters)) * 100)}%` }]} />
+                  </View>
+                )}
+                <Text style={styles.heroHint}>{tripMinutes} min · {formatKm(tripRoute.distanceMeters / 1000)}</Text>
+              </View>
+            )}
+          </View>
+        ) : (
+          <View accessibilityLiveRegion="polite" style={[styles.banner, banner.accent && styles.bannerAccent]}>
+            <Ionicons name={banner.icon} size={26} color={banner.accent ? colors.textOnAccent : colors.primary} />
+            <View style={styles.bannerText}>
+              <Text accessibilityRole="header" style={[styles.bannerTitle, banner.accent && styles.bannerAccentText]}>{banner.title}</Text>
+              <Text style={[styles.hint, banner.accent && styles.bannerAccentText]}>{banner.hint}</Text>
+            </View>
+          </View>
         )}
 
-        {ride.driver && <>
-          {!isCancelled && <DriverLocationStatus freshness={tracking.freshness} onRetry={tracking.retry} />}
-          <DriverCard ride={ride} />
-        </>}
-        <TripSummary key={ride.id} ride={ride} compact />
+        {driver && !isCancelled && tracking.freshness !== 'live' && (
+          <DriverLocationStatus freshness={tracking.freshness} onRetry={tracking.retry} />
+        )}
+        {driver && (ride.status === 'accepted' || isCancelled) && <DriverCard ride={ride} />}
+        {driver && (ride.status === 'arriving' || ride.status === 'in_progress') && (
+          <DriverRow ride={ride} firstName={firstName} />
+        )}
+        {ride.status === 'in_progress' && <PaymentNote ride={ride} role="passenger" />}
+        {ride.status === 'in_progress' && (
+          <Button title={isDelivery ? 'Compartir la entrega' : 'Compartir mi viaje'} variant="secondary"
+            leadingIcon="share-social-outline" onPress={contact.share} />
+        )}
+        {(ride.status === 'accepted' || ride.status === 'searching' || isCancelled) && <RouteLine ride={ride} />}
 
         {ride.status === 'searching' && (
           <Button title="Ver ofertas" onPress={() => router.replace({ pathname: '/booking/offers', params: { rideId: ride.id } })} />
@@ -266,6 +336,38 @@ export function TripScreen() {
   );
 }
 
+/** Compact driver row with call and message once the passenger has spotted them. */
+function DriverRow({ ride, firstName }: { ride: Ride; firstName: string }) {
+  const { styles } = useThemedStyles(createStyles);
+  const driver = ride.driver!;
+  const contact = useTripContact(ride, driver.phone);
+  return (
+    <View style={styles.driverRowWrap}>
+      <View style={styles.driverRowLine}>
+        <PersonAvatar name={driver.fullName} size={44} />
+        <View style={styles.driverInfo}>
+          <Text style={styles.driverName}>{driver.fullName}</Text>
+          <Text style={styles.vehicle} numberOfLines={1}>
+            {ride.status === 'arriving'
+              ? `En ${ride.origin.name}`
+              : [driver.vehicleModel, driver.plate].filter(Boolean).join(' · ') || vehicleLabel(driver.vehicleType)}
+          </Text>
+        </View>
+        <ContactIconButton icon="chatbubble-outline" label={`Enviar mensaje a ${firstName}`}
+          onPress={contact.message} disabled={!driver.phone} />
+        <ContactIconButton icon="call-outline" label={`Llamar a ${firstName}`}
+          onPress={contact.call} disabled={!driver.phone} />
+      </View>
+      {contact.error && <Text accessibilityRole="alert" style={styles.error}>{contact.error}</Text>}
+    </View>
+  );
+}
+
+function formatClock(timestamp: number) {
+  const date = new Date(timestamp);
+  return `${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
 function DriverCard({ ride }: { ride: Ride }) {
   const { colors, styles } = useThemedStyles(createStyles);
   const driver = ride.driver!;
@@ -291,11 +393,7 @@ function DriverCard({ ride }: { ride: Ride }) {
             </View>
           )}
         </View>
-        {!!driver.plate && (
-          <View style={styles.plate}>
-            <Text style={styles.plateText}>{driver.plate}</Text>
-          </View>
-        )}
+        {!!driver.plate && <PlateBadge plate={driver.plate} />}
       </View>
 
       <View style={styles.contactRow}>
@@ -362,7 +460,7 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    height: '46%',
+    maxHeight: '64%',
     backgroundColor: colors.background,
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,
@@ -372,6 +470,7 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
     shadowOffset: { width: 0, height: -3 },
     elevation: 12,
   },
+  sheetScroll: { flexGrow: 0, flexShrink: 1 },
   sheetContent: { padding: spacing.md, gap: spacing.sm },
   sheetHandle: { width: 40, height: 4, borderRadius: radius.pill, backgroundColor: colors.border, alignSelf: 'center' },
 
@@ -381,6 +480,40 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
   bannerAccentText: { color: colors.textOnAccent },
   bannerText: { flex: 1, gap: 2 },
   bannerTitle: { fontSize: fontSize.md, fontWeight: fontWeight.bold, color: colors.text },
+  flex: { flex: 1, minWidth: 0 },
+  hero: { gap: 2 },
+  heroLabel: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textSecondary },
+  heroHint: { fontSize: fontSize.sm, color: colors.textSecondary },
+  progressRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xs },
+  progressTrack: { flex: 1, height: 6, borderRadius: 3, backgroundColor: colors.border, overflow: 'hidden' },
+  progressFill: { height: 6, borderRadius: 3, backgroundColor: colors.primary },
+  heroTitle: { fontSize: fontSize.xxl, fontWeight: fontWeight.bold, color: colors.text },
+  arrival: { gap: spacing.sm + 4, padding: spacing.md, borderRadius: 18, backgroundColor: colors.accent },
+  arrivalHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm + 4 },
+  arrivalIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  arrivalTitle: { fontSize: fontSize.xl, fontWeight: fontWeight.bold, color: colors.textOnAccent },
+  arrivalHint: { fontSize: fontSize.sm, color: colors.textOnAccent },
+  arrivalWait: { fontSize: fontSize.md, fontWeight: fontWeight.bold, color: colors.textOnAccent },
+  lookFor: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: spacing.sm,
+    padding: spacing.sm + 2,
+    borderRadius: 14,
+    backgroundColor: colors.surface,
+  },
+  lookForLabel: { fontSize: fontSize.xs, color: colors.textSecondary },
+  lookForVehicle: { fontSize: fontSize.md, fontWeight: fontWeight.bold, color: colors.text },
+  driverRowWrap: { gap: spacing.xs },
+  driverRowLine: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm + 4 },
 
   driverWrap: {
     gap: spacing.md,
@@ -395,13 +528,6 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
   vehicle: { fontSize: fontSize.sm, color: colors.textSecondary },
   rating: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   ratingText: { fontSize: fontSize.sm, color: colors.textSecondary },
-  plate: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.md,
-    backgroundColor: colors.surfaceMuted,
-  },
-  plateText: { fontSize: fontSize.sm, fontWeight: fontWeight.bold, color: colors.text, letterSpacing: 1 },
 
   contactRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   contactBtn: {

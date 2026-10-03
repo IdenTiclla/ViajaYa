@@ -5,24 +5,34 @@ import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } fr
 import { formatBolivianos } from '@/features/rides/domain/money';
 import type { OfferTag } from '@/features/rides/domain/offerTags';
 import type { Offer } from '@/features/rides/domain/types';
-import { OfferLifeTimer } from '@/features/rides/presentation/OfferLifeTimer';
 import { Button, PersonAvatar } from '@/shared/components';
+import { PlateBadge } from '@/features/rides/presentation/TripParts';
 import { vehicleLabel } from '@/features/auth/domain/vehicleCatalog';
 
 type Props = {
   offer: Offer;
   tag: OfferTag | null;
   now: number;
+  /** The passenger's current fare, to tell "Tu precio" from a counter-offer. */
+  requestedFare?: number | null;
   acceptingId: string | null;
   decisionsLocked: boolean;
   onAccept: () => void;
   onReject: () => void;
 };
 
+const OFFER_TTL_SECONDS = 30;
 
-/** Separate identity, price, arrival and expiry to compare offers. */
+function clock(timestamp: number) {
+  const date = new Date(timestamp);
+  return `${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+const LOW_SECONDS = 10;
+const NEW_OFFER_MS = 5_000;
+
+/** Identity, price, arrival and expiry at a glance, with one clear decision. */
 export function OfferCard({
-  offer, tag, now, acceptingId, decisionsLocked, onAccept, onReject,
+  offer, tag, now, requestedFare, acceptingId, decisionsLocked, onAccept, onReject,
 }: Props) {
   const { colors, styles } = useThemedStyles(createStyles);
   const { fontScale } = useWindowDimensions();
@@ -31,68 +41,102 @@ export function OfferCard({
     ? null
     : Math.max(0, Math.ceil((Date.parse(offer.expiresAt) - now) / 1000));
   const expired = seconds === 0;
+  const low = seconds != null && seconds <= LOW_SECONDS;
   const accepting = acceptingId === offer.id;
   const locked = decisionsLocked || expired;
   const inColumn = fontScale > 1.3;
-  const vehicle = [
-    vehicleLabel(driver.vehicleType), driver.vehicleModel, driver.plate,
-  ].filter(Boolean).join(' · ');
+  const fresh = offer.createdAt != null && now - Date.parse(offer.createdAt) < NEW_OFFER_MS;
+  const atFare = requestedFare != null && Math.abs(offer.price - requestedFare) < 0.005;
+  const price = formatBolivianos(offer.price);
+  const vehicle = [vehicleLabel(driver.vehicleType), driver.vehicleModel].filter(Boolean).join(' · ');
+  const delta = requestedFare != null ? Math.round((offer.price - requestedFare) * 100) / 100 : null;
+  const chip = atFare
+    ? { text: 'Tu precio', style: styles.chipSuccess, textStyle: styles.chipSuccessText }
+    : delta != null && delta < 0
+      ? { text: `Bs ${formatBolivianos(-delta)} menos`, style: styles.chipSuccess, textStyle: styles.chipSuccessText }
+      : delta != null && delta > 0
+        ? { text: `+Bs ${formatBolivianos(delta)} sobre tu precio`, style: styles.chipNeutral, textStyle: styles.chipNeutralText }
+        : null;
+  const arrivalClock = offer.etaMin != null ? clock(now + offer.etaMin * 60_000) : null;
 
   return (
-    <View style={styles.card}>
-      <View style={styles.header}>
-        {!inColumn && (
-          <PersonAvatar name={driver.fullName} />
-        )}
+    <View style={[styles.card, fresh && styles.cardFresh]}
+      accessibilityLabel={`Oferta de ${driver.fullName}: Bs ${price}${offer.etaMin != null ? `, llega en ${offer.etaMin} minutos` : ''}${seconds != null ? `, vence en ${seconds} segundos` : ''}`}>
+      <View style={[styles.header, inColumn && styles.column]}>
+        {!inColumn && <PersonAvatar name={driver.fullName} />}
         <View style={styles.identity}>
           <Text style={styles.name}>{driver.fullName}</Text>
-          {vehicle ? <Text style={styles.vehicle}>{vehicle}</Text> : null}
+          <View style={styles.ratingRow}>
+            <Ionicons accessible={false} name="star" size={13} color={colors.primary} />
+            <Text style={styles.vehicle}>
+              {[driver.rating != null ? driver.rating.toFixed(1) : 'Conductor nuevo',
+                driver.tripsCompleted != null ? `${driver.tripsCompleted} ${driver.tripsCompleted === 1 ? 'viaje' : 'viajes'}` : null]
+                .filter(Boolean).join(' · ')}
+            </Text>
+            {tag && (
+              <View style={[styles.chip, styles.chipPrimary]}>
+                <Text style={[styles.chipText, styles.chipPrimaryText]}>{tag.subLabel}</Text>
+              </View>
+            )}
+          </View>
+        </View>
+        <View style={[styles.priceBlock, inColumn && styles.priceBlockColumn]}>
+          <Text style={styles.price}>Bs {price}</Text>
+          {chip && (
+            <View style={[styles.chip, chip.style]}>
+              <Text style={[styles.chipText, chip.textStyle]}>{chip.text}</Text>
+            </View>
+          )}
         </View>
       </View>
 
-      <View style={styles.indicators}>
-        <View style={styles.rating} accessible accessibilityLabel={driver.rating == null ? 'Sin calificaciones todavía' : `Calificación: ${driver.rating.toFixed(1)} de 5 estrellas`}>
-          <Ionicons accessible={false} name="star" size={14} color={colors.primary} />
-          <Text style={styles.indicatorText}>{driver.rating == null ? 'Sin calificaciones' : `${driver.rating.toFixed(1)} de 5`}</Text>
+      {(vehicle || driver.plate) ? (
+        <View style={styles.vehicleRow}>
+          <Ionicons accessible={false} name={driver.vehicleType === 'moto' ? 'bicycle' : driver.vehicleType === 'truck' ? 'bus' : 'car-sport'}
+            size={18} color={colors.textSecondary} />
+          <Text style={styles.vehicleText} numberOfLines={1}>{vehicle || 'Vehículo'}</Text>
+          {!!driver.plate && <PlateBadge plate={driver.plate} />}
         </View>
-        {tag && (
-          <View style={styles.label}>
-            <Ionicons accessible={false} name={tag.kind === 'cheapest' ? 'pricetag-outline' : tag.kind === 'fastest' ? 'time-outline' : 'star-outline'} size={14} color={colors.primary} />
-            <Text style={styles.labelText}>{tag.subLabel}</Text>
-          </View>
+      ) : null}
+
+      <View style={styles.meta}>
+        <View style={styles.eta}>
+          <Ionicons accessible={false} name="time-outline" size={16} color={colors.primary} />
+          <Text style={styles.etaText}>
+            {offer.etaMin == null ? 'Sin estimación de llegada' : `Llega en ${offer.etaMin} min`}
+            {arrivalClock ? <Text style={styles.etaClock}> · {arrivalClock}</Text> : null}
+          </Text>
+        </View>
+        {seconds != null && (
+          <Text style={[styles.expiry, low && styles.expiryLow]}>
+            {expired ? 'Vencida' : `Vence en ${seconds} s`}
+          </Text>
         )}
       </View>
-
-      <View style={[styles.terms, inColumn && styles.column]}>
-        <View style={styles.stat}>
-          <Text style={styles.caption}>Precio total</Text>
-          <Text style={styles.price}>Bs {formatBolivianos(offer.price)}</Text>
+      {seconds != null && (
+        <View style={styles.track} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+          <View style={[styles.fill, low && styles.fillLow,
+            { width: `${Math.min(100, (seconds / OFFER_TTL_SECONDS) * 100)}%` }]} />
         </View>
-        <View style={styles.stat}>
-          <Text style={styles.caption}>Llegada estimada</Text>
-          <Text style={styles.arrival}>{offer.etaMin == null ? 'Sin estimación' : `${offer.etaMin} min`}</Text>
-        </View>
-      </View>
-
-      <OfferLifeTimer secondsLeft={seconds} label="Oferta vence en" />
+      )}
 
       <View style={[styles.actions, inColumn && styles.column]}>
         <Button
-          title="Descartar"
+          title="Rechazar"
           variant="secondary"
           onPress={onReject}
           disabled={locked}
-          accessibilityLabel={`Descartar oferta de ${driver.fullName}`}
-          style={!inColumn && styles.action}
+          accessibilityLabel={`Rechazar oferta de ${driver.fullName}`}
+          style={!inColumn && styles.reject}
         />
         <Button
-          title={expired ? 'Oferta vencida' : 'Aceptar'}
+          title={expired ? 'Oferta vencida' : `Aceptar Bs ${price}`}
           onPress={onAccept}
           disabled={locked}
           loading={accepting}
           loadingLabel="Aceptando…"
-          accessibilityLabel={`Aceptar oferta de ${driver.fullName} por Bs ${formatBolivianos(offer.price)}`}
-          style={!inColumn && styles.action}
+          accessibilityLabel={`Aceptar oferta de ${driver.fullName} por Bs ${price}`}
+          style={!inColumn && styles.accept}
         />
       </View>
     </View>
@@ -100,23 +144,38 @@ export function OfferCard({
 }
 
 const createStyles = ({ colors }: Theme) => StyleSheet.create({
-  card: { padding: spacing.md, gap: spacing.sm, backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border },
-  header: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
-  identity: { flex: 1, minWidth: 0, gap: spacing.xs },
-  name: { fontSize: fontSize.md, color: colors.text, fontWeight: fontWeight.semibold },
+  card: { padding: spacing.md, gap: spacing.sm + 2, backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border },
+  cardFresh: { borderWidth: 2, borderColor: colors.accent },
+  header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm + 4 },
+  identity: { flex: 1, minWidth: 0, gap: 2 },
+  name: { fontSize: fontSize.md, color: colors.text, fontWeight: fontWeight.bold },
   vehicle: { fontSize: fontSize.sm, color: colors.textSecondary },
-  indicators: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm },
-  rating: { maxWidth: '100%', flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  indicatorText: { flexShrink: 1, fontSize: fontSize.sm, color: colors.textSecondary },
-  label: { maxWidth: '100%', flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, backgroundColor: colors.primarySoft, borderRadius: radius.sm },
-  labelText: { flexShrink: 1, fontSize: fontSize.xs, color: colors.primary, fontWeight: fontWeight.semibold },
-  terms: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.md,
-    padding: spacing.sm, borderRadius: radius.md, backgroundColor: colors.surfaceMuted },
-  stat: { flexShrink: 1, gap: spacing.xs },
-  caption: { fontSize: fontSize.xs, color: colors.textSecondary },
-  price: { fontSize: fontSize.xl, fontWeight: fontWeight.bold, color: colors.primary },
-  arrival: { fontSize: fontSize.lg, color: colors.text, fontWeight: fontWeight.bold },
+  ratingRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 4 },
+  vehicleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.sm + 2,
+    paddingVertical: spacing.xs + 2, borderRadius: radius.md, backgroundColor: colors.surfaceMuted },
+  vehicleText: { flex: 1, minWidth: 0, fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.text },
+  etaClock: { fontWeight: fontWeight.regular, color: colors.textSecondary },
+  priceBlock: { alignItems: 'flex-end', gap: spacing.xs },
+  priceBlockColumn: { alignItems: 'flex-start' },
+  price: { fontSize: fontSize.xl + 2, fontWeight: fontWeight.bold, color: colors.text },
+  chip: { paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.pill },
+  chipText: { fontSize: fontSize.xs, fontWeight: fontWeight.bold },
+  chipSuccess: { backgroundColor: colors.successSoft },
+  chipSuccessText: { color: colors.success },
+  chipPrimary: { backgroundColor: colors.primarySoft },
+  chipPrimaryText: { color: colors.primary },
+  chipNeutral: { backgroundColor: colors.surfaceMuted },
+  chipNeutralText: { color: colors.textSecondary },
+  meta: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
+  eta: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  etaText: { fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.text },
+  expiry: { fontSize: fontSize.sm, color: colors.textSecondary },
+  expiryLow: { color: colors.warning, fontWeight: fontWeight.bold },
+  track: { height: 4, borderRadius: 2, backgroundColor: colors.border, overflow: 'hidden' },
+  fill: { height: 4, borderRadius: 2, backgroundColor: colors.primary },
+  fillLow: { backgroundColor: colors.accent },
   actions: { flexDirection: 'row', gap: spacing.sm },
-  column: { flexDirection: 'column' },
-  action: { flex: 1 },
+  column: { flexDirection: 'column', alignItems: 'stretch' },
+  reject: { flex: 1 },
+  accept: { flex: 1.6 },
 });

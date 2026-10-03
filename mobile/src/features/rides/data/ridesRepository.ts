@@ -66,6 +66,7 @@ export function toOffer(dto: OfferDto): Offer {
       vehicleType: dto.driver.vehicle_type,
       plate: dto.driver.plate,
       vehicleModel: dto.driver.vehicle_model,
+      tripsCompleted: dto.driver.trips_completed ?? null,
     },
     createdAt: dto.created_at,
     expiresAt: dto.expires_at,
@@ -142,6 +143,7 @@ export function toRide(dto: RideDto): Ride {
     acceptedPrice: dto.accepted_price ? Number.parseFloat(dto.accepted_price) : null,
     acceptedEtaMin: dto.accepted_eta_min,
     riderOnTheWayAt: dto.rider_on_the_way_at ?? null,
+    arrivedAt: dto.arrived_at ?? null,
   };
 }
 

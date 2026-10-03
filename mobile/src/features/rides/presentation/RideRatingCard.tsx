@@ -51,6 +51,9 @@ export function RideRatingCard({
 
   const price = formatBolivianos(ride.acceptedPrice ?? ride.fare);
   const rateeLabel = rateeRole === 'driver' ? 'tu conductor' : 'tu pasajero';
+  const counterpartFirstName = counterpartName?.trim().split(/\s+/)[0] ?? null;
+  const paymentTitle = rateeRole === 'driver' ? 'Total a pagar' : `Cobra a ${counterpartFirstName ?? 'tu pasajero'}`;
+  const paymentMethod = ride.payment === 'qr' ? 'pago con QR' : 'en efectivo';
   const submitting = rate.isPending || skip.isPending;
 
   const submitRating = () => {
@@ -80,41 +83,42 @@ export function RideRatingCard({
       <TripProgress status="completed" />
       <View style={styles.successHeader}>
         <View style={styles.checkCircle}>
-          <Ionicons name="checkmark" size={28} color={colors.textOnPrimary} />
+          <Ionicons name="flag" size={28} color={colors.success} />
         </View>
-        <Text style={styles.title} accessibilityRole="header">
-          {ride.service === 'delivery' ? '¡Entrega completada!' : rateeRole === 'passenger' ? 'Viaje completado' : '¡Llegaste a tu destino!'}
-        </Text>
-        <Text style={styles.subtitle}>Gracias por usar ViajaYa.</Text>
-      </View>
-
-      <View style={styles.summary}>
-        <View style={styles.summaryItem}>
-          <Text style={styles.summaryLabel}>Precio acordado</Text>
-          <Text style={styles.summaryValue}>Bs {price}</Text>
-        </View>
-        <View style={styles.summaryDivider} />
-        <View style={styles.summaryItem}>
-          <Text style={styles.summaryLabel}>Pago acordado</Text>
-          <Text style={styles.summaryValue}>{ride.payment === 'qr' ? 'QR' : 'Efectivo'}</Text>
+        <View style={styles.headerText}>
+          <Text style={styles.title} accessibilityRole="header">
+            {ride.service === 'delivery' ? '¡Entrega completada!'
+              : rateeRole === 'passenger' ? 'Viaje finalizado' : `Llegaste a ${ride.destination.name}`}
+          </Text>
+          <Text style={styles.headerHint}>
+            {rateeRole === 'passenger' ? ride.destination.name : 'Gracias por viajar con ViajaYa.'}
+          </Text>
         </View>
       </View>
 
-      {!!counterpartName && (
-        <View style={styles.counterpart}>
-          {fontScale <= 1.3 && (
-            <PersonAvatar name={counterpartName} />
-          )}
-          <View style={styles.counterpartInfo}>
-            <Text style={styles.counterpartName}>{counterpartName}</Text>
-            {!!counterpartVehicle && <Text style={styles.vehicle}>{counterpartVehicle}</Text>}
-          </View>
+      <View style={[styles.payment, rateeRole === 'passenger' && styles.paymentDriver]}
+        accessible accessibilityLabel={`${paymentTitle}: ${price} bolivianos, ${paymentMethod}`}>
+        <Text style={[styles.paymentLabel, rateeRole === 'passenger' && styles.paymentLabelDriver]}>{paymentTitle}</Text>
+        <Text style={styles.paymentAmount}>Bs {price}</Text>
+        <View style={styles.paymentMethod}>
+          <Ionicons name={ride.payment === 'qr' ? 'qr-code-outline' : 'cash-outline'} size={22} color={colors.success} />
+          <Text style={styles.paymentMethodText}>
+            <Text style={styles.bold}>{ride.payment === 'qr' ? 'QR' : 'Efectivo'}</Text>
+            {rateeRole === 'driver'
+              ? ` · paga directamente a ${counterpartFirstName ?? 'tu conductor'}`
+              : ' · precio acordado en la oferta'}
+          </Text>
         </View>
-      )}
+      </View>
 
       <View style={styles.rateBlock}>
-        <Text style={styles.rateTitle}>Califica a {rateeLabel}</Text>
-        <Text style={styles.subtitle}>Elige las estrellas. El comentario es opcional.</Text>
+        {!!counterpartName && fontScale <= 1.3 && <PersonAvatar name={counterpartName} size={48} />}
+        <Text style={styles.rateTitle}>
+          {counterpartFirstName
+            ? rateeRole === 'driver' ? `¿Cómo estuvo tu viaje con ${counterpartFirstName}?` : `¿Cómo fue ${counterpartFirstName} como ${rateeLabel.replace('tu ', '')}?`
+            : `Califica a ${rateeLabel}`}
+        </Text>
+        {!!counterpartVehicle && <Text style={styles.subtitle}>{counterpartVehicle}</Text>}
         <View style={styles.stars} accessibilityRole="radiogroup" accessibilityLabel={`Calificación de ${rateeLabel}`}>
           {[1, 2, 3, 4, 5].map((n) => (
             <Pressable
@@ -136,19 +140,19 @@ export function RideRatingCard({
               <Ionicons
                 accessible={false}
                 name={n <= score ? 'star' : 'star-outline'}
-                size={34}
-                color={n <= score ? colors.primary : colors.textSecondary}
+                size={40}
+                color={n <= score ? colors.primary : colors.controlBorder}
               />
             </Pressable>
           ))}
         </View>
         <Text style={styles.scoreLabel} accessibilityLiveRegion="polite">
-          {score > 0 ? `${RATING_LABELS[score - 1]} · ${score} de 5 estrellas` : 'Selecciona de 1 a 5 estrellas'}
+          {score > 0 ? RATING_LABELS[score - 1] : 'Toca una estrella para calificar'}
         </Text>
       </View>
 
       <Button title={showComment ? 'Ocultar comentario' : comment ? 'Editar comentario' : 'Agregar comentario (opcional)'}
-        variant="secondary" leadingIcon="chatbubble-outline" disabled={score === 0 || submitting}
+        variant="text" leadingIcon="add" disabled={score === 0 || submitting}
         accessibilityState={{ expanded: showComment }} onPress={() => setShowComment(value => !value)} />
       {showComment && <TextField label="Comentario (opcional)" showCharacterCount
           style={{ minHeight: 96 * fontScale }}
@@ -189,30 +193,35 @@ export function RideRatingCard({
 
 const createStyles = ({ colors }: Theme) => StyleSheet.create({
   root: { gap: spacing.md },
-  successHeader: { alignItems: 'center', gap: spacing.xs },
+  successHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   checkCircle: {
     width: 56,
     height: 56,
     borderRadius: radius.pill,
-    backgroundColor: colors.primary,
+    backgroundColor: colors.successSoft,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.xs,
   },
-  title: { fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.text, textAlign: 'center' },
+  headerText: { flex: 1, minWidth: 0, gap: 2 },
+  title: { fontSize: fontSize.xl, fontWeight: fontWeight.bold, color: colors.text },
+  headerHint: { fontSize: fontSize.sm, color: colors.textSecondary },
   subtitle: { fontSize: fontSize.sm, color: colors.textSecondary, textAlign: 'center' },
+  bold: { fontWeight: fontWeight.bold },
 
-  summary: {
+  payment: { gap: spacing.sm, padding: spacing.md + 2, borderRadius: 20, backgroundColor: colors.primarySoft },
+  paymentDriver: { backgroundColor: colors.warningSoft, borderWidth: 2, borderColor: colors.accent },
+  paymentLabel: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textSecondary },
+  paymentLabelDriver: { fontWeight: fontWeight.bold, color: colors.warning },
+  paymentAmount: { fontSize: 40, fontWeight: fontWeight.bold, color: colors.text },
+  paymentMethod: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: spacing.md,
+    gap: spacing.sm,
+    padding: spacing.sm + 2,
     borderRadius: radius.md,
-    backgroundColor: colors.surfaceMuted,
+    backgroundColor: colors.surface,
   },
-  summaryItem: { flex: 1, minWidth: 0, alignItems: 'center', gap: 2, paddingHorizontal: spacing.xs },
-  summaryDivider: { width: 1, alignSelf: 'stretch', backgroundColor: colors.border },
-  summaryLabel: { fontSize: fontSize.xs, color: colors.textSecondary, textAlign: 'center' },
-  summaryValue: { fontSize: fontSize.md, fontWeight: fontWeight.bold, color: colors.text, textAlign: 'center' },
+  paymentMethodText: { flex: 1, fontSize: fontSize.sm, color: colors.text },
 
   counterpart: {
     flexDirection: 'row',
@@ -228,18 +237,18 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
   vehicle: { fontSize: fontSize.sm, color: colors.textSecondary },
 
   rateBlock: { alignItems: 'center', gap: spacing.xs },
-  rateTitle: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.text, textAlign: 'center' },
+  rateTitle: { fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.text, textAlign: 'center' },
   stars: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: spacing.xs, marginTop: spacing.xs },
   starButton: {
-    width: 48,
-    height: 48,
+    width: 54,
+    height: 54,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: radius.pill,
   },
   starPressed: { backgroundColor: colors.surfaceMuted },
   starSelected: { backgroundColor: colors.primarySoft },
-  scoreLabel: { color: colors.textSecondary, fontSize: fontSize.sm, textAlign: 'center' },
+  scoreLabel: { color: colors.primary, fontSize: fontSize.md, fontWeight: fontWeight.bold, textAlign: 'center' },
 
   error: { color: colors.danger, fontSize: fontSize.sm, textAlign: 'center' },
 });

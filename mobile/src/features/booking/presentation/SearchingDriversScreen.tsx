@@ -29,8 +29,11 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
-import { fontSize, fontWeight, radius, spacing, useThemedStyles, useTheme, type Theme } from '@/core/theme';
-import type { Place, ServiceType } from '@/features/booking/domain/types';
+import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
+import type { PaymentMethod, Place, ServiceType } from '@/features/booking/domain/types';
+import { useRoute } from '@/features/booking/application/useRoute';
+import { SERVICE_META } from '@/features/booking/domain/serviceCatalog';
+import { formatKm } from '@/features/rides/domain/geo';
 import {
   usePauseForEdit,
   useUpdateRideFare,
@@ -41,10 +44,12 @@ import { MotorcycleRouteNotice } from '@/features/rides/presentation/MotorcycleR
 import { ConfirmDialog } from '@/shared/components';
 
 const OFFER_STEP = 1;
+const RAISE_STEPS = [1, 2, 5] as const;
 
 export function SearchingDriversScreen({
   rideId,
   service,
+  payment,
   origin,
   destination,
   currentFare,
@@ -57,6 +62,7 @@ export function SearchingDriversScreen({
 }: {
   rideId: string | null;
   service: ServiceType;
+  payment: PaymentMethod;
   origin: Place | null;
   destination: Place | null;
   /** Oferta vigente del viaje (en vivo). */
@@ -72,6 +78,7 @@ export function SearchingDriversScreen({
   const insets = useSafeAreaInsets();
   const updateFare = useUpdateRideFare();
   const pauseForEdit = usePauseForEdit();
+  const { route } = useRoute(origin, destination, service);
   const negotiationBusy = cancelPending || updateFare.isPending || pauseForEdit.isPending;
 
   const [fareInput, setFareInput] = useState<string | null>(null);
@@ -181,6 +188,15 @@ export function SearchingDriversScreen({
             accessibilityLabel="Volver">
             <Ionicons name="arrow-back" size={24} color={colors.text} />
           </TouchableOpacity>
+          <View style={styles.tripChip}>
+            <Ionicons name={SERVICE_META[service].icon} size={18} color={colors.primary} />
+            <Text style={styles.tripChipText} numberOfLines={1}>
+              {[SERVICE_META[service].label,
+                route ? formatKm(route.distanceMeters / 1000) : null,
+                route ? `${Math.max(1, Math.round(route.durationSeconds / 60))} min` : null]
+                .filter(Boolean).join(' · ')}
+            </Text>
+          </View>
         </SafeAreaView>
 
         <KeyboardAvoidingView
@@ -203,100 +219,118 @@ export function SearchingDriversScreen({
               bounces={false}>
               <View style={styles.sheetHandle} />
 
-          {/* Search status */}
-          <View style={styles.statusRow}>
-            <View style={styles.statusText}>
-              <View style={styles.statusTitleRow}>
-                <View style={[styles.liveDot, hasConnectionError && styles.offlineDot]} />
-                <Text style={[styles.statusTitle, hasConnectionError && styles.offlineTitle]}>
-                  {hasConnectionError ? 'Reconectando…' : 'Buscando ofertas…'}
-                </Text>
-              </View>
-              <Text style={styles.statusSubtitle} numberOfLines={2}>
-                {hasConnectionError
-                  ? getApiErrorMessage(connectionError)
-                  : 'Conectando con conductores cercanos'}
-              </Text>
-            </View>
+          <TripProgress status="searching" />
+
+          <View style={styles.statusRow} accessibilityLiveRegion="polite">
             <TouchableOpacity
-              style={styles.syncBadge}
+              style={[styles.statusIcon, hasConnectionError && styles.statusIconError]}
               onPress={onRetry}
               disabled={!hasConnectionError || !onRetry}
               accessibilityRole={hasConnectionError ? 'button' : undefined}
               accessibilityLabel={hasConnectionError ? 'Reintentar conexión' : undefined}>
-              <SpinningSyncIcon hasError={hasConnectionError} />
+              {hasConnectionError
+                ? <Ionicons name="refresh" size={24} color={colors.danger} />
+                : <Ionicons name="search" size={26} color={colors.primary} />}
             </TouchableOpacity>
-          </View>
-
-          <TripProgress status="searching" />
-          <MotorcycleRouteNotice service={service} />
-          {/* Ajuste de oferta */}
-          <View style={styles.bidHeader}>
-            <Text style={styles.bidTitle}>Tu oferta</Text>
-          </View>
-          <View style={[styles.fareStepper, fareLocked && styles.disabled]}>
-            <TouchableOpacity
-              style={styles.fareStepButton}
-              onPress={() => adjustFare(-OFFER_STEP)}
-              disabled={fareLocked || !typedFareIsValid || typedFare <= OFFER_STEP}
-              accessibilityRole="button"
-              accessibilityLabel="Reducir oferta en un boliviano">
-              <Ionicons name="remove" size={22} color={colors.primary} />
-            </TouchableOpacity>
-            <View style={styles.fareInputWrap}>
-              <Text style={styles.fareCurrency}>Bs</Text>
-              <TextInput
-                value={displayedFare}
-                onChangeText={setFareInput}
-                placeholder="0"
-                placeholderTextColor={colors.placeholder}
-                keyboardType="decimal-pad"
-                inputMode="decimal"
-                maxLength={9}
-                returnKeyType="done"
-                onSubmitEditing={applyTypedFare}
-                onBlur={applyTypedFare}
-                editable={!fareLocked}
-                style={styles.fareAmountInput}
-                accessibilityLabel="Precio de tu oferta en bolivianos"
-              />
+            <View style={styles.statusText}>
+              <Text accessibilityRole="header" style={[styles.statusTitle, hasConnectionError && styles.offlineTitle]}>
+                {hasConnectionError ? 'Reconectando…' : 'Buscando conductores'}
+              </Text>
+              <Text style={styles.statusSubtitle} numberOfLines={2}>
+                {hasConnectionError
+                  ? getApiErrorMessage(connectionError)
+                  : 'Te avisaremos apenas llegue la primera oferta.'}
+              </Text>
             </View>
-            <TouchableOpacity
-              style={styles.fareStepButton}
-              onPress={() => adjustFare(OFFER_STEP)}
-              disabled={fareLocked}
-              accessibilityRole="button"
-              accessibilityLabel="Aumentar oferta en un boliviano">
-              <Ionicons name="add" size={22} color={colors.primary} />
-            </TouchableOpacity>
+          </View>
+          <ProgressBar />
+
+          <MotorcycleRouteNotice service={service} />
+
+          <View style={[styles.offerCard, fareLocked && styles.disabled]}>
+            <View style={styles.offerRow}>
+              <View style={styles.offerAmount}>
+                <Text style={styles.bidTitle}>Tu oferta</Text>
+                <View style={styles.fareInputWrap}>
+                  <Text style={styles.fareCurrency}>Bs</Text>
+                  <TextInput
+                    value={displayedFare}
+                    onChangeText={setFareInput}
+                    placeholder="0"
+                    placeholderTextColor={colors.placeholder}
+                    keyboardType="decimal-pad"
+                    inputMode="decimal"
+                    maxLength={9}
+                    returnKeyType="done"
+                    onSubmitEditing={applyTypedFare}
+                    onBlur={applyTypedFare}
+                    editable={!fareLocked}
+                    style={styles.fareAmountInput}
+                    accessibilityLabel="Precio de tu oferta en bolivianos"
+                    accessibilityHint="Toca para escribir otro monto"
+                  />
+                </View>
+              </View>
+              <View style={styles.paymentChip}>
+                <Ionicons name={payment === 'qr' ? 'qr-code-outline' : 'cash-outline'} size={16} color={colors.success} />
+                <Text style={styles.paymentChipText}>{payment === 'qr' ? 'QR' : 'Efectivo'}</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.fareStepButton}
+                onPress={() => adjustFare(-OFFER_STEP)}
+                disabled={fareLocked || !typedFareIsValid || typedFare <= OFFER_STEP}
+                accessibilityRole="button"
+                accessibilityLabel="Bajar oferta en un boliviano">
+                <Ionicons name="remove" size={22} color={colors.primary} />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.raiseHint}>¿Pocas ofertas? Sube tu precio</Text>
+            <View style={styles.raiseRow}>
+              {RAISE_STEPS.map((step) => (
+                <TouchableOpacity
+                  key={step}
+                  style={styles.raiseButton}
+                  onPress={() => adjustFare(step)}
+                  disabled={fareLocked}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Subir oferta ${step} ${step === 1 ? 'boliviano' : 'bolivianos'}`}>
+                  <Text style={styles.raiseText}>+ Bs {step}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
 
           {updateFare.isError && (
             <Text style={styles.error}>{getApiErrorMessage(updateFare.error)}</Text>
           )}
-
-          {/* Barra de progreso */}
-          <ProgressBar />
-          <Text style={styles.progressLabel}>Esperando ofertas de conductores</Text>
-
-          {/* Acciones */}
           {cancelError != null && (
             <Text style={styles.error}>{getApiErrorMessage(cancelError)}</Text>
           )}
           {pauseForEdit.isError && (
             <Text style={styles.error}>{getApiErrorMessage(pauseForEdit.error)}</Text>
           )}
-          <TouchableOpacity
-            style={[styles.cancel, negotiationBusy && styles.disabled]}
-            onPress={() => setConfirmCancel(true)}
-            disabled={negotiationBusy}
-            accessibilityRole="button"
-            accessibilityLabel="Cancelar solicitud">
-            <Ionicons name="close" size={18} color={colors.danger} />
-            <Text style={styles.cancelText}>
-              {cancelPending ? 'Cancelando…' : 'Cancelar solicitud'}
-            </Text>
-          </TouchableOpacity>
+
+          <View style={styles.actionsRow}>
+            <TouchableOpacity
+              style={[styles.modify, negotiationBusy && styles.disabled]}
+              onPress={onBack}
+              disabled={negotiationBusy}
+              accessibilityRole="button"
+              accessibilityLabel="Modificar solicitud">
+              <Ionicons name="create-outline" size={18} color={colors.text} />
+              <Text style={styles.modifyText}>{pauseForEdit.isPending ? 'Abriendo…' : 'Modificar'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.cancel, negotiationBusy && styles.disabled]}
+              onPress={() => setConfirmCancel(true)}
+              disabled={negotiationBusy}
+              accessibilityRole="button"
+              accessibilityLabel="Cancelar solicitud">
+              <Text style={styles.cancelText}>
+                {cancelPending ? 'Cancelando…' : 'Cancelar solicitud'}
+              </Text>
+            </TouchableOpacity>
+          </View>
             </ScrollView>
           </SafeAreaView>
         </KeyboardAvoidingView>
@@ -315,43 +349,6 @@ export function SearchingDriversScreen({
       />
 
     </View>
-  );
-}
-
-/** Sync indicator active during the whole offer search. */
-function SpinningSyncIcon({ hasError }: { hasError: boolean }) {
-  const { colors } = useTheme();
-  const [turn] = useState(() => new Animated.Value(0));
-
-  useEffect(() => {
-    const animation = Animated.loop(
-      Animated.timing(turn, {
-        toValue: 1,
-        duration: 1_200,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }),
-    );
-    animation.start();
-    return () => animation.stop();
-  }, [turn]);
-
-  const rotate = turn.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
-  });
-
-  return (
-    <Animated.View
-      style={{ transform: [{ rotate }] }}
-      pointerEvents="none"
-      accessibilityElementsHidden>
-      <Ionicons
-        name={hasError ? 'refresh' : 'sync'}
-        size={18}
-        color={hasError ? colors.danger : colors.primary}
-      />
-    </Animated.View>
   );
 }
 
@@ -391,7 +388,27 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
   mapFallback: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: colors.surfaceMuted },
   scrim: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
 
-  backArea: { position: 'absolute', top: 0, left: 0, padding: spacing.md },
+  backArea: { position: 'absolute', top: 0, left: 0, right: 0, padding: spacing.md,
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  tripChip: {
+    flexShrink: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs + 2,
+    minHeight: 44,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surface,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
+  tripChipText: { flexShrink: 1, fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.text },
+  paymentChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: spacing.sm + 2, minHeight: 36,
+    borderRadius: radius.pill, backgroundColor: colors.surface },
+  paymentChipText: { fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.text },
   backButton: {
     width: 48,
     height: 48,
@@ -419,8 +436,8 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
     width: '100%',
     maxHeight: '64%',
     backgroundColor: colors.background,
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     shadowColor: '#000',
     shadowOpacity: 0.12,
     shadowRadius: 12,
@@ -431,7 +448,7 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
     paddingBottom: spacing.md,
-    gap: spacing.sm,
+    gap: spacing.md,
   },
   sheetHandle: {
     width: 40,
@@ -442,58 +459,59 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
     marginBottom: spacing.xs,
   },
 
-  statusRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  statusText: { flex: 1 },
-  statusTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  liveDot: { width: 8, height: 8, borderRadius: radius.pill, backgroundColor: colors.primary },
-  offlineDot: { backgroundColor: colors.danger },
-  statusTitle: { fontSize: fontSize.md, fontWeight: fontWeight.bold, color: colors.primary },
-  offlineTitle: { color: colors.danger },
-  statusSubtitle: { fontSize: fontSize.xs, color: colors.textSecondary, marginTop: 2 },
-  syncBadge: {
-    width: 48,
-    height: 48,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surfaceMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  bidHeader: { alignItems: 'center' },
-  bidTitle: { fontSize: fontSize.md, fontWeight: fontWeight.bold, color: colors.text },
-  fareStepper: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  fareStepButton: {
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  statusIcon: {
     width: 52,
     height: 52,
+    borderRadius: radius.pill,
+    backgroundColor: colors.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: radius.md,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
   },
-  fareInputWrap: {
-    flex: 1,
-    minHeight: 52,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.md,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.primary,
-  },
-  fareCurrency: { color: colors.textSecondary, fontSize: fontSize.md, fontWeight: fontWeight.semibold },
+  statusIconError: { backgroundColor: colors.dangerSoft },
+  statusText: { flex: 1, gap: 2 },
+  statusTitle: { fontSize: fontSize.xl, fontWeight: fontWeight.bold, color: colors.text },
+  offlineTitle: { color: colors.danger },
+  statusSubtitle: { fontSize: fontSize.sm, color: colors.textSecondary },
+
+  offerCard: { gap: spacing.sm + 4, padding: spacing.md, borderRadius: radius.lg, backgroundColor: colors.surfaceMuted },
+  offerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  offerAmount: { flex: 1, minWidth: 0, gap: 2 },
+  bidTitle: { fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: colors.textSecondary },
+  fareInputWrap: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.xs },
+  fareCurrency: { color: colors.text, fontSize: fontSize.xl, fontWeight: fontWeight.bold },
   fareAmountInput: {
     flex: 1,
     minWidth: 0,
+    minHeight: 48,
     paddingVertical: 0,
     color: colors.text,
-    fontSize: fontSize.lg,
+    fontSize: fontSize.xxl,
     fontWeight: fontWeight.bold,
-    textAlign: 'center',
   },
+  fareStepButton: {
+    width: 48,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.controlBorder,
+  },
+  raiseHint: { fontSize: fontSize.sm, color: colors.textSecondary },
+  raiseRow: { flexDirection: 'row', gap: spacing.sm },
+  raiseButton: {
+    flex: 1,
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.controlBorder,
+  },
+  raiseText: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.text },
 
   progressTrack: {
     height: 6,
@@ -503,29 +521,30 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
     marginTop: spacing.xs,
   },
   progressBar: { width: '40%', height: '100%', borderRadius: radius.pill, backgroundColor: colors.primary },
-  progressLabel: {
-    fontSize: 10,
-    color: colors.placeholder,
-    textAlign: 'center',
-    textTransform: 'uppercase',
-    fontWeight: fontWeight.bold,
-    letterSpacing: 1,
-  },
-
-  cancel: {
+  actionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  modify: {
+    flexGrow: 1,
+    flexBasis: 140,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.xs,
     minHeight: 48,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.md,
-    backgroundColor: colors.dangerSoft,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: colors.dangerBorder,
+    borderColor: colors.controlBorder,
   },
-  cancelText: { flexShrink: 1, textAlign: 'center', fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.danger },
+  modifyText: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.text },
+  cancel: {
+    flexGrow: 1,
+    flexBasis: 140,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
+    paddingHorizontal: spacing.sm,
+  },
+  cancelText: { textAlign: 'center', fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.danger },
   disabled: { opacity: 0.5 },
   error: { color: colors.danger, fontSize: fontSize.sm, textAlign: 'center' },
 });

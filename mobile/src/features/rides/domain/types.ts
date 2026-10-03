@@ -28,6 +28,8 @@ export type OfferDriver = {
   vehicleType: VehicleType | null;
   plate: string | null;
   vehicleModel: string | null;
+  /** Completed rides; null when the backend does not report it. */
+  tripsCompleted: number | null;
 };
 
 /** Offer received by the passenger (or sent by the driver). */
@@ -109,6 +111,8 @@ export type Ride = {
   acceptedEtaMin: number | null;
   /** Passenger pickup acknowledgement, preserved across reconnects. */
   riderOnTheWayAt: string | null;
+  /** When the driver reported being at the pickup point. */
+  arrivedAt: string | null;
 };
 
 /** Rating one party leaves for the other when the ride ends. */

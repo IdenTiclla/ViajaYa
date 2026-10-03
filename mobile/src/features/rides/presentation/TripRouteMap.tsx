@@ -6,6 +6,9 @@
  * In the `pickup` phase (driver assigned, not yet on board) it instead draws the
  * route from the driver's live position to the pickup point, hides the
  * destination and frames only the driver, that route and the pickup point.
+ *
+ * `originPulse` draws expanding waves on the origin while the passenger waits
+ * for offers; like the driver radar, it follows the pin's native projection.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
@@ -23,7 +26,10 @@ import { isTightCluster, streetLevelFrame } from '@/features/rides/domain/pickup
 import { VehicleMarker } from '@/features/driver/presentation/VehicleMarker';
 import type { VehicleType } from '@/features/auth/domain/types';
 import { MotorcycleRouteNotice } from './MotorcycleRouteNotice';
+import { OriginPulse } from './OriginPulse';
 import { getTripMapPadding } from './tripMapLayout';
+
+const PULSE_SIZE = 180;
 
 export function TripRouteMap({
   origin,
@@ -35,6 +41,7 @@ export function TripRouteMap({
   showMotorcycleNotice = true,
   vehicle,
   phase = 'trip',
+  originPulse = false,
 }: {
   /** `pickup`: driver → pickup point only; `trip`: origin → destination. */
   phase?: 'pickup' | 'trip';
@@ -48,6 +55,8 @@ export function TripRouteMap({
   showPlaceNamesInTooltip?: boolean;
   /** Disable only when the containing screen renders the notice in its panel. */
   showMotorcycleNotice?: boolean;
+  /** Expanding waves on the origin (searching for offers). */
+  originPulse?: boolean;
 }) {
   const mapRef = useRef<MapView>(null);
   const [noticeHeight, setNoticeHeight] = useState(0);
@@ -56,6 +65,28 @@ export function TripRouteMap({
   const { mapStyle, mapMode } = useMapStyle(true);
   const { mapBearing, mapZoom, updateBearing } = useMapBearing(mapRef);
   const pickupPhase = phase === 'pickup';
+  const [pulsePoint, setPulsePoint] = useState<{ x: number; y: number } | null>(null);
+  const pulseRequest = useRef(0);
+  const originLatitude = origin.coordinates.latitude;
+  const originLongitude = origin.coordinates.longitude;
+  const updatePulse = useCallback(() => {
+    const map = mapRef.current;
+    if (!originPulse || !map || !ready) return;
+    const request = ++pulseRequest.current;
+    void map.pointForCoordinate({ latitude: originLatitude, longitude: originLongitude }).then((point) => {
+      if (request !== pulseRequest.current) return;
+      setPulsePoint(Number.isFinite(point.x) && Number.isFinite(point.y) ? point : null);
+    }).catch(() => {
+      if (request === pulseRequest.current) setPulsePoint(null);
+    });
+  }, [originPulse, ready, originLatitude, originLongitude]);
+  // A map that never moves (no refit needed) still needs the first projection.
+  useEffect(() => { updatePulse(); }, [updatePulse]);
+  useEffect(() => () => { pulseRequest.current += 1; }, []);
+  const onRegionChangeComplete = useCallback(() => {
+    updateBearing();
+    updatePulse();
+  }, [updateBearing, updatePulse]);
   const { route } = useRoute(pickupPhase ? null : origin, pickupPhase ? null : destination, service);
 
   const vehicleLatitude = vehicle?.coordinates.latitude;
@@ -137,7 +168,7 @@ export function TripRouteMap({
       toolbarEnabled={false}
       moveOnMarkerPress={false}
       onMapReady={() => setReady(true)}
-      onRegionChangeComplete={updateBearing}
+      onRegionChangeComplete={onRegionChangeComplete}
       // On some Android devices the map is ready before it gets its final size.
       // Refitting after layout keeps the route centered while navigating.
       onLayout={({ nativeEvent: { layout } }) => setSize((current) =>
@@ -167,6 +198,10 @@ export function TripRouteMap({
         vehicleType={vehicle.type ?? (service === 'moto' ? 'moto' : service === 'taxi' ? 'taxi' : null)}
         label="Ubicación del conductor" opacity={vehicle.stale ? 0.5 : 1} />}
     </MapView>
+    {originPulse && pulsePoint && <View testID="origin-pulse" pointerEvents="none" style={{ position: 'absolute',
+      left: pulsePoint.x - PULSE_SIZE / 2, top: pulsePoint.y - PULSE_SIZE / 2 }}>
+      <OriginPulse size={PULSE_SIZE} />
+    </View>}
     {service === 'moto' && showMotorcycleNotice && <View style={{ position: 'absolute', top: topPadding, left: 12, right: 12 }}
       onLayout={(event) => setNoticeHeight(event.nativeEvent.layout.height)}>
       <MotorcycleRouteNotice service={service} />

@@ -55,7 +55,7 @@ src/
 │       ├── domain/          # DriverVehicle (up to one per type; MAX_DRIVER_VEHICLES)
 │       ├── data/            # driverAccountRepository (/drivers/me/vehicles · /me/mode)
 │       ├── application/     # useDriverRequests (zustand) · useDriverToasts · useDriverAccount
-│       └── presentation/    # IncomingRequestsScreen · DriverTopBar · RequestCard · DriverSearchMap
+│       └── presentation/    # IncomingRequestsScreen · RequestCard · RequestsMap · CounterOfferSheet · DriverSearchMap
 │                            #   · DriverRegistrationScreen · DriverAccountCard · VehicleSelector
 │                            #   · ChooseModeScreen · DriverProfileScreen · …
 ├── core/               # Cross-cutting infrastructure
@@ -428,9 +428,14 @@ npm run lint               # expo lint (eslint-config-expo)
 - **Forms:** local state + `TextField`/`Button` from `shared/components` (react-hook-form was
   removed along with email sign-up); `zod` is reserved for validating WS frames.
 - **Maps:** `react-native-maps`; location with `expo-location` (permissions in `app.config.ts`).
+  On Android (1.27) `mapPadding` must not change between layout and `onMapReady`: the native
+  `applyBaseMapPadding` dereferences a null `GoogleMap` and the app closes. Pass it only after
+  `onMapReady` and reset that flag when the MapView unmounts (see `HomeScreen`).
   Shared map style: `features/booking/presentation/mapStyle.ts` (`declutteredMapStyle`).
 - **Route appearance:** every view reuses `RoutePolyline` and
-  `RoutePinMarker`; tracking and negotiation also use `TripRouteMap`.
+  `RoutePinMarker`; tracking and the passenger's search (`SearchingDriversScreen`) also use
+  `TripRouteMap`. «Elige tu conductor» (`OffersScreen`, once offers exist) has no map on purpose: a
+  `TripSummary` card (A → B, service, km/min, the passenger's fare and payment) stands in for it.
   `routeTooltipLayout.ts` holds the common logical measures: stroke 3,
   outline 5 and an A/B pin of 16, with no size variants per role. Configure
   keeps editing when tapping the markers and always shows the Origen/Destino
@@ -481,10 +486,23 @@ npm run lint               # expo lint (eslint-config-expo)
   Below: `ServiceTileSelector` (illustrated tiles with a check badge, also used by Home),
   `FareAndPaymentPicker` (typed fare + ±1 Bs via `stepFare`, cash/QR),
   `AutoAcceptToggle` (`useBookingStore.autoAccept` → `auto_accept` on create/edit; drivers see
-  «Acepta su precio y el viaje es tuyo» on `RequestCard`) and the yellow `Button variant="accent"`.
+  «Acepta su precio y el viaje es tuyo» on `RequestCard`) and a yellow `SwipeToConfirm tone="accent"`
+  («Desliza: buscar ofertas / conductor», or «guardar cambios» when editing; the same slide the driver
+  uses for ride steps).
   The duotone service/payment icons are PNGs per theme (`assets/images/trip-options`, no SVG
   renderer in the app): edit and rerun `scripts/render_trip_option_icons.py`
   (`uvx --with cairosvg python scripts/render_trip_option_icons.py`).
+- **Driver requests** (`IncomingRequestsScreen`): a top bar with the vehicle the driver works with
+  (informative chip, type + plate; switching vehicle stays in Profile) and the 44 dp Lista/Mapa toggle.
+  The list sits on a plain background (no map behind) and is sorted by `driver/domain/requestOrder.ts`
+  (Más cerca by GPS pickup distance, Mejor pago by Bs/km with a 1 km floor, Recientes); the map uses the
+  same order. List and map render the same `RequestCard` (`variant="map"` is compact, with the pager
+  inside and street km/min of the selected request); a sent/expired/rejected offer, a paused request or
+  one taken by another driver shows a status band and collapses the route to one line. Card actions are
+  ✕ · Contraofertar · Aceptar Bs X; Contraofertar opens `CounterOfferSheet` (− / +, quick amounts above
+  the fare). `RequestsMap` draws the driver's `VehicleMarker`, a dashed line to the selected pickup,
+  the selected A/B with `RoutePinMarker` and every other request as a `RequestPriceMarker` (green once
+  offered); framing uses the ~100 m GPS grid, not the raw 1 s fix. Pickup distances are straight-line.
 - **Home sheet** (`HomeScreen`): greeting, «¿A dónde vas?» + map button, `ServiceTileSelector`,
   `SavedPlaceShortcuts` (circles: Casa/Trabajo always, then favorites, then «Agregar»; order in
   `home/domain/savedPlaceShortcuts.ts`) and recent destinations. It is adaptive: the collapsed

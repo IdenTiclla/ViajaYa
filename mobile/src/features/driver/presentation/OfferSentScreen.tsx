@@ -50,7 +50,7 @@ import {
 import { useDriverActiveRide } from '@/features/rides/application/useRides';
 import { formatKm, haversineKm } from '@/features/rides/domain/geo';
 import { formatBolivianos, formatBolivianosInput } from '@/features/rides/domain/money';
-import { OfferLifeTimer } from '@/features/rides/presentation/OfferLifeTimer';
+import { TripProgress } from '@/features/rides/presentation/TripProgress';
 import { TripRouteMap } from '@/features/rides/presentation/TripRouteMap';
 
 function formatDuration(seconds: number): string {
@@ -402,14 +402,25 @@ export function OfferSentScreen() {
           bounces={false}>
         <View style={styles.sheetHandle} />
 
-        <View style={styles.statusHeader}>
-          <SpinnerRing />
-          <Text style={styles.statusTitle}>Esperando al pasajero</Text>
-          <Text style={styles.statusHint}>Tu oferta sigue activa mientras negocias con otros pasajeros.</Text>
-          <Button title="Seguir viendo solicitudes" variant="secondary" leadingIcon="list"
-            onPress={backToList} />
-          <Text style={styles.statusHint}>El primero que acepte confirma tu viaje. Tus otras ofertas se retiran automáticamente.</Text>
-          <OfferLifeTimer secondsLeft={secondsLeft} />
+        <TripProgress status="searching" />
+        <View style={styles.statusHeader} accessibilityLiveRegion="polite">
+          <View style={[styles.countdown, secondsLeft != null && secondsLeft <= 10 && styles.countdownLow]}
+            accessible accessibilityLabel={secondsLeft != null ? `Tu oferta vence en ${secondsLeft} segundos` : 'Oferta enviada'}>
+            {secondsLeft != null ? <>
+              <Text style={styles.countdownValue}>{secondsLeft} s</Text>
+              <Text style={styles.countdownLabel}>quedan</Text>
+            </> : <SpinnerRing />}
+          </View>
+          <View style={styles.statusText}>
+            <Text accessibilityRole="header" style={styles.statusTitle}>
+              Esperando a {openRide ? openRide.rider.fullName.trim().split(/\s+/)[0] : 'tu pasajero'}
+            </Text>
+            <Text style={styles.statusHint}>
+              Tu oferta: <Text style={styles.statusStrong}>{offerPrice != null ? `Bs ${formatBolivianos(offerPrice)}` : '—'}</Text>
+              {sentOffer?.etaMin != null ? ` · llegas en ${sentOffer.etaMin} min` : ''}
+            </Text>
+            <Text style={styles.statusHint}>Si acepta, pasarás directo a recogerlo.</Text>
+          </View>
         </View>
 
         <View style={styles.infoCard}>
@@ -469,6 +480,8 @@ export function OfferSentScreen() {
 
         {createOffer.offerFeedback}
         <View style={styles.actions}>
+          <Button title="Seguir viendo solicitudes" variant="secondary" leadingIcon="list"
+            onPress={backToList} />
           <Button
             title="Mejorar oferta"
             variant="secondary"
@@ -479,17 +492,16 @@ export function OfferSentScreen() {
             disabled={offerActionBusy}
           />
           <Button
-            title="Retirar propuesta"
-            variant="dangerSoft"
-            leadingIcon="close"
+            title="Retirar oferta"
+            variant="text"
             loading={withdrawOffer.isPending}
             loadingLabel="Retirando…"
             onPress={withdraw}
             disabled={offerActionBusy}
           />
           <Text style={styles.actionsHint}>
-            Mejorar tu oferta reemplaza la anterior. Al retirarla, otros conductores podrían
-            tomar el viaje.
+            Tu oferta sigue activa mientras ves otras solicitudes. El primero que acepte
+            confirma tu viaje y tus otras ofertas se retiran solas.
           </Text>
         </View>
         </ScrollView>
@@ -573,6 +585,7 @@ function ReofferScreen({
   const { colors, styles } = useThemedStyles(createStyles);
   return (
     <SafeAreaView style={styles.reofferRoot}>
+      <View style={styles.reofferProgress}><TripProgress status="searching" /></View>
       <View style={styles.reofferIcon}>
         <Ionicons
           name={rejected ? 'close-circle' : 'timer-outline'}
@@ -663,6 +676,7 @@ function SpinnerRing() {
 }
 
 const createStyles = ({ colors }: Theme) => StyleSheet.create({
+  reofferProgress: { alignSelf: 'stretch', marginBottom: spacing.md },
   recoveryRoot: {
     flex: 1,
     backgroundColor: colors.background,
@@ -760,7 +774,21 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
   sheetContent: { padding: spacing.lg, gap: spacing.lg },
   sheetHandle: { width: 40, height: 4, borderRadius: radius.pill, backgroundColor: colors.border, alignSelf: 'center' },
 
-  statusHeader: { alignItems: 'center', gap: spacing.xs },
+  statusHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  statusText: { flex: 1, minWidth: 0, gap: 2 },
+  statusStrong: { fontWeight: fontWeight.bold, color: colors.text },
+  countdown: {
+    width: 92,
+    height: 92,
+    borderRadius: radius.pill,
+    borderWidth: 7,
+    borderColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  countdownLow: { borderColor: colors.warning },
+  countdownValue: { fontSize: fontSize.xl, fontWeight: fontWeight.bold, color: colors.text },
+  countdownLabel: { fontSize: fontSize.xs, color: colors.textSecondary },
   spinnerWrap: { width: 64, height: 64, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.xs },
   spinnerRing: {
     position: 'absolute',
@@ -771,8 +799,8 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
     borderColor: colors.primary,
     borderTopColor: 'transparent',
   },
-  statusTitle: { fontSize: fontSize.xl, fontWeight: fontWeight.bold, color: colors.primary },
-  statusHint: { fontSize: fontSize.md, color: colors.textSecondary, textAlign: 'center' },
+  statusTitle: { fontSize: fontSize.xl, fontWeight: fontWeight.bold, color: colors.text },
+  statusHint: { fontSize: fontSize.sm, color: colors.textSecondary },
 
   infoCard: { gap: spacing.md, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceMuted },
   offerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

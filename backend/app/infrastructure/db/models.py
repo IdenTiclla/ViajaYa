@@ -383,6 +383,7 @@ class RideRequestModel(Base):
         nullable=True,
     )
     rider_on_the_way_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    arrived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     vehicle_snapshot: Mapped[dict | None] = mapped_column(
         JSON().with_variant(JSONB(), "postgresql"), nullable=True,
     )

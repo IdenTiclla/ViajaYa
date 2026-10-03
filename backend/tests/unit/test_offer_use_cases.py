@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
@@ -686,3 +687,29 @@ async def test_expire_offer_skips_already_resolved_offer():
 
     assert await expire_offer_use_case(offers).execute(created.detail.offer.id) is None
     assert (await offers.get_by_id(created.detail.offer.id)).status is OfferStatus.ACCEPTED
+
+
+async def test_offers_report_the_driver_completed_rides():
+    """The passenger sees how many rides each offering driver completed."""
+    rides = InMemoryRideRequestRepository()
+    users = InMemoryUserRepository()
+    offers = InMemoryOfferRepository(rides=rides, users=users)
+    rider, veteran, newcomer = _passenger(), _driver(), _driver()
+    for user in (rider, veteran, newcomer):
+        await users.add(user)
+    for _ in range(2):
+        past = _ride(rider.id)
+        await rides.add(replace(past, status=RideStatus.COMPLETED, driver_id=veteran.id))
+    ride = await rides.add(_ride(rider.id))
+
+    created = await create_offer_use_case(rides, offers).execute(
+        veteran, ride.id, CreateOfferInput(accept_at_fare=True)
+    )
+    await create_offer_use_case(rides, offers).execute(
+        newcomer, ride.id, CreateOfferInput(accept_at_fare=True)
+    )
+
+    assert created.detail.driver_trips_completed == 2
+    listed = await ListOffersForRide(rides, offers, users).execute(rider, ride.id)
+    trips = {detail.driver.id: detail.driver_trips_completed for detail in listed}
+    assert trips == {veteran.id: 2, newcomer.id: 0}

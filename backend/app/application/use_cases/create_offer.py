@@ -135,7 +135,12 @@ class CreateOffer:
             raise DriverUnavailableError(
                 "La solicitud o tu disponibilidad cambiaron; actualiza e inténtalo de nuevo."
             )
+        trips = await self._rides.count_completed_by_drivers({driver.id})
         return CreateOfferResult(
-            detail=OfferDetail(offer=creation.offer, driver=driver),
+            detail=OfferDetail(
+                offer=creation.offer,
+                driver=driver,
+                driver_trips_completed=trips.get(driver.id, 0),
+            ),
             superseded_offer_id=creation.superseded_offer_id,
         )

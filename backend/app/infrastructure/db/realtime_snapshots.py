@@ -238,10 +238,19 @@ class SqlAlchemyRealtimeSnapshotReader(RealtimeSnapshotReader):
         ride_id: uuid.UUID,
         captured_at: datetime,
     ) -> list[OfferDetail]:
-        """Load live offers and their driver in a single query."""
+        """Load live offers, their driver and its completed rides in a single query."""
+        driver_trips = (
+            select(func.count(RideRequestModel.id))
+            .where(
+                RideRequestModel.driver_id == UserModel.id,
+                RideRequestModel.status == RideStatus.COMPLETED,
+            )
+            .correlate(UserModel)
+            .scalar_subquery()
+        )
         rows = (
             await session.execute(
-                select(OfferModel, UserModel)
+                select(OfferModel, UserModel, driver_trips)
                 .join(UserModel, UserModel.id == OfferModel.driver_id)
                 .where(
                     OfferModel.ride_id == ride_id,
@@ -251,13 +260,14 @@ class SqlAlchemyRealtimeSnapshotReader(RealtimeSnapshotReader):
             )
         ).all()
         details: list[OfferDetail] = []
-        for offer_row, driver_row in rows:
+        for offer_row, driver_row, trips in rows:
             offer = _offer_to_entity(offer_row)
             if is_offer_active(offer, captured_at):
                 details.append(
                     OfferDetail(
                         offer=offer,
                         driver=_to_entity(driver_row),
+                        driver_trips_completed=int(trips or 0),
                     )
                 )
         return details

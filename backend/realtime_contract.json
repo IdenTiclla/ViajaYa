@@ -1012,6 +1012,7 @@
                 "id": "00000000-0000-4000-8000-000000000003",
                 "plate": "ABC-123",
                 "rating": 4.8,
+                "trips_completed": null,
                 "vehicle_model": "Sedán",
                 "vehicle_type": "taxi"
               },
@@ -1026,6 +1027,7 @@
           "ride": {
             "accepted_eta_min": null,
             "accepted_price": null,
+            "arrived_at": null,
             "auto_accept": false,
             "cancelled_at": null,
             "completed_at": null,
@@ -1085,6 +1087,7 @@
           "active_ride": {
             "accepted_eta_min": 5,
             "accepted_price": "25.00",
+            "arrived_at": null,
             "auto_accept": false,
             "cancelled_at": null,
             "completed_at": null,

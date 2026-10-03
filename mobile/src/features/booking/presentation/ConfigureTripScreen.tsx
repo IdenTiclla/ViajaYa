@@ -58,7 +58,7 @@ import {
 } from '@/features/rides/presentation/routeTooltipLayout';
 import { RoutePolyline } from '@/features/rides/presentation/RoutePolyline';
 import { useMapBearing } from '@/features/rides/application/useMapBearing';
-import { Button, ConfirmDialog, FeedbackState } from '@/shared/components';
+import { Button, ConfirmDialog, FeedbackState, SwipeToConfirm } from '@/shared/components';
 
 // Tight fit around the route; the A/B labels get room only where they need it.
 const FIT_INSET = 16;
@@ -606,22 +606,16 @@ export function ConfigureTripScreen() {
           </ScrollView>
 
           <View style={styles.sheetFooter}>
-            <Button
-              title={primaryActionTitle}
-              variant="accent"
-              trailingIcon="arrow-forward"
-              style={styles.primaryAction}
+            {/* Publishing or saving the request is a deliberate slide, like the driver's ride steps. */}
+            <SwipeToConfirm
+              tone="accent"
+              label={`Desliza: ${primaryActionTitle.toLowerCase()}`}
+              accessibilityLabel={primaryActionTitle}
               loading={createRide.isPending || editRide.isPending || labelsResolving}
               loadingLabel={labelsResolving ? 'Obteniendo direcciones…'
                 : isEditing ? 'Guardando…' : `${primaryActionTitle}…`}
-              disabled={
-                !tripInServiceArea ||
-                !labelsReady ||
-                !fareIsValid ||
-                createRide.isPending ||
-                editRide.isPending
-              }
-              onPress={isEditing ? saveEdit : searchOffers}
+              disabled={!tripInServiceArea || !labelsReady || !fareIsValid}
+              onConfirm={isEditing ? saveEdit : searchOffers}
             />
           </View>
         </SafeAreaView>
@@ -732,7 +726,6 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
     paddingTop: spacing.xs,
     paddingBottom: spacing.sm,
   },
-  primaryAction: { minHeight: 60, borderRadius: radius.pill, paddingLeft: spacing.lg, paddingRight: spacing.sm },
 
   routeStatus: {
     flexDirection: 'row',

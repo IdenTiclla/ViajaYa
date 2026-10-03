@@ -55,6 +55,8 @@ export const offerDtoSchema = z.object({
     vehicle_type: vehicleTypeSchema.nullable(),
     plate: z.string().nullable(),
     vehicle_model: z.string().nullable(),
+    // Older backends omit it.
+    trips_completed: z.number().int().nonnegative().nullable().optional().default(null),
   }),
   created_at: nullableDateTimeSchema,
   expires_at: nullableDateTimeSchema,
@@ -116,6 +118,7 @@ export const rideDtoSchema = z.object({
   accepted_price: positiveDecimalSchema.nullable(),
   accepted_eta_min: z.number().int().min(0).max(240).nullable(),
   rider_on_the_way_at: nullableDateTimeSchema.optional().default(null),
+  arrived_at: nullableDateTimeSchema.optional().default(null),
   created_at: nullableDateTimeSchema,
   completed_at: nullableDateTimeSchema,
   cancelled_at: nullableDateTimeSchema,

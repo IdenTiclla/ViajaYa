@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Collection
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -267,6 +268,7 @@ def _ride_to_entity(row: RideRequestModel) -> RideRequest:
         driver_id=row.driver_id,
         accepted_offer_id=row.accepted_offer_id,
         rider_on_the_way_at=row.rider_on_the_way_at,
+        arrived_at=row.arrived_at,
         paused=row.paused,
         pool_version=row.pool_version,
         created_at=row.created_at,
@@ -307,6 +309,7 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
             driver_id=ride.driver_id,
             accepted_offer_id=ride.accepted_offer_id,
             rider_on_the_way_at=ride.rider_on_the_way_at,
+            arrived_at=ride.arrived_at,
             vehicle_snapshot={
                 "vehicle_id": (
                     str(ride.vehicle_snapshot.vehicle_id)
@@ -385,6 +388,7 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
         row.accepted_offer_id = ride.accepted_offer_id
         row.paused = ride.paused
         row.pool_version = ride.pool_version
+        row.arrived_at = ride.arrived_at
         row.completed_at = ride.completed_at
         row.cancelled_at = ride.cancelled_at
         await self._session.commit()
@@ -401,7 +405,10 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
     ) -> RideRequest | None:
         completed_at = ride.completed_at
         cancelled_at = ride.cancelled_at
+        arrived_at = ride.arrived_at
         now = datetime.now(UTC)
+        if ride.status is RideStatus.ARRIVING and arrived_at is None:
+            arrived_at = now
         if ride.status is RideStatus.COMPLETED and completed_at is None:
             completed_at = now
         if ride.status is RideStatus.CANCELLED and cancelled_at is None:
@@ -437,6 +444,7 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
                 accepted_offer_id=ride.accepted_offer_id,
                 paused=ride.paused,
                 pool_version=ride.pool_version,
+                arrived_at=arrived_at,
                 completed_at=completed_at,
                 cancelled_at=cancelled_at,
             )
@@ -698,6 +706,22 @@ class SqlAlchemyRideRequestRepository(RideRequestRepository):
             .order_by(RideRequestModel.created_at.desc())
         )
         return [_ride_to_entity(row) for row in result.scalars().all()]
+
+    async def count_completed_by_drivers(
+        self, driver_ids: Collection[uuid.UUID]
+    ) -> dict[uuid.UUID, int]:
+        ids = list(driver_ids)
+        if not ids:
+            return {}
+        result = await self._session.execute(
+            select(RideRequestModel.driver_id, func.count(RideRequestModel.id))
+            .where(
+                RideRequestModel.driver_id.in_(ids),
+                RideRequestModel.status == RideStatus.COMPLETED,
+            )
+            .group_by(RideRequestModel.driver_id)
+        )
+        return {driver_id: int(count) for driver_id, count in result.all()}
 
     async def list_recent_destinations(
         self, rider_id: uuid.UUID, limit: int = 10

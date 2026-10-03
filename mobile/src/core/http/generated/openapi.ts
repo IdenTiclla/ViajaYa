@@ -1242,6 +1242,8 @@ export interface components {
             plate: string | null;
             /** Rating */
             rating: number | null;
+            /** Trips Completed */
+            trips_completed?: number | null;
             /** Vehicle Model */
             vehicle_model: string | null;
             vehicle_type: components["schemas"]["VehicleType"] | null;
@@ -1872,6 +1874,8 @@ export interface components {
             accepted_eta_min: number | null;
             /** Accepted Price */
             accepted_price: string | null;
+            /** Arrived At */
+            arrived_at?: string | null;
             /**
              * Auto Accept
              * @default false

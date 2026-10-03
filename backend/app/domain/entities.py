@@ -289,6 +289,8 @@ class RideRequest:
     accepted_offer_id: uuid.UUID | None = None
     vehicle_snapshot: RideVehicleSnapshot | None = None
     rider_on_the_way_at: datetime | None = None
+    # When the driver reported being at the pickup point (status ARRIVING).
+    arrived_at: datetime | None = None
     paused: bool = False
     # Generation of the listing the driver evaluates before offering.
     # It advances when the proposal changes and on every reopening after a pause.

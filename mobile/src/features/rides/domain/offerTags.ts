@@ -17,8 +17,8 @@ export type OfferTag = {
 };
 
 const TAG_INFO: Record<OfferTagKind, { label: string; subLabel: string }> = {
-  cheapest: { label: 'ECONÓMICO', subLabel: 'Mejor precio' },
-  fastest: { label: 'RÁPIDO', subLabel: 'Más rápido' },
+  cheapest: { label: 'ECONÓMICO', subLabel: 'Más barata' },
+  fastest: { label: 'RÁPIDO', subLabel: 'Más rápida' },
   bestRated: { label: 'MEJOR VALORADO', subLabel: 'Mejor calificado' },
 };
 

@@ -368,6 +368,8 @@ class OfferDetail:
 
     offer: Offer
     driver: User
+    # Rides the driver completed, so the passenger can judge experience.
+    driver_trips_completed: int | None = None
 
 
 @dataclass(frozen=True)

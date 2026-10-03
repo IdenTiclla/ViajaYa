@@ -3,8 +3,10 @@ import { TripProgress } from '@/features/rides/presentation/TripProgress';
 /**
  * Live offers (passenger).
  *
- * Background map with the route and, on top, the cards of
- * the drivers who made offers. The passenger **decides**: tapping Accept
+ * Only the offers: no map. A compact summary of the trip (A → B, service,
+ * distance and the passenger's own fare) stands in for it, then the sort
+ * control and the cards of the drivers who made offers, with Modificar and
+ * Cancelar fixed at the bottom. The passenger **decides**: tapping Accept
  * assigns them the ride (atomic transaction in the backend) and a
  * confirmation overlay is shown before moving to the ride in progress. They can **reject** offers,
  * **modify** the request (pauses it in the pool and opens the edit) and **cancel**
@@ -45,13 +47,17 @@ import {
 import { useRide, useRideOffers } from '@/features/rides/application/useRides';
 import { deriveOfferTags, primaryTag } from '@/features/rides/domain/offerTags';
 import { orderOffers, type OfferOrder } from '@/features/rides/domain/offerComparison';
-import type { Offer } from '@/features/rides/domain/types';
-import { TripRouteMap } from '@/features/rides/presentation/TripRouteMap';
-import { TripSecondaryAction } from '@/features/rides/presentation/TripSecondaryAction';
+import type { Offer, Ride } from '@/features/rides/domain/types';
+import { useBrandFontStyle } from '@/core/theme/brandFont';
+import { useRoute } from '@/features/booking/application/useRoute';
+import { SERVICE_META } from '@/features/booking/domain/serviceCatalog';
+import type { PaymentMethod, Place, ServiceType } from '@/features/booking/domain/types';
+import { formatKm, haversineKm } from '@/features/rides/domain/geo';
 import { Button, ConfirmDialog, FeedbackState } from '@/shared/components';
 
 export function OffersScreen() {
   const { colors, styles } = useThemedStyles(createStyles);
+  const brandFont = useBrandFontStyle();
   const router = useRouter();
   const { rideId } = useLocalSearchParams<{ rideId?: string }>();
   const id = rideId ?? null;
@@ -60,6 +66,7 @@ export function OffersScreen() {
   const destination = useBookingStore((s) => s.destination);
   const service = useBookingStore((s) => s.service);
   const fare = useBookingStore((s) => s.fare);
+  const payment = useBookingStore((s) => s.payment);
 
   const rideQuery = useRide(id);
   const { ride } = rideQuery;
@@ -104,9 +111,9 @@ export function OffersScreen() {
   const orderedOffers = useMemo(() => orderOffers(visibleOffers, offerOrder), [visibleOffers, offerOrder]);
 
   const [confirming, setConfirming] = useState(false);
+  const [confirmedRide, setConfirmedRide] = useState<Ride | null>(null);
   const [offerToAccept, setOfferToAccept] = useState<Offer | null>(null);
   const acceptingRef = useRef(false);
-  const [sheetHeight, setSheetHeight] = useState(500);
   const activeOfferToAccept = offerToAccept
     ? visibleOffers.find((offer) => offer.id === offerToAccept.id) ?? null : null;
   // Set before firing the HTTP request. The backend publishes `ride_status`
@@ -195,6 +202,7 @@ export function OffersScreen() {
     acceptOffer.mutate({ offerId: offer.id, rideId: id }, {
       onSettled: () => { acceptingRef.current = false; },
       onSuccess: (savedRide) => {
+        setConfirmedRide(savedRide);
         setConfirming(savedRide.status === 'accepted');
         setAcceptIntent(false);
       },
@@ -307,6 +315,7 @@ export function OffersScreen() {
     return (
       <SearchingDriversScreen
         service={ride?.service ?? service}
+        payment={ride?.payment ?? payment}
         rideId={id}
         origin={displayOrigin}
         destination={displayDestination}
@@ -326,34 +335,29 @@ export function OffersScreen() {
 
   return (
     <View style={styles.root}>
-      {displayOrigin && displayDestination ? (
-        <TripRouteMap
-          service={ride?.service ?? service}
-          origin={displayOrigin}
-          destination={displayDestination}
-          topPadding={48}
-          bottomPadding={sheetHeight}
-        />
-      ) : (
-        <View style={styles.mapFallback} />
-      )}
-
-      <View style={styles.overlay} onLayout={(event) => setSheetHeight(event.nativeEvent.layout.height)}>
-        <ScrollView
-          style={styles.list}
-          contentContainerStyle={styles.listContent} bounces={false}>
-          <View style={styles.liveHeader} pointerEvents="none">
+      <SafeAreaView edges={['top']} style={styles.screen}>
+        <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
+          <View style={styles.liveHeader}>
             <TripProgress status="searching" />
-            <View style={styles.liveTitleRow}>
-              <Text style={styles.liveTitle}>Ofertas en vivo</Text>
-              <LiveDot />
+            <View style={styles.liveTitleBlock}>
+              <View style={styles.liveTitleRow}>
+                <Text accessibilityRole="header" style={[styles.liveTitle, brandFont]}>Elige tu conductor</Text>
+                <LiveDot />
+              </View>
+              <Text style={styles.liveSubtitle} accessibilityLiveRegion="polite">
+                {visibleOffers.length} {visibleOffers.length === 1 ? 'oferta' : 'ofertas'} · siguen llegando más
+              </Text>
             </View>
-            <Text style={styles.liveSubtitle}>
-              {visibleOffers.length}{' '}
-              {visibleOffers.length === 1 ? 'oferta disponible' : 'ofertas disponibles'}
-            </Text>
-            <Text style={styles.liveSubtitle}>Tú eliges. Cada oferta vence en 30 segundos.</Text>
           </View>
+          {displayOrigin && displayDestination && (
+            <TripSummary
+              origin={displayOrigin}
+              destination={displayDestination}
+              service={ride?.service ?? service}
+              fare={ride?.fare ?? null}
+              payment={ride?.payment ?? payment}
+            />
+          )}
           <OfferOrderControl value={offerOrder} onChange={setOfferOrder} />
           {(rideQuery.isError || offersQuery.isError) && (
             <TouchableOpacity
@@ -384,6 +388,7 @@ export function OffersScreen() {
               offer={offer}
               tag={primaryTag(tagsMap[offer.id])}
               now={now}
+              requestedFare={ride?.fare ?? null}
               acceptingId={acceptingId}
               decisionsLocked={negotiationBusy}
               onAccept={() => setOfferToAccept(offer)}
@@ -392,31 +397,37 @@ export function OffersScreen() {
           ))}
         </ScrollView>
 
-      <SafeAreaView edges={['bottom']} style={styles.actionsSheet}>
-        {pauseForEdit.isError && (
-          <Text style={styles.error}>{getApiErrorMessage(pauseForEdit.error)}</Text>
-        )}
-        {cancelRide.isError && (
-          <Text style={styles.error}>{getApiErrorMessage(cancelRide.error)}</Text>
-        )}
-        <Button
-          title="Modificar solicitud"
-          variant="secondary"
-          leadingIcon="create-outline"
-          loading={pauseForEdit.isPending}
-          loadingLabel="Abriendo solicitud…"
-          onPress={onModify}
-          disabled={negotiationBusy || !id}
-        />
-        <TripSecondaryAction
-          title={cancelRide.isPending ? 'Cancelando…' : 'Cancelar solicitud'}
-          onPress={() => setConfirmCancel(true)}
-          disabled={negotiationBusy}
-        />
+        <SafeAreaView edges={['bottom']} style={styles.actionsSheet}>
+          {pauseForEdit.isError && (
+            <Text style={styles.error}>{getApiErrorMessage(pauseForEdit.error)}</Text>
+          )}
+          {cancelRide.isError && (
+            <Text style={styles.error}>{getApiErrorMessage(cancelRide.error)}</Text>
+          )}
+          <View style={styles.footerRow}>
+            <Button
+              title="Modificar"
+              variant="secondary"
+              leadingIcon="create-outline"
+              loading={pauseForEdit.isPending}
+              loadingLabel="Abriendo solicitud…"
+              onPress={onModify}
+              disabled={negotiationBusy || !id}
+              style={styles.footerAction}
+            />
+            <Button
+              title={cancelRide.isPending ? 'Cancelando…' : 'Cancelar solicitud'}
+              variant="text"
+              onPress={() => setConfirmCancel(true)}
+              disabled={negotiationBusy}
+              style={styles.footerAction}
+            />
+          </View>
+        </SafeAreaView>
       </SafeAreaView>
-      </View>
 
-      <ConfirmationOverlay visible={confirmationVisible} onDone={handleConfirmed} />
+      <ConfirmationOverlay visible={confirmationVisible}
+        ride={confirmedRide ?? (assigned ? ride ?? null : null)} onDone={handleConfirmed} />
 
       <ConfirmDialog visible={offerToAccept != null && !negotiationBusy}
         icon="car-sport-outline" title={activeOfferToAccept ? 'Confirma tu conductor' : 'Oferta no disponible'}
@@ -468,23 +479,67 @@ export function OffersScreen() {
   );
 }
 
+/** Always one row: each choice takes a third, the selected one is filled. */
 function OfferOrderControl({ value, onChange }: { value: OfferOrder; onChange: (order: OfferOrder) => void }) {
   const { styles, focusStyle } = useThemedStyles(createStyles);
   const [focused, setFocused] = useState<OfferOrder | null>(null);
   const choices: { value: OfferOrder; label: string; description: string }[] = [
     { value: 'recent', label: 'Recientes', description: 'Ofertas más recientes primero' },
-    { value: 'price', label: 'Precio', description: 'Ofertas de menor precio primero' },
-    { value: 'arrival', label: 'Llegada', description: 'Ofertas de menor tiempo de llegada primero' },
+    { value: 'price', label: 'Menor precio', description: 'Ofertas de menor precio primero' },
+    { value: 'arrival', label: 'Llega antes', description: 'Ofertas de menor tiempo de llegada primero' },
   ];
   return <View style={styles.orderControl} accessibilityRole="tablist" accessibilityLabel="Ordenar ofertas">
-    {choices.map(choice => <TouchableOpacity key={choice.value} accessibilityRole="tab"
-      accessibilityLabel={choice.description} accessibilityState={{ selected: value === choice.value }}
-      onPress={() => onChange(choice.value)} onFocus={() => setFocused(choice.value)} onBlur={() => setFocused(null)}
-      style={[styles.orderButton, value === choice.value && styles.orderSelected, focused === choice.value && focusStyle]}>
-      {value === choice.value && <Ionicons accessible={false} name="checkmark" size={16} color={styles.orderSelectedLabel.color} />}
-      <Text style={[styles.orderLabel, value === choice.value && styles.orderSelectedLabel]}>{choice.label}</Text>
-    </TouchableOpacity>)}
+    {choices.map(choice => {
+      const selected = value === choice.value;
+      return <TouchableOpacity key={choice.value} accessibilityRole="tab"
+        accessibilityLabel={choice.description} accessibilityState={{ selected }}
+        onPress={() => onChange(choice.value)} onFocus={() => setFocused(choice.value)} onBlur={() => setFocused(null)}
+        style={[styles.orderButton, selected && styles.orderSelected, focused === choice.value && focusStyle]}>
+        <Text style={[styles.orderLabel, selected && styles.orderSelectedLabel]}>{choice.label}</Text>
+      </TouchableOpacity>;
+    })}
   </View>;
+}
+
+/** Stands in for the map: where the trip goes and what the passenger offered. */
+function TripSummary({ origin, destination, service, fare, payment }: {
+  origin: Place; destination: Place; service: ServiceType; fare: number | null; payment: PaymentMethod;
+}) {
+  const { colors, styles } = useThemedStyles(createStyles);
+  const brandFont = useBrandFontStyle();
+  const { route } = useRoute(origin, destination, service);
+  const km = route ? route.distanceMeters / 1000 : haversineKm(origin.coordinates, destination.coordinates);
+  const details = [
+    SERVICE_META[service].label,
+    formatKm(km),
+    route ? `${Math.max(1, Math.round(route.durationSeconds / 60))} min` : null,
+  ].filter(Boolean).join(' · ');
+  return (
+    <View style={styles.summary} accessible
+      accessibilityLabel={`Tu viaje de ${origin.name} a ${destination.name}, ${details}${fare != null ? `, tu precio Bs ${formatBolivianos(fare)}` : ''}, pago ${payment === 'qr' ? 'QR' : 'en efectivo'}`}>
+      <View style={styles.summaryRoute}>
+        <View style={styles.summaryStop}>
+          <View style={styles.dotA}><Text style={styles.dotText}>A</Text></View>
+          <Text style={styles.summaryPlace} numberOfLines={1}>{origin.name}</Text>
+        </View>
+        <View style={styles.summaryStop}>
+          <View style={styles.dotB}><Text style={[styles.dotText, styles.dotTextB]}>B</Text></View>
+          <Text style={styles.summaryPlace} numberOfLines={1}>{destination.name}</Text>
+        </View>
+        <Text style={styles.summaryDetails}>{details}</Text>
+      </View>
+      {fare != null && (
+        <View style={styles.summaryFare}>
+          <Text style={styles.summaryFareLabel}>Tu precio</Text>
+          <Text style={[styles.summaryFareValue, brandFont]}>Bs {formatBolivianos(fare)}</Text>
+          <View style={styles.summaryPayment}>
+            <Ionicons accessible={false} name={payment === 'qr' ? 'qr-code-outline' : 'cash-outline'} size={14} color={colors.success} />
+            <Text style={styles.summaryPaymentText}>{payment === 'qr' ? 'QR' : 'Efectivo'}</Text>
+          </View>
+        </View>
+      )}
+    </View>
+  );
 }
 
 /** Punto verde que late: indicador "en vivo". */
@@ -523,30 +578,43 @@ function LiveDot() {
 
 const createStyles = ({ colors }: Theme) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceMuted },
-  mapFallback: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: colors.surfaceMuted },
+  screen: { flex: 1 },
 
-  overlay: { position: 'absolute', bottom: 0, left: 0, right: 0, height: '64%',
-    backgroundColor: colors.background, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg,
-    paddingTop: spacing.sm, overflow: 'hidden' },
-  orderControl: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs,
-    padding: spacing.xs, borderRadius: radius.md, backgroundColor: colors.surfaceMuted },
-  orderButton: { minHeight: controls.minHeight, flexDirection: 'row', gap: spacing.xs,
-    flexBasis: 80, flexGrow: 1, justifyContent: 'center', alignItems: 'center',
-    paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderRadius: radius.sm },
-  orderSelected: { backgroundColor: colors.primary },
-  orderLabel: { flexShrink: 1, fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textSecondary },
-  orderSelectedLabel: { color: colors.textOnPrimary },
+  orderControl: { flexDirection: 'row', gap: spacing.xs + 2 },
+  orderButton: { flex: 1, minHeight: controls.minHeight, justifyContent: 'center', alignItems: 'center',
+    paddingHorizontal: spacing.xs + 2, paddingVertical: spacing.xs, borderRadius: radius.pill,
+    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.controlBorder },
+  orderSelected: { borderColor: colors.primary, backgroundColor: colors.primary },
+  orderLabel: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.text, textAlign: 'center' },
+  orderSelectedLabel: { fontWeight: fontWeight.bold, color: colors.textOnPrimary },
 
-  // Opaque header to keep it readable over the map.
-  liveHeader: { paddingVertical: spacing.xs },
+  liveHeader: { paddingTop: spacing.md, gap: spacing.sm + 4 },
   liveTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  liveTitle: { flexShrink: 1, fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.text },
-  liveDot: { width: 8, height: 8, borderRadius: radius.pill, backgroundColor: colors.success },
-  liveSubtitle: { fontSize: fontSize.sm, color: colors.textSecondary, marginTop: 2 },
+  liveTitle: { flexShrink: 1, fontSize: fontSize.xl + 2, fontWeight: fontWeight.bold, color: colors.text },
+  liveDot: { width: 10, height: 10, borderRadius: radius.pill, backgroundColor: colors.success },
+  liveTitleBlock: { gap: 2 },
+  liveSubtitle: { fontSize: fontSize.sm, color: colors.textSecondary },
+
+  summary: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm + 4, paddingHorizontal: spacing.md - 2,
+    paddingVertical: spacing.sm + 4, borderRadius: radius.lg, backgroundColor: colors.surface,
+    borderWidth: 1, borderColor: colors.border },
+  summaryRoute: { flex: 1, minWidth: 0, gap: spacing.sm },
+  summaryStop: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm + 2 },
+  dotA: { width: 20, height: 20, borderRadius: radius.pill, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' },
+  dotB: { width: 20, height: 20, borderRadius: radius.pill, backgroundColor: colors.text, alignItems: 'center', justifyContent: 'center' },
+  dotText: { fontSize: 11, fontWeight: fontWeight.bold, color: colors.textOnBrand },
+  dotTextB: { color: colors.background },
+  summaryPlace: { flex: 1, fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.text },
+  summaryDetails: { fontSize: fontSize.xs + 1, color: colors.textSecondary },
+  summaryFare: { alignItems: 'flex-end', gap: 2, paddingLeft: spacing.sm + 4, borderLeftWidth: 1, borderLeftColor: colors.border },
+  summaryFareLabel: { fontSize: fontSize.xs, color: colors.textSecondary },
+  summaryFareValue: { fontSize: fontSize.xl, fontWeight: fontWeight.bold, color: colors.text },
+  summaryPayment: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  summaryPaymentText: { fontSize: fontSize.xs, fontWeight: fontWeight.bold, color: colors.success },
 
   // Lista de tarjetas.
   list: { flex: 1 },
-  listContent: { paddingHorizontal: spacing.md, gap: spacing.sm, paddingBottom: spacing.md },
+  listContent: { paddingHorizontal: spacing.sm + 4, gap: spacing.sm + 4, paddingBottom: spacing.md },
   connectionWarning: {
     minHeight: 48,
     flexDirection: 'row',
@@ -566,10 +634,14 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
   },
   listBottomSpacer: { height: spacing.md },
 
+  footerRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  footerAction: { flexGrow: 1, flexBasis: 140 },
   actionsSheet: {
     paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
+    paddingTop: spacing.sm + 4,
+    paddingBottom: spacing.sm,
     gap: spacing.xs,
+    backgroundColor: colors.background,
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },

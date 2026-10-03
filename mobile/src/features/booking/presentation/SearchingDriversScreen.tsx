@@ -172,6 +172,7 @@ export function SearchingDriversScreen({
           bottomPadding={mapBottomPadding}
           showPlaceNamesInTooltip
           showMotorcycleNotice={false}
+          originPulse
         />
       ) : (
         <View style={styles.mapFallback} />

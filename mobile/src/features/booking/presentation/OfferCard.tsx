@@ -2,6 +2,7 @@ import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
+import { useBrandFontStyle } from '@/core/theme/brandFont';
 import { formatBolivianos } from '@/features/rides/domain/money';
 import type { OfferTag } from '@/features/rides/domain/offerTags';
 import type { Offer } from '@/features/rides/domain/types';
@@ -28,13 +29,14 @@ function clock(timestamp: number) {
   return `${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 const LOW_SECONDS = 10;
-const NEW_OFFER_MS = 5_000;
+const NEW_OFFER_MS = 10_000;
 
 /** Identity, price, arrival and expiry at a glance, with one clear decision. */
 export function OfferCard({
   offer, tag, now, requestedFare, acceptingId, decisionsLocked, onAccept, onReject,
 }: Props) {
   const { colors, styles } = useThemedStyles(createStyles);
+  const brandFont = useBrandFontStyle();
   const { fontScale } = useWindowDimensions();
   const { driver } = offer;
   const seconds = offer.expiresAt == null
@@ -61,27 +63,38 @@ export function OfferCard({
 
   return (
     <View style={[styles.card, fresh && styles.cardFresh]}
-      accessibilityLabel={`Oferta de ${driver.fullName}: Bs ${price}${offer.etaMin != null ? `, llega en ${offer.etaMin} minutos` : ''}${seconds != null ? `, vence en ${seconds} segundos` : ''}`}>
+      accessibilityLabel={`${fresh ? 'Nueva oferta' : 'Oferta'} de ${driver.fullName}: Bs ${price}${offer.etaMin != null ? `, llega en ${offer.etaMin} minutos` : ''}${seconds != null ? `, vence en ${seconds} segundos` : ''}`}>
+      {(fresh || tag) && (
+        <View style={styles.badges}>
+          {fresh && (
+            <View style={[styles.chipBadge, styles.chipNew]}>
+              <Text style={[styles.chipText, styles.chipNewText]}>Nueva</Text>
+            </View>
+          )}
+          {tag && (
+            <View style={[styles.chipBadge, tag.kind === 'cheapest' ? styles.chipSuccess : styles.chipPrimary]}>
+              <Text style={[styles.chipText, tag.kind === 'cheapest' ? styles.chipSuccessText : styles.chipPrimaryText]}>
+                {tag.subLabel}
+              </Text>
+            </View>
+          )}
+        </View>
+      )}
       <View style={[styles.header, inColumn && styles.column]}>
-        {!inColumn && <PersonAvatar name={driver.fullName} />}
+        {!inColumn && <PersonAvatar name={driver.fullName} size={48} />}
         <View style={styles.identity}>
           <Text style={styles.name}>{driver.fullName}</Text>
           <View style={styles.ratingRow}>
-            <Ionicons accessible={false} name="star" size={13} color={colors.primary} />
+            {driver.rating != null && <Ionicons accessible={false} name="star" size={13} color={colors.accent} />}
             <Text style={styles.vehicle}>
               {[driver.rating != null ? driver.rating.toFixed(1) : 'Conductor nuevo',
                 driver.tripsCompleted != null ? `${driver.tripsCompleted} ${driver.tripsCompleted === 1 ? 'viaje' : 'viajes'}` : null]
                 .filter(Boolean).join(' · ')}
             </Text>
-            {tag && (
-              <View style={[styles.chip, styles.chipPrimary]}>
-                <Text style={[styles.chipText, styles.chipPrimaryText]}>{tag.subLabel}</Text>
-              </View>
-            )}
           </View>
         </View>
         <View style={[styles.priceBlock, inColumn && styles.priceBlockColumn]}>
-          <Text style={styles.price}>Bs {price}</Text>
+          <Text style={[styles.price, brandFont]}>Bs {price}</Text>
           {chip && (
             <View style={[styles.chip, chip.style]}>
               <Text style={[styles.chipText, chip.textStyle]}>{chip.text}</Text>
@@ -144,11 +157,15 @@ export function OfferCard({
 }
 
 const createStyles = ({ colors }: Theme) => StyleSheet.create({
-  card: { padding: spacing.md, gap: spacing.sm + 2, backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border },
+  card: { padding: spacing.md - 2, gap: spacing.sm + 4, backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.border },
   cardFresh: { borderWidth: 2, borderColor: colors.accent },
+  badges: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  chipBadge: { paddingHorizontal: spacing.sm + 2, paddingVertical: 3, borderRadius: radius.pill },
+  chipNew: { backgroundColor: colors.accent },
+  chipNewText: { color: colors.textOnAccent },
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm + 4 },
   identity: { flex: 1, minWidth: 0, gap: 2 },
-  name: { fontSize: fontSize.md, color: colors.text, fontWeight: fontWeight.bold },
+  name: { fontSize: fontSize.md + 1, color: colors.text, fontWeight: fontWeight.bold },
   vehicle: { fontSize: fontSize.sm, color: colors.textSecondary },
   ratingRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 4 },
   vehicleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.sm + 2,
@@ -157,7 +174,7 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
   etaClock: { fontWeight: fontWeight.regular, color: colors.textSecondary },
   priceBlock: { alignItems: 'flex-end', gap: spacing.xs },
   priceBlockColumn: { alignItems: 'flex-start' },
-  price: { fontSize: fontSize.xl + 2, fontWeight: fontWeight.bold, color: colors.text },
+  price: { fontSize: 30, fontWeight: fontWeight.bold, color: colors.text },
   chip: { paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.pill },
   chipText: { fontSize: fontSize.xs, fontWeight: fontWeight.bold },
   chipSuccess: { backgroundColor: colors.successSoft },
@@ -168,7 +185,7 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
   chipNeutralText: { color: colors.textSecondary },
   meta: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
   eta: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  etaText: { fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.text },
+  etaText: { fontSize: fontSize.sm, fontWeight: fontWeight.bold, color: colors.text },
   expiry: { fontSize: fontSize.sm, color: colors.textSecondary },
   expiryLow: { color: colors.warning, fontWeight: fontWeight.bold },
   track: { height: 4, borderRadius: 2, backgroundColor: colors.border, overflow: 'hidden' },

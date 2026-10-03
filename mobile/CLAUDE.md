@@ -430,7 +430,9 @@ npm run lint               # expo lint (eslint-config-expo)
 - **Maps:** `react-native-maps`; location with `expo-location` (permissions in `app.config.ts`).
   Shared map style: `features/booking/presentation/mapStyle.ts` (`declutteredMapStyle`).
 - **Route appearance:** every view reuses `RoutePolyline` and
-  `RoutePinMarker`; tracking and negotiation also use `TripRouteMap`.
+  `RoutePinMarker`; tracking and the passenger's search (`SearchingDriversScreen`) also use
+  `TripRouteMap`. «Elige tu conductor» (`OffersScreen`, once offers exist) has no map on purpose: a
+  `TripSummary` card (A → B, service, km/min, the passenger's fare and payment) stands in for it.
   `routeTooltipLayout.ts` holds the common logical measures: stroke 3,
   outline 5 and an A/B pin of 16, with no size variants per role. Configure
   keeps editing when tapping the markers and always shows the Origen/Destino

@@ -7,7 +7,6 @@ import {
   Alert,
   Animated,
   type LayoutChangeEvent,
-  Linking,
   PanResponder,
   StyleSheet,
   Text,
@@ -26,6 +25,7 @@ import { useRecentDestinations } from '@/features/booking/application/useRecentD
 import { useSavedPlaces } from '@/features/booking/application/useSavedPlaces';
 import { useRegionPlace } from '@/features/booking/application/useRegionPlace';
 import {
+  BOLIVIA_DEFAULT_COORDINATES,
   BOLIVIA_NORTH_EAST,
   BOLIVIA_SERVICE_AREA_MESSAGE,
   BOLIVIA_SOUTH_WEST,
@@ -41,9 +41,15 @@ import type { Coordinates, Place, SavedPlace } from '@/features/booking/domain/t
 import { CenterPin } from '@/features/booking/presentation/CenterPin';
 import { ServiceTileSelector } from '@/features/booking/presentation/ServiceTileSelector';
 import { confirmRecovery } from '@/features/home/application/confirmRecovery';
-import { useCurrentLocation } from '@/features/home/application/useCurrentLocation';
 import { homeSheetLayout } from '@/features/home/presentation/homeSheetLayout';
 import { SavedPlaceShortcuts } from '@/features/home/presentation/SavedPlaceShortcuts';
+import { readLastKnownLocation } from '@/features/location/data/lastKnownLocation';
+import { useLocationFix } from '@/features/location/application/useLocationFix';
+import { useLocationGate } from '@/features/location/application/useLocationGate';
+import { CHIP_PICK_ON_MAP_LABEL } from '@/features/location/domain/gateCopy';
+import { LocatingChip } from '@/features/location/presentation/LocatingChip';
+import { LocationBanner } from '@/features/location/presentation/LocationBanner';
+import { LocationGate } from '@/features/location/presentation/LocationGate';
 import {
   PASSENGER_ACTIVE_RIDE_KEY,
   usePendingRatingRide,
@@ -106,7 +112,23 @@ export function HomeScreen() {
     error: pendingRatingErrorValue,
     refetch: refetchPendingRating,
   } = usePendingRatingRide();
-  const { status, coordinates, canAskAgain, isEstimated, retry } = useCurrentLocation();
+  // The intercept (permission gate) decides if the map can use the position; the map itself
+  // never depends on it: it renders at once and the position arrives when it arrives.
+  const locationGate = useLocationGate('passenger');
+  const fix = useLocationFix(locationGate.usable);
+  const { coordinates, isEstimated } = fix;
+  const canLocate = !(locationGate.gate.kind === 'manual' && locationGate.gate.reason === 'no-capability');
+  // Manual mode and the wait for the first fix open on the last known center, never on
+  // an address the person did not choose.
+  const [fallbackCenter, setFallbackCenter] = useState<Coordinates>(BOLIVIA_DEFAULT_COORDINATES);
+  useEffect(() => {
+    let active = true;
+    void readLastKnownLocation(Infinity).then((stored) => {
+      if (active && stored && isCoordinatesInBolivia(stored)) setFallbackCenter(stored);
+    });
+    return () => { active = false; };
+  }, []);
+  const refreshLocation = fix.refresh;
   const mapRef = useRef<MapView>(null);
   const { mapStyle, mapMode } = useMapStyle(false);
   const mapReady = useRef(false);
@@ -274,6 +296,17 @@ export function HomeScreen() {
       longitudeDelta: 0.01,
     };
   }, [coordinates]);
+  // The map mounts before any fix: it opens on the position when there is one, otherwise on
+  // the last known center, and the camera follows the fix when it arrives.
+  const mapInitialRegion = useMemo<Region>(
+    () => region ?? {
+      latitude: fallbackCenter.latitude,
+      longitude: fallbackCenter.longitude,
+      latitudeDelta: 0.01,
+      longitudeDelta: 0.01,
+    },
+    [fallbackCenter, region],
+  );
 
   // Seed the origin with the available location. If it started with an estimated
   // position, replace it with the fresh one unless the passenger moved
@@ -356,7 +389,7 @@ export function HomeScreen() {
   // origin the passenger adjusted manually.
   useFocusEffect(
     useCallback(() => {
-      if (status !== 'granted') return;
+      if (!locationGate.usable) return;
       const now = Date.now();
       if (lastLocationRefresh.current === 0) {
         lastLocationRefresh.current = now;
@@ -364,8 +397,8 @@ export function HomeScreen() {
       }
       if (now - lastLocationRefresh.current < 60_000) return;
       lastLocationRefresh.current = now;
-      retry();
-    }, [retry, status]),
+      refreshLocation();
+    }, [locationGate.usable, refreshLocation]),
   );
 
   // Recover the flow's exact point once the fresh check finishes.
@@ -439,6 +472,15 @@ export function HomeScreen() {
     mapRef.current?.animateToRegion(region, 500);
     handleRegionChange(region);
   };
+
+  // Without a position the button runs the banner's one-tap fix instead.
+  const pressRecenter = () => {
+    if (region) recenter();
+    else if (locationGate.banner) locationGate.fixBanner(locationGate.banner);
+  };
+
+  const pickOriginOnMap = () =>
+    router.push({ pathname: '/booking/pick-on-map', params: { target: 'origin' } });
 
   // With map padding the region bounds are not centered on the pin: the origin is
   // the camera target, which is the center of the padded (visible) area.
@@ -565,9 +607,32 @@ export function HomeScreen() {
     return <ActiveRideGate />;
   }
 
+  const outsideServiceArea = coordinates != null && !region;
+  const showChip = locationGate.usable && !locationGate.banner;
+  const chip = !showChip ? null : outsideServiceArea ? (
+    <LocatingChip
+      phase="weak"
+      message={BOLIVIA_SERVICE_AREA_MESSAGE}
+      actionLabel={CHIP_PICK_ON_MAP_LABEL}
+      onAction={pickOriginOnMap}
+      style={{ top: mapTop }}
+    />
+  ) : fix.phase === 'weak' ? (
+    <LocatingChip
+      phase="weak"
+      actionLabel={CHIP_PICK_ON_MAP_LABEL}
+      onAction={pickOriginOnMap}
+      style={{ top: mapTop }}
+    />
+  ) : fix.phase === 'locating' ? (
+    <LocatingChip phase="locating" style={{ top: mapTop }} />
+  ) : fix.isEstimated ? (
+    <LocatingChip phase="estimated" style={{ top: mapTop }} />
+  ) : null;
+
   return (
+    <LocationGate gate={locationGate} role="passenger">
     <View style={styles.root}>
-      {status === 'granted' && region ? (
         <MapView
           customMapStyle={mapStyle}
           userInterfaceStyle={mapMode}
@@ -578,9 +643,9 @@ export function HomeScreen() {
           showsIndoorLevelPicker={false}
           pitchEnabled={false}
           style={StyleSheet.absoluteFill}
-          initialRegion={region}
+          initialRegion={mapInitialRegion}
           mapPadding={appliedMapPadding}
-          showsUserLocation
+          showsUserLocation={locationGate.usable}
           showsMyLocationButton={false}
           onMapReady={() => {
             mapReady.current = true;
@@ -610,20 +675,10 @@ export function HomeScreen() {
           }}
           onRegionChangeComplete={handleMapRegionChange}
         />
-      ) : (
-        <MapPlaceholder
-          status={status}
-          canAskAgain={canAskAgain}
-          outsideArea={status === 'granted' && coordinates != null}
-          onRetry={retry}
-        />
-      )}
 
-      {status === 'granted' && region && (
-        <View style={[styles.pinArea, { top: mapTop, bottom: sheetPeek }]} pointerEvents="none">
-          <CenterPin label={originPinLabel} loading={originResolving} />
-        </View>
-      )}
+      <View style={[styles.pinArea, { top: mapTop, bottom: sheetPeek }]} pointerEvents="none">
+        <CenterPin label={originPinLabel} loading={originResolving} />
+      </View>
 
       <SafeAreaView style={styles.topBar} edges={['top']} pointerEvents="box-none">
         <View style={styles.brand} accessible accessibilityRole="header" accessibilityLabel="ViajaYa">
@@ -634,10 +689,19 @@ export function HomeScreen() {
         </View>
       </SafeAreaView>
 
-      {status === 'granted' && region && (
+      {locationGate.banner && (
+        <LocationBanner
+          cause={locationGate.banner}
+          top={mapTop}
+          onPress={() => locationGate.fixBanner(locationGate.banner!)}
+        />
+      )}
+      {chip}
+
+      {canLocate && (
         <TouchableOpacity
           style={[styles.recenter, { bottom: sheetPeek + spacing.md }]}
-          onPress={recenter}
+          onPress={pressRecenter}
           accessibilityRole="button"
           accessibilityLabel="Centrar en mi ubicación">
           <Ionicons name="locate" size={22} color={colors.primary} />
@@ -729,6 +793,7 @@ export function HomeScreen() {
         </View>
       </Animated.View>
     </View>
+    </LocationGate>
   );
 }
 
@@ -739,51 +804,6 @@ function ActiveRideGate() {
       <ActivityIndicator size="large" color={colors.primary} />
       <Text style={styles.recoveryTitle}>Verificando tus viajes…</Text>
     </SafeAreaView>
-  );
-}
-
-function MapPlaceholder({
-  status,
-  canAskAgain,
-  outsideArea,
-  onRetry,
-}: {
-  status: ReturnType<typeof useCurrentLocation>['status'];
-  canAskAgain: boolean;
-  outsideArea: boolean;
-  onRetry: () => void;
-}) {
-  const { colors, styles } = useThemedStyles(createStyles);
-  if (status === 'loading') {
-    return (
-      <View style={[styles.placeholder, styles.placeholderBg]}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.placeholderText}>Buscando tu ubicación…</Text>
-      </View>
-    );
-  }
-
-  const message = outsideArea
-    ? BOLIVIA_SERVICE_AREA_MESSAGE
-    : status === 'denied'
-      ? 'Activa el permiso de ubicación para ver tu posición en el mapa.'
-      : 'No pudimos obtener tu ubicación. Inténtalo de nuevo.';
-  const needsSettings = status === 'denied' && !canAskAgain;
-
-  return (
-    <View style={[styles.placeholder, styles.placeholderBg]}>
-      <Ionicons name="location-outline" size={40} color={colors.textSecondary} />
-      <Text style={styles.placeholderText}>{message}</Text>
-      <TouchableOpacity
-        style={styles.retry}
-        onPress={needsSettings ? () => void Linking.openSettings() : onRetry}
-        accessibilityRole="button"
-        accessibilityLabel={needsSettings ? 'Abrir configuración' : 'Reintentar ubicación'}>
-        <Text style={styles.retryText}>
-          {needsSettings ? 'Abrir configuración' : 'Reintentar'}
-        </Text>
-      </TouchableOpacity>
-    </View>
   );
 }
 
@@ -804,23 +824,6 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
     textAlign: 'center',
   },
   recoveryHint: { color: colors.textSecondary, fontSize: fontSize.sm, textAlign: 'center' },
-  placeholder: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    padding: spacing.lg,
-  },
-  placeholderBg: { backgroundColor: colors.surfaceMuted },
-  placeholderText: {
-    color: colors.textSecondary,
-    fontSize: fontSize.sm,
-    textAlign: 'center',
-  },
   retry: {
     marginTop: spacing.sm,
     paddingHorizontal: spacing.lg,

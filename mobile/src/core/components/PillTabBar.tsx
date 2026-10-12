@@ -12,6 +12,7 @@ import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-na
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { controls, fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
+import { useTabBarHidden } from './tabBarVisibility';
 
 const ICON_SIZE = 22;
 
@@ -21,6 +22,8 @@ export function PillTabBar({ state, descriptors, navigation }: BottomTabBarProps
   const { fontScale } = useWindowDimensions();
   const [focused, setFocused] = useState<string | null>(null);
   const twoRows = fontScale > 1.3;
+  // A full-screen view (e.g. the location gate) takes the whole window.
+  const hiddenByScreen = useTabBarHidden();
 
   // Focus by key (not by index) and filter hidden routes: a tab is hidden
   // by declaring `tabBarButton: () => null` (RN standard); visible ones do not
@@ -29,6 +32,8 @@ export function PillTabBar({ state, descriptors, navigation }: BottomTabBarProps
   const visibleRoutes = state.routes.filter(
     (route) => (descriptors[route.key].options as { tabBarButton?: unknown }).tabBarButton === undefined,
   );
+
+  if (hiddenByScreen) return null;
 
   return (
     <View style={[styles.bar, { paddingBottom: insets.bottom + spacing.xs }]} accessibilityRole="tablist">

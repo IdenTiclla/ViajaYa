@@ -5,10 +5,11 @@ import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 const state={};globalThis.__routingLocation=state;
 const mocks={
-  'expo-location':`export const Accuracy={Balanced:3};export const requestForegroundPermissionsAsync=async()=>({status:globalThis.__routingLocation.permission});export const hasServicesEnabledAsync=async()=>globalThis.__routingLocation.enabled;export const getCurrentPositionAsync=async()=>{globalThis.__routingLocation.calls++;return globalThis.__routingLocation.fix;};`,
+  'expo-location':`export const Accuracy={Balanced:3};export const PermissionStatus={GRANTED:'granted'};export const getForegroundPermissionsAsync=async()=>({status:globalThis.__routingLocation.permission});export const hasServicesEnabledAsync=async()=>globalThis.__routingLocation.enabled;export const getCurrentPositionAsync=async()=>{globalThis.__routingLocation.calls++;return globalThis.__routingLocation.fix;};`,
   './watchLocation':'export const checkLocationAvailability=()=>{};export const watchLocation=()=>{};',
   '@/features/booking/domain/placeLabels':'export const isPlaceLabelResolved=()=>true;',
   '@/features/home/data/googleGeocodingService':'export const reverseGeocodeWithGoogle=()=>{};',
+  '@/features/location/domain/locationUnavailable':'export class LocationUnavailableError extends Error{constructor(reason){super(reason);this.reason=reason;}}',
 };
 const hooks=registerHooks({
   resolve(specifier,context,nextResolve){if(specifier in mocks)return {url:`location-test:${specifier}`,shortCircuit:true};return nextResolve(specifier,context);},
@@ -25,6 +26,7 @@ for(const failure of ['denied','disabled','stale','inaccurate','missing-accuracy
  test(`pickup routing rejects ${failure} GPS without a guessed location`,async()=>{
   reset();if(failure==='denied')state.permission='denied';if(failure==='disabled')state.enabled=false;
   if(failure==='stale')state.fix.timestamp-=60000;if(failure==='inaccurate')state.fix.coords.accuracy=500;if(failure==='missing-accuracy')state.fix.coords.accuracy=null;
-  await assert.rejects(locationService.getRoutingCoordinates());
+  const reason={denied:'permission',disabled:'services'}[failure]??'imprecise';
+  await assert.rejects(locationService.getRoutingCoordinates(),(error)=>error.reason===reason);
  });
 }

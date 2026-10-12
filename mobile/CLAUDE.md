@@ -45,6 +45,9 @@ src/
 │   │                      #   OneTimeCodeInput = six-cell SMS code over one transparent TextInput (autofill/paste)
 │   ├── booking/           # 4 full layers (booking flow)
 │   ├── home/              # domain/ (orientation) · data/ · application/ · presentation/
+│   ├── location/          # Location permission gate (plan 0023): domain/ (gateState, gateCopy, fixState, storedFix)
+│   │                      #   · data/ (permission snapshot, settings actions, persisted last fix, capability)
+│   │                      #   · application/ (shared gate store, useLocationGate, useLocationFix) · presentation/
 │   ├── rides/             # offers + ride lifecycle + passenger and driver WS hooks
 │   │   ├── domain/          # types.ts · fareInput.ts · geo.ts · offerTags.ts
 │   │   ├── data/            # ridesRepository.ts (DTO ↔ domain)
@@ -508,6 +511,20 @@ npm run lint               # expo lint (eslint-config-expo)
   `home/domain/savedPlaceShortcuts.ts`) and recent destinations. It is adaptive: the collapsed
   height is measured up to the end of the saved places and dragging up reveals the recents
   (`homeSheetLayout`); a re-measure keeps it expanded if the passenger left it so.
+- **Location gate** (`features/location`, plan 0023): the intercept for screens that need a position
+  (passenger Home, driver Requests). `useLocationGate(role)` resolves from a silent snapshot which of
+  four screens to show (`primer`, `denied`, `blocked`, `services-off`) in `LocationGateScreen`; it is
+  evaluated once per cold start (`session.entryDone`) and the passenger can leave it with «Ahora no»
+  (manual mode: the map works and the pickup is chosen on it; the driver cannot). Losing the location
+  mid-session shows `LocationBanner` («No pudimos ubicarte. Toca para encender la ubicación.», one tap
+  opens Android's «Activar ubicación» dialog) and never a full-screen gate. `useLocationFix` replaces
+  the old `useCurrentLocation`: it has no failure state, only `locating → weak → ready`, and shows a
+  passive `LocatingChip`. Only the gate asks for the permission; `locationService`/`watchLocation` never
+  do, and `getRoutingCoordinates` throws a typed `LocationUnavailableError`. All copy lives in
+  `domain/gateCopy.ts`; do not reintroduce generic «Inténtalo de nuevo» messages (a test guards it).
+  `plugins/withOptionalLocationFeatures.js` declares the GPS features `required="false"` so Google
+  Play does not hide the app from GPS-less tablets; `modules/location-capability` (Android) tells the
+  app whether the device has any location hardware (none → no gate, manual mode / driver `unsupported`).
 - **AppState-aware hooks** (they do not freeze in the background): `useCountdown`, `socket.ts` recompute
   when returning to foreground. Follow that pattern for hooks with time/connection.
 - Code, identifiers, comments, JSDoc and documentation in **English**, per the persistent preference in `../AGENTS.md`. Keep the UI in Spanish and verify every implementation.

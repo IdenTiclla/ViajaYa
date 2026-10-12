@@ -36,11 +36,8 @@ export async function watchLocation(
   signal?: AbortSignal,
 ): Promise<{ remove: () => void } | null> {
   if (signal?.aborted) return null;
-  let permission = await Location.getForegroundPermissionsAsync();
-  if (signal?.aborted) return null;
-  if (permission.status !== Location.PermissionStatus.GRANTED && permission.canAskAgain) {
-    permission = await Location.requestForegroundPermissionsAsync();
-  }
+  // Asking for the permission is the location gate's job, not this subscription's.
+  const permission = await Location.getForegroundPermissionsAsync();
   if (signal?.aborted) return null;
   if (permission.status !== Location.PermissionStatus.GRANTED) return null;
   const activeServices = await Location.hasServicesEnabledAsync();

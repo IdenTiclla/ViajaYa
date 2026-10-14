@@ -183,7 +183,7 @@ export function PickOnMapScreen() {
   const recenter = () => {
     if (!usableCoordinates) {
       // No position yet: the banner's fix is the only thing this button can do.
-      if (locationGate.banner) locationGate.fixBanner(locationGate.banner);
+      if (locationGate.fixCause) locationGate.fixBanner(locationGate.fixCause);
       return;
     }
     if (isDestination) setDestinationMoved(true);
@@ -377,12 +377,12 @@ export function PickOnMapScreen() {
             </View>
           )}
         </View>
-        {locationGate.banner ? (
+        {locationGate.fixCause ? (
           <LocationBanner
-            cause={locationGate.banner}
+            cause={locationGate.fixCause}
             top={0}
             style={styles.flowBanner}
-            onPress={() => locationGate.fixBanner(locationGate.banner!)}
+            onPress={() => locationGate.fixBanner(locationGate.fixCause!)}
           />
         ) : outsideServiceArea ? (
           <LocatingChip

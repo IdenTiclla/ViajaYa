@@ -48,12 +48,12 @@ export function useLocationFix(enabled: boolean): LocationFix {
       if (!active) return;
       dispatch({ type: 'position', coordinates, isEstimated, accuracy });
       if (isEstimated) return;
+      // A coarse fix (cell/Wi-Fi) is shown, but the search keeps running to improve it.
+      if (accuracy != null && accuracy > STORED_FIX_MAX_ACCURACY_METERS) return;
       hasFreshFix = true;
       watcher?.remove();
       watcher = null;
-      if (accuracy == null || accuracy <= STORED_FIX_MAX_ACCURACY_METERS) {
-        void saveLastKnownLocation(coordinates);
-      }
+      void saveLastKnownLocation(coordinates);
     };
 
     const requestPosition = () => {

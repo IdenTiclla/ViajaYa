@@ -22,7 +22,8 @@ export function LocationGate({ gate, role, children }: Props) {
   // The intercept is full screen, as designed: no bottom bar while it is in front. Only the
   // focused tab hides it, so a gate kept mounted under another tab never hides that tab's bar.
   const focused = useIsFocused();
-  const fullScreen = gate.gate.kind === 'checking' || gate.gate.kind === 'unsupported' || gate.blocking != null;
+  // `checking` is transient and renders nothing: it must not flash (or trap) the bottom bar.
+  const fullScreen = gate.gate.kind === 'unsupported' || gate.blocking != null;
   useHideTabBar(fullScreen && focused);
 
   if (gate.gate.kind === 'checking') return null;

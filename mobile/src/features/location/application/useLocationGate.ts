@@ -8,6 +8,8 @@ import { AppState } from 'react-native';
 import { useStore } from 'zustand';
 
 import {
+  bannerCauseFor,
+  INITIAL_GATE_SESSION,
   isLocationUsable,
   resolveGateState,
   type BlockingGateKind,
@@ -26,6 +28,11 @@ export type LocationGate = {
   blocking: BlockingGateKind | null;
   /** Mid-session / manual-mode banner. */
   banner: LocationBannerCause | null;
+  /**
+   * The cause to fix with one tap: the banner's, or the blocking screen's one for hosts that
+   * do not render the intercept (the manual map flow).
+   */
+  fixCause: LocationBannerCause | null;
   /** A position can be requested right now. */
   usable: boolean;
   busy: boolean;
@@ -41,6 +48,7 @@ export function useLocationGate(role: LocationRole): LocationGate {
   const store = useStore(locationGateStore);
 
   useEffect(() => { void locationGateStore.getState().init(); }, []);
+  useEffect(() => { locationGateStore.getState().enterRole(role); }, [role]);
 
   // While a screen that needs location is in front: re-read when the app comes back from
   // Settings, and watch the location switch (the quick panel does not background the app).
@@ -61,10 +69,12 @@ export function useLocationGate(role: LocationRole): LocationGate {
     }, []),
   );
 
-  const { snapshot, askedThisInstall, capability, session, busy, loaded } = store;
+  const { snapshot, askedThisInstall, capability, session, sessionRole, busy, loaded } = store;
+  // A session started under the other role (passenger «Ahora no» → driver mode) does not carry over.
+  const effectiveSession = sessionRole != null && sessionRole !== role ? INITIAL_GATE_SESSION : session;
   const resolution = useMemo(
-    () => resolveGateState(loaded ? snapshot : null, askedThisInstall, capability, role, session),
-    [loaded, snapshot, askedThisInstall, capability, role, session],
+    () => resolveGateState(loaded ? snapshot : null, askedThisInstall, capability, role, effectiveSession),
+    [loaded, snapshot, askedThisInstall, capability, role, effectiveSession],
   );
 
   const { gate, banner } = resolution;
@@ -95,6 +105,7 @@ export function useLocationGate(role: LocationRole): LocationGate {
     gate,
     blocking,
     banner,
+    fixCause: banner ?? (blocking ? bannerCauseFor(blocking) : null),
     usable: isLocationUsable(loaded ? snapshot : null),
     busy,
     runPrimary,

@@ -12,6 +12,7 @@ import {
   isLocationUsable,
   type GateSession,
   type LocationCapability,
+  type LocationRole,
   type PermissionSnapshot,
 } from '../domain/gateState';
 
@@ -33,6 +34,8 @@ export type GateStoreState = {
   askedThisInstall: boolean;
   capability: LocationCapability;
   session: GateSession;
+  /** Role the session belongs to: switching role starts a fresh entry. */
+  sessionRole: LocationRole | null;
   /** A system dialog or settings round trip is in flight. */
   busy: boolean;
   init: () => Promise<void>;
@@ -44,6 +47,8 @@ export type GateStoreState = {
   openAppSettings: () => Promise<void>;
   openLocationSettings: () => Promise<void>;
   dismiss: () => void;
+  /** A different role than the session's one resets the session (entry + dismissal). */
+  enterRole: (role: LocationRole) => void;
 };
 
 export function createLocationGateStore(deps: GateDeps) {
@@ -60,11 +65,23 @@ export function createLocationGateStore(deps: GateDeps) {
       }
     };
 
+    // Used when the very first read fails: the primer is the one screen that offers a way
+    // forward (its button re-reads), whereas a missing snapshot would leave the gate checking.
+    const UNREADABLE: PermissionSnapshot = { status: 'undetermined', canAskAgain: true, servicesEnabled: false };
+
+    // `loaded` is owned by `init`: it must not flip before the asked flag and the capability
+    // are known, or the first render could resolve against defaults.
     const read = async () => {
       const generation = ++readGeneration;
-      const snapshot = await deps.readSnapshot();
+      let snapshot: PermissionSnapshot;
+      try {
+        snapshot = await deps.readSnapshot();
+      } catch (error) {
+        if (generation === readGeneration && get().snapshot == null) set({ snapshot: UNREADABLE });
+        throw error;
+      }
       if (generation !== readGeneration) return;
-      set({ snapshot, loaded: true });
+      set({ snapshot });
       markEntryDone(snapshot);
     };
 
@@ -74,6 +91,7 @@ export function createLocationGateStore(deps: GateDeps) {
       askedThisInstall: false,
       capability: 'capable',
       session: INITIAL_GATE_SESSION,
+      sessionRole: null,
       busy: false,
 
       init: () => {
@@ -130,6 +148,16 @@ export function createLocationGateStore(deps: GateDeps) {
 
       dismiss: () => {
         set((state) => ({ session: { entryDone: true, dismissed: true }, busy: state.busy }));
+      },
+
+      enterRole: (role) => {
+        const { sessionRole } = get();
+        if (sessionRole === role) return;
+        const usable = isLocationUsable(get().snapshot);
+        set({
+          sessionRole: role,
+          session: sessionRole == null ? get().session : { ...INITIAL_GATE_SESSION, entryDone: usable },
+        });
       },
     };
   });

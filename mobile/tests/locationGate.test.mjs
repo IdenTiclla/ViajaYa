@@ -324,3 +324,69 @@ test('a failing dialog or settings call still lands on the real state', async ()
   assert.equal(store.getState().busy, false);
   assert.equal(store.getState().snapshot.servicesEnabled, false);
 });
+
+test('`loaded` waits for the asked flag and the capability, even if a refresh finishes first', async () => {
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const deps = fakeDeps({
+    readAsked: async () => { await gate; return true; },
+    readCapability: () => 'none',
+  });
+  const store = createLocationGateStore(deps);
+  const init = store.getState().init();
+  await store.getState().refresh();
+  assert.equal(store.getState().loaded, false);
+  release();
+  await init;
+  assert.equal(store.getState().loaded, true);
+  assert.equal(store.getState().askedThisInstall, true);
+  assert.equal(store.getState().capability, 'none');
+});
+
+test('a failing first read lands on the primer instead of a gate stuck checking', async () => {
+  const deps = fakeDeps({ readSnapshot: async () => { throw new Error('native failure'); } });
+  const store = createLocationGateStore(deps);
+  await store.getState().init();
+  const { loaded, snapshot, askedThisInstall, capability, session } = store.getState();
+  assert.equal(loaded, true);
+  assert.equal(gateOf(snapshot, askedThisInstall, capability, 'driver', session).gate.kind, 'primer');
+});
+
+test('a failing refresh keeps the last good snapshot', async () => {
+  let fail = false;
+  const deps = fakeDeps({
+    readSnapshot: async () => {
+      if (fail) throw new Error('native failure');
+      return snap('granted', true);
+    },
+  });
+  const store = createLocationGateStore(deps);
+  await store.getState().init();
+  fail = true;
+  await store.getState().refresh();
+  assert.equal(store.getState().snapshot.status, 'granted');
+});
+
+test('switching role starts a fresh session: a passenger dismissal does not carry to the driver', async () => {
+  const deps = fakeDeps();
+  const store = createLocationGateStore(deps);
+  await store.getState().init();
+  store.getState().enterRole('passenger');
+  store.getState().dismiss();
+  assert.deepEqual(store.getState().session, { entryDone: true, dismissed: true });
+  store.getState().enterRole('passenger');
+  assert.equal(store.getState().session.dismissed, true);
+  store.getState().enterRole('driver');
+  assert.deepEqual(store.getState().session, { entryDone: false, dismissed: false });
+  assert.equal(store.getState().sessionRole, 'driver');
+});
+
+test('switching role with a usable location keeps the entry as done', async () => {
+  const deps = fakeDeps();
+  deps.set(snap('granted', true));
+  const store = createLocationGateStore(deps);
+  await store.getState().init();
+  store.getState().enterRole('passenger');
+  store.getState().enterRole('driver');
+  assert.deepEqual(store.getState().session, { entryDone: true, dismissed: false });
+});

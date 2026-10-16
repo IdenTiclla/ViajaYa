@@ -26,7 +26,8 @@ web-build/
 .env.*
 !.env.example
 
-# claude local settings
-.claude/
+# claude local settings (shared project skills are versioned)
+.claude/*
+!.claude/skills/
 # Local files
 local-files/

@@ -9,19 +9,24 @@ import { AppState } from 'react-native';
 import type { Coordinates } from '@/core/domain/geo';
 import { locationService } from '@/features/home/data/locationService';
 
-export type WatchStatus = 'loading' | 'granted' | 'denied' | 'disabled' | 'error';
+/**
+ * `weak` is a wait, not a failure: nothing arrived yet, the listener stays alive (or is
+ * restarted by itself) and a late signal recovers the map.
+ */
+export type WatchStatus = 'loading' | 'granted' | 'denied' | 'disabled' | 'weak';
 
 export type WatchedPosition = {
   status: WatchStatus;
   coordinates: Coordinates | null;
   /** Movement heading or compass, in degrees from north. */
   heading: number | null;
-  retry: () => void;
 };
 
+/** After a native failure the listener restarts by itself after this pause. */
+const RESTART_AFTER_MS = 3000;
+
 export function useWatchPosition(enabled = true): WatchedPosition {
-  const [attempt, setAttempt] = useState(0);
-  const [position, setPosition] = useState<Omit<WatchedPosition, 'retry'>>({
+  const [position, setPosition] = useState<WatchedPosition>({
     status: 'loading', coordinates: null, heading: null,
   });
 
@@ -36,6 +41,7 @@ export function useWatchPosition(enabled = true): WatchedPosition {
     let hasPosition = false;
     let backgroundedAt = 0;
     let wait: ReturnType<typeof setTimeout> | undefined;
+    let restart: ReturnType<typeof setTimeout> | undefined;
 
     const cancelWait = () => { clearTimeout(wait); };
     const waitForPosition = () => {
@@ -44,12 +50,13 @@ export function useWatchPosition(enabled = true): WatchedPosition {
       wait = setTimeout(() => {
         if (!active || hasPosition) return;
         // The listener stays alive: a late signal recovers the map.
-        setPosition({ status: 'error', coordinates: null, heading: null });
+        setPosition({ status: 'weak', coordinates: null, heading: null });
       }, 15_000);
     };
     const stop = () => {
       generation += 1;
       cancelWait();
+      clearTimeout(restart);
       cancellation?.abort();
       cancellation = null;
       subscription?.remove();
@@ -69,7 +76,13 @@ export function useWatchPosition(enabled = true): WatchedPosition {
       const fail = (reason: 'error' | 'disabled' = 'error') => {
         if (!current()) return;
         stop();
-        setPosition({ status: reason, coordinates: null, heading: null });
+        if (reason === 'disabled') {
+          setPosition({ status: 'disabled', coordinates: null, heading: null });
+          return;
+        }
+        // A native failure is not shown as an error: wait for a signal and start again.
+        setPosition({ status: 'weak', coordinates: null, heading: null });
+        restart = setTimeout(() => { if (active) start(); }, RESTART_AFTER_MS);
       };
 
       void locationService
@@ -128,12 +141,7 @@ export function useWatchPosition(enabled = true): WatchedPosition {
       stop();
       listener.remove();
     };
-  }, [attempt, enabled]);
+  }, [enabled]);
 
-  return {
-    ...position,
-    retry: () => {
-      setAttempt((n) => n + 1);
-    },
-  };
+  return position;
 }

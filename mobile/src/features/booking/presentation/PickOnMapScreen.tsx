@@ -11,7 +11,6 @@ import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Linking,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -39,7 +38,10 @@ import {
 } from '@/features/booking/domain/placeLabels';
 import type { Place } from '@/features/booking/domain/types';
 import { CenterPin } from '@/features/booking/presentation/CenterPin';
-import { useCurrentLocation } from '@/features/home/application/useCurrentLocation';
+import { useLocationFix } from '@/features/location/application/useLocationFix';
+import { useLocationGate } from '@/features/location/application/useLocationGate';
+import { LocatingChip } from '@/features/location/presentation/LocatingChip';
+import { LocationBanner } from '@/features/location/presentation/LocationBanner';
 import { RoutePinMarker } from '@/features/rides/presentation/RoutePinMarker';
 import { Button, PinLoadingIndicator } from '@/shared/components';
 
@@ -75,13 +77,11 @@ export function PickOnMapScreen() {
   const origin = useBookingStore((s) => s.origin);
   const setOrigin = useBookingStore((s) => s.setOrigin);
   const setDestination = useBookingStore((s) => s.setDestination);
-  const {
-    status: locationStatus,
-    coordinates,
-    canAskAgain,
-    isEstimated,
-    retry: retryLocation,
-  } = useCurrentLocation();
+  // Not gated: this screen is the manual path. Without a position it opens on the last known
+  // center and the banner offers the one-tap fix.
+  const locationGate = useLocationGate('passenger');
+  const { coordinates, isEstimated } = useLocationFix(locationGate.usable);
+  const canLocate = !(locationGate.gate.kind === 'manual' && locationGate.gate.reason === 'no-capability');
   const mapRef = useRef<MapView>(null);
   const { mapStyle, mapMode } = useMapStyle(false);
   const mapReady = useRef(false);
@@ -180,17 +180,10 @@ export function PickOnMapScreen() {
     if (!isEstimated) startedWithoutPreferredCenter.current = false;
   }, [handleRegionChange, isEstimated, usableCoordinates]);
 
-  const recoverLocation = () => {
-    if (locationStatus === 'denied' && !canAskAgain) {
-      void Linking.openSettings();
-      return;
-    }
-    retryLocation();
-  };
-
   const recenter = () => {
     if (!usableCoordinates) {
-      recoverLocation();
+      // No position yet: the banner's fix is the only thing this button can do.
+      if (locationGate.fixCause) locationGate.fixBanner(locationGate.fixCause);
       return;
     }
     if (isDestination) setDestinationMoved(true);
@@ -224,9 +217,7 @@ export function PickOnMapScreen() {
     handleRegionChange(nextRegion);
   };
 
-  const locationUnavailable =
-    !usableCoordinates &&
-    (locationStatus === 'denied' || locationStatus === 'error' || coordinates != null);
+  const outsideServiceArea = coordinates != null && !usableCoordinates;
   const placeAreaError = place ? getBoliviaPlaceError(place) : null;
   const destinationTooClose =
     isDestination &&
@@ -298,7 +289,7 @@ export function PickOnMapScreen() {
         pitchEnabled={false}
         style={StyleSheet.absoluteFill}
         initialRegion={initialRegion}
-        showsUserLocation
+        showsUserLocation={locationGate.usable}
         showsMyLocationButton={false}
         onMapReady={() => {
           mapReady.current = true;
@@ -386,55 +377,36 @@ export function PickOnMapScreen() {
             </View>
           )}
         </View>
-        {locationUnavailable && (
-          <TouchableOpacity
-            style={styles.locationWarning}
-            onPress={recoverLocation}
-            accessibilityRole="button"
-            accessibilityLabel={
-              locationStatus === 'denied' && !canAskAgain
-                ? 'Abrir configuración de ubicación'
-                : 'Reintentar ubicación actual'
-            }>
-            <Ionicons name="navigate-circle-outline" size={18} color={colors.textSecondary} />
-            <Text style={styles.locationWarningText} numberOfLines={2}>
-              {locationStatus === 'denied' && !canAskAgain
-                ? 'Activa la ubicación en configuración o mueve el mapa manualmente.'
-                : coordinates && !usableCoordinates
-                  ? 'Tu ubicación está fuera de Bolivia. Mueve el mapa dentro del área disponible.'
-                : 'No pudimos usar tu ubicación. Puedes mover el mapa o reintentar.'}
-            </Text>
-            <Ionicons name="refresh" size={18} color={colors.primary} />
-          </TouchableOpacity>
-        )}
+        {locationGate.fixCause ? (
+          <LocationBanner
+            cause={locationGate.fixCause}
+            top={0}
+            style={styles.flowBanner}
+            onPress={() => locationGate.fixBanner(locationGate.fixCause!)}
+          />
+        ) : outsideServiceArea ? (
+          <LocatingChip
+            phase="weak"
+            message="Tu ubicación está fuera de Bolivia. Mueve el mapa dentro del área disponible."
+            style={styles.flowBanner}
+          />
+        ) : null}
       </SafeAreaView>
 
-      <TouchableOpacity
-        style={[
-          styles.recenter,
-          isDestination && { bottom: destinationFloatingBottom },
-        ]}
-        onPress={recenter}
-        accessibilityRole="button"
-        accessibilityLabel={
-          usableCoordinates
-            ? 'Centrar en mi ubicación'
-            : locationStatus === 'denied' && !canAskAgain
-              ? 'Abrir configuración de ubicación'
-              : 'Reintentar ubicación'
-        }>
-        <Ionicons
-          name={
-            usableCoordinates
-              ? 'locate'
-              : locationStatus === 'denied' && !canAskAgain
-                ? 'settings-outline'
-                : 'refresh'
-          }
-          size={22}
-          color={colors.primary}
-        />
-      </TouchableOpacity>
+      {canLocate && (
+        <TouchableOpacity
+          style={[
+            styles.recenter,
+            isDestination && { bottom: destinationFloatingBottom },
+          ]}
+          onPress={recenter}
+          accessibilityRole="button"
+          accessibilityLabel={
+            usableCoordinates ? 'Centrar en mi ubicación' : 'Activar mi ubicación'
+          }>
+          <Ionicons name="locate" size={22} color={colors.primary} />
+        </TouchableOpacity>
+      )}
 
       {isDestination && (
         <TouchableOpacity
@@ -665,19 +637,8 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
     marginLeft: spacing.md + 1,
     backgroundColor: colors.border,
   },
-  locationWarning: {
-    minHeight: 46,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.md,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  locationWarningText: { flex: 1, color: colors.textSecondary, fontSize: fontSize.xs },
+  // The banner / notice sits in the flow below the route points instead of floating.
+  flowBanner: { position: 'relative', left: 0, right: 0, marginTop: spacing.sm, alignSelf: 'stretch' },
 
   recenter: {
     position: 'absolute',

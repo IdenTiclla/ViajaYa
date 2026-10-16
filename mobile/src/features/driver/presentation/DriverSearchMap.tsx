@@ -2,16 +2,16 @@
  * Driver request map: the camera follows GPS with gestures locked. The radar
  * shares the vehicle's native screen projection.
  */
-import { Ionicons } from '@react-native-vector-icons/ionicons';
 import { useRef, useState } from 'react';
-import { ActivityIndicator, Linking, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 
-import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
+import { spacing, useThemedStyles, type Theme } from '@/core/theme';
 import { useMapStyle } from '@/features/booking/presentation/mapStyle';
 import type { VehicleType } from '@/features/auth/domain/types';
 import type { Coordinates } from '@/core/domain/geo';
 import type { WatchStatus } from '@/features/home/application/useWatchPosition';
+import { LocatingChip } from '@/features/location/presentation/LocatingChip';
 import { VehicleMarker } from './VehicleMarker';
 import { RadarPulse } from './RadarPulse';
 import { useDriverMapCamera } from './useDriverMapCamera';
@@ -24,46 +24,23 @@ type Props = {
   heading: number | null;
   vehicleType: VehicleType | null;
   status: WatchStatus;
-  retry: () => void;
   showRadar?: boolean;
 };
 
 export function DriverSearchMap(props: Props) {
-  const { colors, styles } = useThemedStyles(createStyles);
-  const { coordinates, status, retry } = props;
+  const { styles } = useThemedStyles(createStyles);
+  const { coordinates, status } = props;
   if (coordinates) return <LocatedMap {...props} coordinates={coordinates} />;
 
-  const loading = status === 'loading';
-  const openSettings = status === 'denied' || status === 'disabled';
-  const message = loading ? 'Buscando tu ubicación…'
-    : status === 'disabled' ? 'La ubicación del teléfono está desactivada.'
-      : status === 'denied' ? 'Permite el acceso a tu ubicación para mostrarte en el mapa.'
-        : 'Todavía no recibimos tu ubicación. Comprueba la señal y que la ubicación esté activada.';
-  const configure = () => {
-    if (status === 'disabled' && Platform.OS === 'android') {
-      void Linking.sendIntent('android.settings.LOCATION_SOURCE_SETTINGS').catch(() => Linking.openSettings());
-    } else {
-      void Linking.openSettings();
-    }
-  };
-  // Do not show a fixed city as if it were the driver's location.
+  // Do not show a fixed city as if it were the driver's location. The permission and the
+  // location switch are the gate's job; here the wait is only a passive status.
   return (
     <View style={styles.container}>
-      <View style={styles.permissionOverlay}>
-        <View style={styles.permissionCard}>
-          {loading ? <ActivityIndicator color={colors.primary} size="large" />
-            : <Ionicons name="location-outline" size={28} color={colors.primary} />}
-          <Text style={styles.permissionText} accessibilityLiveRegion="polite">{message}</Text>
-          {!loading && (
-            <TouchableOpacity
-              style={styles.retryBtn}
-              onPress={openSettings ? configure : retry}
-              accessibilityRole="button"
-              accessibilityLabel={openSettings ? 'Abrir configuración de ubicación' : 'Reintentar ubicación'}>
-              <Text style={styles.retryBtnText}>{openSettings ? 'Abrir configuración' : 'Reintentar'}</Text>
-            </TouchableOpacity>
-          )}
-        </View>
+      <View style={styles.permissionOverlay} pointerEvents="none">
+        <LocatingChip
+          phase={status === 'weak' ? 'weak' : 'locating'}
+          style={styles.waitingChip}
+        />
       </View>
     </View>
   );
@@ -137,33 +114,5 @@ const createStyles = ({ colors }: Theme) => StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: spacing.xl,
   },
-  permissionCard: {
-    alignItems: 'center',
-    gap: spacing.sm,
-    padding: spacing.lg,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 8,
-  },
-  permissionText: {
-    fontSize: fontSize.sm,
-    color: colors.text,
-    textAlign: 'center',
-  },
-  retryBtn: {
-    minHeight: 48,
-    justifyContent: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.md,
-    backgroundColor: colors.primary,
-    marginTop: spacing.xs,
-  },
-  retryBtnText: { color: colors.textOnPrimary, fontSize: fontSize.sm, fontWeight: fontWeight.bold },
+  waitingChip: { left: spacing.xl, right: spacing.xl },
 });

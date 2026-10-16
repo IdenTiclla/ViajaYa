@@ -5,6 +5,7 @@
 import * as Location from 'expo-location';
 
 import type { Coordinates, PlaceLabel } from '@/core/domain/geo';
+import { LocationUnavailableError } from '@/features/location/domain/locationUnavailable';
 import { checkLocationAvailability, watchLocation } from './watchLocation';
 import { isPlaceLabelResolved } from '@/features/booking/domain/placeLabels';
 import {
@@ -431,11 +432,12 @@ async function getGeocodedLabel(
 
 export const locationService = {
   /**
-   * Request the while-in-use location permission and return the current position.
-   * If the user denies it, returns `{ status: 'denied' }` (without throwing).
+   * Return the current position when the foreground permission is already granted.
+   * It never opens a permission dialog: the location gate owns asking. Without the
+   * permission it returns `{ status: 'denied' }` (without throwing).
    */
   async getCurrentLocation(onUpdate?: LocationUpdate): Promise<LocationResult> {
-    const permission = await Location.requestForegroundPermissionsAsync();
+    const permission = await Location.getForegroundPermissionsAsync();
     if (permission.status !== Location.PermissionStatus.GRANTED) {
       return { status: 'denied', canAskAgain: permission.canAskAgain };
     }
@@ -485,23 +487,32 @@ export const locationService = {
     }
   },
 
-  /** A fresh fix for pickup routing; never use the provisional last-known fix. */
+  /**
+   * A fresh fix for pickup routing; never use the provisional last-known fix.
+   * Throws a typed `LocationUnavailableError`: the location gate (not this call) asks for
+   * the permission and the screens never echo a generic failure message.
+   */
   async getRoutingCoordinates(): Promise<Coordinates> {
-    const permission = await Location.requestForegroundPermissionsAsync();
-    if (permission.status !== 'granted') {
-      throw new Error('Permite el acceso a tu ubicación para calcular la llegada.');
+    const permission = await Location.getForegroundPermissionsAsync();
+    if (permission.status !== Location.PermissionStatus.GRANTED) {
+      throw new LocationUnavailableError('permission');
     }
     if (!await Location.hasServicesEnabledAsync()) {
-      throw new Error('Activa la ubicación del teléfono para calcular la llegada.');
+      throw new LocationUnavailableError('services');
     }
-    const position = await withTimeLimit(getCurrentPosition().catch(() => {
-      throw new Error('No pudimos obtener tu ubicación actual. Intenta de nuevo.');
-    }), 10_000,
-      'No pudimos obtener tu ubicación actual. Intenta de nuevo.');
+    const position = await withTimeLimit(
+      getCurrentPosition().catch(() => {
+        throw new LocationUnavailableError('timeout');
+      }),
+      10_000,
+      'timeout',
+    ).catch((error: unknown) => {
+      throw error instanceof LocationUnavailableError ? error : new LocationUnavailableError('timeout');
+    });
     if (!Number.isFinite(position.timestamp) || Date.now() - position.timestamp > 30_000
       || position.coords.accuracy == null || !Number.isFinite(position.coords.accuracy)
       || position.coords.accuracy < 0 || position.coords.accuracy > 200) {
-      throw new Error('Tu señal de ubicación todavía es imprecisa. Intenta de nuevo.');
+      throw new LocationUnavailableError('imprecise');
     }
     return createLocationResult(position, false).coordinates;
   },

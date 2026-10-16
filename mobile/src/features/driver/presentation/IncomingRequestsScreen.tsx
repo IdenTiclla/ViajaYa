@@ -20,7 +20,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/core/errors/apiError';
 import { fontSize, fontWeight, radius, spacing, useThemedStyles, type Theme } from '@/core/theme';
@@ -34,6 +34,9 @@ import { RequestCard } from '@/features/driver/presentation/RequestCard';
 import { RequestsMap } from '@/features/driver/presentation/RequestsMap';
 import { DriverTripInProgressScreen } from '@/features/driver/presentation/DriverTripInProgressScreen';
 import { useWatchPosition, type WatchedPosition } from '@/features/home/application/useWatchPosition';
+import { useLocationGate } from '@/features/location/application/useLocationGate';
+import { LocationBanner } from '@/features/location/presentation/LocationBanner';
+import { LocationGate } from '@/features/location/presentation/LocationGate';
 import {
   useDismissOpenRide,
   useSetOnline,
@@ -115,7 +118,11 @@ export function IncomingRequestsScreen() {
   const createOffer = useOfferComposer();
   // Continuous location (navigation): the map follows the driver, centered, in the
   // searching state and behind the requests list.
-  const position = useWatchPosition(focused && !activeRide && !pendingRatingRide);
+  // The intercept owns permission and the location switch; the watcher only starts once
+  // the position can actually be requested.
+  const locationGate = useLocationGate('driver');
+  const insets = useSafeAreaInsets();
+  const position = useWatchPosition(focused && !activeRide && !pendingRatingRide && locationGate.usable);
   // ~100 m grid: the cards' pickup distance should not re-render on every 1 s fix.
   const gridLatitude = position.coordinates ? Math.round(position.coordinates.latitude * 1000) / 1000 : null;
   const gridLongitude = position.coordinates ? Math.round(position.coordinates.longitude * 1000) / 1000 : null;
@@ -298,6 +305,23 @@ export function IncomingRequestsScreen() {
     return <DriverTripInProgressScreen ride={pendingRatingRide} />;
   }
 
+  if (
+    locationGate.blocking
+    || locationGate.gate.kind === 'checking'
+    || locationGate.gate.kind === 'unsupported'
+  ) {
+    return <LocationGate gate={locationGate} role="driver">{null}</LocationGate>;
+  }
+
+  // Mid-session loss (GPS switched off, permission revoked): a one-tap banner under the top bar.
+  const locationBanner = locationGate.banner ? (
+    <LocationBanner
+      cause={locationGate.banner}
+      top={insets.top + 64}
+      onPress={() => locationGate.fixBanner(locationGate.banner!)}
+    />
+  ) : null;
+
   if (availabilityError) {
     return (
       <DriverRequestsState
@@ -326,7 +350,12 @@ export function IncomingRequestsScreen() {
   const vehicle = { type: user?.vehicleType ?? null, plate: user?.plate ?? null };
 
   if (visibleRides.length === 0) {
-    return <SearchingState position={position} vehicle={vehicle} />;
+    return (
+      <>
+        <SearchingState position={position} vehicle={vehicle} />
+        {locationBanner}
+      </>
+    );
   }
 
   const pendingOffers = Object.keys(offeredMap).length;
@@ -345,6 +374,7 @@ export function IncomingRequestsScreen() {
 
   return (
     <View style={styles.root}>
+      {locationBanner}
       {mode === 'map' ? (
         <View style={styles.mapLayer}>
           <RequestsMap
@@ -515,7 +545,7 @@ function SearchingState({
     <View style={styles.root}>
       <DriverSearchMap
         coordinates={position.coordinates} heading={position.heading} vehicleType={vehicle.type}
-        status={position.status} retry={position.retry} showRadar
+        status={position.status} showRadar
       />
       <SafeAreaView edges={['top']} style={styles.scrim} pointerEvents="box-none">
         <RequestsTopBar vehicle={vehicle} />

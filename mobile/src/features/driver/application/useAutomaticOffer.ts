@@ -30,7 +30,7 @@ export function useAutomaticOffer() {
       const profile = user?.vehicleType === 'moto' ? 'moto' : vars.service === 'moto' ? 'moto' : 'taxi';
       const route = await fetchRoute(origin, vars.pickup, profile);
       if (!route || !Number.isFinite(route.durationSeconds) || route.durationSeconds < 0) {
-        throw new Error('No encontramos una ruta hasta el punto de recogida para tu vehículo. Intenta de nuevo o elige otra solicitud.');
+        throw new Error('No encontramos una ruta hasta el punto de recogida para tu vehículo. Elige otra solicitud.');
       }
       const minutes = arrivalMinutesFromSeconds(route.durationSeconds);
       if (minutes === null) throw new Error('El punto de recogida está demasiado lejos para enviar esta oferta.');

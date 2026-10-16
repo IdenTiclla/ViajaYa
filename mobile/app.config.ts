@@ -43,7 +43,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       },
       infoPlist: {
         NSLocationWhenInUseUsageDescription:
-          'ViajaYa usa tu ubicación para mostrar tu posición en el mapa y coordinar viajes y encomiendas.',
+          'ViajaYa usa tu ubicación mientras tienes la app abierta para mostrar tu posición en el mapa y coordinar tu viaje.',
       },
     },
     android: {
@@ -70,6 +70,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       ...socialPlugins,
       'expo-router',
       './plugins/withDriverNavigation',
+      './plugins/withOptionalLocationFeatures',
       'expo-secure-store',
       ['expo-dev-client', { addGeneratedScheme: environment.appEnv === 'development' }],
       [
@@ -89,7 +90,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
           isAndroidForegroundServiceEnabled: true,
           locationAlwaysAndWhenInUsePermission: 'Durante un viaje como conductor, ViajaYa comparte tu ubicación con tu pasajero aunque uses Waze o bloquees la pantalla.',
           locationWhenInUsePermission:
-            'ViajaYa usa tu ubicación para mostrar tu posición en el mapa y coordinar viajes y encomiendas.',
+            'ViajaYa usa tu ubicación mientras tienes la app abierta para mostrar tu posición en el mapa y coordinar tu viaje.',
         },
       ],
     ],
